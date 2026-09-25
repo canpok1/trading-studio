@@ -1,0 +1,12 @@
+services:
+  trading-studio:
+    image: ghcr.io/canpok1/trading-studio:latest
+    pull_policy: always
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Tokyo
+    # ホストの外へは出さない。スマホからは Tailscale Serve 経由で開く
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./data:/app/data

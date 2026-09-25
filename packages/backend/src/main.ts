@@ -39,5 +39,14 @@ const server = new Hono().route(
 );
 serveFrontend(server, distDir);
 
-Bun.serve({ hostname, port, fetch: server.fetch });
+const http = Bun.serve({ hostname, port, fetch: server.fetch });
 console.log(`listening on http://${hostname}:${port}, db: ${dbPath}`);
+
+// コンテナでは PID 1 になり、ハンドラが無いと SIGTERM が無視されて入れ替えのたびに強制終了を待つことになる
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+	process.on(signal, async () => {
+		await http.stop();
+		db.$client.close();
+		process.exit(0);
+	});
+}

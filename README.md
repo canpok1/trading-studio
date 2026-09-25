@@ -18,3 +18,22 @@ bun run build && bun run start   # 本番と同じ1プロセスで起動（http:
 DB は SQLite で、既定は `data/trading-studio.db`（環境変数 `DB_PATH` で変える）。起動時に未適用のマイグレーションを適用し、その前に `data/backup/` へバックアップを取る。
 
 コマンドの一覧とパッケージの役割は [CLAUDE.md](CLAUDE.md) を参照。
+
+## デプロイ
+
+main へ push すると、CI がコンテナイメージを GHCR（`ghcr.io/canpok1/trading-studio`）へ `latest` とコミット ID のタグで push する。自宅サーバー（mini-pc）では Watchtower が5分間隔で `latest` を確認し、新しいイメージに入れ替える。mini-pc 側の配置は [canpok1/mini-pc-setup](https://github.com/canpok1/mini-pc-setup) が行う。
+
+手で起動する場合は、`docker-compose.yml` を置いたディレクトリで次を実行する。DB とバックアップは同じディレクトリの `data/` に残り、コンテナを入れ替えても消えない。コンテナは UID/GID `1000:1000` で動くため、`data/` は先に作っておく（無いと Docker が root 所有で作り、DB を書けずに起動に失敗する）。
+
+```sh
+mkdir -p data && sudo chown 1000:1000 data
+docker compose up -d
+```
+
+コンテナはホストの `127.0.0.1:3000` にだけ公開する。スマホからは Tailscale Serve で HTTPS 化して開く。
+
+```sh
+sudo tailscale serve --bg 3000   # https://<マシン名>.<tailnet 名>.ts.net/ で開ける
+```
+
+**cloudflared（Cloudflare Tunnel）経由では公開しない。** インターネットに公開され、ログイン機能の無いこのアプリを誰でも操作できてしまうため。
