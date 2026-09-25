@@ -10,6 +10,7 @@ BTC/JPY の自動売買を、戦略の作成・バックテスト・ペーパー
 | `bun run dev` | backend と frontend の開発サーバーを起動する。画面は `http://127.0.0.1:5173`（`/api` は backend へ中継） |
 | `bun run build` | frontend をビルドする（`packages/frontend/dist`） |
 | `bun run start` | backend だけを起動し、API とビルド済みの画面を配信する |
+| `bun run db:generate` | `packages/backend/src/db/schema.ts` の変更からマイグレーションの SQL を作る。サーバー起動時に自動で適用される |
 | `bun run check` | 以下の4つをまとめて実行する（CI と同じ） |
 | `bun run lint` | Biome の lint と format の検査。`bun run format` で自動修正 |
 | `bun run typecheck` | 型チェック（ルートと各パッケージ） |

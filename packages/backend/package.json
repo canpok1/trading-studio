@@ -8,9 +8,14 @@
 	"scripts": {
 		"dev": "bun --watch src/main.ts",
 		"start": "bun src/main.ts",
+		"db:generate": "drizzle-kit generate",
 		"typecheck": "tsc -p ."
 	},
 	"dependencies": {
+		"drizzle-orm": "^0.45.3",
 		"hono": "^4.13.9"
+	},
+	"devDependencies": {
+		"drizzle-kit": "^0.31.11"
 	}
 }

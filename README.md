@@ -15,4 +15,6 @@ bun run build && bun run start   # 本番と同じ1プロセスで起動（http:
 
 待ち受け先は環境変数 `HOST`・`PORT`（backend）で変える。既定は `127.0.0.1:3000`。`HOST=0.0.0.0` にすると別の端末から開ける。開発サーバーの画面も `HOST` に従う。
 
+DB は SQLite で、既定は `data/trading-studio.db`（環境変数 `DB_PATH` で変える）。起動時に未適用のマイグレーションを適用し、その前に `data/backup/` へバックアップを取る。
+
 コマンドの一覧とパッケージの役割は [CLAUDE.md](CLAUDE.md) を参照。
