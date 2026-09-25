@@ -52,8 +52,11 @@ module.exports = {
 	options: {
 		doNotFollow: { path: "node_modules" },
 		exclude: { path: "node_modules" },
+		// TypeScript 7 には dependency-cruiser が使う API が無いため swc で解析する（docs/adr/0001）。
+		// tsPreCompilationDeps を有効にしていると「TypeScript が無い」警告が出るが、swc が型だけの import も拾うので実害はない。
+		// swc の指定は公式に非推奨。TypeScript 7.1 で dependency-cruiser が対応したら、この2行を外して tsc に戻す
+		parser: "swc",
 		tsPreCompilationDeps: true,
-		tsConfig: { fileName: "tsconfig.json" },
 		enhancedResolveOptions: {
 			exportsFields: ["exports"],
 			conditionNames: ["import", "require", "node", "default", "types"],
