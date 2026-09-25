@@ -10,12 +10,15 @@ let dir: string;
 let server: Hono;
 
 beforeAll(async () => {
+	// dir/dist を配信し、その外に dir/secret.txt を置く
 	dir = await mkdtemp(join(tmpdir(), "trading-studio-static-"));
-	await writeFile(join(dir, "index.html"), "<html>index</html>");
-	await mkdir(join(dir, "assets"));
-	await writeFile(join(dir, "assets", "app.js"), "console.log(1)");
+	const dist = join(dir, "dist");
+	await mkdir(join(dist, "assets"), { recursive: true });
+	await writeFile(join(dist, "index.html"), "<html>index</html>");
+	await writeFile(join(dist, "assets", "app.js"), "console.log(1)");
+	await writeFile(join(dir, "secret.txt"), "secret");
 	server = new Hono().route("/", app);
-	serveFrontend(server, dir);
+	serveFrontend(server, dist);
 });
 
 afterAll(async () => {
@@ -41,7 +44,20 @@ describe("serveFrontend", () => {
 	});
 
 	test("配信ディレクトリの外は返さない", async () => {
-		const res = await server.request("/%2e%2e/%2e%2e/etc/passwd");
+		// %2f は Hono のデコード後も残る。ここを / とみなすと dist の外を指す
+		const res = await server.request("/..%2fsecret.txt");
 		expect(await res.text()).toBe("<html>index</html>");
+	});
+
+	test("不正なエンコードでもエラーにしない", async () => {
+		const res = await server.request("/%E0");
+		expect(res.status).toBe(200);
+		expect(await res.text()).toBe("<html>index</html>");
+	});
+
+	test("画面が未ビルドなら 404 を返す", async () => {
+		const empty = new Hono();
+		serveFrontend(empty, join(dir, "missing"));
+		expect((await empty.request("/")).status).toBe(404);
 	});
 });

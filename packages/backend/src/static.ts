@@ -9,13 +9,18 @@ export function serveFrontend(app: Hono, distDir: string): void {
 		if (path === "/api" || path.startsWith("/api/")) {
 			return c.notFound();
 		}
-		const target = resolve(root, `.${decodeURIComponent(path)}`);
+		// c.req.path は Hono がデコード済み。ここで再びデコードすると %2f が / に化けて配信ディレクトリの外を指せるため、そのまま使う
+		const target = resolve(root, `.${path}`);
 		if (target.startsWith(root + sep)) {
 			const file = Bun.file(target);
 			if (await file.exists()) {
 				return new Response(file);
 			}
 		}
-		return new Response(Bun.file(resolve(root, "index.html")));
+		const index = Bun.file(resolve(root, "index.html"));
+		if (!(await index.exists())) {
+			return c.text("画面がビルドされていない。bun run build を実行する", 404);
+		}
+		return new Response(index);
 	});
 }
