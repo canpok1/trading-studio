@@ -6,6 +6,9 @@
 		"packages/*"
 	],
 	"scripts": {
+		"dev": "bun run --parallel --filter '@trading-studio/backend' --filter '@trading-studio/frontend' dev",
+		"build": "bun run --filter '@trading-studio/frontend' build",
+		"start": "bun run --filter '@trading-studio/backend' start",
 		"lint": "biome check .",
 		"format": "biome check --write .",
 		"typecheck": "tsc -p . && bun run --filter '*' typecheck",
