@@ -2,7 +2,10 @@
 	"extends": "../../tsconfig.base.json",
 	"compilerOptions": {
 		"lib": ["ESNext", "DOM", "DOM.Iterable"],
+		"jsx": "react-jsx",
+		// Bun の API を型の上でも使えなくする。テストはルートの tsconfig で検査する
 		"types": []
 	},
-	"include": ["src"]
+	"include": ["src"],
+	"exclude": ["src/**/*.test.tsx", "src/test-setup.ts"]
 }

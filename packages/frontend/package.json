@@ -2,10 +2,25 @@
 	"name": "@trading-studio/frontend",
 	"private": true,
 	"type": "module",
-	"exports": {
-		".": "./src/index.ts"
-	},
 	"scripts": {
+		"dev": "vite",
+		"build": "vite build",
 		"typecheck": "tsc -p ."
+	},
+	"dependencies": {
+		"hono": "^4.13.9",
+		"react": "^19.3.0",
+		"react-dom": "^19.3.0"
+	},
+	"devDependencies": {
+		"@happy-dom/global-registrator": "^20.14.5",
+		"@testing-library/dom": "^10.4.2",
+		"@testing-library/react": "^16.3.3",
+		"@trading-studio/backend": "workspace:*",
+		"@types/react": "^19.3.0",
+		"@types/react-dom": "^19.3.0",
+		"@vitejs/plugin-react": "^6.1.1",
+		"happy-dom": "^20.14.5",
+		"vite": "^8.3.1"
 	}
 }

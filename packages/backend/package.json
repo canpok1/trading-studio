@@ -6,6 +6,11 @@
 		".": "./src/index.ts"
 	},
 	"scripts": {
+		"dev": "bun --watch src/main.ts",
+		"start": "bun src/main.ts",
 		"typecheck": "tsc -p ."
+	},
+	"dependencies": {
+		"hono": "^4.13.9"
 	}
 }

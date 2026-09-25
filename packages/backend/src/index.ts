@@ -1,2 +1,1 @@
-// API と定期処理を置く。[0-2] で実装する
-export {};
+export type { AppType } from "./app";
