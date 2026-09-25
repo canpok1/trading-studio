@@ -11,12 +11,13 @@ function fakeFetch(response: () => Promise<Response>): typeof fetch {
 }
 
 describe("App", () => {
-	test("health の結果を表示する", async () => {
+	test("health と DB の状態を表示する", async () => {
 		const client = createApiClient(
-			fakeFetch(async () => Response.json({ status: "ok" })),
+			fakeFetch(async () => Response.json({ status: "ok", db: "error" })),
 		);
 		const view = render(<App client={client} />);
 		expect(await view.findByText("health: ok")).toBeTruthy();
+		expect(view.getByText("DB: error")).toBeTruthy();
 	});
 
 	test("エラー時はエラーを表示する", async () => {

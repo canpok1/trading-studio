@@ -3,7 +3,7 @@ import type { ApiClient } from "./api";
 
 type HealthState =
 	| { kind: "loading" }
-	| { kind: "ok"; status: string }
+	| { kind: "ok"; status: string; db: string }
 	| { kind: "error"; message: string };
 
 export function App({ client }: { client: ApiClient }) {
@@ -18,7 +18,8 @@ export function App({ client }: { client: ApiClient }) {
 					throw new Error(`HTTP ${res.status}`);
 				}
 				const body = await res.json();
-				if (!cancelled) setHealth({ kind: "ok", status: body.status });
+				if (!cancelled)
+					setHealth({ kind: "ok", status: body.status, db: body.db });
 			} catch (e) {
 				if (!cancelled) {
 					setHealth({
@@ -37,7 +38,12 @@ export function App({ client }: { client: ApiClient }) {
 		<main>
 			<h1>trading-studio</h1>
 			{health.kind === "loading" && <p>確認中…</p>}
-			{health.kind === "ok" && <p>health: {health.status}</p>}
+			{health.kind === "ok" && (
+				<>
+					<p>health: {health.status}</p>
+					<p>DB: {health.db}</p>
+				</>
+			)}
 			{health.kind === "error" && (
 				<p role="alert">health の取得に失敗しました: {health.message}</p>
 			)}
