@@ -19,3 +19,5 @@ jobs:
       - run: bun run test
       - run: bun run depcruise
       - run: bun run build
+      - name: マイグレーションがテーブル定義に追いついているか
+        run: bun run db:generate && test -z "$(git status --porcelain)"
