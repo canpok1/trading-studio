@@ -1,0 +1,9 @@
+{
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		// 全パッケージとテストをまとめて検査する。環境の制限は各パッケージの tsconfig でかける
+		"lib": ["ESNext", "DOM", "DOM.Iterable"],
+		"types": ["bun"]
+	},
+	"include": ["packages/*/src"]
+}

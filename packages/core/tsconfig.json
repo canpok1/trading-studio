@@ -1,0 +1,9 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		// Bun・Node の API を型の上でも使えなくする。テストはルートの tsconfig で検査する
+		"types": []
+	},
+	"include": ["src"],
+	"exclude": ["src/**/*.test.ts"]
+}
