@@ -26,6 +26,9 @@ jobs:
   image:
     needs: check
     runs-on: ubuntu-latest
+    # 古いコミットのビルドが後から終わって latest を巻き戻さないよう、同じブランチでは順に実行する
+    concurrency:
+      group: image-${{ github.ref }}
     permissions:
       contents: read
       packages: write
