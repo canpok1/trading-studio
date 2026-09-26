@@ -7,6 +7,7 @@ import { isDbReachable, openDb } from "./db/open";
 import { MarketDataRepository } from "./market-data/repository";
 import { createMarketDataService } from "./market-data/service";
 import { serveFrontend } from "./static";
+import { createStrategyService } from "./strategies/service";
 
 const hostname = process.env.HOST ?? "127.0.0.1";
 const port = Number(process.env.PORT ?? 3000);
@@ -43,6 +44,7 @@ const server = new Hono().route(
 	createApp({
 		isDbReachable: () => isDbReachable(db),
 		marketData: createMarketDataService(marketDataRepo),
+		strategies: createStrategyService(db),
 	}),
 );
 serveFrontend(server, distDir);

@@ -5,6 +5,7 @@ import type { Db } from "./db/open";
 import { createTestDb } from "./db/test-db";
 import { MarketDataRepository } from "./market-data/repository";
 import { createMarketDataService } from "./market-data/service";
+import { createStrategyService } from "./strategies/service";
 
 export function createTestApp(
 	over: Partial<AppDeps> = {},
@@ -14,6 +15,12 @@ export function createTestApp(
 	const marketData = createMarketDataService(marketDataRepo, {
 		now: () => 1_000,
 	});
-	const app = createApp({ isDbReachable: () => true, marketData, ...over });
-	return { app, db, marketData, marketDataRepo };
+	const strategies = createStrategyService(db, () => 2_000);
+	const app = createApp({
+		isDbReachable: () => true,
+		marketData,
+		strategies,
+		...over,
+	});
+	return { app, db, marketData, marketDataRepo, strategies };
 }

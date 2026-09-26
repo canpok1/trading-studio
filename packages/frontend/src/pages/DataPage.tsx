@@ -7,7 +7,7 @@ import {
 	TIMEFRAMES,
 } from "@trading-studio/core";
 import type { DragEvent } from "react";
-import { useCallback, useId, useRef, useState } from "react";
+import { useCallback, useId, useState } from "react";
 import { useApi } from "../api";
 import { DataIcon, ErrorIcon } from "../components/icons";
 import { Page } from "../components/Page";

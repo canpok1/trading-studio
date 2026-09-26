@@ -6,6 +6,7 @@ import type { MarketDataService } from "../market-data/types";
 export function marketDataRoutes(service: MarketDataService) {
 	return new Hono()
 		.get("/coverage", (c) => c.json({ timeframes: service.coverage() }))
+		.get("/latest", (c) => c.json({ latest: service.latestClose() }))
 		.get("/imports", (c) => c.json({ imports: service.listImports() }))
 		.post(
 			"/imports",

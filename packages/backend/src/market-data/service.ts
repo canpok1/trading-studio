@@ -167,6 +167,10 @@ export function createMarketDataService(
 			return repo.coverage();
 		},
 
+		latestClose() {
+			return repo.latestClose();
+		},
+
 		running() {
 			return current && current.job.status === "running" ? current.done : null;
 		},

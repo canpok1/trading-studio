@@ -53,3 +53,13 @@ export const candles = sqliteTable(
 		index("candles_import_id").on(t.importId),
 	],
 );
+
+/** 戦略（名前を付けた条件のセット） */
+export const strategies = sqliteTable("strategies", {
+	id: integer("id").primaryKey({ autoIncrement: true }),
+	name: text("name").notNull().unique(),
+	/** 条件のセット（JSON） */
+	params: text("params").notNull(),
+	createdAt: integer("created_at").notNull(),
+	updatedAt: integer("updated_at").notNull(),
+});

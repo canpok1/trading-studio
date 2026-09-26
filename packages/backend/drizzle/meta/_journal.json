@@ -15,6 +15,13 @@
       "when": 1790396371631,
       "tag": "0001_candles",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790396895687,
+      "tag": "0002_strategies",
+      "breakpoints": true
     }
   ]
 }
