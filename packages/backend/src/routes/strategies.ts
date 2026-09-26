@@ -28,7 +28,11 @@ function respond(c: Context, r: StrategyResult, okStatus: 200 | 201 = 200) {
 	}
 }
 
-export function strategyRoutes(service: StrategyService) {
+export function strategyRoutes(
+	service: StrategyService,
+	/** 自動取引がオンの間は運用する戦略を変えさせない */
+	isTradingOn: () => boolean = () => false,
+) {
 	return (
 		new Hono()
 			.get("/", (c) => c.json({ strategies: service.list() }))
@@ -43,10 +47,17 @@ export function strategyRoutes(service: StrategyService) {
 					}
 					return { id: id as number | null };
 				}),
-				(c) =>
-					service.setActive(c.req.valid("json").id)
+				(c) => {
+					if (isTradingOn()) {
+						return c.json(
+							{ message: "運用する戦略を変えるには先に自動取引をオフにする" },
+							409,
+						);
+					}
+					return service.setActive(c.req.valid("json").id)
 						? c.json({ strategy: service.active() }, 200)
-						: c.json({ message: "戦略が見つからない" }, 404),
+						: c.json({ message: "戦略が見つからない" }, 404);
+				},
 			)
 			.get("/:id", (c) => {
 				const s = service.get(Number(c.req.param("id")));

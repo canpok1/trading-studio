@@ -376,3 +376,19 @@ describe("1日の損失上限", () => {
 		);
 	});
 });
+
+describe("オン中の制限", () => {
+	test("オン中は運用する戦略を変えられず、動かしている戦略が消えたら止まる", async () => {
+		const t = setup();
+		await t.call("POST", "/start", { mode: "paper" });
+		const res = await t.app.request("/api/strategies/active", {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ id: null }),
+		});
+		expect(res.status).toBe(409);
+		t.strategies.remove(t.strategy.id);
+		t.at(T0 + M);
+		expect(t.status().enabled).toBe(false);
+	});
+});

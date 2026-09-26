@@ -139,7 +139,14 @@ export function createTradingService({
 		if (live.status.state !== "running" || !live.latestTrade) return;
 		const s = row.strategyId === null ? null : strategies.get(row.strategyId);
 		if (!s) {
+			// 動かしている戦略が消えたら続けられないので止める。未約定の注文は残す
 			console.error("trading: running strategy not found", row.strategyId);
+			repo.saveAutoTrading({
+				...row,
+				enabled: false,
+				nextEvalAt: null,
+				reevaluate: false,
+			});
 			return;
 		}
 		const judges = requiredJudges(s.params);

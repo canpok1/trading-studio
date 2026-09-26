@@ -48,7 +48,10 @@ export function createApp({
 		)
 		.route("/data", marketDataRoutes(marketData))
 		.route("/market", marketRoutes(market))
-		.route("/strategies", strategyRoutes(strategies))
+		.route(
+			"/strategies",
+			strategyRoutes(strategies, () => trading.status().enabled),
+		)
 		.route("/backtests", backtestRoutes(backtests))
 		.route("/news", newsRoutes(news))
 		.route("/scoring", scoringRoutes(scoring))

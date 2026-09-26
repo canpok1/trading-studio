@@ -20,3 +20,9 @@ export type {
 	TrialResult,
 } from "./news/types";
 export type { StoredStrategy } from "./strategies/types";
+export type {
+	AutoTradingStatus,
+	StoredDecision,
+	StoredOrder,
+	TradingMode,
+} from "./trading/types";
