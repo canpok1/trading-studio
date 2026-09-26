@@ -21,12 +21,14 @@ import { formatInt } from "../../lib/number";
 import { Segmented } from "../ui";
 import type { ChartBar, ChartMarker, ChartRange } from "./chart-data";
 import {
+	barStep,
 	CHART_RANGES,
 	fromChartTime,
 	markerColorVar,
 	markerShape,
 	snapToBar,
 	toChartTime,
+	toSlots,
 	visibleRange,
 } from "./chart-data";
 
@@ -123,6 +125,7 @@ export function PriceChart({
 	const [themeTick, setThemeTick] = useState(0);
 
 	const barTimes = useMemo(() => bars.map((b) => b.time), [bars]);
+	const slots = useMemo(() => toSlots(barTimes), [barTimes]);
 	// 呼び出し側が毎回新しい配列を渡しても、本数が同じなら計算し直さない
 	const emaKey = emaPeriods.join(",");
 	// biome-ignore lint/correctness/useExhaustiveDependencies: emaPeriods の中身は emaKey で見る
@@ -133,8 +136,8 @@ export function PriceChart({
 	const showEma = emaOn && emaPeriods.length > 0;
 
 	// マーカーの押下判定は描画ライブラリのイベントから呼ぶので、最新の値を ref で渡す
-	const latest = useRef({ markers, onMarker, barTimes });
-	latest.current = { markers, onMarker, barTimes };
+	const latest = useRef({ markers, onMarker, barTimes, slots });
+	latest.current = { markers, onMarker, barTimes, slots };
 
 	// チャートを作る（1回だけ）
 	useEffect(() => {
@@ -182,8 +185,8 @@ export function PriceChart({
 		chartRef.current = { chart, price, marks, emas: [] };
 
 		chart.subscribeCrosshairMove((p) => {
-			// 価格の系列は全部の足を持つので、論理位置がそのまま足の番号になる
-			const n = latest.current.barTimes.length;
+			// 価格の系列は全部の枠を持つので、論理位置がそのまま枠の番号になる
+			const n = latest.current.slots.length;
 			if (p.logical === undefined || n === 0) {
 				setCursor(null);
 				return;
@@ -229,12 +232,15 @@ export function PriceChart({
 	// 価格
 	useEffect(() => {
 		chartRef.current?.price.setData(
-			bars.map((b) => ({
-				time: toChartTime(b.time) as UTCTimestamp,
-				value: b.close,
-			})),
+			slots.map((s) => {
+				const time = toChartTime(s.time) as UTCTimestamp;
+				// 足の無い枠は値を持たせず、線を途切れさせる
+				return s.bar === null
+					? { time }
+					: { time, value: (bars[s.bar] as ChartBar).close };
+			}),
 		);
-	}, [bars]);
+	}, [bars, slots]);
 
 	// EMA の線
 	useEffect(() => {
@@ -252,16 +258,17 @@ export function PriceChart({
 				crosshairMarkerVisible: false,
 			});
 			s.setData(
-				bars.flatMap((b, i) => {
-					const v = values[i] as number;
-					const time = toChartTime(b.time) as UTCTimestamp;
-					// 本数が足りない先頭は空けて描く
-					return Number.isNaN(v) ? [{ time }] : [{ time, value: v }];
+				slots.map((slot) => {
+					const time = toChartTime(slot.time) as UTCTimestamp;
+					const v =
+						slot.bar === null ? Number.NaN : (values[slot.bar] as number);
+					// 本数が足りない先頭と足の無い枠は空けて描く
+					return Number.isNaN(v) ? { time } : { time, value: v };
 				}),
 			);
 			c.emas.push(s);
 		});
-	}, [bars, emaValues, showEma]);
+	}, [slots, emaValues, showEma]);
 
 	// 注文のアイコン。themeTick は色を読み直すため
 	// biome-ignore lint/correctness/useExhaustiveDependencies: themeTick の変化で色を読み直す
@@ -296,11 +303,8 @@ export function PriceChart({
 	useEffect(() => {
 		const c = chartRef.current;
 		if (!c) return;
-		const step =
-			barTimes.length > 1
-				? (barTimes[1] as number) - (barTimes[0] as number)
-				: 3_600_000;
-		const r = visibleRange(range, barTimes.length, step);
+		const step = barStep(barTimes) ?? 3_600_000;
+		const r = visibleRange(range, slots.length, step);
 		if (r) c.chart.timeScale().setVisibleLogicalRange(r);
 		else c.chart.timeScale().fitContent();
 	}, [range, zoomKey, hasBars]);
@@ -316,7 +320,8 @@ export function PriceChart({
 		});
 	}, [themeTick]);
 
-	const shown = cursor ?? (bars.length > 0 ? bars.length - 1 : null);
+	const slot = slots[cursor ?? slots.length - 1] ?? null;
+	const shown = slot?.bar ?? null;
 	const bar = shown === null ? null : bars[shown];
 
 	return (
@@ -346,6 +351,12 @@ export function PriceChart({
 				aria-live="off"
 				className="num flex min-h-5 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs"
 			>
+				{slot && !bar && (
+					<>
+						<span className="text-text-2">{formatDateTime(slot.time)}</span>
+						<span className="font-semibold text-text-2">データなし</span>
+					</>
+				)}
 				{bar && (
 					<>
 						<span className="text-text-2">{formatDateTime(bar.time)}</span>

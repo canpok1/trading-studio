@@ -43,6 +43,62 @@ export function fromChartTime(t: number): number {
 	return t * 1000 - JST_OFFSET_MS;
 }
 
+/**
+ * 描画の枠。bar は足の番号（bars の添字）で、足の無い枠は null。
+ * 描画ライブラリは横軸を時刻ではなく並び順で決めるので、欠損している期間に空の枠を挟んで時間軸を保つ
+ */
+export type ChartSlot = { time: number; bar: number | null };
+
+/** 空の枠を含めた枠の数の上限。超えるときは欠損の空白を縮めて収める */
+export const MAX_CHART_SLOTS = 100_000;
+
+/** 足の間隔。隣り合う足の時刻の差の最小値。足が2本未満なら null */
+export function barStep(times: readonly number[]): number | null {
+	let step: number | null = null;
+	for (let i = 1; i < times.length; i++) {
+		const d = (times[i] as number) - (times[i - 1] as number);
+		if (d > 0 && (step === null || d < step)) step = d;
+	}
+	return step;
+}
+
+/** 足の間に、欠損している足の数だけ空の枠を挟む */
+export function toSlots(
+	times: readonly number[],
+	maxSlots = MAX_CHART_SLOTS,
+): ChartSlot[] {
+	const step = barStep(times);
+	if (step === null) return times.map((time, i) => ({ time, bar: i }));
+	const missing = times.map((t, i) =>
+		i === 0 ? 0 : Math.ceil((t - (times[i - 1] as number)) / step) - 1,
+	);
+	const total = missing.reduce((a, b) => a + b, 0);
+	const room = Math.max(0, maxSlots - times.length);
+	const scale = total > room ? room / total : 1;
+	const slots: ChartSlot[] = [];
+	times.forEach((t, i) => {
+		const n = missing[i] as number;
+		if (n > 0) {
+			const prev = times[i - 1] as number;
+			if (scale === 1) {
+				for (let j = 1; j <= n; j++)
+					slots.push({ time: prev + j * step, bar: null });
+			} else {
+				// 縮めても空白は残す（1枠以上）
+				const k = Math.max(1, Math.floor(n * scale));
+				for (let j = 1; j <= k; j++) {
+					slots.push({
+						time: prev + Math.round(((t - prev) * j) / (k + 1)),
+						bar: null,
+					});
+				}
+			}
+		}
+		slots.push({ time: t, bar: i });
+	});
+	return slots;
+}
+
 /** 注文の時刻を、その時刻を含む足（開始時刻が time 以下で最も遅い足）の開始時刻に合わせる。足より前なら null */
 export function snapToBar(
 	barTimes: readonly number[],

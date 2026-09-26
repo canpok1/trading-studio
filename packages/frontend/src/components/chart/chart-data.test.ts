@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
+	barStep,
 	fromChartTime,
 	markerColorVar,
 	markerShape,
 	snapToBar,
 	toChartTime,
+	toSlots,
 	visibleRange,
 } from "./chart-data";
 
@@ -49,5 +51,37 @@ describe("chart-data", () => {
 		// 足が粗くても最低5本は出す
 		expect(visibleRange("1d", 100, 24 * H)).toEqual({ from: 94.5, to: 102 });
 		expect(visibleRange("1w", 0, H)).toBeNull();
+	});
+});
+
+describe("欠損の空白", () => {
+	test("足の間隔は隣り合う足の差の最小値", () => {
+		expect(barStep([0, H, 5 * H])).toBe(H);
+		expect(barStep([0])).toBeNull();
+	});
+
+	test("欠損している足の数だけ空の枠を挟む", () => {
+		expect(toSlots([0, H, 4 * H])).toEqual([
+			{ time: 0, bar: 0 },
+			{ time: H, bar: 1 },
+			{ time: 2 * H, bar: null },
+			{ time: 3 * H, bar: null },
+			{ time: 4 * H, bar: 2 },
+		]);
+		expect(toSlots([0, H])).toEqual([
+			{ time: 0, bar: 0 },
+			{ time: H, bar: 1 },
+		]);
+	});
+
+	test("上限を超えるときは空白を縮め、1枠以上は残す", () => {
+		const slots = toSlots([0, H, 101 * H, 102 * H], 13);
+		expect(slots).toHaveLength(13);
+		expect(slots.filter((s) => s.bar === null)).toHaveLength(9);
+		const times = slots.map((s) => s.time);
+		expect([...times].sort((a, b) => a - b)).toEqual(times);
+		expect(
+			toSlots([0, H, 3 * H], 3).filter((s) => s.bar === null),
+		).toHaveLength(1);
 	});
 });
