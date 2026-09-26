@@ -1,6 +1,6 @@
 # 0003. GHCR と Watchtower で自宅サーバーへ自動デプロイし、Tailscale Serve で開く
 
-- ステータス: 採用
+- ステータス: 採用（公開範囲の決定は [0004](0004-lan-exposure-until-live-trading.md) で置き換え）
 - 日付: 2026-09-25
 
 ## コンテキスト

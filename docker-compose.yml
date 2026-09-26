@@ -5,8 +5,8 @@ services:
     restart: unless-stopped
     environment:
       TZ: Asia/Tokyo
-    # ホストの外へは出さない。スマホからは Tailscale Serve 経由で開く
+    # 実取引が無いうちは自宅 LAN 内へそのまま公開する（ADR 0004）
     ports:
-      - "127.0.0.1:3000:3000"
+      - "3000:3000"
     volumes:
       - ./data:/app/data
