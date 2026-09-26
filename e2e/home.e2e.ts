@@ -80,6 +80,26 @@ test("EMA の条件を持つ戦略を選ぶと EMA が出て、戦略の粒度�
 	await select.selectOption("");
 });
 
+test("ローソク足に切り替えると4本値が出て、再読み込み後も保たれる", async ({
+	page,
+}) => {
+	await page.goto("/home");
+	await expect(page.getByTestId("home-price")).toHaveText(/^¥[\d,]+$/, {
+		timeout: 15_000,
+	});
+	const toggle = page.getByRole("button", { name: "ローソク足", exact: true });
+	await expect(toggle).toHaveAttribute("aria-pressed", "false");
+	await toggle.click();
+	await expect(toggle).toHaveAttribute("aria-pressed", "true");
+	await expect(page.getByText(/^始 [\d,]+ 高 [\d,]+ 安 [\d,]+$/)).toBeVisible();
+
+	await page.reload();
+	await expect(toggle).toHaveAttribute("aria-pressed", "true");
+	await toggle.click();
+	await expect(toggle).toHaveAttribute("aria-pressed", "false");
+	await expect(page.getByText(/^始 /)).toBeHidden();
+});
+
 test("ホームは横にはみ出さない", async ({ page }) => {
 	await page.goto("/home");
 	await expect(page.getByTestId("home-price")).toBeVisible();

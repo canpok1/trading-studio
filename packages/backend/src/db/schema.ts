@@ -110,7 +110,7 @@ export const backtestResults = sqliteTable("backtest_results", {
 	runId: integer("run_id")
 		.primaryKey()
 		.references(() => backtestRuns.id),
-	/** 期間内の足の時刻と終値 { times, closes } */
+	/** 期間内の足 { times, closes, opens, highs, lows }。opens・highs・lows は4本値を保存する前の実行には無い */
 	bars: blob("bars", { mode: "buffer" }).notNull(),
 	orders: blob("orders", { mode: "buffer" }).notNull(),
 	trades: blob("trades", { mode: "buffer" }).notNull(),

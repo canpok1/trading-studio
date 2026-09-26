@@ -42,6 +42,23 @@ describe("ホームの表示", () => {
 		expect(withLatestPrice(bars, "1m", null, null)).toEqual(bars);
 	});
 
+	test("4本値のある足へ最新の価格を反映すると、高値・安値も広げる", () => {
+		const bars = [{ time: T0, open: 10, high: 12, low: 9, close: 11 }];
+		expect(withLatestPrice(bars, "1m", 13, T0 + 10_000)).toEqual([
+			{ time: T0, open: 10, high: 13, low: 9, close: 13 },
+		]);
+		expect(withLatestPrice(bars, "1m", 8, T0 + 10_000)).toEqual([
+			{ time: T0, open: 10, high: 12, low: 8, close: 8 },
+		]);
+		expect(withLatestPrice(bars, "1m", 7, T0 + M).at(-1)).toEqual({
+			time: T0 + M,
+			open: 7,
+			high: 7,
+			low: 7,
+			close: 7,
+		});
+	});
+
 	test("24時間の変化率", () => {
 		expect(changePercent(110, 100)).toBeCloseTo(10);
 		expect(changePercent(110, null)).toBeNull();

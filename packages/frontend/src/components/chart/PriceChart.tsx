@@ -15,6 +15,7 @@ import type {
 	UTCTimestamp,
 } from "lightweight-charts";
 import {
+	CandlestickSeries,
 	createChart,
 	createSeriesMarkers,
 	LineSeries,
@@ -32,6 +33,7 @@ import {
 	barStep,
 	CHART_RANGES,
 	fromChartTime,
+	hasOhlc,
 	markerColorVar,
 	markerShape,
 	snapToBar,
@@ -39,6 +41,7 @@ import {
 	toSlots,
 	visibleRange,
 } from "./chart-data";
+import { useChartStyle } from "./chart-style";
 import { JudgeLayer, stripArea } from "./judge-layer";
 import type { BarJudgments } from "./judgment-data";
 import { slotAligned } from "./judgment-data";
@@ -96,6 +99,20 @@ function tickLabel(t: Time, type: TickMarkType): string {
 	}
 }
 
+/** ローソク足の色。上昇=緑・下落=赤（AI 判定のトレンドと同じ色） */
+function candleColors() {
+	const up = cssVar("--color-up");
+	const down = cssVar("--color-down");
+	return {
+		upColor: up,
+		downColor: down,
+		borderUpColor: up,
+		borderDownColor: down,
+		wickUpColor: up,
+		wickDownColor: down,
+	};
+}
+
 function chartColors() {
 	return {
 		layout: {
@@ -107,6 +124,9 @@ function chartColors() {
 		timeScale: { borderColor: cssVar("--color-line") },
 	};
 }
+
+const CHIP =
+	"h-8 rounded-full border border-line px-3 text-xs font-semibold text-text-2 disabled:opacity-40 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-white dark:aria-pressed:text-accent-ink";
 
 const NO_MARKERS: readonly ChartMarker[] = [];
 const NO_PERIODS: readonly number[] = [];
@@ -135,7 +155,10 @@ export function PriceChart({
 	const box = useRef<HTMLDivElement>(null);
 	const chartRef = useRef<{
 		chart: IChartApi;
-		price: ISeriesApi<"Line">;
+		line: ISeriesApi<"Line">;
+		candle: ISeriesApi<"Candlestick">;
+		/** いま見せている価格の系列。注文のアイコンと AI 判定の描画はこちらに付ける */
+		price: ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
 		marks: ISeriesMarkersPluginApi<Time>;
 		emas: ISeriesApi<"Line">[];
 		layer: JudgeLayer;
@@ -144,8 +167,11 @@ export function PriceChart({
 	const range = controlledRange ?? ownRange;
 	const setRange = onRangeChange ?? setOwnRange;
 	const [emaOn, setEmaOn] = useState(true);
+	const [style, setStyle] = useChartStyle();
 	const [cursor, setCursor] = useState<number | null>(null);
 	const [themeTick, setThemeTick] = useState(0);
+	// 価格の系列を付け替えたら、注文のアイコンを置き直す
+	const [marksTick, setMarksTick] = useState(0);
 
 	const barTimes = useMemo(() => bars.map((b) => b.time), [bars]);
 	const slots = useMemo(() => toSlots(barTimes), [barTimes]);
@@ -157,6 +183,9 @@ export function PriceChart({
 		return emaPeriods.map((n) => ema(closes, n));
 	}, [bars, emaKey]);
 	const showEma = emaOn && emaPeriods.length > 0;
+	// 4本値を保存する前のバックテスト結果は終値しか無いので、線でしか描けない
+	const canCandle = useMemo(() => hasOhlc(bars), [bars]);
+	const candle = style === "candle" && canCandle;
 
 	// マーカーの押下判定は描画ライブラリのイベントから呼ぶので、最新の値を ref で渡す
 	const latest = useRef({ markers, onMarker, barTimes, slots, onBgChange });
@@ -199,15 +228,27 @@ export function PriceChart({
 			},
 		});
 		chart.applyOptions(chartColors());
-		const price = chart.addSeries(LineSeries, {
+		const line = chart.addSeries(LineSeries, {
 			color: cssVar("--color-price"),
 			lineWidth: 2,
 			crosshairMarkerRadius: 4,
 		});
-		const marks = createSeriesMarkers(price, []);
+		const candle = chart.addSeries(CandlestickSeries, {
+			...candleColors(),
+			visible: false,
+		});
+		const marks = createSeriesMarkers(line, []);
 		const layer = new JudgeLayer(cssVar);
-		price.attachPrimitive(layer);
-		chartRef.current = { chart, price, marks, emas: [], layer };
+		line.attachPrimitive(layer);
+		chartRef.current = {
+			chart,
+			line,
+			candle,
+			price: line,
+			marks,
+			emas: [],
+			layer,
+		};
 
 		chart.subscribeCrosshairMove((p) => {
 			// 価格の系列は全部の枠を持つので、論理位置がそのまま枠の番号になる
@@ -238,7 +279,9 @@ export function PriceChart({
 						.timeScale()
 						.timeToCoordinate(toChartTime(at) as UTCTimestamp);
 					if (x === null) continue;
-					const y = price.priceToCoordinate(m.price);
+					const y = (chartRef.current?.price ?? line).priceToCoordinate(
+						m.price,
+					);
 					// アイコンは線の上下に離れて描かれるので、縦方向は余裕を持たせる
 					const dy = y === null ? 0 : Math.max(0, Math.abs(y - p.point.y) - 24);
 					const d = Math.hypot(x - p.point.x, dy);
@@ -260,9 +303,11 @@ export function PriceChart({
 		};
 	}, []);
 
-	// 価格
+	// 価格。線とローソク足の両方に入れておき、見せる方だけを表示する
 	useEffect(() => {
-		chartRef.current?.price.setData(
+		const c = chartRef.current;
+		if (!c) return;
+		c.line.setData(
 			slots.map((s) => {
 				const time = toChartTime(s.time) as UTCTimestamp;
 				// 足の無い枠は値を持たせず、線を途切れさせる
@@ -271,7 +316,38 @@ export function PriceChart({
 					: { time, value: (bars[s.bar] as ChartBar).close };
 			}),
 		);
+		c.candle.setData(
+			slots.map((s) => {
+				const time = toChartTime(s.time) as UTCTimestamp;
+				const b = s.bar === null ? null : (bars[s.bar] as ChartBar);
+				if (
+					!b ||
+					b.open === undefined ||
+					b.high === undefined ||
+					b.low === undefined
+				) {
+					return { time };
+				}
+				return { time, open: b.open, high: b.high, low: b.low, close: b.close };
+			}),
+		);
 	}, [bars, slots]);
+
+	// 線とローソク足の切り替え。注文のアイコンと AI 判定の描画を見せる方へ付け替える
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		const next = candle ? c.candle : c.line;
+		if (next === c.price) return;
+		c.price.detachPrimitive(c.layer);
+		c.marks.detach();
+		c.line.applyOptions({ visible: !candle });
+		c.candle.applyOptions({ visible: candle });
+		next.attachPrimitive(c.layer);
+		c.marks = createSeriesMarkers(next, []);
+		c.price = next;
+		setMarksTick((n) => n + 1);
+	}, [candle]);
 
 	// EMA の線
 	useEffect(() => {
@@ -302,7 +378,7 @@ export function PriceChart({
 	}, [slots, emaValues, showEma]);
 
 	// 注文のアイコン。themeTick は色を読み直すため
-	// biome-ignore lint/correctness/useExhaustiveDependencies: themeTick の変化で色を読み直す
+	// biome-ignore lint/correctness/useExhaustiveDependencies: themeTick の変化で色を読み直し、marksTick の変化で置き直す
 	useEffect(() => {
 		const c = chartRef.current;
 		if (!c) return;
@@ -325,7 +401,7 @@ export function PriceChart({
 		});
 		list.sort((a, b) => a.time - b.time);
 		c.marks.setMarkers(list);
-	}, [markers, barTimes, selectedId, themeTick]);
+	}, [markers, barTimes, selectedId, themeTick, marksTick]);
 
 	// AI 判定の背景と帯。帯の分だけ価格の線を上へ寄せる
 	const hasJudgments = judgments !== null;
@@ -364,7 +440,8 @@ export function PriceChart({
 		const c = chartRef.current;
 		if (!c || themeTick === 0) return;
 		c.chart.applyOptions(chartColors());
-		c.price.applyOptions({ color: cssVar("--color-price") });
+		c.line.applyOptions({ color: cssVar("--color-price") });
+		c.candle.applyOptions(candleColors());
 		c.emas.forEach((s, j) => {
 			s.applyOptions({ color: cssVar(emaVar(j)) });
 		});
@@ -403,19 +480,33 @@ export function PriceChart({
 					))}
 				</fieldset>
 			)}
-			{emaPeriods.length > 0 && (
-				<div className="flex items-center gap-2">
-					<span className="text-xs text-text-2">表示</span>
+			<div className="flex flex-wrap items-center gap-2">
+				<span className="text-xs text-text-2">表示</span>
+				<button
+					type="button"
+					aria-pressed={candle}
+					disabled={!canCandle}
+					title={
+						canCandle
+							? undefined
+							: "この結果は終値だけを保存しているため、ローソク足で描けない"
+					}
+					onClick={() => setStyle(candle ? "line" : "candle")}
+					className={CHIP}
+				>
+					ローソク足
+				</button>
+				{emaPeriods.length > 0 && (
 					<button
 						type="button"
 						aria-pressed={emaOn}
 						onClick={() => setEmaOn((v) => !v)}
-						className="h-8 rounded-full border border-line px-3 text-xs font-semibold text-text-2 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-white dark:aria-pressed:text-accent-ink"
+						className={CHIP}
 					>
 						EMA
 					</button>
-				</div>
-			)}
+				)}
+			</div>
 			<div
 				aria-live="off"
 				className="num flex min-h-5 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs"
@@ -429,6 +520,12 @@ export function PriceChart({
 				{bar && (
 					<>
 						<span className="text-text-2">{formatDateTime(bar.time)}</span>
+						{candle && bar.open !== undefined && (
+							<span className="text-text-2">
+								始 {formatInt(bar.open)} 高 {formatInt(bar.high ?? 0)} 安{" "}
+								{formatInt(bar.low ?? 0)}
+							</span>
+						)}
 						<span className="font-semibold">¥{formatInt(bar.close)}</span>
 						{judgments &&
 							JUDGES.map((j) => {

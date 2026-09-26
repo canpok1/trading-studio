@@ -111,6 +111,9 @@ test("戦略を選んで実行すると結果が出て、注文の詳細が見�
 	await expect(summary).toContainText("損益");
 	await expect(summary).toContainText("取引回数");
 	await expect(page.getByRole("img", { name: "価格チャート" })).toBeVisible();
+	await expect(
+		page.getByRole("button", { name: "ローソク足", exact: true }),
+	).toBeEnabled();
 
 	// 一覧から売りの約定を開き、対応する買いへ移る
 	const orders = page.getByRole("region", { name: "注文と約定" });

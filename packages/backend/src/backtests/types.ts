@@ -71,7 +71,14 @@ export type BacktestMarker = {
 
 /** チャートに出す足と注文 */
 export type BacktestChart = {
-	bars: { time: number; close: number }[];
+	/** 始値・高値・安値は、4本値を保存する前の実行には無い */
+	bars: {
+		time: number;
+		close: number;
+		open?: number;
+		high?: number;
+		low?: number;
+	}[];
 	markers: BacktestMarker[];
 	/** 足ごとの AI 判定（実行したときの集計ルールで計算）。ルールを記録する前の実行は null */
 	judgments: JudgmentSeries | null;
