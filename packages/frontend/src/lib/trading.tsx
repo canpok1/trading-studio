@@ -7,6 +7,7 @@ import {
 	useCallback,
 	useContext,
 	useEffect,
+	useRef,
 	useState,
 } from "react";
 import { useApi } from "../api";
@@ -30,12 +31,19 @@ export function TradingStatusProvider({ children }: { children: ReactNode }) {
 	const api = useApi();
 	const visible = usePageVisible();
 	const [status, setStatus] = useState<AutoTradingStatus | null>(null);
+	// 開始・停止の応答より前に出した問い合わせの結果で、新しい状態を上書きしないため
+	const seq = useRef(0);
+	const set = useCallback((s: AutoTradingStatus) => {
+		seq.current++;
+		setStatus(s);
+	}, []);
 	const refresh = useCallback(async () => {
+		const my = ++seq.current;
 		try {
 			const r = await api.api.trading.status
 				.$get()
 				.then((res) => readJson<{ status: AutoTradingStatus }>(res));
-			setStatus(r.status);
+			if (my === seq.current) setStatus(r.status);
 		} catch {
 			// 帯とホームの表示は前のまま残す。ホームの操作の失敗はホームで出す
 		}
@@ -45,7 +53,7 @@ export function TradingStatusProvider({ children }: { children: ReactNode }) {
 	}, [visible, refresh]);
 	useInterval(refresh, STATUS_MS, visible);
 	return (
-		<TradingStatusContext.Provider value={{ status, refresh, set: setStatus }}>
+		<TradingStatusContext.Provider value={{ status, refresh, set }}>
 			{children}
 		</TradingStatusContext.Provider>
 	);

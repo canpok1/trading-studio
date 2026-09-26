@@ -190,7 +190,9 @@ function RunHeader({
 		`利確: ${groupText(p.takeProfit)}`,
 		`損切り: ${groupText(p.stopLoss)}`,
 		`${formatBtc(p.orderSize)} BTC`,
-		`1日の損失上限 ${formatInt(p.dailyLossLimit)}円`,
+		...(run.dailyLossLimitApplied
+			? [`1日の損失上限 ${formatInt(p.dailyLossLimit)}円`]
+			: []),
 		`手数料 指値${pct(run.fees.limitPpm)}/成行${pct(run.fees.marketPpm)}`,
 		// チャートの判定もこのルールで出すので、判定の条件が無い戦略でも出す
 		...(run.aggregationRule ? [ruleText(run.aggregationRule)] : []),
