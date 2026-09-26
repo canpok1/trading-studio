@@ -2,6 +2,7 @@
 
 import type { BacktestOrder } from "@trading-studio/core";
 import { formatBtc } from "@trading-studio/core";
+import type { ReactNode } from "react";
 import { formatDateTime } from "../../format";
 import { formatInt, formatSignedInt } from "../../lib/number";
 import { Modal } from "../Modal";
@@ -40,7 +41,7 @@ export function orderKind(o: BacktestOrder): string | null {
 }
 
 /** 一覧に出す時刻。約定・取消・発注のうち最後の状態のもの */
-function orderTime(o: BacktestOrder): number {
+export function orderTime(o: BacktestOrder): number {
 	return o.status === "filled"
 		? (o.filledAt as number)
 		: o.status === "canceled"
@@ -94,10 +95,13 @@ export function OrderRow({
 	order: o,
 	selected,
 	onClick,
+	tag,
 }: {
 	order: BacktestOrder;
 	selected: boolean;
 	onClick: () => void;
+	/** 損益が無い行の右端に、状態の代わりに出すもの */
+	tag?: ReactNode;
 }) {
 	const kind = orderKind(o);
 	const price = o.fillPrice ?? o.price;
@@ -127,9 +131,11 @@ export function OrderRow({
 						{formatSignedInt(o.pnl)}
 					</span>
 				) : (
-					<span className="font-normal text-text-2">
-						{STATUS_LABEL[o.status]}
-					</span>
+					(tag ?? (
+						<span className="font-normal text-text-2">
+							{STATUS_LABEL[o.status]}
+						</span>
+					))
 				)}
 			</span>
 		</button>
@@ -140,10 +146,13 @@ export function OrderSheet({
 	order: o,
 	onClose,
 	onPair,
+	children,
 }: {
 	order: BacktestOrder;
 	onClose: () => void;
 	onPair: (id: string) => void;
+	/** 戦略の理由の後に足す欄 */
+	children?: ReactNode;
 }) {
 	const kind = orderKind(o);
 	const price = o.fillPrice ?? o.price;
@@ -188,6 +197,7 @@ export function OrderSheet({
 					<p className="text-sm leading-relaxed">{o.cancelReason}</p>
 				)}
 			</div>
+			{children}
 			{o.pairId && (
 				<Button
 					className="justify-between"

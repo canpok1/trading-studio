@@ -1,13 +1,16 @@
 import type {
+	AutoTradingStatus,
 	CurrentJudgment,
 	JudgmentSeries,
 	LatestMarket,
+	StoredOrder,
 	StoredStrategy,
 	TimeframeCoverage,
 } from "@trading-studio/backend";
 import type { Timeframe } from "@trading-studio/core";
 import {
 	emaPeriods,
+	formatBtc,
 	JUDGE_LABELS,
 	JUDGES,
 	TIMEFRAME_LABELS,
@@ -18,13 +21,19 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useApi } from "../api";
-import type { ChartBar } from "../components/chart/chart-data";
+import { OrderRow, orderTime, Stat } from "../components/backtest/OrderViews";
+import type { ChartBar, ChartMarker } from "../components/chart/chart-data";
 import { alignJudgments } from "../components/chart/judgment-data";
 import { PriceChart } from "../components/chart/PriceChart";
 import { AutoTradingCard } from "../components/home/AutoTradingCard";
 import { JudgmentBadge } from "../components/judgment/JudgmentBadge";
 import { EmptyState, ErrorState, Skeleton } from "../components/States";
-import { Button, Card, Segmented } from "../components/ui";
+import {
+	MODE_LABELS,
+	ModeTag,
+	TradeOrderSheet,
+} from "../components/trading/TradeViews";
+import { Button, Segmented } from "../components/ui";
 import { useChartBg } from "../lib/chart-bg";
 import {
 	changePercent,
@@ -35,8 +44,8 @@ import {
 	loadRange,
 	withLatestPrice,
 } from "../lib/home";
-import { formatSignedPercent } from "../lib/number";
-import { useTradingStatus } from "../lib/trading";
+import { formatInt, formatSignedInt, formatSignedPercent } from "../lib/number";
+import { useTradingOrders, useTradingStatus } from "../lib/trading";
 import {
 	errorMessage,
 	readJson,
@@ -52,6 +61,9 @@ const BARS_MS = 60_000;
 /** EMA の計算のために期間の前に足す本数（最も長い EMA の何倍か） */
 const EMA_HISTORY_FACTOR = 3;
 const MAX_HISTORY = 1_000;
+/** チャートの印に読む注文の数。直近の一覧もここから取る */
+const MARKER_ORDERS = 300;
+const RECENT_ORDERS = 3;
 
 const NO_PERIODS: number[] = [];
 
@@ -177,7 +189,13 @@ function HomeBody({
 	visible: boolean;
 }) {
 	const api = useApi();
-	const { refresh: refreshTrading } = useTradingStatus();
+	const { status: trading, refresh: refreshTrading } = useTradingStatus();
+	const mode = trading?.mode ?? "paper";
+	const { orders } = useTradingOrders(
+		{ mode, limit: MARKER_ORDERS },
+		visible && trading !== null,
+	);
+	const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
 	const [toast, setToast] = useState<string | null>(null);
 	const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const showToast = useCallback((message: string) => {
@@ -320,6 +338,11 @@ function HomeBody({
 		[fresh, series, barsKey, shownBars],
 	);
 
+	const markers = useMemo(
+		() => toMarkers(orders ?? [], shownBars, latest?.price ?? null),
+		[orders, shownBars, latest],
+	);
+
 	const noData =
 		latest !== null && latest.price === null && bars?.bars.length === 0;
 
@@ -353,6 +376,12 @@ function HomeBody({
 						保存できなかった: {saveError}
 					</p>
 				)}
+				{trading && (
+					<PositionCard
+						account={trading.account}
+						price={latest?.price ?? null}
+					/>
+				)}
 				{current && <JudgmentTiles current={current} />}
 			</div>
 			{barsError && !bars ? (
@@ -378,6 +407,9 @@ function HomeBody({
 					viewKey={bars?.key ?? ""}
 					currentPrice={latest?.price ?? null}
 					judgments={barJudgments}
+					markers={markers}
+					selectedId={selectedOrder}
+					onMarker={(m) => setSelectedOrder(m.id)}
 					bg={bg}
 					onBgChange={setBg}
 					split={SPLIT}
@@ -402,6 +434,21 @@ function HomeBody({
 					}
 				/>
 			)}
+			<RecentOrders
+				mode={mode}
+				orders={orders}
+				selectedId={selectedOrder}
+				onSelect={setSelectedOrder}
+			/>
+			{selectedOrder && (
+				<TradeOrderSheet
+					mode={mode}
+					id={selectedOrder}
+					initial={orders?.find((o) => o.id === selectedOrder) ?? null}
+					onSelect={setSelectedOrder}
+					onClose={() => setSelectedOrder(null)}
+				/>
+			)}
 			{toast && (
 				<div
 					role="status"
@@ -411,6 +458,120 @@ function HomeBody({
 				</div>
 			)}
 		</HomeFrame>
+	);
+}
+
+/**
+ * 注文をチャートの印にする。成行は約定するまで価格が無いので、注文中は今の価格、
+ * 取り消したものはその時刻の足の終値に置く（バックテスト結果と同じ）
+ */
+function toMarkers(
+	orders: StoredOrder[],
+	bars: readonly ChartBar[],
+	price: number | null,
+): ChartMarker[] {
+	return orders.flatMap((o) => {
+		const time = orderTime(o);
+		const p =
+			o.fillPrice ??
+			o.price ??
+			(o.status === "open"
+				? price
+				: (bars.findLast((b) => b.time <= time)?.close ?? null));
+		return p === null
+			? []
+			: [
+					{
+						id: o.id,
+						side: o.side,
+						status: o.status,
+						time,
+						price: p,
+					},
+				];
+	});
+}
+
+/** 保有・平均取得・評価損益。評価損益は手数料を含めず、今の価格で評価する */
+function PositionCard({
+	account,
+	price,
+}: {
+	account: AutoTradingStatus["account"];
+	price: number | null;
+}) {
+	const { quantity, entryPrice } = account.position;
+	const pnl =
+		quantity > 0 && entryPrice !== null && price !== null
+			? Math.round(((price - entryPrice) * quantity) / 100_000_000)
+			: null;
+	return (
+		<section
+			aria-label={`${MODE_LABELS[account.mode]}の保有`}
+			className="grid grid-cols-3 gap-2 rounded-xl border border-line bg-surface px-4 py-3.5"
+		>
+			<Stat label="保有" value={`${formatBtc(quantity)}`} />
+			<Stat
+				label="平均取得"
+				value={entryPrice === null ? "—" : formatInt(entryPrice)}
+			/>
+			<Stat
+				label="評価損益"
+				value={pnl === null ? "—" : `${formatSignedInt(pnl)}円`}
+				tone={pnl === null ? "" : pnl >= 0 ? "text-profit" : "text-loss"}
+			/>
+		</section>
+	);
+}
+
+/** 直近の注文・約定。「すべて」で取引画面へ */
+function RecentOrders({
+	mode,
+	orders,
+	selectedId,
+	onSelect,
+}: {
+	mode: AutoTradingStatus["mode"];
+	orders: StoredOrder[] | null;
+	selectedId: string | null;
+	onSelect: (id: string) => void;
+}) {
+	return (
+		<section
+			aria-label="直近の注文・約定"
+			className="flex flex-col gap-2 lg:col-span-2"
+		>
+			<div className="flex items-center justify-between gap-2">
+				<h2 className="text-[15px] font-bold">直近の注文・約定</h2>
+				<Link
+					to="/trades"
+					className="h-9 px-1.5 text-[13px] leading-9 font-semibold text-accent"
+				>
+					すべて
+				</Link>
+			</div>
+			<div className="overflow-hidden rounded-xl border border-line">
+				{orders === null ? (
+					<Skeleton className="m-3 h-10" />
+				) : orders.length === 0 ? (
+					<p className="bg-surface px-4 py-6 text-center text-sm text-text-2">
+						{MODE_LABELS[mode]}の注文はまだない
+					</p>
+				) : (
+					orders
+						.slice(0, RECENT_ORDERS)
+						.map((o) => (
+							<OrderRow
+								key={o.id}
+								order={o}
+								selected={o.id === selectedId}
+								onClick={() => onSelect(o.id)}
+								tag={<ModeTag mode={o.mode} />}
+							/>
+						))
+				)}
+			</div>
+		</section>
 	);
 }
 

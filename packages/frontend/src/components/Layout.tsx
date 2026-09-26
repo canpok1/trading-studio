@@ -10,6 +10,7 @@ import {
 	PaperIcon,
 	SettingsIcon,
 	StrategyIcon,
+	TradesIcon,
 } from "./icons";
 
 type NavItem = {
@@ -30,13 +31,14 @@ const NAV: NavItem[] = [
 		icon: <BacktestIcon />,
 		show: "both",
 	},
-	{ to: "/ai", label: "AI判定", icon: <AiIcon />, show: "both" },
 	{
 		to: "/strategies",
 		label: "戦略",
 		icon: <StrategyIcon />,
 		show: "both",
 	},
+	{ to: "/trades", label: "取引", icon: <TradesIcon />, show: "both" },
+	{ to: "/ai", label: "AI判定", icon: <AiIcon />, show: "side" },
 	{ to: "/data", label: "過去データ", icon: <DataIcon />, show: "side" },
 	{ to: "/settings", label: "設定", icon: <SettingsIcon />, show: "side" },
 	{
@@ -44,7 +46,7 @@ const NAV: NavItem[] = [
 		label: "その他",
 		icon: <OtherIcon />,
 		show: "tab",
-		also: ["/settings", "/data"],
+		also: ["/settings", "/data", "/ai"],
 	},
 ];
 

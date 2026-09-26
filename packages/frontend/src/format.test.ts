@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	formatDate,
 	formatDateTime,
+	formatDateWeekday,
 	fromDateInputValue,
 	toDateInputValue,
 } from "./format";
@@ -21,6 +22,9 @@ describe("日時の表示", () => {
 	test("UTC で前日でも JST の日付で出す", () => {
 		// 2026-09-25 15:00 UTC = 2026-09-26 00:00 JST
 		expect(formatDate(Date.UTC(2026, 8, 25, 15))).toBe("2026/09/26");
+		expect(formatDateWeekday(Date.UTC(2026, 8, 25, 15))).toBe(
+			"2026/09/26（土）",
+		);
 	});
 
 	test("日付の入力値と JST 0:00 を行き来できる", () => {

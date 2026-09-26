@@ -38,6 +38,12 @@ export function formatDate(ms: number): string {
 	return `${t.y}/${p2(t.mo)}/${p2(t.d)}`;
 }
 
+/** 例: 2026/09/26（土） */
+export function formatDateWeekday(ms: number): string {
+	const w = "日月火水木金土"[new Date(ms + JST_OFFSET_MS).getUTCDay()];
+	return `${formatDate(ms)}（${w}）`;
+}
+
 /** 例: 2026-09-26（input type="date" の値） */
 export function toDateInputValue(ms: number): string {
 	const t = jstParts(ms);

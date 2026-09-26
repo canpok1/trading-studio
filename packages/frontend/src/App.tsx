@@ -18,6 +18,7 @@ import { HomePage } from "./pages/HomePage";
 import { OtherPage } from "./pages/OtherPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { StrategiesPage } from "./pages/StrategiesPage";
+import { TradesPage } from "./pages/TradesPage";
 
 export function App() {
 	return (
@@ -41,6 +42,7 @@ function Shell() {
 					<Route path="/backtest/runs/:id" element={<BacktestResultPage />} />
 					<Route path="/ai" element={<AiPage />} />
 					<Route path="/strategies/:id?" element={<StrategiesPage />} />
+					<Route path="/trades" element={<TradesPage />} />
 					<Route path="/data" element={<DataPage />} />
 					<Route path="/other" element={<OtherPage />} />
 					<Route path="/settings" element={<SettingsPage />} />

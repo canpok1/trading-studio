@@ -11,6 +11,7 @@ import type { Db } from "../db/open";
 import type {
 	AutoTradingRow,
 	OrderFilter,
+	OrderSummary,
 	StoredDecision,
 	StoredOrder,
 	TradingMode,
@@ -59,6 +60,27 @@ const toOrder = (r: OrderRow): StoredOrder => ({
 	strategyId: r.strategy_id,
 	strategyName: r.strategy_name,
 });
+
+function orderWhere(filter: OrderFilter): {
+	where: string;
+	args: (string | number)[];
+} {
+	const where: string[] = [];
+	const args: (string | number)[] = [];
+	if (filter.mode) {
+		where.push("mode = ?");
+		args.push(filter.mode);
+	}
+	if (filter.status) {
+		where.push("status = ?");
+		args.push(filter.status);
+	}
+	if (filter.side) {
+		where.push("side = ?");
+		args.push(filter.side);
+	}
+	return { where: where.length ? `where ${where.join(" and ")}` : "", args };
+}
 
 /** 既定の開始時の資金（円） */
 export const DEFAULT_INITIAL_CASH = 1_000_000;
@@ -177,28 +199,25 @@ export class TradingRepository {
 
 	/** 注文を新しい順に。約定・取消の時刻があればその時刻、無ければ発注時刻で並べる */
 	orders(filter: OrderFilter = {}, limit = 1000): StoredOrder[] {
-		const where: string[] = [];
-		const args: (string | number)[] = [];
-		if (filter.mode) {
-			where.push("mode = ?");
-			args.push(filter.mode);
-		}
-		if (filter.status) {
-			where.push("status = ?");
-			args.push(filter.status);
-		}
-		if (filter.side) {
-			where.push("side = ?");
-			args.push(filter.side);
-		}
-		args.push(limit);
+		const { where, args } = orderWhere(filter);
 		return this.sql
 			.query<OrderRow, (string | number)[]>(
-				`select * from trading_orders ${where.length ? `where ${where.join(" and ")}` : ""}
+				`select * from trading_orders ${where}
 				order by coalesce(filled_at, canceled_at, placed_at) desc, placed_at desc, id desc limit ?`,
 			)
-			.all(...args)
+			.all(...args, limit)
 			.map(toOrder);
+	}
+
+	/** 条件に合う注文の件数と、損益の合計（件数で切らない） */
+	orderSummary(filter: OrderFilter = {}): OrderSummary {
+		const { where, args } = orderWhere(filter);
+		const r = this.sql
+			.query<{ count: number; pnl: number }, (string | number)[]>(
+				`select count(*) as count, coalesce(sum(pnl), 0) as pnl from trading_orders ${where}`,
+			)
+			.get(...args);
+		return { count: r?.count ?? 0, realizedPnl: r?.pnl ?? 0 };
 	}
 
 	addDecision(
