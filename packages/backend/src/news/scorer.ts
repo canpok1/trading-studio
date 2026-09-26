@@ -101,7 +101,10 @@ export function createScorer({
 			if (now() - lastAskedAt < minIntervalMs) return;
 			running = scoreNext()
 				.catch((e) => {
+					// ニュースごとの失敗ではなく採点そのものが進めない。止まっていると状態に出す
 					console.error("scorer: failed", e);
+					const error = e instanceof Error ? e.message : String(e);
+					failing = { error, since: failing?.since ?? now() };
 				})
 				.finally(() => {
 					running = null;

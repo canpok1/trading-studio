@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { DEFAULT_AGGREGATION_RULE } from "@trading-studio/core";
 import { createTestDb } from "../db/test-db";
 import { createTestApp } from "../test-app";
 import type { ScoreModel } from "./gemini";
@@ -105,6 +106,7 @@ function setup(opts: { key?: boolean } = {}) {
 		now: () => clock,
 	});
 	return {
+		db,
 		repo,
 		newsRepo,
 		scorer,
@@ -242,6 +244,26 @@ describe("採点", () => {
 			stoppedSince: T0,
 			pending: 1,
 		});
+	});
+
+	test("採点そのものが進めないときは止まっていると状態に出す", async () => {
+		const t = setup();
+		t.addNews("a");
+		t.repo.setActiveCriteria(999);
+		await t.at(T0);
+		expect(t.calls).toHaveLength(0);
+		expect(t.service.status()).toMatchObject({
+			state: "stopped",
+			stoppedSince: T0,
+		});
+	});
+
+	test("保存された集計ルールが読めなければ既定値を使う", () => {
+		const t = setup();
+		t.db.$client.run(
+			"insert into settings (key, value) values ('aggregation_rule', '{')",
+		);
+		expect(t.repo.aggregationRule()).toEqual(DEFAULT_AGGREGATION_RULE);
 	});
 
 	test("集計の期間より古い記事は採点しない", async () => {

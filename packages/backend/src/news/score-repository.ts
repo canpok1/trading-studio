@@ -145,7 +145,12 @@ export class ScoreRepository {
 	aggregationRule(): AggregationRule {
 		const v = this.setting(RULE_KEY);
 		if (v === null) return DEFAULT_AGGREGATION_RULE;
-		const r = parseAggregationRule(JSON.parse(v));
+		let r: AggregationRule | null;
+		try {
+			r = parseAggregationRule(JSON.parse(v));
+		} catch {
+			r = null;
+		}
 		return r && validateAggregationRule(r).length === 0
 			? r
 			: DEFAULT_AGGREGATION_RULE;
