@@ -15,6 +15,7 @@ import {
 	TIMEFRAME_MS,
 	validateConditionSet,
 } from "@trading-studio/core";
+import type { ReactNode } from "react";
 import {
 	useCallback,
 	useEffect,
@@ -808,7 +809,29 @@ function CoverageBar({
 				<span>取り込み済みの範囲</span>
 				<span>{formatDate(cov.lastTime)}</span>
 			</div>
+			<ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-2">
+				<LegendItem swatch="bg-accent opacity-80">選んだ期間</LegendItem>
+				<LegendItem swatch="bg-line">取り込み済み</LegendItem>
+				{cov.gaps.length > 0 && (
+					<LegendItem swatch="bg-warn-strong">欠損（足が無い）</LegendItem>
+				)}
+			</ul>
 		</div>
+	);
+}
+
+function LegendItem({
+	swatch,
+	children,
+}: {
+	swatch: string;
+	children: ReactNode;
+}) {
+	return (
+		<li className="flex items-center gap-1">
+			<span aria-hidden="true" className={`size-2.5 rounded-sm ${swatch}`} />
+			{children}
+		</li>
 	);
 }
 

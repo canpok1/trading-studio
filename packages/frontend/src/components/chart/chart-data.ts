@@ -3,7 +3,27 @@
 import type { Side } from "@trading-studio/core";
 import { JST_OFFSET_MS } from "@trading-studio/core";
 
-export type ChartBar = { time: number; close: number };
+/** 足。始値・高値・安値は無いこともある（4本値を保存する前のバックテスト結果） */
+export type ChartBar = {
+	time: number;
+	close: number;
+	open?: number;
+	high?: number;
+	low?: number;
+};
+
+export type ChartStyle = "line" | "candle";
+
+/** すべての足に4本値があり、ローソク足で描けるか */
+export function hasOhlc(bars: readonly ChartBar[]): boolean {
+	return (
+		bars.length > 0 &&
+		bars.every(
+			(b) =>
+				b.open !== undefined && b.high !== undefined && b.low !== undefined,
+		)
+	);
+}
 
 export type ChartMarkerStatus = "open" | "filled" | "canceled";
 

@@ -194,13 +194,30 @@ export class BacktestRepository {
 		const bars = this.blob(id, "bars");
 		const orders = this.orders(id);
 		if (!bars || !orders) return null;
-		const b = unpack<{ times: number[]; closes: number[] }>(bars);
+		// opens・highs・lows は4本値を保存する前の実行には無い
+		const b = unpack<{
+			times: number[];
+			closes: number[];
+			opens?: number[];
+			highs?: number[];
+			lows?: number[];
+		}>(bars);
 		const closeAt = (t: number) => {
 			const i = b.times.findLastIndex((x) => x <= t);
 			return b.closes[Math.max(0, i)] as number;
 		};
 		return {
-			bars: b.times.map((time, i) => ({ time, close: b.closes[i] as number })),
+			bars: b.times.map((time, i) => {
+				const close = b.closes[i] as number;
+				if (!b.opens || !b.highs || !b.lows) return { time, close };
+				return {
+					time,
+					open: b.opens[i] as number,
+					high: b.highs[i] as number,
+					low: b.lows[i] as number,
+					close,
+				};
+			}),
 			markers: orders.map((o) => {
 				const time =
 					o.status === "filled"
