@@ -20,12 +20,16 @@ export const DEFAULT_SCORING_MODEL = SCORING_MODELS[0].id;
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 const TIMEOUT_MS = 60_000;
 
-export function geminiModel(apiKey: string | undefined): ScoreModel {
+export const NO_API_KEY =
+	"API キーが設定されていない。「収集と採点」タブで設定する";
+
+/** キーは画面から保存・削除されるので、問い合わせのたびに読む */
+export function geminiModel(apiKey: () => string | null): ScoreModel {
 	return {
-		unavailable: () =>
-			apiKey ? null : "API キー（環境変数 GEMINI_API_KEY）が設定されていない",
+		unavailable: () => (apiKey() ? null : NO_API_KEY),
 		async generate(model, prompt) {
-			if (!apiKey) throw new Error("API キーが設定されていない");
+			const key = apiKey();
+			if (!key) throw new Error(NO_API_KEY);
 			const res = await fetch(
 				`${ENDPOINT}/${encodeURIComponent(model)}:generateContent`,
 				{
@@ -33,7 +37,7 @@ export function geminiModel(apiKey: string | undefined): ScoreModel {
 					signal: AbortSignal.timeout(TIMEOUT_MS),
 					headers: {
 						"content-type": "application/json",
-						"x-goog-api-key": apiKey,
+						"x-goog-api-key": key,
 					},
 					body: JSON.stringify({
 						contents: [{ role: "user", parts: [{ text: prompt }] }],

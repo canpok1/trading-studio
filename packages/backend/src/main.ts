@@ -99,7 +99,7 @@ const scorer = createScorer({
 	model:
 		process.env.SCORING_MODEL === "demo"
 			? demoScoreModel({ isDown: () => existsSync(scoringDownFile) })
-			: geminiModel(process.env.GEMINI_API_KEY),
+			: geminiModel(() => scoreRepo.apiKey()),
 	rule: () => scoreRepo.aggregationRule(),
 	// E2E では再試行を待ちきれないので短くする
 	...(process.env.SCORING_MODEL === "demo"
