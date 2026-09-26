@@ -181,6 +181,7 @@ export class MarketDataRepository {
 	 * 取り込んだ足は上書きせず、足が無い日時と自動で作った足だけを埋める。作った足の数を返す。
 	 * overrideImported なら、細かい足が1本も欠けずに揃っている区切りに限り、取り込んだ足も上書きする
 	 * （収集した足を正とするため。欠けている区切りで上書きすると、完全な足を不完全な足で置き換えてしまう）
+	 * importId が null なら、足に付いている取り込みを残す（取り込みを中止したときに、その取り込みから作った足を消せるように）
 	 */
 	refillDerived(
 		from: number,
@@ -196,29 +197,33 @@ export class MarketDataRepository {
 				 values (?, ?, ?, ?, ?, ?, ?, 'derived', ?)
 				 on conflict (timeframe, time) do update set
 				   open = excluded.open, high = excluded.high, low = excluded.low, close = excluded.close,
-				   volume = excluded.volume, source = 'derived', import_id = excluded.import_id
+				   volume = excluded.volume, source = 'derived',
+				   import_id = coalesce(excluded.import_id, candles.import_id)
 				 where candles.source in (${overwritable})`,
 			);
 		const derivedOnly = insert("'derived'");
 		const orImported = insert("'derived', 'import'");
+		// 取り込んだ足を上書きしてよいのは、区切りの中の1分足が1本も欠けていないときだけ。
+		// 1段細かい足の本数で見ると、それ自体が欠けた1分足から作られていても揃って見えるため
+		const minutes = overrideImported ? this.loadCandles("1m", start, end) : [];
 		let written = 0;
 		for (let i = 1; i < TIMEFRAMES.length; i++) {
 			const source = TIMEFRAMES[i - 1] as Timeframe;
 			const target = TIMEFRAMES[i] as Timeframe;
-			const finer = this.loadCandles(source, start, end);
-			const perBucket = TIMEFRAME_MS[target] / TIMEFRAME_MS[source];
+			const minutesPerBucket = TIMEFRAME_MS[target] / TIMEFRAME_MS["1m"];
 			const counts = new Map<number, number>();
-			for (const c of finer) {
+			for (const c of minutes) {
 				const t = candleStart(c.time, target);
 				counts.set(t, (counts.get(t) ?? 0) + 1);
 			}
-			const derived = aggregateCandles(finer, target);
+			const derived = aggregateCandles(
+				this.loadCandles(source, start, end),
+				target,
+			);
 			this.sql.transaction(() => {
 				for (const c of derived) {
 					const stmt =
-						overrideImported && counts.get(c.time) === perBucket
-							? orImported
-							: derivedOnly;
+						counts.get(c.time) === minutesPerBucket ? orImported : derivedOnly;
 					written += stmt.run(
 						target,
 						c.time,
@@ -251,17 +256,37 @@ export class MarketDataRepository {
 		})();
 	}
 
-	/** 期間内に取り込んだ・収集した（自動で作っていない）足がある粒度 */
+	/**
+	 * 期間内に取り込んだ・収集した（自動で作っていない）足がある粒度（細かい順）。
+	 * 期間内のデータのある範囲の一部にしか無い粒度は除く（例: 数年分の1時間足に、収集した直近の1分足だけが重なる場合の1分足）。
+	 * 除かないと、細かい足で判定するバックテストが、その粒度の足がある一部の期間だけで進んでしまう。
+	 * 端は1日までずれてよい（日足は JST 0:00 始まりのため、同じ日のデータでも開始時刻が揃わない）
+	 */
 	importedTimeframes(from: number, to: number): Timeframe[] {
-		const set = new Set(
-			this.sql
-				.query<{ timeframe: string }, [number, number]>(
-					"select distinct timeframe from candles where source != 'derived' and time >= ? and time < ?",
+		const rows = this.sql
+			.query<
+				{ timeframe: Timeframe; first: number; last: number },
+				[number, number]
+			>(
+				"select timeframe, min(time) as first, max(time) as last from candles where source != 'derived' and time >= ? and time < ? group by timeframe",
+			)
+			.all(from, to);
+		if (rows.length === 0) return [];
+		const spanFrom = Math.min(...rows.map((r) => r.first));
+		const spanTo = Math.max(
+			...rows.map((r) => r.last + TIMEFRAME_MS[r.timeframe]),
+		);
+		const slack = TIMEFRAME_MS["1d"];
+		const covering = new Set(
+			rows
+				.filter(
+					(r) =>
+						r.first - spanFrom <= slack &&
+						spanTo - (r.last + TIMEFRAME_MS[r.timeframe]) <= slack,
 				)
-				.all(from, to)
 				.map((r) => r.timeframe),
 		);
-		return TIMEFRAMES.filter((t) => set.has(t));
+		return TIMEFRAMES.filter((t) => covering.has(t));
 	}
 
 	/** 取り込み済みの足のうち、最後に確定した足の終値。足が無ければ null */

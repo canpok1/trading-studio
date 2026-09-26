@@ -131,6 +131,62 @@ describe("価格収集", () => {
 		expect(fives.map((c) => c.close)).toEqual([104, 1]);
 	});
 
+	test("1分足が欠けた区切りでは、1段細かい足が揃って見えても取り込んだ粗い足を残す", () => {
+		const repo = new MarketDataRepository(createTestDb());
+		const candle = { open: 1, high: 1, low: 1, close: 1, volume: 1 };
+		const importId = repo.createImport("1h", "a.csv", 0);
+		repo.insertImported("1h", [{ time: T0, ...candle }], importId);
+		// 15分ごとに10分ずつしか無い1分足。15分足は4本揃うが、1時間の中の1分足は40本
+		const minutes = Array.from({ length: 60 }, (_, i) => i)
+			.filter((i) => i % 15 < 10)
+			.map((i) => ({ time: T0 + i * M, ...candle, close: 100 }));
+		repo.upsertCollected(minutes);
+		repo.refillDerived(T0, T0 + 60 * M, null, { overrideImported: true });
+		expect(repo.loadCandles("15m", T0, T0 + 60 * M)).toHaveLength(4);
+		expect(repo.loadCandles("1h", T0, T0 + 60 * M)[0]?.close).toBe(1);
+	});
+
+	test("収集で粗い足を作り直しても、取り込みから作った足の取り込みは外さない", async () => {
+		const t = setup();
+		const importId = t.repo.createImport("1m", "a.csv", 0);
+		const candle = { open: 1, high: 1, low: 1, close: 1, volume: 1 };
+		t.repo.insertImported("1m", [{ time: T0 - 10 * M, ...candle }], importId);
+		t.repo.refillDerived(T0 - 10 * M, T0 - 9 * M, importId);
+		t.f.ready();
+		await flush();
+		t.set(T0 + S);
+		t.f.trades([tr(T0 + S, 100)]);
+		t.set(T0 + M + 5 * S);
+		t.f.heartbeat();
+		t.collector.tick();
+		// 取り込みを中止すると、その取り込みの足と、そこから作った足が消える
+		t.repo.deleteImported(importId);
+		expect(t.repo.loadCandles("5m", T0 - 10 * M, T0 - 5 * M)).toEqual([]);
+	});
+
+	test("期間の一部にしか無い収集した1分足は、バックテストの細かい足に選ばない", async () => {
+		const t = setup();
+		const candle = { open: 1, high: 1, low: 1, close: 1, volume: 1 };
+		const importId = t.repo.createImport("1h", "a.csv", 0);
+		const H = TIMEFRAME_MS["1h"];
+		const hours = Array.from({ length: 24 * 10 }, (_, i) => ({
+			time: T0 - 10 * TIMEFRAME_MS["1d"] + i * H,
+			...candle,
+		}));
+		t.repo.insertImported("1h", hours, importId);
+		t.f.ready();
+		await flush();
+		t.set(T0 + S);
+		t.f.trades([tr(T0 + S, 100)]);
+		t.set(T0 + M + 5 * S);
+		t.f.heartbeat();
+		t.collector.tick();
+		expect(
+			t.repo.importedTimeframes(T0 - 10 * TIMEFRAME_MS["1d"], T0 + M),
+		).toEqual(["1h"]);
+		expect(t.repo.importedTimeframes(T0 - H, T0 + M)).toEqual(["1m", "1h"]);
+	});
+
 	test("接続が切れると停止中になり、間隔を延ばしながら再接続して動作中に戻る", async () => {
 		const t = setup();
 		t.f.ready();
