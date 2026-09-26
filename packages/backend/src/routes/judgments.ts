@@ -48,12 +48,12 @@ export function judgmentRoutes(service: JudgmentService) {
 						400,
 					);
 				}
-				return { from, to, step };
+				return { from, to, timeframe: q.timeframe };
 			}),
 			compress(),
 			(c) => {
-				const { from, to, step } = c.req.valid("query");
-				return c.json(service.series(from, to, step), 200);
+				const { from, to, timeframe } = c.req.valid("query");
+				return c.json(service.series(from, to, TIMEFRAME_MS[timeframe]), 200);
 			},
 		)
 		.post("/preview", validator("json", ruleOf), (c) => {

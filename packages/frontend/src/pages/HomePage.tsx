@@ -1,18 +1,31 @@
 import type {
+	CurrentJudgment,
+	JudgmentSeries,
 	LatestMarket,
 	StoredStrategy,
 	TimeframeCoverage,
 } from "@trading-studio/backend";
 import type { Timeframe } from "@trading-studio/core";
-import { emaPeriods, TIMEFRAME_LABELS, TIMEFRAMES } from "@trading-studio/core";
+import {
+	emaPeriods,
+	JUDGE_LABELS,
+	JUDGES,
+	TIMEFRAME_LABELS,
+	TIMEFRAME_MS,
+	TIMEFRAMES,
+} from "@trading-studio/core";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router";
 import { useApi } from "../api";
 import type { ChartBar, ChartRange } from "../components/chart/chart-data";
+import { alignJudgments } from "../components/chart/judgment-data";
 import { PriceChart } from "../components/chart/PriceChart";
+import { JudgmentBadge } from "../components/judgment/JudgmentBadge";
 import { EmptyState, ErrorState, Skeleton } from "../components/States";
 import { Button, Card, Segmented } from "../components/ui";
 import { formatDateTime } from "../format";
+import { useChartBg } from "../lib/chart-bg";
 import {
 	changePercent,
 	collectorTrouble,
@@ -188,6 +201,12 @@ function HomeBody({
 		bars: ChartBar[];
 	} | null>(null);
 	const [barsError, setBarsError] = useState<string | null>(null);
+	// 判定は足と一緒に取り直す。読めなくても価格のチャートは出す
+	const [judged, setJudged] = useState<{
+		current: CurrentJudgment;
+		series: JudgmentSeries | null;
+	} | null>(null);
+	const [bg, setBg] = useChartBg();
 	const barsKey = `${timeframe}:${range}:${history}`;
 	const barsSeq = useRef(0);
 	const loadBars = useCallback(async () => {
@@ -202,6 +221,28 @@ function HomeBody({
 				setBars({ key: barsKey, bars: r.bars });
 				setBarsError(null);
 			}
+			const first = r.bars[0];
+			const last = r.bars.at(-1);
+			const [current, series] = await Promise.all([
+				api.api.judgments.current
+					.$get()
+					.then((res) => readJson<CurrentJudgment>(res)),
+				first && last
+					? api.api.judgments.series
+							.$get({
+								query: {
+									from: String(first.time),
+									// 最新の価格から作る今の足にも判定を付けるため、今の時刻まで含める
+									to: String(
+										Math.max(last.time, Date.now()) + TIMEFRAME_MS[timeframe],
+									),
+									timeframe,
+								},
+							})
+							.then((res) => readJson<JudgmentSeries>(res))
+					: null,
+			]);
+			if (my === barsSeq.current) setJudged({ current, series });
 		} catch (e) {
 			if (my === barsSeq.current) setBarsError(errorMessage(e));
 		}
@@ -239,6 +280,17 @@ function HomeBody({
 			setSaving(false);
 		}
 	};
+
+	const barJudgments = useMemo(
+		() =>
+			fresh && judged?.series
+				? alignJudgments(
+						judged.series,
+						shownBars.map((b) => b.time),
+					)
+				: null,
+		[fresh, judged, shownBars],
+	);
 
 	const noData =
 		latest !== null && latest.price === null && bars?.bars.length === 0;
@@ -292,6 +344,7 @@ function HomeBody({
 					</p>
 				)}
 			</Card>
+			{judged && <JudgmentTiles current={judged.current} />}
 			<section
 				aria-label="価格チャート"
 				className="flex min-w-0 flex-col gap-2.5 rounded-xl border border-line bg-surface p-3 lg:col-start-2 lg:row-span-6 lg:row-start-1 lg:sticky lg:top-4"
@@ -315,6 +368,9 @@ function HomeBody({
 						range={range}
 						onRangeChange={setRange}
 						viewKey={bars?.key ?? ""}
+						judgments={barJudgments}
+						bg={bg}
+						onBgChange={setBg}
 						toolbar={
 							<>
 								<Segmented
@@ -338,6 +394,34 @@ function HomeBody({
 				)}
 			</section>
 		</HomeFrame>
+	);
+}
+
+/** 今の判定3つ。押すと AI判定画面へ */
+function JudgmentTiles({ current }: { current: CurrentJudgment }) {
+	return (
+		<section
+			aria-label="AI判定"
+			className="grid grid-cols-3 gap-2 lg:col-start-1"
+		>
+			{JUDGES.map((j) => {
+				const r = current.results[j];
+				return (
+					<Link
+						key={j}
+						to="/ai"
+						data-testid={`home-judge-${j}`}
+						className="flex min-w-0 flex-col items-start gap-1.5 rounded-xl border border-line bg-surface px-3 py-2.5"
+					>
+						<span className="text-xs text-text-2">{JUDGE_LABELS[j]}</span>
+						<JudgmentBadge judge={j} value={r.value} />
+						<span className="num text-xs text-text-2">
+							{r.average === null ? "—" : `${r.average}点`}
+						</span>
+					</Link>
+				);
+			})}
+		</section>
 	);
 }
 
