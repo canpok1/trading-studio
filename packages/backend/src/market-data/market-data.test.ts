@@ -35,6 +35,45 @@ async function importCsv(
 	return t.marketData.getImport(job.id) as ImportJob;
 }
 
+/** 取り込みを始め、終わるか確認待ちになるまで待つ */
+async function startImport(
+	t: ReturnType<typeof createTestApp>,
+	text: string,
+	timeframe = "1m",
+): Promise<ImportJob> {
+	const form = new FormData();
+	form.set("file", new File([text], "a.csv"));
+	form.set("timeframe", timeframe);
+	const res = await t.app.request("/api/data/imports", {
+		method: "POST",
+		body: form,
+	});
+	const { job } = (await res.json()) as { job: ImportJob };
+	for (;;) {
+		const j = t.marketData.getImport(job.id) as ImportJob;
+		if (j.status !== "running" || j.phase === "confirming") return j;
+		await new Promise((r) => setTimeout(r, 1));
+	}
+}
+
+async function resolve(
+	t: ReturnType<typeof createTestApp>,
+	id: number,
+	overwrite: boolean,
+): Promise<ImportJob> {
+	const res = await t.app.request(`/api/data/imports/${id}/resolve`, {
+		method: "POST",
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify({ overwrite }),
+	});
+	expect(res.status).toBe(200);
+	const { job } = (await res.json()) as { job: ImportJob };
+	// 応答の時点で確認待ちを抜けている
+	expect(job).toMatchObject({ phase: "saving", overwrite });
+	await t.marketData.running();
+	return t.marketData.getImport(id) as ImportJob;
+}
+
 const count = (t: ReturnType<typeof createTestApp>, tf: string) =>
 	(
 		t.db.$client
@@ -94,17 +133,82 @@ describe("過去データの取り込み", () => {
 		expect(list.imports[0]?.errors).toHaveLength(1);
 	});
 
-	test("同じ CSV を2回取り込んでも行が重複しない", async () => {
+	test("既存の足と重なる CSV は、保存の前に重なる期間と件数を返して選択を待つ", async () => {
 		const t = createTestApp();
-		const text = csv([DAY, DAY + M]);
-		await importCsv(t, text);
-		const second = await importCsv(t, text);
-		expect(second).toMatchObject({
+		await importCsv(t, csv([DAY, DAY + M], 100));
+		const job = await startImport(t, csv([DAY - M, DAY, DAY + M], 200));
+		expect(job).toMatchObject({
+			status: "running",
+			phase: "confirming",
+			overlap: { from: DAY, to: DAY + M, count: 2 },
+		});
+		// 選ぶまでは何も保存しない
+		expect(count(t, "1m")).toBe(2);
+	});
+
+	test("「上書きしない」なら重なる足は読み飛ばし、残りを保存する", async () => {
+		const t = createTestApp();
+		await importCsv(t, csv([DAY, DAY + M], 100));
+		const job = await startImport(t, csv([DAY - M, DAY, DAY + M], 200));
+		const done = await resolve(t, job.id, false);
+		expect(done).toMatchObject({
 			status: "done",
-			insertedRows: 0,
+			overwrite: false,
+			insertedRows: 1,
 			skippedRows: 2,
 		});
-		expect(count(t, "1m")).toBe(2);
+		const closes = t.marketDataRepo
+			.loadCandles("1m", DAY - M, DAY + 2 * M)
+			.map((c) => c.close);
+		expect(closes).toEqual([200, 100, 100]);
+	});
+
+	test("「上書きする」なら既存の足を置き換え、そこから作る粗い足も作り直す", async () => {
+		const t = createTestApp();
+		await importCsv(t, csv([DAY, DAY + M], 100));
+		const job = await startImport(t, csv([DAY, DAY + M], 200));
+		const done = await resolve(t, job.id, true);
+		expect(done).toMatchObject({ status: "done", insertedRows: 2 });
+		expect(
+			t.marketDataRepo.loadCandles("1m", DAY, DAY + 2 * M).map((c) => c.close),
+		).toEqual([200, 200]);
+		expect(t.marketDataRepo.loadCandles("5m", DAY, DAY + M)[0]?.close).toBe(
+			200,
+		);
+	});
+
+	test("選ぶ前に中止すると何も保存しない", async () => {
+		const t = createTestApp();
+		await importCsv(t, csv([DAY], 100));
+		const job = await startImport(t, csv([DAY, DAY + M], 200));
+		await t.app.request(`/api/data/imports/${job.id}/cancel`, {
+			method: "POST",
+		});
+		await t.marketData.running();
+		expect(t.marketData.getImport(job.id)?.status).toBe("canceled");
+		expect(
+			t.marketDataRepo.loadCandles("1m", DAY, DAY + 2 * M).map((c) => c.close),
+		).toEqual([100]);
+	});
+
+	test("収集した足と重なるときも確認を待つ", async () => {
+		const t = createTestApp();
+		t.marketDataRepo.upsertCollected([
+			{ time: DAY, open: 1, high: 1, low: 1, close: 1, volume: 0 },
+		]);
+		const job = await startImport(t, csv([DAY]));
+		expect(job.overlap).toEqual({ from: DAY, to: DAY, count: 1 });
+	});
+
+	test("確認を待っていない取り込みへの回答は 409", async () => {
+		const t = createTestApp();
+		const job = await importCsv(t, csv([DAY]));
+		const res = await t.app.request(`/api/data/imports/${job.id}/resolve`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ overwrite: true }),
+		});
+		expect(res.status).toBe(409);
 	});
 
 	test("日足を取り込んだ後に同じ期間の1分足を取り込んでも、取り込んだ日足は上書きされない", async () => {

@@ -43,6 +43,32 @@ export function marketDataRoutes(service: MarketDataService) {
 				? c.json({ job }, 200)
 				: c.json({ message: "取り込みが見つからない" }, 404);
 		})
+		.post(
+			"/imports/:id/resolve",
+			validator("json", (v, c) => {
+				const overwrite = (v as { overwrite?: unknown } | null)?.overwrite;
+				if (typeof overwrite !== "boolean") {
+					return c.json(
+						{ message: "overwrite を true か false で指定する" },
+						400,
+					);
+				}
+				return { overwrite };
+			}),
+			(c) => {
+				const r = service.resolveImport(
+					Number(c.req.param("id")),
+					c.req.valid("json").overwrite,
+				);
+				if (r.ok) return c.json({ job: r.job }, 200);
+				return r.job
+					? c.json(
+							{ message: "この取り込みは確認を待っていない", job: r.job },
+							409,
+						)
+					: c.json({ message: "取り込みが見つからない" }, 404);
+			},
+		)
 		.post("/imports/:id/cancel", (c) => {
 			const job = service.cancelImport(Number(c.req.param("id")));
 			return job

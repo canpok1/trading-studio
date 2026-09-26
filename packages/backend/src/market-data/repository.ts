@@ -42,6 +42,8 @@ function toJob(r: ImportRow): ImportJob {
 		status: r.status,
 		phase: null,
 		processedRows: r.status === "done" ? r.total_rows : 0,
+		overlap: null,
+		overwrite: null,
 		totalRows: r.total_rows,
 		insertedRows: r.inserted_rows,
 		skippedRows: r.skipped_rows,
@@ -129,21 +131,25 @@ export class MarketDataRepository {
 	}
 
 	/**
-	 * 取り込んだ足を保存する。同じ粒度・同じ日時に取り込んだ足があれば保存しない（件数に数える）。
-	 * 自動で作った足しか無ければ、取り込んだ足で置き換える（直接取り込んだ足を優先する）
+	 * 取り込んだ足を保存する。同じ粒度・同じ日時に自動で作った足しか無ければ、取り込んだ足で置き換える。
+	 * 取り込んだ・収集した足があれば、overwrite なら上書きし、そうでなければ保存しない（件数に数える）
 	 */
 	insertImported(
 		timeframe: Timeframe,
 		rows: readonly Candle[],
 		importId: number,
+		{ overwrite = false }: { overwrite?: boolean } = {},
 	): { inserted: number; skipped: number } {
+		const overwritable = overwrite
+			? "'derived', 'import', 'collect'"
+			: "'derived'";
 		const stmt = this.sql.prepare(
 			`insert into candles (timeframe, time, open, high, low, close, volume, source, import_id)
 			 values (?, ?, ?, ?, ?, ?, ?, 'import', ?)
 			 on conflict (timeframe, time) do update set
 			   open = excluded.open, high = excluded.high, low = excluded.low, close = excluded.close,
 			   volume = excluded.volume, source = 'import', import_id = excluded.import_id
-			 where candles.source = 'derived'`,
+			 where candles.source in (${overwritable})`,
 		);
 		let inserted = 0;
 		this.sql.transaction(() => {
@@ -161,6 +167,34 @@ export class MarketDataRepository {
 			}
 		})();
 		return { inserted, skipped: rows.length - inserted };
+	}
+
+	/** 足（古い順）のうち、同じ粒度・同じ日時に取り込んだ・収集した足があるもの。無ければ null */
+	overlap(
+		timeframe: Timeframe,
+		rows: readonly Candle[],
+	): { from: number; to: number; count: number } | null {
+		const first = rows[0];
+		const last = rows.at(-1);
+		if (!first || !last) return null;
+		const existing = new Set(
+			this.sql
+				.query<{ time: number }, [string, number, number]>(
+					"select time from candles where timeframe = ? and source in ('import', 'collect') and time >= ? and time <= ?",
+				)
+				.all(timeframe, first.time, last.time)
+				.map((r) => r.time),
+		);
+		let from: number | null = null;
+		let to = 0;
+		let count = 0;
+		for (const c of rows) {
+			if (!existing.has(c.time)) continue;
+			from ??= c.time;
+			to = c.time;
+			count++;
+		}
+		return from === null ? null : { from, to, count };
 	}
 
 	/** 取り込みを取り消す。その取り込みで保存した足を消す */

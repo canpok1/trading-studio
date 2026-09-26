@@ -32,6 +32,58 @@ test("CSV を選ぶと取り込まれ、一覧に期間が増える", async ({ p
 	await expect(page.getByRole("img", { name: /^日足:/ })).toBeVisible();
 });
 
+test("既存の足と重なる CSV は確認が出て、上書きする・しないを選べる", async ({
+	page,
+}, info) => {
+	const day =
+		info.project.name === "mobile"
+			? Date.UTC(2026, 2, 1)
+			: Date.UTC(2026, 2, 15);
+	const upload = (price: number) =>
+		page.locator('input[type="file"]').setInputFiles({
+			name: "again.csv",
+			mimeType: "text/csv",
+			buffer: Buffer.from(
+				csv(day, 10).replace(
+					/13000000,13010000,12990000,13000000/g,
+					`${price},${price},${price},${price}`,
+				),
+			),
+		});
+	await page.goto("/data");
+	await page.getByText("1分", { exact: true }).click();
+	await upload(13_000_000);
+	await expect(
+		page.getByRole("status").filter({ hasText: "10 行を取り込んだ" }),
+	).toBeVisible();
+
+	// 上書きしない：重なる足は読み飛ばす
+	await upload(14_000_000);
+	const confirm = page.getByRole("region", { name: "既存の足との重なり" });
+	await expect(confirm).toContainText("10 本");
+	await confirm.getByRole("button", { name: /^上書きしない/ }).click();
+	await expect(
+		page.getByRole("status").filter({ hasText: "10 行は読み飛ばした" }),
+	).toBeVisible();
+	const close = async () => {
+		const r = await page.request.get(`/api/market/bars?timeframe=1d&range=all`);
+		const { bars } = (await r.json()) as {
+			bars: { time: number; close: number }[];
+		};
+		const jstDay = day - 9 * 3_600_000;
+		return bars.find((b) => b.time === jstDay)?.close;
+	};
+	expect(await close()).toBe(13_000_000);
+
+	// 上書きする：既存の足と、そこから作った日足が置き換わる
+	await upload(14_000_000);
+	await confirm.getByRole("button", { name: "上書きする" }).click();
+	await expect(
+		page.getByRole("status").filter({ hasText: "10 行を取り込んだ" }),
+	).toBeVisible();
+	expect(await close()).toBe(14_000_000);
+});
+
 test("不正な CSV ではエラーと原因の行が表示される", async ({ page }) => {
 	await page.goto("/data");
 	await page.locator('input[type="file"]').setInputFiles({

@@ -25,15 +25,18 @@ export function createMarketDataService(
 	repo: MarketDataRepository,
 	{ now = Date.now, onSettled }: MarketDataServiceOptions = {},
 ): MarketDataService & { running(): Promise<void> | null } {
-	let current: { job: ImportJob; cancel: boolean; done: Promise<void> } | null =
-		null;
+	type Entry = {
+		job: ImportJob;
+		cancel: boolean;
+		done: Promise<void>;
+		/** 重なりの確認を待っている間だけある。答え（上書きするか・中止か）を渡す */
+		answer: ((choice: "overwrite" | "skip" | "cancel") => void) | null;
+	};
+	let current: Entry | null = null;
 
 	const snapshot = (job: ImportJob): ImportJob => ({ ...job });
 
-	async function run(
-		entry: { job: ImportJob; cancel: boolean },
-		text: string,
-	): Promise<void> {
+	async function run(entry: Entry, text: string): Promise<void> {
 		const { job } = entry;
 		const finish = (status: ImportJob["status"], message: string | null) => {
 			job.status = status;
@@ -66,6 +69,23 @@ export function createMarketDataService(
 			job.firstTime = candles[0]?.time ?? null;
 			job.lastTime = candles.at(-1)?.time ?? null;
 
+			// 既存の足と重なれば、上書きするかを利用者が選ぶまで保存しない
+			job.overlap = repo.overlap(job.timeframe, candles);
+			if (job.overlap) {
+				job.phase = "confirming";
+				const choice = await new Promise<"overwrite" | "skip" | "cancel">(
+					(resolve) => {
+						entry.answer = resolve;
+					},
+				);
+				entry.answer = null;
+				if (choice === "cancel") {
+					finish("canceled", null);
+					return;
+				}
+				job.overwrite = choice === "overwrite";
+			}
+
 			job.phase = "saving";
 			job.processedRows = 0;
 			job.totalRows = candles.length;
@@ -84,7 +104,9 @@ export function createMarketDataService(
 					return;
 				}
 				const chunk: Candle[] = candles.slice(i, i + CHUNK);
-				const r = repo.insertImported(job.timeframe, chunk, job.id);
+				const r = repo.insertImported(job.timeframe, chunk, job.id, {
+					overwrite: job.overwrite === true,
+				});
 				job.insertedRows += r.inserted;
 				job.skippedRows += r.skipped;
 				job.processedRows = Math.min(i + CHUNK, candles.length);
@@ -123,6 +145,8 @@ export function createMarketDataService(
 				phase: "validating",
 				processedRows: 0,
 				totalRows: 0,
+				overlap: null,
+				overwrite: null,
 				insertedRows: 0,
 				skippedRows: 0,
 				derivedRows: 0,
@@ -134,7 +158,12 @@ export function createMarketDataService(
 				errors: [],
 				errorCount: 0,
 			};
-			const entry = { job, cancel: false, done: Promise.resolve() };
+			const entry: Entry = {
+				job,
+				cancel: false,
+				done: Promise.resolve(),
+				answer: null,
+			};
 			// BOM 付きの UTF-8 でも読めるようにする
 			entry.done = run(entry, text.replace(/^﻿/, ""));
 			current = entry;
@@ -148,10 +177,30 @@ export function createMarketDataService(
 
 		cancelImport(id) {
 			if (current?.job.id === id && current.job.status === "running") {
-				if (current.job.phase !== "deriving") current.cancel = true;
-				return snapshot(current.job);
+				const { job } = current;
+				// 上書きの保存を始めたら中止しない。上書きした足は元に戻せないため
+				const saving = job.phase === "saving" && job.overwrite === true;
+				if (current.answer) current.answer("cancel");
+				else if (job.phase !== "deriving" && !saving) current.cancel = true;
+				return snapshot(job);
 			}
 			return repo.getImport(id);
+		},
+
+		resolveImport(id, overwrite) {
+			if (current?.job.id === id && current.answer) {
+				// 保存は次のイベントループで始まるので、応答の時点で段階を進めておく
+				// （確認待ちのまま返すと、画面が確認の表示を出し続けて二重に押せてしまう）
+				current.job.phase = "saving";
+				current.job.overwrite = overwrite;
+				current.answer(overwrite ? "overwrite" : "skip");
+				return { ok: true, job: snapshot(current.job) };
+			}
+			return {
+				ok: false,
+				job:
+					current?.job.id === id ? snapshot(current.job) : repo.getImport(id),
+			};
 		},
 
 		listImports() {
