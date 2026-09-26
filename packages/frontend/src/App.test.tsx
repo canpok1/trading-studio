@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { App } from "./App";
+import { ApiProvider, createApiClient } from "./api";
 
 afterEach(cleanup);
 beforeEach(() => {
@@ -10,11 +11,20 @@ beforeEach(() => {
 	document.documentElement.classList.remove("dark");
 });
 
+// どの API にも空のデータを返す
+const client = createApiClient(
+	Object.assign(async () => Response.json({ timeframes: [], imports: [] }), {
+		preconnect: () => {},
+	}),
+);
+
 const renderAt = (path: string) =>
 	render(
-		<MemoryRouter initialEntries={[path]}>
-			<App />
-		</MemoryRouter>,
+		<ApiProvider client={client}>
+			<MemoryRouter initialEntries={[path]}>
+				<App />
+			</MemoryRouter>
+		</ApiProvider>,
 	);
 
 describe("画面遷移", () => {

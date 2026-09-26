@@ -36,13 +36,13 @@ export function marketDataRoutes(service: MarketDataService) {
 				return c.json({ job: r.job }, 202);
 			},
 		)
-		.get("/imports/:id{[0-9]+}", (c) => {
+		.get("/imports/:id", (c) => {
 			const job = service.getImport(Number(c.req.param("id")));
 			return job
 				? c.json({ job }, 200)
 				: c.json({ message: "取り込みが見つからない" }, 404);
 		})
-		.post("/imports/:id{[0-9]+}/cancel", (c) => {
+		.post("/imports/:id/cancel", (c) => {
 			const job = service.cancelImport(Number(c.req.param("id")));
 			return job
 				? c.json({ job }, 200)
