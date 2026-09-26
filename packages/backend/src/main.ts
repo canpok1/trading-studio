@@ -4,6 +4,8 @@ import { Hono } from "hono";
 import { createApp } from "./app";
 import { migrateDb } from "./db/migrate";
 import { isDbReachable, openDb } from "./db/open";
+import { MarketDataRepository } from "./market-data/repository";
+import { createMarketDataService } from "./market-data/service";
 import { serveFrontend } from "./static";
 
 const hostname = process.env.HOST ?? "127.0.0.1";
@@ -33,9 +35,15 @@ try {
 	process.exit(1);
 }
 
+const marketDataRepo = new MarketDataRepository(db);
+marketDataRepo.failInterrupted(Date.now());
+
 const server = new Hono().route(
 	"/",
-	createApp({ isDbReachable: () => isDbReachable(db) }),
+	createApp({
+		isDbReachable: () => isDbReachable(db),
+		marketData: createMarketDataService(marketDataRepo),
+	}),
 );
 serveFrontend(server, distDir);
 

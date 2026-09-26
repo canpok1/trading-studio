@@ -16,6 +16,7 @@
     "packages/backend": {
       "name": "@trading-studio/backend",
       "dependencies": {
+        "@trading-studio/core": "workspace:*",
         "drizzle-orm": "^0.45.3",
         "hono": "^4.13.9",
       },
