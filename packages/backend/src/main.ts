@@ -2,6 +2,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
 import { createApp } from "./app";
+import { BacktestRepository } from "./backtests/repository";
+import { createBacktestService } from "./backtests/service";
+import { workerRunner } from "./backtests/worker-runner";
 import { migrateDb } from "./db/migrate";
 import { isDbReachable, openDb } from "./db/open";
 import { MarketDataRepository } from "./market-data/repository";
@@ -38,13 +41,22 @@ try {
 
 const marketDataRepo = new MarketDataRepository(db);
 marketDataRepo.failInterrupted(Date.now());
+const backtestRepo = new BacktestRepository(db);
+backtestRepo.failInterrupted(Date.now());
+const strategies = createStrategyService(db);
 
 const server = new Hono().route(
 	"/",
 	createApp({
 		isDbReachable: () => isDbReachable(db),
 		marketData: createMarketDataService(marketDataRepo),
-		strategies: createStrategyService(db),
+		strategies,
+		backtests: createBacktestService({
+			repo: backtestRepo,
+			marketData: marketDataRepo,
+			strategies,
+			runner: workerRunner,
+		}),
 	}),
 );
 serveFrontend(server, distDir);
