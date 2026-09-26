@@ -30,6 +30,7 @@ const TF_OPTIONS = TIMEFRAMES.map(
 
 const PHASE_LABEL: Record<NonNullable<ImportJob["phase"]>, string> = {
 	validating: "検証中",
+	confirming: "上書きするかの選択待ち",
 	saving: "保存中",
 	deriving: "粗い粒度の足を作成中",
 };
@@ -136,6 +137,20 @@ export function DataPage() {
 		});
 	};
 
+	const resolve = async (overwrite: boolean) => {
+		if (!job) return;
+		try {
+			const res = await api.api.data.imports[":id"].resolve.$post({
+				param: { id: String(job.id) },
+				json: { overwrite },
+			});
+			const { job: next } = await readJson<{ job: ImportJob }>(res);
+			setJob(next);
+		} catch (e) {
+			setNotice(`選択を送れなかった: ${errorMessage(e)}`);
+		}
+	};
+
 	const onDrop = (e: DragEvent) => {
 		e.preventDefault();
 		setDragging(false);
@@ -199,7 +214,11 @@ export function DataPage() {
 				</p>
 			</section>
 
-			{job && <JobCard job={job} onCancel={cancel} />}
+			{job?.phase === "confirming" ? (
+				<ConfirmCard job={job} onResolve={resolve} onCancel={cancel} />
+			) : (
+				job && <JobCard job={job} onCancel={cancel} />
+			)}
 			{notice && (
 				<div
 					role="status"
@@ -233,7 +252,7 @@ export function DataPage() {
 			)}
 			{state.kind === "ok" && <Coverage data={state.data} runningJob={job} />}
 			<p className="text-xs leading-relaxed text-text-2">
-				取り込んだ足より粗い粒度（5分・15分・1時間・4時間・日足）は自動で作る。同じ粒度・同じ日時の行は上書きせず読み飛ばす。
+				取り込んだ足より粗い粒度（5分・15分・1時間・4時間・日足）は自動で作る。取り込んだ・収集した足と同じ粒度・同じ日時の行があれば、上書きするかを選ぶ。
 			</p>
 		</Page>
 	);
@@ -258,12 +277,59 @@ function JobCard({ job, onCancel }: { job: ImportJob; onCancel: () => void }) {
 					variant="link"
 					className="text-text-2"
 					onClick={onCancel}
-					disabled={job.phase === "deriving"}
+					disabled={
+						job.phase === "deriving" ||
+						(job.phase === "saving" && job.overwrite === true)
+					}
 				>
 					中止
 				</Button>
 			</div>
 		</Card>
+	);
+}
+
+/** 既存の足と重なったときに、上書きするかを選ぶ */
+function ConfirmCard({
+	job,
+	onResolve,
+	onCancel,
+}: {
+	job: ImportJob;
+	onResolve: (overwrite: boolean) => void;
+	onCancel: () => void;
+}) {
+	const o = job.overlap;
+	return (
+		<section
+			aria-label="既存の足との重なり"
+			className="flex flex-col gap-2.5 rounded-xl border border-line bg-surface px-4 py-3.5"
+		>
+			<strong className="num truncate">{job.fileName}</strong>
+			<Note>
+				取り込む足のうち {formatInt(o?.count ?? 0)}{" "}
+				本が、取り込み済み・収集済みの足と同じ日時にある
+				{o && (
+					<span className="num block">
+						{formatDateTime(o.from)} 〜 {formatDateTime(o.to)}
+					</span>
+				)}
+			</Note>
+			<div className="flex flex-col gap-2 sm:flex-row">
+				<Button variant="primary" size="sm" onClick={() => onResolve(true)}>
+					上書きする
+				</Button>
+				<Button size="sm" onClick={() => onResolve(false)}>
+					上書きしない（重なる足だけ読み飛ばす）
+				</Button>
+				<Button variant="link" className="text-text-2" onClick={onCancel}>
+					中止
+				</Button>
+			</div>
+			<p className="text-xs text-text-2">
+				上書きすると、重なる足と、そこから作った粗い足を置き換える。上書きの保存を始めた後は中止できない
+			</p>
+		</section>
 	);
 }
 

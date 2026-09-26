@@ -62,10 +62,18 @@ async function prepare(
 	});
 	expect(res.status()).toBe(202);
 	const { job } = (await res.json()) as { job: { id: number } };
+	// 前のテストで同じ足を取り込んでいれば重なりの確認になるので、上書きせずに進める
 	await expect
 		.poll(async () => {
 			const r = await request.get(`/api/data/imports/${job.id}`);
-			return ((await r.json()) as { job: { status: string } }).job.status;
+			const j = ((await r.json()) as { job: { status: string; phase: string } })
+				.job;
+			if (j.phase === "confirming") {
+				await request.post(`/api/data/imports/${job.id}/resolve`, {
+					data: { overwrite: false },
+				});
+			}
+			return j.status;
 		})
 		.toBe("done");
 	const s = await request.post("/api/strategies", {
