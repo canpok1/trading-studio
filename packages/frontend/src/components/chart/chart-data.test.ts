@@ -49,5 +49,8 @@ describe("chart-data", () => {
 		// 足が粗くても最低5本は出す
 		expect(visibleRange("1d", 100, 24 * H)).toEqual({ from: 94.5, to: 102 });
 		expect(visibleRange("1w", 0, H)).toBeNull();
+		// 期間に足りない本数しか無ければ、ある足だけを収める
+		expect(visibleRange("1w", 20, H)).toEqual({ from: -2, to: 22 });
+		expect(visibleRange("1d", 24, H)).toEqual({ from: -0.5, to: 26 });
 	});
 });
