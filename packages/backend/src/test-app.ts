@@ -12,6 +12,8 @@ import { createTestDb } from "./db/test-db";
 import { createMarketService } from "./market/service";
 import { MarketDataRepository } from "./market-data/repository";
 import { createMarketDataService } from "./market-data/service";
+import { NewsRepository } from "./news/repository";
+import { createNewsService } from "./news/service";
 import { createStrategyService } from "./strategies/service";
 
 export function createTestApp(
@@ -53,12 +55,27 @@ export function createTestApp(
 		runner,
 		now: () => 3_000,
 	});
+	// 収集は動かさず、テストから newsRepo に書き込む
+	const newsRepo = new NewsRepository(db);
+	const newsRun = {
+		lastRunAt: null as number | null,
+		nextRunAt: null as number | null,
+	};
+	const news = createNewsService({
+		repo: newsRepo,
+		collector: {
+			lastRunAt: () => newsRun.lastRunAt,
+			nextRunAt: () => newsRun.nextRunAt,
+		},
+		now: () => 5_000,
+	});
 	const app = createApp({
 		isDbReachable: () => true,
 		marketData,
 		market,
 		strategies,
 		backtests,
+		news,
 		...over,
 	});
 	return {
@@ -71,5 +88,8 @@ export function createTestApp(
 		backtestRepo,
 		live,
 		clock,
+		news,
+		newsRepo,
+		newsRun,
 	};
 }

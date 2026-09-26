@@ -14,6 +14,10 @@ import { isDbReachable, openDb } from "./db/open";
 import { createMarketService } from "./market/service";
 import { MarketDataRepository } from "./market-data/repository";
 import { createMarketDataService } from "./market-data/service";
+import { createNewsCollector, httpFetchFeed } from "./news/collector";
+import { demoFetchFeed } from "./news/fake-feed";
+import { NewsRepository } from "./news/repository";
+import { createNewsService, DEFAULT_NEWS_SOURCES } from "./news/service";
 import { serveFrontend } from "./static";
 import { createStrategyService } from "./strategies/service";
 
@@ -63,6 +67,21 @@ const collector = createCollector({
 });
 const collectorTimer = setInterval(() => collector.tick(), 1_000);
 
+const newsRepo = new NewsRepository(db);
+newsRepo.seedSources(DEFAULT_NEWS_SOURCES, Date.now());
+// E2E で取得元の失敗を再現するためのファイル。あれば偽物の取得元が失敗する
+const newsDownFile = join(dirname(dbPath), "news-down");
+const newsCollector = createNewsCollector({
+	repo: newsRepo,
+	// E2E では RSS の取得元へつながず、偽物の記事を返す
+	fetchFeed:
+		process.env.NEWS_FEED === "demo"
+			? demoFetchFeed({ isDown: () => existsSync(newsDownFile) })
+			: httpFetchFeed,
+});
+const newsTimer = setInterval(() => newsCollector.tick(), 1_000);
+newsCollector.tick();
+
 const server = new Hono().route(
 	"/",
 	createApp({
@@ -76,6 +95,7 @@ const server = new Hono().route(
 			strategies,
 			runner: workerRunner,
 		}),
+		news: createNewsService({ repo: newsRepo, collector: newsCollector }),
 	}),
 );
 serveFrontend(server, distDir);
@@ -87,6 +107,7 @@ console.log(`listening on http://${hostname}:${port}, db: ${dbPath}`);
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
 	process.on(signal, async () => {
 		clearInterval(collectorTimer);
+		clearInterval(newsTimer);
 		collector.stop();
 		await http.stop();
 		db.$client.close();

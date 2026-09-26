@@ -2,9 +2,11 @@ import { Hono } from "hono";
 import type { BacktestService } from "./backtests/types";
 import type { MarketService } from "./market/types";
 import type { MarketDataService } from "./market-data/types";
+import type { NewsService } from "./news/types";
 import { backtestRoutes } from "./routes/backtests";
 import { marketRoutes } from "./routes/market";
 import { marketDataRoutes } from "./routes/market-data";
+import { newsRoutes } from "./routes/news";
 import { strategyRoutes } from "./routes/strategies";
 import type { StrategyService } from "./strategies/types";
 
@@ -14,6 +16,7 @@ export type AppDeps = {
 	market: MarketService;
 	strategies: StrategyService;
 	backtests: BacktestService;
+	news: NewsService;
 };
 
 // frontend は Hono RPC でこの型を使う。Bun 固有の API はここに持ち込まない（frontend の型チェックに Bun の型を入れないため）
@@ -23,6 +26,7 @@ export function createApp({
 	market,
 	strategies,
 	backtests,
+	news,
 }: AppDeps) {
 	const api = new Hono()
 		.get("/health", (c) =>
@@ -34,7 +38,8 @@ export function createApp({
 		.route("/data", marketDataRoutes(marketData))
 		.route("/market", marketRoutes(market))
 		.route("/strategies", strategyRoutes(strategies))
-		.route("/backtests", backtestRoutes(backtests));
+		.route("/backtests", backtestRoutes(backtests))
+		.route("/news", newsRoutes(news));
 	return new Hono().route("/api", api);
 }
 

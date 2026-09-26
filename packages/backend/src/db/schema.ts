@@ -114,3 +114,39 @@ export const backtestResults = sqliteTable("backtest_results", {
 	trades: blob("trades", { mode: "buffer" }).notNull(),
 	decisions: blob("decisions", { mode: "buffer" }).notNull(),
 });
+
+/** ニュースの取得元（RSS） */
+export const newsSources = sqliteTable("news_sources", {
+	id: integer("id").primaryKey({ autoIncrement: true }),
+	name: text("name").notNull(),
+	url: text("url").notNull().unique(),
+	/** ja / en */
+	language: text("language").notNull(),
+	enabled: integer("enabled", { mode: "boolean" }).notNull(),
+	createdAt: integer("created_at").notNull(),
+	lastSuccessAt: integer("last_success_at"),
+	/** 直近の取得の失敗理由。成功したら null に戻す */
+	lastError: text("last_error"),
+	/** 失敗が続いている最初の時刻 */
+	errorSince: integer("error_since"),
+});
+
+/** ニュース。削除しない（バックテストの材料のため） */
+export const news = sqliteTable(
+	"news",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		/** 取得元を削除してもニュースは残すので外部キーにしない */
+		sourceId: integer("source_id").notNull(),
+		/** 取得したときの取得元の名前 */
+		sourceName: text("source_name").notNull(),
+		language: text("language").notNull(),
+		url: text("url").notNull().unique(),
+		title: text("title").notNull(),
+		summary: text("summary"),
+		/** RSS の公開時刻。無ければ取得時刻 */
+		publishedAt: integer("published_at").notNull(),
+		fetchedAt: integer("fetched_at").notNull(),
+	},
+	(t) => [index("news_published_at").on(t.publishedAt)],
+);
