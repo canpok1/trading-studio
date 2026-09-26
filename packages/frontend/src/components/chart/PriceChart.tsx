@@ -66,6 +66,12 @@ type Props = {
 	/** 表示の切り替えの上に置く操作（ホームの粒度の切り替えなど） */
 	toolbar?: ReactNode;
 	/**
+	 * 指定すると、表示の切り替え（toolbar・背景・表示）とチャート本体を別のパネルに分け、
+	 * 包む要素なしで2つを並べて返す。呼び出し側のグリッドへ直接置くため（ホームの PC 幅）。
+	 * 値はそれぞれのパネルに足す className
+	 */
+	split?: { controls: string; chart: string };
+	/**
 	 * 表示範囲を合わせ直すきっかけ。指定すると、足が更新されても値が変わるまで利用者の拡大・移動を保つ
 	 * （数秒ごとに最新の価格を足すホームで、そのたびに表示範囲が戻らないように）
 	 */
@@ -154,6 +160,7 @@ export function PriceChart({
 	initialSpanMs = null,
 	currentPrice,
 	toolbar,
+	split,
 	viewKey,
 	judgments = null,
 	bg = "trend",
@@ -510,8 +517,8 @@ export function PriceChart({
 	const shown = slot?.bar ?? null;
 	const bar = shown === null ? null : bars[shown];
 
-	return (
-		<div className="flex flex-col gap-2">
+	const controls = (
+		<>
 			{toolbar}
 			{judgments && (
 				<fieldset className="flex flex-wrap items-center gap-2">
@@ -558,7 +565,66 @@ export function PriceChart({
 						EMA
 					</button>
 				)}
-				<div className="ml-auto flex items-center gap-1.5">
+			</div>
+		</>
+	);
+	const chart = (
+		<>
+			<div className="flex items-start gap-2">
+				<div
+					aria-live="off"
+					className="num flex min-h-8 min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs"
+				>
+					{slot && !bar && (
+						<>
+							<span className="text-text-2">{formatDateTime(slot.time)}</span>
+							<span className="font-semibold text-text-2">データなし</span>
+						</>
+					)}
+					{bar && (
+						<>
+							<span className="text-text-2">{formatDateTime(bar.time)}</span>
+							{candle && bar.open !== undefined && (
+								<span className="text-text-2">
+									始 {formatInt(bar.open)} 高 {formatInt(bar.high ?? 0)} 安{" "}
+									{formatInt(bar.low ?? 0)}
+								</span>
+							)}
+							<span className="font-semibold">¥{formatInt(bar.close)}</span>
+							{judgments &&
+								JUDGES.map((j) => {
+									const v = judgments[j][shown as number] ?? null;
+									if (v === null) return null;
+									const st = valueStyle(j, v);
+									return (
+										<span
+											key={j}
+											data-testid={`chart-judgment-${j}`}
+											className="flex items-center gap-1"
+										>
+											<ShapeIcon shape={st.shape} color={`var(${st.solid})`} />
+											{j === "sentiment" ? `感情 ${v}` : st.label}
+										</span>
+									);
+								})}
+							{showEma &&
+								emaPeriods.map((n, j) => {
+									const v = emaValues[j]?.[shown as number];
+									return (
+										<span key={n} className="flex items-center gap-1">
+											<i
+												className="inline-block h-[3px] w-2.5"
+												style={{ background: `var(${emaVar(j)})` }}
+											/>
+											EMA{n}{" "}
+											{v === undefined || Number.isNaN(v) ? "—" : formatInt(v)}
+										</span>
+									);
+								})}
+						</>
+					)}
+				</div>
+				<div className="flex shrink-0 items-center gap-1.5">
 					<button
 						type="button"
 						aria-label="縮小"
@@ -589,63 +655,10 @@ export function PriceChart({
 				</div>
 			</div>
 			<div
-				aria-live="off"
-				className="num flex min-h-5 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs"
-			>
-				{slot && !bar && (
-					<>
-						<span className="text-text-2">{formatDateTime(slot.time)}</span>
-						<span className="font-semibold text-text-2">データなし</span>
-					</>
-				)}
-				{bar && (
-					<>
-						<span className="text-text-2">{formatDateTime(bar.time)}</span>
-						{candle && bar.open !== undefined && (
-							<span className="text-text-2">
-								始 {formatInt(bar.open)} 高 {formatInt(bar.high ?? 0)} 安{" "}
-								{formatInt(bar.low ?? 0)}
-							</span>
-						)}
-						<span className="font-semibold">¥{formatInt(bar.close)}</span>
-						{judgments &&
-							JUDGES.map((j) => {
-								const v = judgments[j][shown as number] ?? null;
-								if (v === null) return null;
-								const st = valueStyle(j, v);
-								return (
-									<span
-										key={j}
-										data-testid={`chart-judgment-${j}`}
-										className="flex items-center gap-1"
-									>
-										<ShapeIcon shape={st.shape} color={`var(${st.solid})`} />
-										{j === "sentiment" ? `感情 ${v}` : st.label}
-									</span>
-								);
-							})}
-						{showEma &&
-							emaPeriods.map((n, j) => {
-								const v = emaValues[j]?.[shown as number];
-								return (
-									<span key={n} className="flex items-center gap-1">
-										<i
-											className="inline-block h-[3px] w-2.5"
-											style={{ background: `var(${emaVar(j)})` }}
-										/>
-										EMA{n}{" "}
-										{v === undefined || Number.isNaN(v) ? "—" : formatInt(v)}
-									</span>
-								);
-							})}
-					</>
-				)}
-			</div>
-			<div
 				ref={box}
 				role="img"
 				aria-label="価格チャート"
-				className="h-[260px] w-full lg:h-[360px]"
+				className={`h-[260px] w-full ${split ? "lg:h-[480px]" : "lg:h-[360px]"}`}
 			/>
 			{(onMarker || showEma || judgments) && (
 				<details className="rounded-[10px] border border-line px-3 py-2 text-xs">
@@ -724,6 +737,31 @@ export function PriceChart({
 				{judgments && "下の帯をタップで背景と入れ替え · "}
 				ピンチ / ホイール / ＋−で拡大・縮小
 			</p>
+		</>
+	);
+
+	if (split) {
+		return (
+			<>
+				<section
+					aria-label="チャートの表示"
+					className={`flex flex-col gap-2 ${split.controls}`}
+				>
+					{controls}
+				</section>
+				<section
+					aria-label="価格チャート"
+					className={`flex min-w-0 flex-col gap-2 ${split.chart}`}
+				>
+					{chart}
+				</section>
+			</>
+		);
+	}
+	return (
+		<div className="flex flex-col gap-2">
+			{controls}
+			{chart}
 		</div>
 	);
 }

@@ -109,6 +109,26 @@ test("ホームは横にはみ出さない", async ({ page }) => {
 	expect(overflow).toBe(false);
 });
 
+test("PC 幅では表示の切り替えが状態の右に並び、チャートは2列ぶんの幅を使う", async ({
+	page,
+}, testInfo) => {
+	test.skip(testInfo.project.name !== "desktop", "2列になるのは PC 幅だけ");
+	await page.goto("/home");
+	const status = page.getByTestId("home-price");
+	const controls = page.getByRole("region", { name: "チャートの表示" });
+	const chart = page.getByRole("region", { name: "価格チャート" });
+	await expect(chart).toBeVisible({ timeout: 15_000 });
+	const s = await status.boundingBox();
+	const c = await controls.boundingBox();
+	const ch = await chart.boundingBox();
+	if (!s || !c || !ch) throw new Error("位置を取れなかった");
+	// 切り替えは状態の右、チャートは両方より下で左端から右端まで
+	expect(c.x).toBeGreaterThan(s.x + s.width);
+	expect(ch.y).toBeGreaterThan(c.y + c.height);
+	expect(ch.x).toBeLessThanOrEqual(s.x);
+	expect(ch.x + ch.width).toBeGreaterThanOrEqual(c.x + c.width - 1);
+});
+
 test("チャートに AI 判定の背景と帯が出て、帯をタップすると背景が入れ替わり、再読み込み後も保たれる", async ({
 	page,
 }) => {

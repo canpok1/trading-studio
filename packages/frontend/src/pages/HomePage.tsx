@@ -54,6 +54,14 @@ const MAX_HISTORY = 1_000;
 
 const NO_PERIODS: number[] = [];
 
+const PANEL =
+	"flex min-w-0 flex-col gap-2.5 rounded-xl border border-line bg-surface p-3";
+/** PC 幅では、表示の切り替えを状態の右に、チャート本体を下の段に2列ぶち抜きで置く */
+const SPLIT = {
+	controls: "rounded-xl border border-line bg-surface p-3",
+	chart: "rounded-xl border border-line bg-surface p-3 lg:col-span-2",
+};
+
 const TF_OPTIONS = TIMEFRAMES.map(
 	(t) => [t, TIMEFRAME_LABELS[t].replace("足", "")] as const,
 );
@@ -145,7 +153,7 @@ export function HomePage() {
 
 function HomeFrame({ children }: { children: ReactNode }) {
 	return (
-		<div className="mx-auto flex max-w-[720px] flex-col gap-3.5 px-4 pt-4 pb-2 lg:grid lg:max-w-none lg:grid-cols-[minmax(340px,400px)_minmax(0,1fr)] lg:items-start lg:gap-x-5 lg:px-6">
+		<div className="mx-auto flex max-w-[720px] flex-col gap-3.5 px-4 pt-4 pb-2 lg:grid lg:max-w-none lg:grid-cols-[minmax(340px,400px)_minmax(0,1fr)] lg:items-start lg:gap-5 lg:px-6">
 			<h1 className="sr-only">ホーム</h1>
 			{children}
 		</div>
@@ -300,100 +308,102 @@ function HomeBody({
 
 	return (
 		<HomeFrame>
-			<PriceHeader latest={latest} />
-			<CollectorAlert latest={latest} />
-			{latestError && (
-				<div
-					role="alert"
-					className="flex items-center gap-3 rounded-[10px] bg-warn px-3.5 py-3 text-xs"
-				>
-					<span className="flex-1">
-						最新の価格を読み込めなかった（{latestError}
-						）。5秒ごとに読み直している
-					</span>
-					<Button size="sm" onClick={onRetryLatest}>
-						今すぐ読み直す
-					</Button>
-				</div>
-			)}
-			<Card className="flex flex-col gap-2 lg:col-start-1">
-				<label htmlFor="home-strategy" className="text-[15px] font-bold">
-					運用する戦略
-				</label>
-				<select
-					id="home-strategy"
-					className="h-11 w-full rounded-lg border border-line bg-surface px-3 text-[15px] font-semibold"
-					value={active?.id ?? ""}
-					disabled={saving}
-					onChange={(e) =>
-						choose(e.target.value === "" ? null : Number(e.target.value))
-					}
-				>
-					<option value="">未選択</option>
-					{strategies.list.map((s) => (
-						<option key={s.id} value={s.id}>
-							{s.name}（{TIMEFRAME_LABELS[s.params.timeframe]}）
-						</option>
-					))}
-				</select>
-				{saveError && (
-					<p role="alert" className="text-xs font-semibold text-loss">
-						保存できなかった: {saveError}
-					</p>
+			<div className="flex flex-col gap-3.5">
+				<PriceHeader latest={latest} />
+				<CollectorAlert latest={latest} />
+				{latestError && (
+					<div
+						role="alert"
+						className="flex items-center gap-3 rounded-[10px] bg-warn px-3.5 py-3 text-xs"
+					>
+						<span className="flex-1">
+							最新の価格を読み込めなかった（{latestError}
+							）。5秒ごとに読み直している
+						</span>
+						<Button size="sm" onClick={onRetryLatest}>
+							今すぐ読み直す
+						</Button>
+					</div>
 				)}
-				{strategies.list.length === 0 && (
-					<p className="text-xs text-text-2">
-						戦略がまだ無い。「戦略」の画面で作ると選べる
-					</p>
-				)}
-			</Card>
-			{current && <JudgmentTiles current={current} />}
-			<section
-				aria-label="価格チャート"
-				className="flex min-w-0 flex-col gap-2.5 rounded-xl border border-line bg-surface p-3 lg:col-start-2 lg:row-span-6 lg:row-start-1 lg:sticky lg:top-4"
-			>
-				{barsError && !bars ? (
+				<Card className="flex flex-col gap-2">
+					<label htmlFor="home-strategy" className="text-[15px] font-bold">
+						運用する戦略
+					</label>
+					<select
+						id="home-strategy"
+						className="h-11 w-full rounded-lg border border-line bg-surface px-3 text-[15px] font-semibold"
+						value={active?.id ?? ""}
+						disabled={saving}
+						onChange={(e) =>
+							choose(e.target.value === "" ? null : Number(e.target.value))
+						}
+					>
+						<option value="">未選択</option>
+						{strategies.list.map((s) => (
+							<option key={s.id} value={s.id}>
+								{s.name}（{TIMEFRAME_LABELS[s.params.timeframe]}）
+							</option>
+						))}
+					</select>
+					{saveError && (
+						<p role="alert" className="text-xs font-semibold text-loss">
+							保存できなかった: {saveError}
+						</p>
+					)}
+					{strategies.list.length === 0 && (
+						<p className="text-xs text-text-2">
+							戦略がまだ無い。「戦略」の画面で作ると選べる
+						</p>
+					)}
+				</Card>
+				{current && <JudgmentTiles current={current} />}
+			</div>
+			{barsError && !bars ? (
+				<section aria-label="価格チャート" className={`${PANEL} lg:col-span-2`}>
 					<ErrorState
 						what="チャートの足を読み込めなかった"
 						next={barsError}
 						action={<Button onClick={loadBars}>もう一度読み込む</Button>}
 					/>
-				) : noData ? (
+				</section>
+			) : noData ? (
+				<section aria-label="価格チャート" className={`${PANEL} lg:col-span-2`}>
 					<EmptyState
 						title="収集を始めたばかりでデータがない"
 						description="価格を受け取ると、ここにチャートが出る"
 					/>
-				) : (
-					<PriceChart
-						bars={shownBars}
-						emaPeriods={fresh ? emaShown : NO_PERIODS}
-						initialSpanMs={HOME_INITIAL_SPAN_MS}
-						viewKey={bars?.key ?? ""}
-						currentPrice={latest?.price ?? null}
-						judgments={barJudgments}
-						bg={bg}
-						onBgChange={setBg}
-						toolbar={
-							<>
-								<Segmented
-									name="home-timeframe"
-									label="足の粒度"
-									size="sm"
-									options={TF_OPTIONS}
-									value={timeframe}
-									onChange={setChosenTf}
-								/>
-								{active && periods.length > 0 && emaShown.length === 0 && (
-									<p className="text-xs text-text-2">
-										EMA は戦略の粒度（
-										{TIMEFRAME_LABELS[active.params.timeframe]}）でだけ表示する
-									</p>
-								)}
-							</>
-						}
-					/>
-				)}
-			</section>
+				</section>
+			) : (
+				<PriceChart
+					bars={shownBars}
+					emaPeriods={fresh ? emaShown : NO_PERIODS}
+					initialSpanMs={HOME_INITIAL_SPAN_MS}
+					viewKey={bars?.key ?? ""}
+					currentPrice={latest?.price ?? null}
+					judgments={barJudgments}
+					bg={bg}
+					onBgChange={setBg}
+					split={SPLIT}
+					toolbar={
+						<>
+							<Segmented
+								name="home-timeframe"
+								label="足の粒度"
+								size="sm"
+								options={TF_OPTIONS}
+								value={timeframe}
+								onChange={setChosenTf}
+							/>
+							{active && periods.length > 0 && emaShown.length === 0 && (
+								<p className="text-xs text-text-2">
+									EMA は戦略の粒度（
+									{TIMEFRAME_LABELS[active.params.timeframe]}）でだけ表示する
+								</p>
+							)}
+						</>
+					}
+				/>
+			)}
 		</HomeFrame>
 	);
 }
@@ -401,10 +411,7 @@ function HomeBody({
 /** 今の判定3つ。押すと AI判定画面へ */
 function JudgmentTiles({ current }: { current: CurrentJudgment }) {
 	return (
-		<section
-			aria-label="AI判定"
-			className="grid grid-cols-3 gap-2 lg:col-start-1"
-		>
+		<section aria-label="AI判定" className="grid grid-cols-3 gap-2">
 			{JUDGES.map((j) => {
 				const r = current.results[j];
 				return (
@@ -444,7 +451,7 @@ function PriceHeader({ latest }: { latest: LatestMarket | null }) {
 	const change = changePercent(price, latest?.price24hAgo ?? null);
 
 	return (
-		<div className="flex items-end justify-between gap-2 lg:col-start-1">
+		<div className="flex items-end justify-between gap-2">
 			<div className="flex min-w-0 flex-col gap-0.5">
 				<span className="text-xs text-text-2">
 					BTC/JPY · Coincheck ·{" "}
@@ -473,7 +480,7 @@ function CollectorAlert({ latest }: { latest: LatestMarket | null }) {
 	return (
 		<div
 			role="alert"
-			className="flex flex-col gap-1 rounded-[10px] bg-warn px-3.5 py-3 text-xs leading-relaxed lg:col-start-1"
+			className="flex flex-col gap-1 rounded-[10px] bg-warn px-3.5 py-3 text-xs leading-relaxed"
 		>
 			<b className="text-[13px]">価格の収集が止まっている</b>
 			<span>{trouble.what}</span>
