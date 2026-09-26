@@ -5,8 +5,8 @@ test("各画面へ移動できる", async ({ page, isMobile }) => {
 	await expect(page).toHaveURL(/\/home$/);
 	const nav = page.getByRole("navigation", { name: "メイン" });
 	const items = isMobile
-		? ["AI判定", "戦略", "その他", "バックテスト"]
-		: ["AI判定", "戦略", "過去データ", "設定", "バックテスト"];
+		? ["戦略", "取引", "その他", "バックテスト"]
+		: ["AI判定", "戦略", "取引", "過去データ", "設定", "バックテスト"];
 	for (const name of items) {
 		await nav.getByRole("link", { name, exact: true }).click();
 		await expect(
@@ -14,7 +14,12 @@ test("各画面へ移動できる", async ({ page, isMobile }) => {
 		).toBeVisible();
 	}
 	if (isMobile) {
-		// スマホの過去データと設定は「その他」の中にある
+		// スマホの AI判定・過去データ・設定は「その他」の中にある
+		await nav.getByRole("link", { name: "その他" }).click();
+		await page.getByRole("link", { name: /^AI判定/ }).click();
+		await expect(
+			page.getByRole("heading", { level: 1, name: "AI判定" }),
+		).toBeVisible();
 		await nav.getByRole("link", { name: "その他" }).click();
 		await page.getByRole("link", { name: /過去データ/ }).click();
 		await expect(
