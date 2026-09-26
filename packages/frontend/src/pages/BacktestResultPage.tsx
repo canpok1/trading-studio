@@ -34,6 +34,7 @@ import {
 	conditionDiff,
 	frequencyText,
 	groupText,
+	ruleText,
 	stepLimitedText,
 } from "../lib/condition-text";
 import { formatInt, formatSignedInt, formatSignedPercent } from "../lib/number";
@@ -188,6 +189,8 @@ function RunHeader({
 		`損切り: ${groupText(p.stopLoss)}`,
 		`${formatBtc(p.orderSize)} BTC`,
 		`手数料 指値${pct(run.fees.limitPpm)}/成行${pct(run.fees.marketPpm)}`,
+		// チャートの判定もこのルールで出すので、判定の条件が無い戦略でも出す
+		...(run.aggregationRule ? [ruleText(run.aggregationRule)] : []),
 	];
 	return (
 		<div className="flex flex-col gap-1.5">

@@ -107,3 +107,39 @@ test("戦略設定の画面は横にはみ出さない", async ({ page }) => {
 	);
 	expect(overflow).toBeLessThanOrEqual(0);
 });
+
+test("AI 判定の条件を追加して保存でき、値を1つも選ばないと保存できない", async ({
+	page,
+}, info) => {
+	const name = `判定 ${info.project.name}`;
+	await page.goto("/strategies");
+	await createFromTemplate(page, name, /^トレンド追随/);
+	const buy = page.getByRole("region", { name: "買い注文する条件" });
+	await buy.getByRole("button", { name: "＋ 条件を追加" }).click();
+	await page
+		.getByRole("dialog")
+		.getByRole("button", { name: "リスク判定が指定のどれか" })
+		.click();
+	const risk = buy.getByRole("group").filter({ hasText: "リスク判定が" });
+	await expect(risk.getByLabel("平常")).toBeChecked();
+	await expect(risk.getByLabel("警戒")).toBeChecked();
+	await expect(risk.getByLabel("危機")).not.toBeChecked();
+
+	await risk.getByText("平常").click();
+	await risk.getByText("警戒").click();
+	await expect(risk).toContainText("1つ以上選ぶ");
+	await expect(
+		page.getByRole("button", { name: "入力を直すと保存できる" }),
+	).toBeDisabled();
+
+	await risk.getByText("平常").click();
+	await page.getByRole("button", { name: "保存", exact: true }).click();
+	await expect(page.getByRole("status")).toHaveText("保存した");
+	await page.reload();
+	const saved = page
+		.getByRole("region", { name: "買い注文する条件" })
+		.getByRole("group")
+		.filter({ hasText: "リスク判定が" });
+	await expect(saved.getByLabel("平常")).toBeChecked();
+	await expect(saved.getByLabel("警戒")).not.toBeChecked();
+});
