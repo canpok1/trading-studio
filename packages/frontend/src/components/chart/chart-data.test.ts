@@ -42,7 +42,9 @@ describe("chart-data", () => {
 	});
 
 	test("表示期間は足の間隔から本数を決める", () => {
-		expect(visibleRange("all", 100, H)).toBeNull();
+		// 全期間は左端の目盛りが切れないよう余白を空ける
+		expect(visibleRange("all", 100, H)).toEqual({ from: -10, to: 102 });
+		expect(visibleRange("all", 0, H)).toBeNull();
 		expect(visibleRange("1d", 100, H)).toEqual({ from: 75.5, to: 102 });
 		// 足が粗くても最低5本は出す
 		expect(visibleRange("1d", 100, 24 * H)).toEqual({ from: 94.5, to: 102 });

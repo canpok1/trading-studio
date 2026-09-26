@@ -80,13 +80,19 @@ export function markerColorVar(
 	return m.side === "buy" ? "--color-buy" : "--color-sell";
 }
 
-/** 表示期間に合わせた論理範囲（足の番号）。全期間は null（全体を収める） */
+/**
+ * 表示期間に合わせた論理範囲（足の番号）。足が無ければ null（全体を収める）。
+ * 全期間は左に余白を空ける。最初の足がチャートの左端に来ると、その目盛りの文字が途中で切れるため
+ */
 export function visibleRange(
 	range: ChartRange,
 	barCount: number,
 	stepMs: number,
 ): { from: number; to: number } | null {
-	if (range === "all" || barCount === 0) return null;
+	if (barCount === 0) return null;
+	if (range === "all") {
+		return { from: -Math.ceil(barCount * 0.1), to: barCount - 1 + 3 };
+	}
 	const k = Math.max(5, Math.round(RANGE_MS[range] / stepMs));
 	return { from: barCount - k - 0.5, to: barCount - 1 + 3 };
 }

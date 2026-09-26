@@ -59,8 +59,8 @@ function tickLabel(t: Time, type: TickMarkType): string {
 	switch (type) {
 		case TickMarkType.Year:
 			return String(d.getUTCFullYear());
+		// 月の変わり目も他の日付と同じ形にする。「2026/8」は左端で切れると「6/8」と読めてしまう
 		case TickMarkType.Month:
-			return `${d.getUTCFullYear()}/${d.getUTCMonth() + 1}`;
 		case TickMarkType.DayOfMonth:
 			return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
 		default:
