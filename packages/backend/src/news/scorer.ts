@@ -35,6 +35,7 @@ export function createScorer({
 	rule,
 	now = Date.now,
 	minIntervalMs = MIN_INTERVAL_MS,
+	retryDelaysMs = RETRY_DELAYS_MS,
 }: {
 	repo: ScoreRepository;
 	model: ScoreModel;
@@ -43,6 +44,8 @@ export function createScorer({
 	now?: () => number;
 	/** 採点の問い合わせの最短の間隔 */
 	minIntervalMs?: number;
+	/** 自動の再試行の間隔。回数はこの長さ */
+	retryDelaysMs?: readonly number[];
 }): Scorer {
 	let running: Promise<void> | null = null;
 	/** 直近の採点が続けて失敗している間の、最初の失敗 */
@@ -79,7 +82,7 @@ export function createScorer({
 		} catch (e) {
 			const error = e instanceof Error ? e.message : String(e);
 			const attempts = next.attempts + 1;
-			const delay = RETRY_DELAYS_MS[attempts - 1];
+			const delay = retryDelaysMs[attempts - 1];
 			repo.saveFailure(
 				next.id,
 				error,

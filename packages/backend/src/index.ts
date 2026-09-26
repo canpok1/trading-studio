@@ -5,6 +5,7 @@ export type {
 	BacktestRun,
 } from "./backtests/types";
 export type { CollectorStatus } from "./collector/types";
+export type { CurrentJudgment } from "./judgments/types";
 export type { ChartRangeId, LatestMarket } from "./market/types";
 export type { ImportJob, TimeframeCoverage } from "./market-data/types";
 export type {

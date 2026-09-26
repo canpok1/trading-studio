@@ -9,6 +9,7 @@ import type { Collector } from "./collector/collector";
 import type { LiveMarket } from "./collector/types";
 import type { Db } from "./db/open";
 import { createTestDb } from "./db/test-db";
+import { createJudgmentService } from "./judgments/service";
 import { createMarketService } from "./market/service";
 import { MarketDataRepository } from "./market-data/repository";
 import { createMarketDataService } from "./market-data/service";
@@ -98,6 +99,10 @@ export function createTestApp(
 		backtests,
 		news,
 		scoring,
+		judgments: createJudgmentService({
+			repo: scoreRepo,
+			now: () => clock.now,
+		}),
 		...over,
 	});
 	return {
