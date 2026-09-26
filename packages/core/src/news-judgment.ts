@@ -251,7 +251,8 @@ function summarize(
 		if (count[j] === 0) {
 			return { value: NEUTRAL[j], average: null, count: 0 };
 		}
-		const average = sum[j] / wsum[j];
+		// 重みの小数計算の誤差で、しきい値ちょうどの平均が下の段に落ちないよう丸める
+		const average = Math.round((sum[j] / wsum[j]) * 1e6) / 1e6;
 		return { value: classify(j, average, rule), average, count: count[j] };
 	};
 	return {

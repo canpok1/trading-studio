@@ -119,6 +119,24 @@ describe("classify のしきい値の境界", () => {
 	});
 });
 
+test("重み付き平均がしきい値ちょうどなら、評価時刻によらずその段になる", () => {
+	const list = [
+		news(1, 1.3, { trend: 60, risk: 70, sentiment: 40 }),
+		news(2, 7.7, { trend: 60, risk: 70, sentiment: 40 }),
+	];
+	const times: number[] = [];
+	for (let i = 0; i < 2000; i++) times.push(NOW + i * 37_003);
+	for (const p of judgmentSeries(list, times, rule)) {
+		expect(p.values).toEqual({ trend: "up", risk: "crisis", sentiment: "0" });
+		const r = judgeAt(list, p.time, rule).results;
+		expect([r.trend.value, r.risk.value, r.sentiment.value]).toEqual([
+			"up",
+			"crisis",
+			"0",
+		]);
+	}
+});
+
 describe("judgmentSeries", () => {
 	test("各時刻で judgeAt と同じ判定になる", () => {
 		const list: ScoredNews[] = [];
