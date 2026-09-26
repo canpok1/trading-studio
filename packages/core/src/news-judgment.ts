@@ -285,15 +285,14 @@ export type JudgmentPoint = {
 };
 
 /**
- * 昇順の時刻の列それぞれの判定（チャート・バックテスト用）。
+ * 昇順に進む時刻ごとの判定を順に出す（バックテストの評価のたびに呼ぶ）。
  * 重みはどのニュースも同じ割合で減るので、使うニュースが変わらない間は平均点も変わらない。
  * そのため使うニュースが入れ替わる時刻だけ計算し直す
  */
-export function judgmentSeries(
+export function judgmentCursor(
 	news: readonly ScoredNews[],
-	times: readonly number[],
 	rule: AggregationRule,
-): JudgmentPoint[] {
+): (time: number) => JudgmentPoint["values"] {
 	const windowMs = rule.windowHours * HOUR;
 	// ニュースは [採点時刻, 新しさの時刻 + 期間) の間だけ使う
 	const events: { at: number; news: ScoredNews; add: boolean }[] = [];
@@ -308,8 +307,7 @@ export function judgmentSeries(
 	let next = 0;
 	let values: JudgmentPoint["values"] = { ...NEUTRAL };
 	let prev = Number.NEGATIVE_INFINITY;
-	const out: JudgmentPoint[] = [];
-	for (const time of times) {
+	return (time) => {
 		if (time < prev) throw new RangeError("時刻は昇順で渡す");
 		prev = time;
 		let changed = false;
@@ -331,7 +329,16 @@ export function judgmentSeries(
 				sentiment: r.sentiment.value,
 			};
 		}
-		out.push({ time, values });
-	}
-	return out;
+		return values;
+	};
+}
+
+/** 昇順の時刻の列それぞれの判定（チャート用） */
+export function judgmentSeries(
+	news: readonly ScoredNews[],
+	times: readonly number[],
+	rule: AggregationRule,
+): JudgmentPoint[] {
+	const at = judgmentCursor(news, rule);
+	return times.map((time) => ({ time, values: at(time) }));
 }

@@ -5,6 +5,7 @@ import type {
 	Judge,
 	JudgeResult,
 	JudgmentValue,
+	ScoredNews,
 	ValidationError,
 } from "@trading-studio/core";
 
@@ -40,6 +41,10 @@ export interface JudgmentService {
 		rule?: AggregationRule,
 	): JudgmentSeries;
 	rule(): AggregationRule;
+	/** 最初に採点した時刻（採点の記録の始まり）。まだ無ければ null */
+	firstScoredAt(): number | null;
+	/** 採点時刻が [from, to) の採点済みのニュース */
+	scoredNews(from: number, to: number): ScoredNews[];
 	saveRule(
 		rule: AggregationRule,
 	): { ok: true } | { ok: false; errors: ValidationError[] };

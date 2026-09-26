@@ -1,6 +1,7 @@
 // 条件セットを1行で表す文字列。結果の要約と、戦略へ上書きするときの差分に使う
 
 import type {
+	AggregationRule,
 	Condition,
 	ConditionGroup,
 	ConditionSet,
@@ -10,8 +11,11 @@ import type {
 import {
 	FREQUENCY_UNIT_LABELS,
 	formatBtc,
+	JUDGMENT_VALUE_LABELS,
 	TIMEFRAME_LABELS,
 } from "@trading-studio/core";
+
+const JUDGE_SHORT = { trend: "トレンド", risk: "リスク", sentiment: "感情" };
 
 const freq = (f: Frequency) => `${f.value}${FREQUENCY_UNIT_LABELS[f.unit]}`;
 
@@ -32,7 +36,15 @@ export function conditionText(c: Condition): string {
 			return `${c.lookback}本の${c.direction === "high" ? "高値上抜け" : "安値下抜け"}`;
 		case "entryChange":
 			return `${c.direction === "up" ? "+" : "−"}${c.percent}%`;
+		case "judgment":
+			return `${JUDGE_SHORT[c.judge]}${c.values.map((v) => JUDGMENT_VALUE_LABELS[v] ?? v).join("/")}`;
 	}
+}
+
+/** 集計ルールの要約（バックテスト結果に出す） */
+export function ruleText(r: AggregationRule): string {
+	const t = r.thresholds;
+	return `集計 ${r.windowHours}時間・半減期${r.halfLifeHours}時間 · トレンド ${t.trend.down}/${t.trend.up} · リスク ${t.risk.caution}/${t.risk.crisis} · 感情 ${t.sentiment.minus2}/${t.sentiment.minus1}/${t.sentiment.plus1}/${t.sentiment.plus2}`;
 }
 
 export function groupText(g: ConditionGroup): string {

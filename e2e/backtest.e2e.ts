@@ -48,7 +48,7 @@ const PARAMS = {
 async function prepare(
 	request: APIRequestContext,
 	name: string,
-	params: typeof PARAMS = PARAMS,
+	params: Record<string, unknown> = PARAMS,
 ) {
 	const res = await request.post("/api/data/imports", {
 		multipart: {
@@ -191,4 +191,26 @@ test("判定頻度より細かいデータが無いと、実行前と結果で�
 	await page.getByRole("button", { name: "バックテストを実行" }).click();
 	await expect(page).toHaveURL(/\/backtest\/runs\/\d+$/);
 	await expect(notice).toBeVisible();
+});
+
+test("AI 判定の条件がある戦略は、採点の記録が始まる前の期間では実行できず理由が出る", async ({
+	page,
+	request,
+}, info) => {
+	const name = `BT 判定 ${info.project.name}`;
+	await prepare(request, name, {
+		...PARAMS,
+		buy: {
+			match: "all",
+			conditions: [{ type: "judgment", judge: "trend", values: ["up"] }],
+		},
+	});
+	await choose(page, name, "2026-05-03", "2026-05-25");
+	await expect(page.getByText(/判定履歴を使う/)).toBeVisible();
+	await expect(page.getByRole("alert")).toContainText(
+		/AI 判定の(記録は .+ から|条件があるが、ニュースの採点の記録がまだ無い)/,
+	);
+	await expect(
+		page.getByRole("button", { name: "バックテストを実行" }),
+	).toBeDisabled();
 });

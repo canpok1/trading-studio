@@ -1,10 +1,12 @@
 // バックテストの計算を動かす部品の型。本番は Worker、テストは同じスレッドで動かす
 
 import type {
+	AggregationRule,
 	BacktestSummary,
 	Candle,
 	ConditionSet,
 	FeeRates,
+	ScoredNews,
 	Timeframe,
 } from "@trading-studio/core";
 
@@ -20,6 +22,8 @@ export type RunnerJob = {
 	to: number;
 	initialCash: number;
 	fees: FeeRates;
+	/** AI 判定の材料。条件に判定が無ければ null */
+	judgments: { news: ScoredNews[]; rule: AggregationRule } | null;
 };
 
 /** 保存する結果。中身は gzip した JSON */

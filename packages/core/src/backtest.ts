@@ -2,6 +2,8 @@
 
 import { formatBtc, formatYen } from "./format";
 import { feeYen, notionalYen, PPM, SATOSHI_PER_BTC } from "./money";
+import type { AggregationRule, ScoredNews } from "./news-judgment";
+import { judgmentCursor } from "./news-judgment";
 import type { Strategy, StrategyOutput } from "./strategy";
 import type { Timeframe } from "./timeframe";
 import {
@@ -65,6 +67,11 @@ export type BacktestConfig<P> = {
 	onProgress?: (done: number, total: number) => void;
 	/** true を返すと中止する */
 	shouldAbort?: () => boolean;
+	/**
+	 * AI 判定の材料。評価のたびに、その時刻までに採点済みの点数からこのルールで判定を作って戦略へ渡す。
+	 * 戦略が判定器を使わなければ省いてよい
+	 */
+	judgments?: { news: readonly ScoredNews[]; rule: AggregationRule };
 };
 
 export class BacktestError extends Error {
@@ -207,6 +214,26 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 		throw new BacktestError("判定に使う足が戦略の粒度より粗い");
 	}
 	const stepMs = TIMEFRAME_MS[stepTimeframe];
+	const judges = strategy.requiredJudges(params);
+	if (judges.length > 0 && !config.judgments) {
+		throw new BacktestError(
+			"AI 判定の条件があるのに、判定の材料が渡されていない",
+		);
+	}
+	const judgeAtTime =
+		judges.length > 0 && config.judgments
+			? judgmentCursor(config.judgments.news, config.judgments.rule)
+			: null;
+	const judgmentsAt = (time: number) => {
+		if (!judgeAtTime) return {};
+		const v = judgeAtTime(time);
+		return Object.fromEntries(
+			judges.map((j) => [
+				j,
+				[{ judge: j, time, label: v[j as keyof typeof v] }],
+			]),
+		);
+	};
 
 	const startIndex = steps.findIndex((c) => c.time >= from);
 	const endIndex = steps.findLastIndex((c) => c.time < to);
@@ -427,10 +454,11 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 				forming,
 			];
 			const openOrders = open.map((x) => ({ ...x.order }));
+
 			const out: StrategyOutput = strategy.evaluate({
 				now: closeAt,
 				candles: window,
-				judgments: {},
+				judgments: judgmentsAt(closeAt),
 				position,
 				cash,
 				openOrders,

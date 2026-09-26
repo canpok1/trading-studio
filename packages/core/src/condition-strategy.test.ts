@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Condition, ConditionSet } from "./condition-strategy";
 import {
 	chooseStepTimeframe,
+	conditionStrategy,
 	emaPeriods,
 	evaluateConditionSet,
 	historyBars,
@@ -399,4 +400,82 @@ describe("判定に使う足の粒度", () => {
 			});
 		},
 	);
+});
+
+describe("AI 判定の条件", () => {
+	const trendUp: Condition = {
+		type: "judgment",
+		judge: "trend",
+		values: ["up", "range"],
+	};
+	const judged = (label: string) => ({
+		trend: [{ judge: "trend", time: 0, label }],
+	});
+
+	test("最新の判定が選んだ値のどれかなら成立し、理由に判定を書く", () => {
+		const cs = candles([100, 100]);
+		const hit = evaluateConditionSet(
+			input(cs, buyWith(trendUp), { judgments: judged("range") }),
+		);
+		expect(hit.intents).toHaveLength(1);
+		expect(hit.note).toContain("トレンド判定がレンジ（上昇・レンジのどれか）");
+		const miss = evaluateConditionSet(
+			input(cs, buyWith(trendUp), { judgments: judged("down") }),
+		);
+		expect(miss.intents).toHaveLength(0);
+	});
+
+	test("判定がまだ無ければ判定しない", () => {
+		const out = evaluateConditionSet(input(candles([100]), buyWith(trendUp)));
+		expect(out.intents).toHaveLength(0);
+		expect(out.note).toContain("トレンド判定がまだ無い");
+	});
+
+	test("売りのグループにも入れられる", () => {
+		const p = params({
+			stopLoss: {
+				match: "any",
+				conditions: [{ type: "judgment", judge: "risk", values: ["crisis"] }],
+			},
+		});
+		const out = evaluateConditionSet(
+			input(candles([100]), p, {
+				position: holding(100),
+				judgments: { risk: [{ judge: "risk", time: 0, label: "crisis" }] },
+			}),
+		);
+		expect(out.intents[0]).toMatchObject({ side: "sell" });
+	});
+
+	test("使う判定器と入力検証", () => {
+		const p = params({
+			buy: {
+				match: "all",
+				conditions: [
+					{ type: "judgment", judge: "sentiment", values: [] },
+					trendUp,
+				],
+			},
+			stopLoss: {
+				match: "any",
+				conditions: [
+					{
+						type: "judgment",
+						judge: "risk",
+						values: ["crisis", "up" as never],
+					},
+				],
+			},
+		});
+		expect(conditionStrategy.requiredJudges(p)).toEqual([
+			"trend",
+			"risk",
+			"sentiment",
+		]);
+		expect(validateConditionSet(p).map((e) => e.path)).toEqual([
+			"buy.conditions.0.values",
+			"stopLoss.conditions.0.values",
+		]);
+		expect(parseConditionSet(JSON.parse(JSON.stringify(p)))).toEqual(p);
+	});
 });

@@ -5,6 +5,8 @@ import type {
 	ConditionGroupKey,
 	ConditionSet,
 	FrequencyUnit,
+	Judge,
+	JudgmentValue,
 	Timeframe,
 	ValidationError,
 } from "@trading-studio/core";
@@ -14,6 +16,10 @@ import {
 	FREQUENCY_UNIT_LABELS,
 	FREQUENCY_UNITS,
 	formatBtc,
+	JUDGE_LABELS,
+	JUDGES,
+	JUDGMENT_VALUE_LABELS,
+	JUDGMENT_VALUES,
 	SATOSHI_PER_BTC,
 	TIMEFRAME_LABELS,
 	TIMEFRAMES,
@@ -221,26 +227,64 @@ const GROUP_BORDER: Record<ConditionGroupKey, string> = {
 	stopLoss: "border-l-loss",
 };
 
-const CONDITION_NAMES: Record<Condition["type"], string> = {
+/** 追加の選択肢。AI の判定は判定器ごとに別の選択肢にする */
+type ConditionKind =
+	| Exclude<Condition["type"], "judgment">
+	| `judgment:${Judge}`;
+
+const CONDITION_NAMES: Record<ConditionKind, string> = {
 	emaCross: "EMA のクロス",
 	breakout: "直近の高値・安値の突破",
 	entryChange: "買値からの %",
+	"judgment:trend": "トレンド判定が指定のどれか",
+	"judgment:risk": "リスク判定が指定のどれか",
+	"judgment:sentiment": "センチメント判定が指定のどれか",
+};
+
+const PRICE_KINDS: Record<ConditionGroupKey, ConditionKind[]> = {
+	buy: ["emaCross", "breakout"],
+	takeProfit: ["emaCross", "breakout", "entryChange"],
+	stopLoss: ["emaCross", "breakout", "entryChange"],
+};
+
+const JUDGMENT_KINDS = JUDGES.map((j) => `judgment:${j}` as const);
+
+/** 判定の条件の既定値。売りでは悪い側を選んでおく */
+const JUDGMENT_DEFAULTS: {
+	[J in Judge]: { buy: JudgmentValue<J>[]; sell: JudgmentValue<J>[] };
+} = {
+	trend: { buy: ["up", "range"], sell: ["down"] },
+	risk: { buy: ["normal", "caution"], sell: ["crisis"] },
+	sentiment: { buy: ["0", "+1", "+2"], sell: ["-2"] },
 };
 
 function defaultCondition(
-	type: Condition["type"],
+	kind: ConditionKind,
 	group: ConditionGroupKey,
 ): Condition {
 	const sell = group !== "buy";
-	switch (type) {
+	switch (kind) {
 		case "emaCross":
-			return { type, fast: 12, slow: 48, direction: sell ? "down" : "up" };
+			return {
+				type: kind,
+				fast: 12,
+				slow: 48,
+				direction: sell ? "down" : "up",
+			};
 		case "breakout":
-			return { type, lookback: 24, direction: sell ? "low" : "high" };
+			return { type: kind, lookback: 24, direction: sell ? "low" : "high" };
 		case "entryChange":
 			return group === "stopLoss"
-				? { type, percent: 2, direction: "down" }
-				: { type, percent: 4, direction: "up" };
+				? { type: kind, percent: 2, direction: "down" }
+				: { type: kind, percent: 4, direction: "up" };
+		default: {
+			const judge = kind.slice("judgment:".length) as Judge;
+			return {
+				type: "judgment",
+				judge,
+				values: [...JUDGMENT_DEFAULTS[judge][sell ? "sell" : "buy"]],
+			};
+		}
 	}
 }
 
@@ -324,6 +368,39 @@ function ConditionRow({
 				</>
 			);
 			break;
+		case "judgment": {
+			const all = JUDGMENT_VALUES[c.judge] as readonly JudgmentValue[];
+			const toggle = (v: JudgmentValue, on: boolean) => {
+				const set = new Set<string>(c.values);
+				if (on) set.add(v);
+				else set.delete(v);
+				// 並びは選択肢の並びに揃える
+				onChange({ ...c, values: all.filter((x) => set.has(x)) });
+			};
+			body = (
+				<>
+					<span>{JUDGE_LABELS[c.judge]}判定が</span>
+					<span className="flex flex-wrap gap-1">
+						{all.map((v) => (
+							<label
+								key={v}
+								className="flex h-8 cursor-pointer items-center gap-1 rounded-full border border-line bg-surface px-2.5 text-xs font-semibold has-checked:border-accent has-checked:bg-accent has-checked:text-white has-focus-visible:outline-2 has-focus-visible:outline-accent dark:has-checked:text-accent-ink"
+							>
+								<input
+									type="checkbox"
+									className="sr-only"
+									checked={(c.values as string[]).includes(v)}
+									onChange={(e) => toggle(v, e.target.checked)}
+								/>
+								{JUDGMENT_VALUE_LABELS[v] ?? v}
+							</label>
+						))}
+					</span>
+					<span>のどれか</span>
+				</>
+			);
+			break;
+		}
 		case "entryChange":
 			body = (
 				<>
@@ -470,34 +547,38 @@ export function ConditionGroups({ params, onChange, errors }: Props) {
 					title={`${CONDITION_GROUP_LABELS[adding]}を追加`}
 					onClose={() => setAdding(null)}
 				>
-					<div className="overflow-hidden rounded-xl border border-line">
-						{(adding === "buy"
-							? (["emaCross", "breakout"] as const)
-							: (["emaCross", "breakout", "entryChange"] as const)
-						).map((t) => (
-							<button
-								key={t}
-								type="button"
-								className="flex w-full border-b border-line px-4 py-3.5 text-left text-[15px] last:border-b-0 hover:bg-surface-2"
-								onClick={() => {
-									const group = params[adding];
-									setGroup(adding, {
-										...group,
-										conditions: [
-											...group.conditions,
-											defaultCondition(t, adding),
-										],
-									});
-									setAdding(null);
-								}}
-							>
-								{CONDITION_NAMES[t]}
-							</button>
-						))}
-					</div>
-					<p className="text-xs text-text-2">
-						AI の判定の条件はフェーズ3で追加する。
-					</p>
+					{(
+						[
+							["価格・保有", PRICE_KINDS[adding]],
+							["AI の判定", JUDGMENT_KINDS],
+						] as const
+					).map(([title, kinds]) => (
+						<div key={title} className="flex flex-col gap-1.5">
+							<span className="text-xs text-text-2">{title}</span>
+							<div className="overflow-hidden rounded-xl border border-line">
+								{kinds.map((t) => (
+									<button
+										key={t}
+										type="button"
+										className="flex w-full border-b border-line px-4 py-3.5 text-left text-[15px] last:border-b-0 hover:bg-surface-2"
+										onClick={() => {
+											const group = params[adding];
+											setGroup(adding, {
+												...group,
+												conditions: [
+													...group.conditions,
+													defaultCondition(t, adding),
+												],
+											});
+											setAdding(null);
+										}}
+									>
+										{CONDITION_NAMES[t]}
+									</button>
+								))}
+							</div>
+						</div>
+					))}
 					<Button onClick={() => setAdding(null)}>やめる</Button>
 				</Modal>
 			)}
