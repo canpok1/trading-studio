@@ -1,12 +1,14 @@
 // 条件セットの編集欄。「戦略」の画面とバックテストの実行画面で使う
 
 import type {
+	BuyOrder,
 	Condition,
 	ConditionGroupKey,
 	ConditionSet,
 	FrequencyUnit,
 	Judge,
 	JudgmentValue,
+	OrderType,
 	Timeframe,
 	ValidationError,
 } from "@trading-studio/core";
@@ -20,6 +22,7 @@ import {
 	JUDGES,
 	JUDGMENT_VALUE_LABELS,
 	JUDGMENT_VALUES,
+	ORDER_TYPE_LABELS,
 	SATOSHI_PER_BTC,
 	TIMEFRAME_LABELS,
 	TIMEFRAMES,
@@ -207,8 +210,7 @@ export function OrderSizeCard({
 			</span>
 			<ErrorText messages={errs} />
 			<p className="text-xs leading-relaxed text-text-2">
-				買いは現在値より 0.1% 下の指値で出し、3
-				本のあいだ約定しなければ取り消す。売りは成行。利確・損切りの両方が同時に成り立ったら損切りを優先する。
+				買いの出し方は「買い注文する条件」で選ぶ。売りは成行。利確・損切りの両方が同時に成り立ったら損切りを優先する。
 			</p>
 		</Card>
 	);
@@ -461,6 +463,67 @@ function ConditionRow({
 	);
 }
 
+/** 買い注文の出し方。指値のときだけ値幅と取消までの本数を出す */
+function BuyOrderRow({
+	order,
+	onChange,
+	errors,
+}: {
+	order: BuyOrder;
+	onChange: (o: BuyOrder) => void;
+	errors: ValidationError[];
+}) {
+	const below = errorsAt(errors, "buyOrder.belowPercent");
+	const expire = errorsAt(errors, "buyOrder.expireBars");
+	return (
+		<div className="flex flex-col gap-1.5 border-t border-line pt-2.5">
+			<div className="flex flex-wrap items-center gap-2">
+				<span className="text-[13px] font-semibold">注文方法</span>
+				<Segmented<OrderType>
+					name="buy-order-type"
+					label="買いの注文方法"
+					size="sm"
+					options={(["limit", "market"] as const).map(
+						(t) => [t, ORDER_TYPE_LABELS[t]] as const,
+					)}
+					value={order.type}
+					onChange={(type) => onChange({ ...order, type })}
+				/>
+			</div>
+			{order.type === "limit" ? (
+				<div className="flex flex-col gap-1 rounded-[10px] bg-bg px-3 py-2">
+					<div className="flex flex-wrap items-center gap-1.5 text-sm">
+						<span>現在値から</span>
+						<NumberInput
+							value={order.belowPercent}
+							onChange={(belowPercent) => onChange({ ...order, belowPercent })}
+							invalid={below.length > 0}
+							inputMode="decimal"
+							aria-label="指値を現在値から下げる %"
+							className="w-16"
+						/>
+						<span>% 下に指値。</span>
+						<NumberInput
+							value={order.expireBars}
+							onChange={(expireBars) => onChange({ ...order, expireBars })}
+							invalid={expire.length > 0}
+							inputMode="numeric"
+							aria-label="指値を取り消すまでの本数"
+							className="w-16"
+						/>
+						<span>本のあいだ約定しなければ取消</span>
+					</div>
+					<ErrorText messages={[...below, ...expire]} />
+				</div>
+			) : (
+				<p className="text-xs text-text-2">
+					次の約定の価格で買う。資金は判定時の現在値で見積もる。
+				</p>
+			)}
+		</div>
+	);
+}
+
 /** 買い・利確・損切りの3グループ */
 export function ConditionGroups({ params, onChange, errors }: Props) {
 	const [adding, setAdding] = useState<ConditionGroupKey | null>(null);
@@ -539,6 +602,13 @@ export function ConditionGroups({ params, onChange, errors }: Props) {
 						>
 							＋ 条件を追加
 						</Button>
+						{g === "buy" && (
+							<BuyOrderRow
+								order={params.buyOrder}
+								onChange={(buyOrder) => onChange({ ...params, buyOrder })}
+								errors={errors}
+							/>
+						)}
 					</section>
 				);
 			})}

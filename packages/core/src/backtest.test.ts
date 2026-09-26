@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { BacktestConfig } from "./backtest";
 import { BacktestAborted, BacktestError, runBacktest } from "./backtest";
 import type { ConditionSet } from "./condition-strategy";
-import { conditionStrategy } from "./condition-strategy";
+import { conditionStrategy, DEFAULT_BUY_ORDER } from "./condition-strategy";
 import { DEFAULT_AGGREGATION_RULE } from "./news-judgment";
 import type { Strategy } from "./strategy";
 import { strategyTemplate } from "./templates";
@@ -24,7 +24,13 @@ const bars = (list: Bar[], start = 0): Candle[] =>
 	}));
 
 // 1回だけ指値で買い、買えたら次の判定で成行で売る戦略
-type Script = { buyPrice: number; expire?: number; sell?: boolean };
+type Script = {
+	buyPrice: number;
+	expire?: number;
+	sell?: boolean;
+	/** 買いを成行で出す */
+	market?: boolean;
+};
 const scripted: Strategy<Script> = {
 	id: "scripted",
 	requiredJudges: () => [],
@@ -50,6 +56,14 @@ const scripted: Strategy<Script> = {
 					};
 		}
 		if (state !== null || openOrders.length > 0) return next;
+		if (params.market) {
+			return {
+				intents: [{ kind: "place", side: "buy", type: "market", quantity: Q }],
+				nextEvalAt: now + H,
+				state: "bought",
+				note: "買い",
+			};
+		}
 		return {
 			intents: [
 				{
@@ -124,6 +138,44 @@ describe("約定", () => {
 	test("約定があれば次回時刻を待たずに、その足の終わりで判定する", () => {
 		const r = runBacktest(config(candles, { buyPrice: 9_900_000 }));
 		expect(r.decisions.map((d) => d.time)).toEqual([H, 2 * H, 3 * H, 4 * H]);
+	});
+});
+
+describe("成行の買い", () => {
+	test("次の足の始値で約定し、資金が手数料込みの約定額に足りなければ取り消す", () => {
+		const ok = runBacktest(
+			config(
+				bars([
+					[10_000_000, 10_000_000, 10_000_000, 10_000_000],
+					[10_100_000, 10_100_000, 10_100_000, 10_100_000],
+				]),
+				{ buyPrice: 0, market: true, sell: false },
+			),
+		);
+		expect(ok.orders[0]).toMatchObject({
+			type: "market",
+			status: "filled",
+			fillPrice: 10_100_000,
+			fee: 202, // 101,000 × 0.2%
+		});
+
+		// 始値が跳ねて 0.01 BTC = 1,000,000 円 + 手数料 2,000 円 が資金 1,000,000 円を超える
+		const short = runBacktest(
+			config(
+				bars([
+					[10_000_000, 10_000_000, 10_000_000, 10_000_000],
+					[100_000_000, 100_000_000, 100_000_000, 100_000_000],
+				]),
+				{ buyPrice: 0, market: true, sell: false },
+			),
+		);
+		expect(short.orders[0]).toMatchObject({
+			status: "canceled",
+			canceledAt: H,
+			cancelReason:
+				"資金 1,000,000 円が手数料込みの約定額 1,002,000 円に足りないため取消",
+		});
+		expect(short.summary.finalEquity).toBe(1_000_000);
 	});
 });
 
@@ -275,6 +327,7 @@ describe("判定頻度が戦略の粒度より短い", () => {
 			match: "all",
 			conditions: [{ type: "breakout", lookback: 2, direction: "high" }],
 		},
+		buyOrder: DEFAULT_BUY_ORDER,
 		takeProfit: { match: "any", conditions: [] },
 		stopLoss: {
 			match: "any",

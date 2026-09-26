@@ -3,6 +3,7 @@ import type { Condition, ConditionSet } from "./condition-strategy";
 import {
 	chooseStepTimeframe,
 	conditionStrategy,
+	DEFAULT_BUY_ORDER,
 	emaPeriods,
 	evaluateConditionSet,
 	historyBars,
@@ -37,6 +38,7 @@ function params(over: Partial<ConditionSet> = {}): ConditionSet {
 		},
 		orderSize: 1_000_000,
 		buy: { match: "all", conditions: [] },
+		buyOrder: DEFAULT_BUY_ORDER,
 		takeProfit: { match: "any", conditions: [] },
 		stopLoss: { match: "any", conditions: [] },
 		...over,
@@ -153,6 +155,45 @@ describe("買い", () => {
 				expireAfterBars: 3,
 			},
 		]);
+	});
+
+	test("値幅と取消までの本数は戦略の設定に従う", () => {
+		const out = evaluateConditionSet(
+			input(rising, {
+				...always,
+				buyOrder: { type: "limit", belowPercent: 1.25, expireBars: 10 },
+			}),
+		);
+		// 13,500,005 × 98.75% = 13,331,254.9... → 13,331,254
+		expect(out.intents).toEqual([
+			{
+				kind: "place",
+				side: "buy",
+				type: "limit",
+				price: 13_331_254,
+				quantity: 1_000_000,
+				expireAfterBars: 10,
+			},
+		]);
+		expect(out.note).toContain("1.25% 下");
+	});
+
+	test("成行なら価格と期限を持たずに出す。資金は現在値で見積もる", () => {
+		const market = {
+			...always,
+			buyOrder: { ...DEFAULT_BUY_ORDER, type: "market" as const },
+		};
+		const out = evaluateConditionSet(input(rising, market));
+		expect(out.intents).toEqual([
+			{ kind: "place", side: "buy", type: "market", quantity: 1_000_000 },
+		]);
+		expect(out.note).toContain("成行で");
+		// 13,500,005 × 0.01 = 135,000.05 円 → 135,001 円必要
+		const short = evaluateConditionSet(
+			input(rising, market, { cash: 135_000 }),
+		);
+		expect(short.intents).toHaveLength(0);
+		expect(short.note).toContain("足りないため買わない");
 	});
 
 	test("資金が注文額に足りなければ買わず、理由を書く", () => {
@@ -318,6 +359,27 @@ describe("validateConditionSet", () => {
 		);
 	});
 
+	test("買いの指値の値幅と取消までの本数", () => {
+		const errs = (buyOrder: ConditionSet["buyOrder"]) =>
+			validateConditionSet({
+				...strategyTemplate("range").params,
+				buyOrder,
+			}).map((e) => e.path);
+		const limit = (belowPercent: number, expireBars = 3) =>
+			errs({ type: "limit", belowPercent, expireBars });
+		expect(limit(0)).toEqual([]);
+		expect(limit(99.99, 100)).toEqual([]);
+		expect(limit(100)).toEqual(["buyOrder.belowPercent"]);
+		expect(limit(-0.01)).toEqual(["buyOrder.belowPercent"]);
+		expect(limit(0.125)).toEqual(["buyOrder.belowPercent"]);
+		expect(limit(0.1, 0)).toEqual(["buyOrder.expireBars"]);
+		expect(limit(0.1, 101)).toEqual(["buyOrder.expireBars"]);
+		// 成行では値幅と本数を見ない
+		expect(
+			errs({ type: "market", belowPercent: Number.NaN, expireBars: 0 }),
+		).toEqual([]);
+	});
+
 	test("ひな形は空以外は検証を通る", () => {
 		for (const id of TEMPLATE_IDS) {
 			const errs = validateConditionSet(strategyTemplate(id).params);
@@ -343,6 +405,22 @@ describe("parseConditionSet", () => {
 	test("ひな形を JSON にして読み戻せる", () => {
 		const p = strategyTemplate("trend").params;
 		expect(parseConditionSet(JSON.parse(JSON.stringify(p)))).toEqual(p);
+	});
+
+	test("買いの注文方法が無ければ既定（指値 0.1% 下・3本）で読む", () => {
+		const { buyOrder: _, ...old } = strategyTemplate("range").params;
+		expect(
+			parseConditionSet(JSON.parse(JSON.stringify(old)))?.buyOrder,
+		).toEqual(DEFAULT_BUY_ORDER);
+		expect(
+			parseConditionSet({ ...old, buyOrder: { type: "stop" } }),
+		).toBeNull();
+	});
+
+	test("トレンド追随のひな形だけ成行で買う", () => {
+		expect(strategyTemplate("trend").params.buyOrder.type).toBe("market");
+		expect(strategyTemplate("range").params.buyOrder.type).toBe("limit");
+		expect(strategyTemplate("blank").params.buyOrder.type).toBe("limit");
 	});
 
 	test("形が違えば null", () => {
