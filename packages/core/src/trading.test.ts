@@ -10,6 +10,7 @@ import {
 	expireOrders,
 	newAccount,
 	settleFills,
+	tradeFillPrice,
 	tradingStep,
 } from "./trading";
 import type { Candle, JsonValue, Order } from "./types";
@@ -233,5 +234,35 @@ describe("注文の作成と約定", () => {
 			return settleFills(placed.account, () => 10_000_000, 11 * H, FEES);
 		};
 		expect(run()).toEqual(run());
+	});
+});
+
+describe("約定データでの約定の判定", () => {
+	const order: Order = {
+		id: "p1",
+		side: "buy",
+		type: "limit",
+		price: 100,
+		quantity: 1,
+		placedAt: 10_500,
+		expiresAt: null,
+		status: "open",
+	};
+	test("指値は指値以下の売買で指値の価格、成行はその売買の価格で約定する", () => {
+		expect(tradeFillPrice(order, { time: 11_000, price: 99 })).toBe(100);
+		expect(tradeFillPrice(order, { time: 11_000, price: 101 })).toBeNull();
+		expect(
+			tradeFillPrice(
+				{ ...order, type: "market", price: null },
+				{
+					time: 11_000,
+					price: 101,
+				},
+			),
+		).toBe(101);
+	});
+	test("注文より前の秒に成立した売買では約定しない", () => {
+		expect(tradeFillPrice(order, { time: 9_000, price: 99 })).toBeNull();
+		expect(tradeFillPrice(order, { time: 10_000, price: 99 })).toBe(100);
 	});
 });

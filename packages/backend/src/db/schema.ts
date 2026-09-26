@@ -191,3 +191,81 @@ export const newsScores = sqliteTable(
 		index("news_scores_scored_at").on(t.scoredAt),
 	],
 );
+
+/** 自動取引の口座。モードごとに1行（フェーズ4ではペーパーだけ） */
+export const tradingAccounts = sqliteTable("trading_accounts", {
+	/** paper / live */
+	mode: text("mode").primaryKey(),
+	/** 開始時の資金（リセットで戻す額） */
+	initialCash: integer("initial_cash").notNull(),
+	/** 口座（JSON: core の Account。現金・保有・未約定の注文） */
+	account: text("account").notNull(),
+	/** 最後にリセットした時刻。作ったときは作った時刻 */
+	resetAt: integer("reset_at").notNull(),
+});
+
+/** 自動取引の注文。発注から約定・取消までを1行で持つ。削除しない */
+export const tradingOrders = sqliteTable(
+	"trading_orders",
+	{
+		mode: text("mode").notNull(),
+		id: text("id").notNull(),
+		side: text("side").notNull(),
+		type: text("type").notNull(),
+		price: integer("price"),
+		quantity: integer("quantity").notNull(),
+		placedAt: integer("placed_at").notNull(),
+		/** open / filled / canceled */
+		status: text("status").notNull(),
+		filledAt: integer("filled_at"),
+		fillPrice: integer("fill_price"),
+		fee: integer("fee"),
+		canceledAt: integer("canceled_at"),
+		cancelReason: text("cancel_reason"),
+		reason: text("reason").notNull(),
+		pairId: text("pair_id"),
+		pnl: integer("pnl"),
+		/** 発注した判断。戦略を削除しても注文は残すので外部キーにしない */
+		decisionId: integer("decision_id"),
+		strategyId: integer("strategy_id"),
+		strategyName: text("strategy_name").notNull(),
+	},
+	(t) => [
+		primaryKey({ columns: [t.mode, t.id] }),
+		index("trading_orders_placed_at").on(t.placedAt),
+	],
+);
+
+/** 自動取引の判断の記録。評価のたびに1行。削除しない */
+export const tradingDecisions = sqliteTable(
+	"trading_decisions",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		mode: text("mode").notNull(),
+		strategyId: integer("strategy_id"),
+		strategyName: text("strategy_name").notNull(),
+		time: integer("time").notNull(),
+		/** 判断の記録（JSON: core の DecisionLog） */
+		decision: text("decision").notNull(),
+		/** そのときの AI 判定（JSON: 判定器 → 値）。判定器を使わない戦略では空 */
+		judgments: text("judgments").notNull(),
+	},
+	(t) => [index("trading_decisions_time").on(t.time)],
+);
+
+/** 自動取引の実行状態。1行だけ持つ */
+export const autoTrading = sqliteTable("auto_trading", {
+	id: integer("id").primaryKey(),
+	enabled: integer("enabled", { mode: "boolean" }).notNull(),
+	/** paper / live */
+	mode: text("mode").notNull(),
+	/** 動かしている戦略。オンにしたときの運用する戦略 */
+	strategyId: integer("strategy_id"),
+	/** 戦略の state（JSON） */
+	state: text("state").notNull(),
+	/** 次の判定時刻。オフなら null */
+	nextEvalAt: integer("next_eval_at"),
+	/** 約定があったので次の見回りで評価し直す */
+	reevaluate: integer("reevaluate", { mode: "boolean" }).notNull(),
+	startedAt: integer("started_at"),
+});

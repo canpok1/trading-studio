@@ -7,10 +7,12 @@ import type {
 } from "@trading-studio/core";
 import {
 	addTrade,
+	candleStart,
 	closeMinutes,
 	compareMarketTrades,
 	formingCandle,
 	startMinuteCandles,
+	TIMEFRAME_MS,
 } from "@trading-studio/core";
 import type { MarketDataRepository } from "../market-data/repository";
 import type { CollectorStatus, LiveMarket, TradeFeed } from "./types";
@@ -25,6 +27,8 @@ export type CollectorOptions = {
 	silenceMs?: number;
 	/** 接続を始めてから購読が始まるまで待つ上限 */
 	connectTimeoutMs?: number;
+	/** 購読中に届いた約定を渡す（自動取引の約定の判定に使う）。つなぎ直したときに遡って取った約定は渡さない */
+	onTrades?: (trades: readonly MarketTrade[]) => void;
 };
 
 /** 再接続の間隔。失敗のたびに倍にし、上限は1分 */
@@ -47,6 +51,7 @@ export function createCollector({
 	graceMs = 2_000,
 	silenceMs = 60_000,
 	connectTimeoutMs = 30_000,
+	onTrades,
 }: CollectorOptions): Collector {
 	let status: CollectorStatus = {
 		state: "connecting",
@@ -150,6 +155,11 @@ export function createCollector({
 				onTrades(trades) {
 					if (!current()) return;
 					remember(trades);
+					try {
+						onTrades?.(trades);
+					} catch (e) {
+						console.error("collector: onTrades failed", e);
+					}
 					if (s.candles) {
 						for (const t of trades) s.candles = addTrade(s.candles, t);
 					} else {
@@ -216,11 +226,23 @@ export function createCollector({
 		},
 
 		live() {
+			const t = now();
+			const state = session?.candles ?? null;
+			const unsaved: Candle[] = [];
+			if (state) {
+				for (
+					let m = state.nextMinute;
+					m < candleStart(t, "1m");
+					m += TIMEFRAME_MS["1m"]
+				) {
+					const c = formingCandle(state, m);
+					if (c) unsaved.push(c);
+				}
+			}
 			return {
 				latestTrade,
-				forming: session?.candles
-					? formingCandle(session.candles, now())
-					: null,
+				forming: state ? formingCandle(state, t) : null,
+				unsaved,
 				status,
 			};
 		},
