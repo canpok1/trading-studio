@@ -1,4 +1,9 @@
-import { isTimeframe } from "@trading-studio/core";
+import {
+	CSV_HEADER,
+	formatCandleCsvRow,
+	formatJstRfc3339,
+	isTimeframe,
+} from "@trading-studio/core";
 import { Hono } from "hono";
 import { validator } from "hono/validator";
 import type { MarketDataService } from "../market-data/types";
@@ -21,6 +26,52 @@ export function marketDataRoutes(service: MarketDataService) {
 				const q = c.req.valid("query");
 				return c.json({
 					timeframes: service.usableTimeframes(Number(q.from), Number(q.to)),
+				});
+			},
+		)
+		.get(
+			"/export",
+			validator("query", (q, c) => {
+				if (!isTimeframe(q.timeframe)) {
+					return c.json({ message: "足の粒度を選ぶ" }, 400);
+				}
+				// 期間は省略できる（省略した側は保存済みの足の端まで）
+				const from = q.from === undefined ? 0 : Number(q.from);
+				const to = q.to === undefined ? Number.MAX_SAFE_INTEGER : Number(q.to);
+				if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to)) {
+					return c.json({ message: "期間の形が違う" }, 400);
+				}
+				return { timeframe: q.timeframe, from, to };
+			}),
+			(c) => {
+				const { timeframe, from, to } = c.req.valid("query");
+				const r = service.exportCandles(timeframe, from, to);
+				if (!r) return c.json({ message: "期間に足が無い" }, 404);
+				const day = (ms: number) =>
+					formatJstRfc3339(ms).slice(0, 10).replaceAll("-", "");
+				const fileName = `btcjpy-${timeframe}-${day(r.first)}-${day(r.last)}.csv`;
+				const pages = r.pages[Symbol.iterator]();
+				const encoder = new TextEncoder();
+				let headerSent = false;
+				const body = new ReadableStream<Uint8Array>({
+					pull(controller) {
+						if (!headerSent) {
+							headerSent = true;
+							controller.enqueue(encoder.encode(`${CSV_HEADER}\n`));
+							return;
+						}
+						const next = pages.next();
+						if (next.done) {
+							controller.close();
+							return;
+						}
+						const lines = next.value.map(formatCandleCsvRow).join("\n");
+						controller.enqueue(encoder.encode(`${lines}\n`));
+					},
+				});
+				return c.body(body, 200, {
+					"content-type": "text/csv; charset=utf-8",
+					"content-disposition": `attachment; filename="${fileName}"`,
 				});
 			},
 		)

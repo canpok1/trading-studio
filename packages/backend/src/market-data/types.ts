@@ -1,6 +1,6 @@
 // 過去データの API が使う型。app.ts から参照されるため、Bun 固有の型を持ち込まない
 
-import type { CsvRowError, Gap, Timeframe } from "@trading-studio/core";
+import type { Candle, CsvRowError, Gap, Timeframe } from "@trading-studio/core";
 
 export type ImportStatus = "running" | "done" | "failed" | "canceled";
 /**
@@ -78,6 +78,15 @@ export interface MarketDataService {
 	coverage(): TimeframeCoverage[];
 	/** 期間のバックテストで使える粒度（細かい順）。期間の一部にしか無い粒度は除く */
 	usableTimeframes(from: number, to: number): Timeframe[];
+	/**
+	 * 期間 [from, to) の足を古い順に書き出す。作りかけの自動で作った足は除く。足が無ければ null。
+	 * pages は1回の読み込みごとに足の配列を返す（大きな期間でもメモリに載せきらない）
+	 */
+	exportCandles(
+		timeframe: Timeframe,
+		from: number,
+		to: number,
+	): { first: number; last: number; pages: Iterable<Candle[]> } | null;
 	/** 最後に確定した足の終値（time は足の終わりの時刻） */
 	latestClose(): { time: number; close: number } | null;
 }

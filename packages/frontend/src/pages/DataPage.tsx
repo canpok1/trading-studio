@@ -20,7 +20,12 @@ import {
 	ProgressBar,
 	Segmented,
 } from "../components/ui";
-import { formatDate, formatDateTime } from "../format";
+import {
+	formatDate,
+	formatDateTime,
+	fromDateInputValue,
+	toDateInputValue,
+} from "../format";
 import { formatInt } from "../lib/number";
 import { errorMessage, readJson, useAsync, useInterval } from "../lib/useAsync";
 
@@ -254,6 +259,13 @@ export function DataPage() {
 			<p className="text-xs leading-relaxed text-text-2">
 				取り込んだ足より粗い粒度（5分・15分・1時間・4時間・日足）は自動で作る。取り込んだ・収集した足と同じ粒度・同じ日時の行があれば、上書きするかを選ぶ。
 			</p>
+
+			{state.kind === "ok" && state.data.coverage.some((c) => c.count > 0) && (
+				<>
+					<h2 className="text-[15px] font-bold">エクスポート</h2>
+					<ExportCard coverage={state.data.coverage} />
+				</>
+			)}
 		</Page>
 	);
 }
@@ -488,6 +500,139 @@ function Coverage({
 
 			<ImportHistory imports={data.imports} />
 		</>
+	);
+}
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/** 保存済みの足を CSV で書き出す。書き出した CSV はそのまま取り込み直せる */
+function ExportCard({ coverage }: { coverage: TimeframeCoverage[] }) {
+	const api = useApi();
+	const ids = { from: useId(), to: useId() };
+	const withData = coverage.filter((c) => c.count > 0);
+	const [timeframe, setTimeframe] = useState<Timeframe>(
+		withData.some((c) => c.timeframe === "1m")
+			? "1m"
+			: (withData[0]?.timeframe ?? "1m"),
+	);
+	// 未指定なら、選んだ粒度の保存済みの全期間
+	const [period, setPeriod] = useState<{ from: string; to: string } | null>(
+		null,
+	);
+	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	const cov = withData.find((c) => c.timeframe === timeframe);
+	const fromDate =
+		period?.from ?? toDateInputValue((cov?.firstTime as number) ?? Date.now());
+	const toDate =
+		period?.to ?? toDateInputValue((cov?.lastTime as number) ?? Date.now());
+	const fromMs = fromDateInputValue(fromDate);
+	const toMs = fromDateInputValue(toDate);
+	const periodError =
+		fromMs === null || toMs === null
+			? "開始日と終了日を入れる"
+			: fromMs > toMs
+				? "終了日は開始日より後にする"
+				: null;
+
+	const run = async () => {
+		if (fromMs === null || toMs === null) return;
+		setBusy(true);
+		setError(null);
+		try {
+			const res = await api.api.data.export.$get({
+				query: { timeframe, from: String(fromMs), to: String(toMs + DAY) },
+			});
+			if (!res.ok) await readJson(res);
+			const blob = await res.blob();
+			const name =
+				/filename="([^"]+)"/.exec(
+					res.headers.get("content-disposition") ?? "",
+				)?.[1] ?? "btcjpy.csv";
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement("a");
+			a.href = url;
+			a.download = name;
+			a.click();
+			// すぐ無効にすると、保存が始まる前に URL が消えるブラウザがある
+			setTimeout(() => URL.revokeObjectURL(url), 60_000);
+		} catch (e) {
+			setError(`書き出せなかった: ${errorMessage(e)}`);
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	return (
+		<Card className="flex flex-col gap-3">
+			<Segmented
+				name="export-timeframe"
+				label="書き出す足の粒度"
+				options={TF_OPTIONS.filter(([t]) =>
+					withData.some((c) => c.timeframe === t),
+				)}
+				value={timeframe}
+				onChange={(t) => {
+					setTimeframe(t);
+					setPeriod(null);
+				}}
+				disabled={busy}
+				size="sm"
+			/>
+			<div className="grid grid-cols-[minmax(0,1fr)_20px_minmax(0,1fr)] items-end gap-1.5">
+				<div className="flex flex-col gap-1">
+					<label htmlFor={ids.from} className="text-xs text-text-2">
+						開始
+					</label>
+					<input
+						id={ids.from}
+						type="date"
+						value={fromDate}
+						onChange={(e) => setPeriod({ from: e.target.value, to: toDate })}
+						disabled={busy}
+						className="num h-11 min-w-0 rounded-[10px] border border-line bg-surface px-2 text-sm"
+					/>
+				</div>
+				<span className="pb-3 text-center text-text-2">〜</span>
+				<div className="flex flex-col gap-1">
+					<label htmlFor={ids.to} className="text-xs text-text-2">
+						終了
+					</label>
+					<input
+						id={ids.to}
+						type="date"
+						value={toDate}
+						onChange={(e) => setPeriod({ from: fromDate, to: e.target.value })}
+						disabled={busy}
+						className="num h-11 min-w-0 rounded-[10px] border border-line bg-surface px-2 text-sm"
+					/>
+				</div>
+			</div>
+			{periodError && (
+				<p role="alert" className="text-xs font-semibold text-loss">
+					{periodError}
+				</p>
+			)}
+			{error && (
+				<p role="alert" className="text-xs font-semibold text-loss">
+					{error}
+				</p>
+			)}
+			<Button
+				variant="primary"
+				onClick={run}
+				disabled={busy || periodError !== null}
+			>
+				{busy
+					? "書き出し中…"
+					: `${TIMEFRAME_LABELS[timeframe]}を CSV で書き出す`}
+			</Button>
+			<p className="text-xs leading-relaxed text-text-2">
+				取り込みと同じ列（日時は
+				JST）で書き出すので、そのまま取り込み直せる。欠損は埋めない。1分足を残せば、粗い粒度は取り込み直したときに作り直される。
+			</p>
+		</Card>
 	);
 }
 
