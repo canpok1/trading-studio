@@ -28,6 +28,20 @@ export function alignJudgments(
 	return any ? out : null;
 }
 
+/** 足ごとの判定を、欠損の空白を含む描画の枠の並びに置き直す。足の無い枠は null */
+export function slotAligned(
+	judgments: BarJudgments,
+	slots: readonly { bar: number | null }[],
+): BarJudgments {
+	const pick = <V>(values: readonly (V | null)[]) =>
+		slots.map((s) => (s.bar === null ? null : (values[s.bar] ?? null)));
+	return {
+		trend: pick(judgments.trend),
+		risk: pick(judgments.risk),
+		sentiment: pick(judgments.sentiment),
+	};
+}
+
 /** 同じ判定が続く足の区間。null（記録なし）の足は区間にしない */
 export type JudgmentRun<V extends string = string> = {
 	from: number;

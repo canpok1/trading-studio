@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { alignJudgments, judgmentRuns, stripJudges } from "./judgment-data";
+import {
+	alignJudgments,
+	judgmentRuns,
+	slotAligned,
+	stripJudges,
+} from "./judgment-data";
 
 describe("alignJudgments", () => {
 	test("足の開始時刻で判定の並びを引き、範囲外や欠けた足は null", () => {
@@ -49,4 +54,20 @@ describe("judgmentRuns", () => {
 
 test("帯は背景以外の判定", () => {
 	expect(stripJudges("risk")).toEqual(["trend", "sentiment"]);
+});
+
+describe("slotAligned", () => {
+	test("欠損の空白の枠は null にし、区間がまたがらない", () => {
+		const out = slotAligned(
+			{
+				trend: ["up", "up"],
+				risk: [null, "crisis"],
+				sentiment: ["+1", "+1"],
+			},
+			[{ bar: 0 }, { bar: null }, { bar: 1 }],
+		);
+		expect(out.trend).toEqual(["up", null, "up"]);
+		expect(out.risk).toEqual([null, null, "crisis"]);
+		expect(judgmentRuns(out.trend)).toHaveLength(2);
+	});
 });
