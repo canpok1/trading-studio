@@ -14,7 +14,7 @@ import type {
 export type StrategyInput<P> = {
 	/** 評価時刻。この時刻までに確定した足だけが candles に入る */
 	now: number;
-	/** 戦略の粒度の確定済みの足（古い順） */
+	/** 戦略の粒度の確定済みの足（古い順）。最大で historyBars 本 */
 	candles: readonly Candle[];
 	/** 判定器ごとの、その時点で得られていた AI 判定 */
 	judgments: Readonly<Record<string, readonly Judgment[]>>;
@@ -45,6 +45,8 @@ export type Strategy<P> = {
 	requiredJudges(params: P): string[];
 	/** 戦略が必要とする足の粒度。データがこれより粗ければ実行できない */
 	minResolution(params: P): Timeframe;
+	/** 判定に渡してほしい足の本数（現在の足を含む）。指標をこの本数の中で計算するため、本数で結果が決まる */
+	historyBars(params: P): number;
 	/** パラメータの入力検証。問題が無ければ空配列 */
 	validate(params: P): ValidationError[];
 	evaluate(input: StrategyInput<P>): StrategyOutput;
