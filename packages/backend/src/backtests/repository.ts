@@ -5,7 +5,9 @@ import type {
 	BacktestOrder,
 	BacktestSummary,
 	ConditionSet,
+	DecisionLog,
 	Timeframe,
+	Trade,
 } from "@trading-studio/core";
 import { parseAggregationRule, parseConditionSet } from "@trading-studio/core";
 import type { Db } from "../db/open";
@@ -176,6 +178,16 @@ export class BacktestRepository {
 			.map(toRun);
 	}
 
+	/** 開始時刻が [from, to) の完了した実行（新しい順） */
+	listDoneStartedBetween(from: number, to: number): BacktestRun[] {
+		return this.sql
+			.query<RunRow, [number, number]>(
+				`${SELECT_RUN} where r.status = 'done' and r.started_at >= ? and r.started_at < ? order by r.id desc`,
+			)
+			.all(from, to)
+			.map(toRun);
+	}
+
 	setStrategy(id: number, strategyId: number): void {
 		this.sql.run("update backtest_runs set strategy_id = ? where id = ?", [
 			strategyId,
@@ -183,7 +195,10 @@ export class BacktestRepository {
 		]);
 	}
 
-	private blob(id: number, column: "bars" | "orders"): Uint8Array | null {
+	private blob(
+		id: number,
+		column: "bars" | "orders" | "trades" | "decisions",
+	): Uint8Array | null {
 		const r = this.sql
 			.query<{ v: Uint8Array }, [number]>(
 				`select ${column} as v from backtest_results where run_id = ?`,
@@ -237,5 +252,22 @@ export class BacktestRepository {
 	orders(id: number): BacktestOrder[] | null {
 		const b = this.blob(id, "orders");
 		return b ? unpack<BacktestOrder[]>(b) : null;
+	}
+
+	/** 結果の中身（注文・往復の取引・判断ログ）。結果が無ければ null */
+	contents(id: number): {
+		orders: BacktestOrder[];
+		trades: Trade[];
+		decisions: DecisionLog[];
+	} | null {
+		const orders = this.blob(id, "orders");
+		const trades = this.blob(id, "trades");
+		const decisions = this.blob(id, "decisions");
+		if (!orders || !trades || !decisions) return null;
+		return {
+			orders: unpack<BacktestOrder[]>(orders),
+			trades: unpack<Trade[]>(trades),
+			decisions: unpack<DecisionLog[]>(decisions),
+		};
 	}
 }
