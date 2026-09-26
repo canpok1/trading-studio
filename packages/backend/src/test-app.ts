@@ -39,6 +39,7 @@ export function createTestApp(
 		current: {
 			latestTrade: null,
 			forming: null,
+			unsaved: [],
 			status: {
 				state: "running",
 				stoppedSince: null,

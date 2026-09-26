@@ -62,6 +62,24 @@ describe("価格収集", () => {
 		expect(t.received).toEqual([live]);
 	});
 
+	test("分が終わって確定を待っている間の1分足も live で見える", async () => {
+		const t = setup();
+		t.f.ready();
+		await flush();
+		t.set(T0 + 10 * S);
+		t.f.trades([tr(T0 + 10 * S, 100), tr(T0 + 20 * S, 120)]);
+		t.at(T0 + M + 1 * S);
+		expect(t.repo.lastCandle("1m")).toBeNull();
+		expect(t.collector.live().unsaved).toEqual([
+			{ time: T0, open: 100, high: 120, low: 100, close: 120, volume: 200 },
+		]);
+		t.set(T0 + M + 3 * S);
+		t.f.heartbeat();
+		t.collector.tick();
+		expect(t.repo.lastCandle("1m")?.time).toBe(T0);
+		expect(t.collector.live().unsaved).toEqual([]);
+	});
+
 	test("約定を流すと、分ごとに1分足と粗い足が保存される", async () => {
 		const t = setup();
 		t.f.ready();

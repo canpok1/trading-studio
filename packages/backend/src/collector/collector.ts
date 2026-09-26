@@ -7,10 +7,12 @@ import type {
 } from "@trading-studio/core";
 import {
 	addTrade,
+	candleStart,
 	closeMinutes,
 	compareMarketTrades,
 	formingCandle,
 	startMinuteCandles,
+	TIMEFRAME_MS,
 } from "@trading-studio/core";
 import type { MarketDataRepository } from "../market-data/repository";
 import type { CollectorStatus, LiveMarket, TradeFeed } from "./types";
@@ -224,11 +226,23 @@ export function createCollector({
 		},
 
 		live() {
+			const t = now();
+			const state = session?.candles ?? null;
+			const unsaved: Candle[] = [];
+			if (state) {
+				for (
+					let m = state.nextMinute;
+					m < candleStart(t, "1m");
+					m += TIMEFRAME_MS["1m"]
+				) {
+					const c = formingCandle(state, m);
+					if (c) unsaved.push(c);
+				}
+			}
 			return {
 				latestTrade,
-				forming: session?.candles
-					? formingCandle(session.candles, now())
-					: null,
+				forming: state ? formingCandle(state, t) : null,
+				unsaved,
 				status,
 			};
 		},

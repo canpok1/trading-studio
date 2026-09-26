@@ -114,16 +114,16 @@ export function createTradingService({
 		const start = candleStart(t - 1, tf);
 		const history = Math.max(1, conditionStrategy.historyBars(s.params));
 		const done = marketData.candlesBefore(tf, start, history - 1);
-		const minutes: Candle[] = marketData.loadCandles("1m", start, t);
-		const forming = live.forming;
-		if (
-			forming &&
-			forming.time >= start &&
-			forming.time < t &&
-			(minutes.at(-1)?.time ?? Number.NEGATIVE_INFINITY) < forming.time
-		) {
-			minutes.push(forming);
+		// 保存済みの1分足に、収集がまだ保存していない1分足（確定待ち・形成中）を重ねる
+		const byTime = new Map<number, Candle>();
+		for (const c of [
+			...marketData.loadCandles("1m", start, t),
+			...live.unsaved,
+			...(live.forming ? [live.forming] : []),
+		]) {
+			if (c.time >= start && c.time < t) byTime.set(c.time, c);
 		}
+		const minutes = [...byTime.values()].sort((a, b) => a.time - b.time);
 		const current = aggregateCandles(minutes, tf)[0];
 		return current ? [...done, current] : done;
 	};
@@ -235,7 +235,7 @@ export function createTradingService({
 					saveChanges(expired.changed, { decisionId: null, strategy: null });
 					const out = settleFills(
 						expired.account,
-						(o) => tradeFillPrice(o, trade.price),
+						(o) => tradeFillPrice(o, trade),
 						trade.time,
 						fees,
 					);

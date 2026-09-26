@@ -22,6 +22,8 @@ export type LiveMarket = {
 	latestTrade: MarketTrade | null;
 	/** 形成中の1分足。価格が分からなければ null */
 	forming: Candle | null;
+	/** 分は終わったが、確定の猶予の間でまだ保存していない1分足（古い順） */
+	unsaved: Candle[];
 	status: CollectorStatus;
 };
 
