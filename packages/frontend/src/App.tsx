@@ -1,52 +1,24 @@
-import { useEffect, useState } from "react";
-import type { ApiClient } from "./api";
+import { Navigate, Route, Routes } from "react-router";
+import { Layout } from "./components/Layout";
+import { OtherPage } from "./pages/OtherPage";
+import { Placeholder } from "./pages/Placeholder";
+import { SettingsPage } from "./pages/SettingsPage";
 
-type HealthState =
-	| { kind: "loading" }
-	| { kind: "ok"; status: string; db: string }
-	| { kind: "error"; message: string };
-
-export function App({ client }: { client: ApiClient }) {
-	const [health, setHealth] = useState<HealthState>({ kind: "loading" });
-
-	useEffect(() => {
-		let cancelled = false;
-		(async () => {
-			try {
-				const res = await client.api.health.$get();
-				if (!res.ok) {
-					throw new Error(`HTTP ${res.status}`);
-				}
-				const body = await res.json();
-				if (!cancelled)
-					setHealth({ kind: "ok", status: body.status, db: body.db });
-			} catch (e) {
-				if (!cancelled) {
-					setHealth({
-						kind: "error",
-						message: e instanceof Error ? e.message : String(e),
-					});
-				}
-			}
-		})();
-		return () => {
-			cancelled = true;
-		};
-	}, [client]);
-
+export function App() {
 	return (
-		<main>
-			<h1>trading-studio</h1>
-			{health.kind === "loading" && <p>確認中…</p>}
-			{health.kind === "ok" && (
-				<>
-					<p>health: {health.status}</p>
-					<p>DB: {health.db}</p>
-				</>
-			)}
-			{health.kind === "error" && (
-				<p role="alert">health の取得に失敗しました: {health.message}</p>
-			)}
-		</main>
+		<Routes>
+			<Route element={<Layout />}>
+				<Route index element={<Navigate to="/backtest" replace />} />
+				<Route
+					path="/backtest"
+					element={<Placeholder title="バックテスト" />}
+				/>
+				<Route path="/strategies" element={<Placeholder title="戦略設定" />} />
+				<Route path="/data" element={<Placeholder title="過去データ" />} />
+				<Route path="/other" element={<OtherPage />} />
+				<Route path="/settings" element={<SettingsPage />} />
+				<Route path="*" element={<Navigate to="/backtest" replace />} />
+			</Route>
+		</Routes>
 	);
 }

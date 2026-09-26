@@ -16,6 +16,7 @@ BTC/JPY の自動売買を、戦略の作成・バックテスト・ペーパー
 | `bun run typecheck` | 型チェック（ルートと各パッケージ） |
 | `bun run test` | `bun test` |
 | `bun run depcruise` | 依存の向きの検査 |
+| `bun run test:e2e` | 画面をビルドし、テスト用 DB で backend を起動して Playwright の E2E（`e2e/*.e2e.ts`）を流す。Claude Code on the web では `PLAYWRIGHT_CHROMIUM_PATH=/opt/pw-browsers/chromium` を付ける |
 
 ## パッケージ
 

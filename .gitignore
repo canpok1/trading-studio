@@ -112,3 +112,8 @@ dist
 
 # TernJS port file
 .tern-port
+
+# E2E
+/.e2e-data/
+/test-results/
+/playwright-report/

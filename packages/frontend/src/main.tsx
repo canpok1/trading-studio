@@ -1,7 +1,12 @@
+import "./index.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router";
 import { App } from "./App";
-import { createApiClient } from "./api";
+import { ApiProvider, createApiClient } from "./api";
+import { initTheme } from "./theme";
+
+initTheme();
 
 const root = document.getElementById("root");
 if (!root) {
@@ -9,6 +14,10 @@ if (!root) {
 }
 createRoot(root).render(
 	<StrictMode>
-		<App client={createApiClient()} />
+		<ApiProvider client={createApiClient()}>
+			<BrowserRouter>
+				<App />
+			</BrowserRouter>
+		</ApiProvider>
 	</StrictMode>,
 );
