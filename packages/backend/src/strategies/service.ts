@@ -16,6 +16,8 @@ type Row = {
 };
 
 const NAME_MAX = 40;
+/** 運用する戦略の ID を settings に持つときのキー */
+const ACTIVE_KEY = "active_strategy_id";
 
 function toStrategy(r: Row): StoredStrategy {
 	return {
@@ -40,6 +42,14 @@ export function createStrategyService(
 	now: () => number = Date.now,
 ): StrategyService {
 	const sql = db.$client;
+	const activeId = (): number | null => {
+		const r = sql
+			.query<{ value: string }, [string]>(
+				"select value from settings where key = ?",
+			)
+			.get(ACTIVE_KEY);
+		return r ? Number(r.value) : null;
+	};
 	const byName = (name: string) =>
 		sql
 			.query<{ id: number }, [string]>(
@@ -131,7 +141,33 @@ export function createStrategyService(
 		},
 
 		remove(id) {
-			return sql.run("delete from strategies where id = ?", [id]).changes > 0;
+			// 運用する戦略を消したら未選択に戻す
+			return sql.transaction(() => {
+				const removed =
+					sql.run("delete from strategies where id = ?", [id]).changes > 0;
+				if (removed && activeId() === id) {
+					sql.run("delete from settings where key = ?", [ACTIVE_KEY]);
+				}
+				return removed;
+			})();
+		},
+
+		active() {
+			const id = activeId();
+			return id === null ? null : service.get(id);
+		},
+
+		setActive(id) {
+			if (id === null) {
+				sql.run("delete from settings where key = ?", [ACTIVE_KEY]);
+				return true;
+			}
+			if (!service.get(id)) return false;
+			sql.run(
+				"insert into settings (key, value) values (?, ?) on conflict (key) do update set value = excluded.value",
+				[ACTIVE_KEY, String(id)],
+			);
+			return true;
 		},
 	};
 	return service;

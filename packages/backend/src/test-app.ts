@@ -5,8 +5,11 @@ import { inlineRunner } from "./backtests/inline-runner";
 import { BacktestRepository } from "./backtests/repository";
 import type { BacktestRunner } from "./backtests/runner";
 import { createBacktestService } from "./backtests/service";
+import type { Collector } from "./collector/collector";
+import type { LiveMarket } from "./collector/types";
 import type { Db } from "./db/open";
 import { createTestDb } from "./db/test-db";
+import { createMarketService } from "./market/service";
 import { MarketDataRepository } from "./market-data/repository";
 import { createMarketDataService } from "./market-data/service";
 import { createStrategyService } from "./strategies/service";
@@ -21,6 +24,27 @@ export function createTestApp(
 		now: () => 1_000,
 	});
 	const strategies = createStrategyService(db, () => 2_000);
+	// 収集は動かさず、テストから live を差し替える
+	const live: { current: LiveMarket } = {
+		current: {
+			latestTrade: null,
+			forming: null,
+			status: {
+				state: "running",
+				stoppedSince: null,
+				error: null,
+				retryAt: null,
+				lastReceivedAt: null,
+			},
+		},
+	};
+	const collector: Pick<Collector, "live"> = { live: () => live.current };
+	const clock = { now: 4_000 };
+	const market = createMarketService({
+		collector,
+		repo: marketDataRepo,
+		now: () => clock.now,
+	});
 	const backtestRepo = new BacktestRepository(db);
 	const backtests = createBacktestService({
 		repo: backtestRepo,
@@ -32,6 +56,7 @@ export function createTestApp(
 	const app = createApp({
 		isDbReachable: () => true,
 		marketData,
+		market,
 		strategies,
 		backtests,
 		...over,
@@ -44,5 +69,7 @@ export function createTestApp(
 		strategies,
 		backtests,
 		backtestRepo,
+		live,
+		clock,
 	};
 }
