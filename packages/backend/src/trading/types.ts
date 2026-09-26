@@ -91,7 +91,8 @@ export interface TradingService {
 	stop(): TradingResult;
 	/** 口座を開始時の資金に戻す。オフのときだけ */
 	reset(initialCash: number): TradingResult;
-	orders(filter: OrderFilter): StoredOrder[];
+	/** 新しい順に最大 limit 件 */
+	orders(filter: OrderFilter, limit?: number): StoredOrder[];
 	order(
 		mode: TradingMode,
 		id: string,

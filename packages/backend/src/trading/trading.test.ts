@@ -124,8 +124,18 @@ describe("自動取引のオンオフ", () => {
 			},
 		]);
 		const detail = t.trading.order("paper", "p1");
-		expect(detail?.decision?.judgments).toEqual({ trend: "range" });
+		expect(detail?.decision?.judgments).toEqual({
+			trend: "range",
+			risk: "normal",
+			sentiment: "0",
+		});
 		expect(detail?.decision?.decision.time).toBe(T0 + M);
+		const api = await t.call("GET", "/orders/paper/p1");
+		expect(api.body).toMatchObject({
+			order: { id: "p1", mode: "paper" },
+			judgments: { trend: "range" },
+		});
+		expect((await t.call("GET", "/orders/paper/p9")).status).toBe(404);
 	});
 
 	test("ライブは選べず、運用する戦略が無いか条件が足りなければオンにできない", async () => {
@@ -203,6 +213,15 @@ describe("仮想の約定", () => {
 		});
 		expect(t.orders()[0]?.pairId).toBe("p2");
 		expect(t.status().account.cash).toBe(1_000_000 + 102_000 - 102 - 100_100);
+
+		const ids = async (query: string) =>
+			(
+				(await t.call("GET", `/orders?${query}`)).body.orders as StoredOrder[]
+			).map((o) => o.id);
+		expect(await ids("mode=paper")).toEqual(["p2", "p1"]);
+		expect(await ids("mode=paper&limit=1")).toEqual(["p2"]);
+		expect(await ids("side=buy&status=filled")).toEqual(["p1"]);
+		expect(await ids("mode=live")).toEqual([]);
 	});
 
 	test("指値は指値以下の約定が来たら指値で約定し、跨がなければ約定しない", async () => {

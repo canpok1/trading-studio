@@ -8,6 +8,9 @@ import type {
 	TradingService,
 } from "../trading/types";
 
+/** 注文の一覧で一度に返す上限 */
+const MAX_ORDERS = 1000;
+
 const isObj = (v: unknown): v is Record<string, unknown> =>
 	typeof v === "object" && v !== null;
 const isMode = (v: unknown): v is TradingMode => v === "paper" || v === "live";
@@ -70,17 +73,38 @@ export function tradingRoutes(service: TradingService) {
 					filter.status = q.status;
 				}
 				if (q.side === "buy" || q.side === "sell") filter.side = q.side;
-				return filter;
+				// クエリの型は検査後の値から決まるので、件数は文字列のまま渡す
+				const out: OrderFilter & { limit?: string } = filter;
+				if (typeof q.limit === "string") out.limit = q.limit;
+				return out;
 			}),
-			(c) => c.json({ orders: service.orders(c.req.valid("query")) }),
+			(c) => {
+				const { limit, ...filter } = c.req.valid("query");
+				const n = Number(limit);
+				return c.json({
+					orders: service.orders(
+						filter,
+						Number.isSafeInteger(n) && n >= 1
+							? Math.min(n, MAX_ORDERS)
+							: MAX_ORDERS,
+					),
+				});
+			},
 		)
 		.get("/orders/:mode/:id", (c) => {
 			const mode = c.req.param("mode");
 			const found = isMode(mode)
 				? service.order(mode, c.req.param("id"))
 				: null;
+			// 画面が使うのは判断の記録のうちそのときの判定だけ。state は形が決まっていないので返さない
 			return found
-				? c.json(found, 200)
+				? c.json(
+						{
+							order: found.order,
+							judgments: found.decision?.judgments ?? null,
+						},
+						200,
+					)
 				: c.json({ message: "注文が見つからない" }, 404);
 		});
 }

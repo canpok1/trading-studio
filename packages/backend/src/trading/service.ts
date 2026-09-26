@@ -17,9 +17,9 @@ import {
 	dailyLossBlock,
 	decide,
 	expireOrders,
+	JUDGES,
 	newAccount,
 	realizedPnlOn,
-	requiredJudges,
 	settleFills,
 	TIMEFRAME_MS,
 	tradeFillPrice,
@@ -149,12 +149,10 @@ export function createTradingService({
 			});
 			return;
 		}
-		const judges = requiredJudges(s.params);
+		// 戦略が使わない判定も、注文の詳細で「そのときの判定」として見せるため記録する
+		const current = judgments.current();
 		const values: Record<string, string> = {};
-		if (judges.length > 0) {
-			const current = judgments.current();
-			for (const j of judges) values[j] = current.results[j].value;
-		}
+		for (const j of JUDGES) values[j] = current.results[j].value;
 		const tfMs = TIMEFRAME_MS[s.params.timeframe];
 		repo.transaction(() => {
 			const expired = expire(repo.account(mode, t).account, t);
@@ -388,7 +386,7 @@ export function createTradingService({
 			return ok();
 		},
 
-		orders: (filter) => repo.orders(filter),
+		orders: (filter, limit) => repo.orders(filter, limit),
 
 		order(m, id) {
 			const order = repo.order(m, id);
