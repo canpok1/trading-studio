@@ -1,6 +1,6 @@
 // 最新価格とホームのチャートの足
 
-import { TIMEFRAME_MS } from "@trading-studio/core";
+import { candleStart, TIMEFRAME_MS } from "@trading-studio/core";
 import type { Collector } from "../collector/collector";
 import type { MarketDataRepository } from "../market-data/repository";
 import type { ChartRangeId, MarketService } from "./types";
@@ -44,10 +44,13 @@ export function createMarketService({
 		},
 
 		bars(timeframe, range, history) {
-			const step = TIMEFRAME_MS[timeframe];
-			const to = now() + step;
+			const t = now();
+			const to = t + TIMEFRAME_MS[timeframe];
+			// 期間の始まりの時刻を含む足から返す（日足で1日を選んでも当日の足が入るように）
 			const from =
-				range === "all" ? Number.MIN_SAFE_INTEGER : to - CHART_RANGE_MS[range];
+				range === "all"
+					? Number.MIN_SAFE_INTEGER
+					: candleStart(t - CHART_RANGE_MS[range], timeframe);
 			const count = repo.countCandles(timeframe, from, to);
 			if (count > MAX_CHART_BARS) {
 				return { ok: false, kind: "too_many", count, max: MAX_CHART_BARS };

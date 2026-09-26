@@ -100,7 +100,18 @@ describe("チャートの足の API", () => {
 		const { bars } = (await res.json()) as {
 			bars: { time: number; close: number }[];
 		};
-		expect(bars.map((b) => b.close)).toEqual([2, 3, 4]);
+		expect(bars.map((b) => b.close)).toEqual([1, 2, 3, 4]);
+	});
+
+	test("日足で1日を選んでも当日の足が入る", async () => {
+		const t = createTestApp();
+		t.clock.now = T0;
+		const id = t.marketDataRepo.createImport("1d", "a.csv", 0);
+		const today = Date.UTC(2026, 8, 25, 15);
+		t.marketDataRepo.insertImported("1d", [candle(today, 7)], id);
+		const res = await t.app.request("/api/market/bars?timeframe=1d&range=1d");
+		const { bars } = (await res.json()) as { bars: { close: number }[] };
+		expect(bars.map((b) => b.close)).toEqual([7]);
 	});
 
 	test("足が多すぎる組み合わせは断る", async () => {
