@@ -179,6 +179,10 @@ export function createBacktestService({
 
 		get,
 
+		current() {
+			return current ? get(current.id) : null;
+		},
+
 		cancel(id) {
 			if (current?.id === id) current.job.cancel();
 			return get(id);

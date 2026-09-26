@@ -88,6 +88,7 @@ export function backtestRoutes(service: BacktestService) {
 					}
 				},
 			)
+			.get("/current", (c) => c.json({ run: service.current() }))
 			.get("/:id", (c) => {
 				const run = service.get(Number(c.req.param("id")));
 				return run ? c.json({ run }, 200) : c.json(NOT_FOUND, 404);
@@ -101,22 +102,28 @@ export function backtestRoutes(service: BacktestService) {
 				const chart = service.chart(Number(c.req.param("id")));
 				return chart ? c.json(chart, 200) : c.json(NOT_FOUND, 404);
 			})
-			.get("/:id/orders", (c) => {
-				const filter: OrderFilter =
-					c.req.query("filter") === "filled" ? "filled" : "all";
-				const offset = Math.max(0, Number(c.req.query("offset") ?? 0) || 0);
-				const limit = Math.min(
-					MAX_LIMIT,
-					Math.max(1, Number(c.req.query("limit") ?? 20) || 20),
-				);
-				const r = service.orders(
-					Number(c.req.param("id")),
-					filter,
-					offset,
-					limit,
-				);
-				return r ? c.json(r, 200) : c.json(NOT_FOUND, 404);
-			})
+			.get(
+				"/:id/orders",
+				validator("query", (q) => {
+					const filter: OrderFilter = q.filter === "filled" ? "filled" : "all";
+					const offset = Math.max(0, Number(q.offset ?? 0) || 0);
+					const limit = Math.min(
+						MAX_LIMIT,
+						Math.max(1, Number(q.limit ?? 20) || 20),
+					);
+					return { filter, offset, limit };
+				}),
+				(c) => {
+					const { filter, offset, limit } = c.req.valid("query");
+					const r = service.orders(
+						Number(c.req.param("id")),
+						filter,
+						offset,
+						limit,
+					);
+					return r ? c.json(r, 200) : c.json(NOT_FOUND, 404);
+				},
+			)
 			.get("/:id/orders/:orderId", (c) => {
 				const order = service.order(
 					Number(c.req.param("id")),
