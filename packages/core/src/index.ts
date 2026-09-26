@@ -6,6 +6,7 @@ export * from "./condition-strategy";
 export * from "./csv";
 export * from "./format";
 export * from "./indicators";
+export * from "./market-trades";
 export * from "./money";
 export * from "./strategy";
 export * from "./templates";
