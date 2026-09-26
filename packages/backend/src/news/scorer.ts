@@ -20,6 +20,8 @@ export type Scorer = {
 	idle(): Promise<void>;
 	/** 採点が止まっている理由といつからか。止まっていなければ null */
 	problem(): { error: string; since: number } | null;
+	/** 続いている失敗の記録を消す。キーを替えた後に前のキーでの失敗を出し続けないため */
+	clearFailure(): void;
 	/** 保存も集計への反映もせずに採点する（試し採点） */
 	trial(
 		news: PromptNews,
@@ -114,6 +116,9 @@ export function createScorer({
 				});
 		},
 		idle: () => running ?? Promise.resolve(),
+		clearFailure() {
+			failing = null;
+		},
 		problem() {
 			const reason = model.unavailable();
 			if (reason) return { error: reason, since: noKeySince ?? now() };

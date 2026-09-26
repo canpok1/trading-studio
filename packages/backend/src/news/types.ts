@@ -122,6 +122,8 @@ export type TrialResult =
 	  }
 	| { ok: false; message: string };
 
+export type ApiKeyStatus = { configured: boolean; savedAt: number | null };
+
 export interface ScoringService {
 	status(): ScorerStatus;
 	criteria(): {
@@ -139,6 +141,11 @@ export interface ScoringService {
 	models(): { models: ScoringModelOption[]; current: string };
 	/** 採点に使うモデルを変える。採点済みのニュースは採点し直さない。選べないモデルなら false */
 	setModel(id: string): boolean;
+	/** 保存した API キーそのものは返さない */
+	apiKey(): ApiKeyStatus;
+	/** 上書きする。形が不正なら理由を返す */
+	setApiKey(key: string): { ok: true } | { ok: false; message: string };
+	deleteApiKey(): void;
 	/** 採点に失敗したニュースを採点し直す対象へ戻す。失敗していなければ false */
 	retry(newsId: number): boolean;
 	/** 最新のニュースを、渡した採点の基準で採点する。保存も集計への反映もしない */
