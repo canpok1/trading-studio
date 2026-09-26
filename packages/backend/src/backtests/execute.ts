@@ -28,6 +28,7 @@ export function execute(
 			to: job.to,
 			initialCash: job.initialCash,
 			fees: job.fees,
+			judgments: job.judgments ?? undefined,
 			onProgress,
 			shouldAbort,
 		});

@@ -63,6 +63,8 @@ export function createJudgmentService({
 			return { from, step, firstScoredAt, values };
 		},
 		rule: () => repo.aggregationRule(),
+		firstScoredAt: () => repo.firstScoredAt(),
+		scoredNews: (from, to) => repo.scoredNews(from, to),
 		saveRule(rule) {
 			const errors = validateAggregationRule(rule);
 			if (errors.length) return { ok: false, errors };

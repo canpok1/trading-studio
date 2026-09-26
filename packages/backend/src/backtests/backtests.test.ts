@@ -406,3 +406,83 @@ describe("チャートの AI 判定", () => {
 		expect(trend[i]).toBe("range");
 	});
 });
+
+describe("AI 判定の条件", () => {
+	const withJudgment: ConditionSet = {
+		...PARAMS,
+		buy: {
+			match: "all",
+			conditions: [{ type: "judgment", judge: "trend", values: ["up"] }],
+		},
+	};
+
+	function score(t: T, at: number, trend: number) {
+		const source = t.newsRepo.insertSource(
+			{ name: `S${at}`, url: `https://a.example/${at}/feed`, language: "ja" },
+			0,
+		);
+		t.newsRepo.saveFetched(
+			source,
+			[
+				{
+					title: `n${at}`,
+					url: `https://a.example/${at}`,
+					summary: null,
+					publishedAt: at,
+				},
+			],
+			at,
+		);
+		const id = (
+			t.newsRepo.listNews(100).find((n) => n.title === `n${at}`) as {
+				id: number;
+			}
+		).id;
+		t.scoreRepo.saveScore(
+			id,
+			{ scores: { trend, risk: null, sentiment: null }, comment: "c" },
+			{ scoredAt: at, criteriaVersion: 1, model: "m", attempts: 0 },
+		);
+	}
+
+	test("採点の記録が始まる前を含む期間は、理由と記録の開始を返して実行しない", async () => {
+		const t = setup();
+		const none = await post(t, body({ params: withJudgment }));
+		expect(none.status).toBe(400);
+		expect(none.json).toMatchObject({
+			kind: "no_judgments",
+			firstScoredAt: null,
+		});
+
+		score(t, START + 5 * 24 * H, 90);
+		const before = await post(t, body({ params: withJudgment }));
+		expect(before.json).toMatchObject({
+			kind: "no_judgments",
+			firstScoredAt: START + 5 * 24 * H,
+		});
+		// 判定の条件が無ければ今までどおり実行できる
+		expect((await post(t, body())).status).toBe(202);
+	});
+
+	test("評価の時点までに採点済みの点数で判定し、条件どおりに注文を出す", async () => {
+		const t = setup();
+		// 記録の開始。中立の点数
+		score(t, START, 50);
+		// 上昇の判定になるのは、この採点から集計の期間（24時間）のあいだだけ
+		const up = START + 5 * 24 * H;
+		score(t, up, 90);
+		const r = await post(t, body({ params: withJudgment }));
+		expect(r.status).toBe(202);
+		const run = r.json.run as BacktestRun;
+		await t.backtests.running();
+		const orders = await getJson<{
+			orders: { side: string; placedAt: number }[];
+		}>(t, `/api/backtests/${run.id}/orders?filter=all&limit=200`);
+		const buys = orders.orders.filter((o) => o.side === "buy");
+		expect(buys.length).toBeGreaterThan(0);
+		for (const o of buys) {
+			expect(o.placedAt).toBeGreaterThanOrEqual(up);
+			expect(o.placedAt).toBeLessThanOrEqual(up + 24 * H);
+		}
+	});
+});

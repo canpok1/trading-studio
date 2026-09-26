@@ -3,6 +3,13 @@
 import { formatBtc, formatYen } from "./format";
 import { ema } from "./indicators";
 import { limitBuyPriceBelow, notionalYen, SATOSHI_PER_BTC } from "./money";
+import type { Judge, JudgmentValue } from "./news-judgment";
+import {
+	JUDGE_LABELS,
+	JUDGES,
+	JUDGMENT_VALUE_LABELS,
+	JUDGMENT_VALUES,
+} from "./news-judgment";
 import type {
 	Strategy,
 	StrategyInput,
@@ -37,7 +44,9 @@ export type Condition =
 	/** 終値が直近 N 本の最高値を上抜けた（high）/ 最安値を下抜けた（low） */
 	| { type: "breakout"; lookback: number; direction: "high" | "low" }
 	/** 現在値が買値から percent % 上がった（up）/ 下がった（down）。売りのグループだけで使える */
-	| { type: "entryChange"; percent: number; direction: "up" | "down" };
+	| { type: "entryChange"; percent: number; direction: "up" | "down" }
+	/** AI の判定が values のどれか。どのグループでも使える */
+	| { type: "judgment"; judge: Judge; values: JudgmentValue[] };
 
 export type ConditionType = Condition["type"];
 
@@ -93,6 +102,8 @@ type Hit = { ok: true; why: string } | { ok: false } | { insufficient: string };
 
 type Ctx = {
 	candles: readonly Candle[];
+	/** 判定器ごとの今の判定。まだ無ければ入らない */
+	judgments: Partial<Record<Judge, JudgmentValue>>;
 	closes: number[];
 	price: number;
 	entryPrice: number | null;
@@ -157,6 +168,20 @@ function checkCondition(c: Condition, ctx: Ctx): Hit {
 				? {
 						ok: true,
 						why: `終値 ${formatYen(ctx.price)} が直近 ${c.lookback} 本の最安値 ${formatYen(low)} を下抜け`,
+					}
+				: { ok: false };
+		}
+		case "judgment": {
+			const v = ctx.judgments[c.judge];
+			const name = `${JUDGE_LABELS[c.judge]}判定`;
+			if (v === undefined) {
+				return { insufficient: `${name}がまだ無い` };
+			}
+			const label = (x: JudgmentValue) => JUDGMENT_VALUE_LABELS[x] ?? x;
+			return (c.values as string[]).includes(v)
+				? {
+						ok: true,
+						why: `${name}が${label(v)}（${c.values.map(label).join("・")}のどれか）`,
 					}
 				: { ok: false };
 		}
@@ -255,6 +280,17 @@ export function emaPeriods(params: ConditionSet): number[] {
 	return [...set].sort((a, b) => a - b);
 }
 
+/** 戦略が使う判定器（JUDGES の並び、重複なし） */
+export function requiredJudges(params: ConditionSet): Judge[] {
+	const used = new Set<Judge>();
+	for (const key of CONDITION_GROUPS) {
+		for (const c of params[key].conditions) {
+			if (c.type === "judgment") used.add(c.judge);
+		}
+	}
+	return JUDGES.filter((j) => used.has(j));
+}
+
 /** 判定に渡してほしい足の本数（現在の足を含む） */
 export function historyBars(params: ConditionSet): number {
 	let n = 1;
@@ -330,6 +366,22 @@ export function validateConditionSet(p: ConditionSet): ValidationError[] {
 						err(`${at}.lookback`, `${range(LIMITS.lookback)} の整数で入れる`);
 					}
 					break;
+				case "judgment": {
+					const allowed = JUDGMENT_VALUES[c.judge] as
+						| readonly string[]
+						| undefined;
+					if (!allowed) {
+						err(`${at}.judge`, "判定器を選ぶ");
+					} else if (c.values.length === 0) {
+						err(`${at}.values`, "1つ以上選ぶ");
+					} else if (
+						c.values.some((v) => !allowed.includes(v)) ||
+						new Set(c.values).size !== c.values.length
+					) {
+						err(`${at}.values`, "選べない値がある");
+					}
+					break;
+				}
 				case "entryChange":
 					if (g === "buy") {
 						err(at, "買値からの % は売りの条件だけで使える");
@@ -356,10 +408,36 @@ function nextEval(now: number, p: ConditionSet, holding: boolean): number {
 	return now + frequencyMs(holding ? p.frequency.holding : p.frequency.flat);
 }
 
+/** 判定器ごとの最新の判定。値として読めないものは無視する */
+function latestJudgments(
+	all: StrategyInput<ConditionSet>["judgments"],
+): Ctx["judgments"] {
+	const out: Ctx["judgments"] = {};
+	for (const j of JUDGES) {
+		const last = all[j]?.at(-1);
+		if (
+			last &&
+			(JUDGMENT_VALUES[j] as readonly string[]).includes(last.label)
+		) {
+			out[j] = last.label as JudgmentValue;
+		}
+	}
+	return out;
+}
+
 export function evaluateConditionSet(
 	input: StrategyInput<ConditionSet>,
 ): StrategyOutput {
-	const { now, candles, position, cash, openOrders, params: p, state } = input;
+	const {
+		now,
+		candles,
+		judgments,
+		position,
+		cash,
+		openOrders,
+		params: p,
+		state,
+	} = input;
 	const holding = position.quantity > 0;
 	const done = (note: string, intents: OrderIntent[] = []): StrategyOutput => ({
 		intents,
@@ -381,6 +459,7 @@ export function evaluateConditionSet(
 		price: last.close,
 		entryPrice: position.entryPrice,
 		emaCache: new Map(),
+		judgments: latestJudgments(judgments),
 	};
 
 	if (!holding) {
@@ -445,7 +524,7 @@ export function evaluateConditionSet(
 
 export const conditionStrategy: Strategy<ConditionSet> = {
 	id: "condition",
-	requiredJudges: () => [],
+	requiredJudges,
 	minResolution: (p) => p.timeframe,
 	historyBars,
 	validate: validateConditionSet,
@@ -473,6 +552,19 @@ function parseCondition(v: unknown): Condition | null {
 				type: "breakout",
 				lookback: num(v.lookback),
 				direction: v.direction,
+			};
+		case "judgment":
+			if (
+				!(JUDGES as readonly unknown[]).includes(v.judge) ||
+				!Array.isArray(v.values) ||
+				!v.values.every((x) => typeof x === "string")
+			) {
+				return null;
+			}
+			return {
+				type: "judgment",
+				judge: v.judge as Judge,
+				values: v.values as JudgmentValue[],
 			};
 		case "entryChange":
 			if (v.direction !== "up" && v.direction !== "down") return null;

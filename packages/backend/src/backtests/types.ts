@@ -89,6 +89,8 @@ export type StartBacktestFailure =
 	| { kind: "invalid_input"; field: string; message: string }
 	/** データが無い・粗いなど、実行できない */
 	| { kind: "no_data"; message: string }
+	/** 期間に AI 判定の記録が始まる前が含まれる。firstScoredAt は記録の開始（無ければ null） */
+	| { kind: "no_judgments"; message: string; firstScoredAt: number | null }
 	/** 期間内に欠損がある。skipGaps で実行し直せる */
 	| { kind: "gaps"; gaps: Gap[]; gapCount: number; missingBars: number };
 
