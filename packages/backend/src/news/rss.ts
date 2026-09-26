@@ -36,14 +36,24 @@ function decodeEntities(s: string): string {
 	});
 }
 
-/** 要素の中身を文字列にする。CDATA を外し、HTML のタグを除き、実体参照を戻して空白を詰める */
+function unwrap(raw: string): string {
+	return raw.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1");
+}
+
+function squash(s: string): string {
+	return s.replace(/\s+/g, " ").trim();
+}
+
+/** 要素の中身を文字列にする。タグは除かない（見出しの「<速報>」のような文字を残すため） */
 function text(raw: string): string {
-	const unwrapped = raw.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1");
+	return squash(decodeEntities(unwrap(raw)));
+}
+
+/** HTML を含みうる要素（概要）の中身を文字列にする */
+function htmlText(raw: string): string {
 	// 概要の中の HTML はエスケープされていることが多いので、戻してからタグを除く
-	const decoded = decodeEntities(unwrapped);
-	return decodeEntities(decoded.replace(/<[^>]*>/g, " "))
-		.replace(/\s+/g, " ")
-		.trim();
+	const decoded = decodeEntities(unwrap(raw));
+	return squash(decodeEntities(decoded.replace(/<[^>]*>/g, " ")));
 }
 
 function escapeRe(s: string): string {
@@ -98,7 +108,7 @@ function parseItem(xml: string): FeedItem | null {
 		text(first(xml, ["guid", "id"]) ?? "");
 	if (!title || !/^https?:\/\//i.test(url)) return null;
 	const rawSummary = first(xml, ["description", "summary", "content"]);
-	let summary = rawSummary === null ? null : text(rawSummary);
+	let summary = rawSummary === null ? null : htmlText(rawSummary);
 	if (summary === "") summary = null;
 	if (summary !== null && summary.length > SUMMARY_MAX) {
 		summary = `${summary.slice(0, SUMMARY_MAX)}…`;

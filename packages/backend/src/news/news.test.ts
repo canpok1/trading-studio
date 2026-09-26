@@ -33,6 +33,13 @@ describe("parseFeed", () => {
 		]);
 	});
 
+	test("見出しの山括弧はタグとして消さない", () => {
+		const items = parseFeed(
+			`<rss version="2.0"><channel><item><title>S&amp;P 500 &lt;速報&gt; 急落</title><link>https://a.example/1</link></item></channel></rss>`,
+		);
+		expect(items[0]?.title).toBe("S&P 500 <速報> 急落");
+	});
+
 	test("Atom: link の href と summary・published を読む", () => {
 		const items = parseFeed(
 			`<feed xmlns="http://www.w3.org/2005/Atom"><entry><title>A</title><link rel="self" href="https://a.example/self"/><link href="https://a.example/a"/><summary>s</summary><published>2026-09-26T12:00:00+09:00</published></entry></feed>`,
