@@ -10,6 +10,7 @@
 	"dependencies": {
 		"@trading-studio/core": "workspace:*",
 		"hono": "^4.13.9",
+		"lightweight-charts": "^5.2.1",
 		"react": "^19.3.0",
 		"react-dom": "^19.3.0",
 		"react-router": "^8.4.0"
