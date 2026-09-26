@@ -8,6 +8,7 @@ export * from "./format";
 export * from "./indicators";
 export * from "./market-trades";
 export * from "./money";
+export * from "./news-judgment";
 export * from "./strategy";
 export * from "./templates";
 export * from "./timeframe";
