@@ -22,6 +22,8 @@ export function execute(
 			params: job.params,
 			candles: job.candles,
 			dataTimeframe: job.dataTimeframe,
+			stepCandles: job.stepCandles ?? undefined,
+			stepTimeframe: job.stepTimeframe,
 			from: job.from,
 			to: job.to,
 			initialCash: job.initialCash,

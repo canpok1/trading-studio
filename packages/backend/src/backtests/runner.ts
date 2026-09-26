@@ -13,6 +13,9 @@ export type RunnerJob = {
 	/** 戦略の粒度の足。指標の計算に使うため期間より前の足も含む */
 	candles: Candle[];
 	dataTimeframe: Timeframe;
+	/** 判定と約定に使う期間内の足と粒度。戦略の粒度と同じなら candles を使う */
+	stepCandles: Candle[] | null;
+	stepTimeframe: Timeframe;
 	from: number;
 	to: number;
 	initialCash: number;

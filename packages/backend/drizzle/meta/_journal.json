@@ -29,6 +29,13 @@
       "when": 1790397835421,
       "tag": "0003_backtests",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790405729474,
+      "tag": "0004_backtest_step",
+      "breakpoints": true
     }
   ]
 }

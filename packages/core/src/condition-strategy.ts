@@ -10,7 +10,7 @@ import type {
 	ValidationError,
 } from "./strategy";
 import type { Timeframe } from "./timeframe";
-import { isTimeframe } from "./timeframe";
+import { isCoarser, isTimeframe, TIMEFRAME_MS, TIMEFRAMES } from "./timeframe";
 import type { Candle, OrderIntent } from "./types";
 
 export const FREQUENCY_UNITS = ["s", "m", "h"] as const;
@@ -206,6 +206,39 @@ function evaluateGroup(g: ConditionGroup, ctx: Ctx): GroupResult {
 
 export function frequencyMs(f: Frequency): number {
 	return f.value * FREQUENCY_UNIT_MS[f.unit];
+}
+
+const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+
+/**
+ * 判定頻度どおりに判定するのに要る足の粒度。両方の判定頻度を割り切れる粒度のうち最も粗いもの（戦略の粒度が上限）。
+ * 1分の倍数でない頻度（秒単位）はどの粒度でも割り切れないので null
+ */
+export function idealStepTimeframe(params: ConditionSet): Timeframe | null {
+	const g = gcd(
+		frequencyMs(params.frequency.flat),
+		frequencyMs(params.frequency.holding),
+	);
+	const cap = TIMEFRAME_MS[params.timeframe];
+	const fits = TIMEFRAMES.filter(
+		(t) => TIMEFRAME_MS[t] <= cap && g % TIMEFRAME_MS[t] === 0,
+	);
+	return fits.at(-1) ?? null;
+}
+
+/**
+ * バックテストで判定に使う足の粒度。取り込み済みの最も細かいデータ（finest）までしか細かくできない。
+ * limited は、データが足りず判定頻度より粗い間隔でしか判定できないこと
+ */
+export function chooseStepTimeframe(
+	params: ConditionSet,
+	finest: Timeframe,
+): { timeframe: Timeframe; limited: boolean } {
+	const ideal = idealStepTimeframe(params);
+	if (ideal !== null && !isCoarser(finest, ideal)) {
+		return { timeframe: ideal, limited: false };
+	}
+	return { timeframe: finest, limited: true };
 }
 
 /** 戦略が使う EMA の本数（小さい順、重複なし）。チャートの EMA 線に使う */

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Condition, ConditionSet } from "./condition-strategy";
 import {
+	chooseStepTimeframe,
 	emaPeriods,
 	evaluateConditionSet,
 	historyBars,
@@ -361,4 +362,41 @@ describe("parseConditionSet", () => {
 			validateConditionSet(p as ConditionSet).map((e) => e.path),
 		).toContain("orderSize");
 	});
+});
+
+describe("判定に使う足の粒度", () => {
+	const withFreq = (
+		timeframe: ConditionSet["timeframe"],
+		flat: string,
+		holding: string,
+	): ConditionSet => {
+		const f = (v: string) => ({
+			value: Number(v.slice(0, -1)),
+			unit: v.slice(-1) as "s" | "m" | "h",
+		});
+		return {
+			...strategyTemplate("trend").params,
+			timeframe,
+			frequency: { flat: f(flat), holding: f(holding) },
+		};
+	};
+
+	test.each([
+		// 戦略の粒度, ポジションなし, あり, 最も細かいデータ, 期待する粒度, 足りないか
+		["1h", "1h", "15m", "1m", "15m", false],
+		["1h", "1h", "2h", "1m", "1h", false],
+		["1h", "20m", "1h", "1m", "5m", false],
+		["1d", "90m", "24h", "1m", "15m", false],
+		["1h", "1h", "15m", "1h", "1h", true],
+		["1h", "1h", "15m", "5m", "15m", false],
+		["1h", "30s", "1h", "1m", "1m", true],
+	] as const)(
+		"%s・%s/%s・データ %s → %s（不足 %s）",
+		(tf, flat, holding, finest, expected, limited) => {
+			expect(chooseStepTimeframe(withFreq(tf, flat, holding), finest)).toEqual({
+				timeframe: expected,
+				limited,
+			});
+		},
+	);
 });

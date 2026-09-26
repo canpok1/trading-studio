@@ -29,6 +29,8 @@ type RunRow = {
 	started_at: number;
 	finished_at: number | null;
 	bar_count: number;
+	step_timeframe: Timeframe | null;
+	step_limited: number;
 	summary: string | null;
 	filled_count: number;
 	order_count: number;
@@ -49,6 +51,8 @@ function toRun(r: RunRow): BacktestRun {
 		initialCash: r.initial_cash,
 		fees: { limitPpm: r.fee_limit_ppm, marketPpm: r.fee_market_ppm },
 		skipGaps: r.skip_gaps === 1,
+		stepTimeframe: r.step_timeframe ?? r.timeframe,
+		stepLimited: r.step_limited === 1,
 		status: r.status,
 		progress: r.status === "done" ? 1 : 0,
 		startedAt: r.started_at,
@@ -92,8 +96,9 @@ export class BacktestRepository {
 		return Number(
 			this.sql.run(
 				`insert into backtest_runs (strategy_id, strategy_name, params, timeframe, from_time, to_time,
-				 initial_cash, fee_limit_ppm, fee_market_ppm, skip_gaps, status, started_at, bar_count)
-				 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)`,
+				 initial_cash, fee_limit_ppm, fee_market_ppm, skip_gaps, status, started_at, bar_count,
+				 step_timeframe, step_limited)
+				 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?)`,
 				[
 					run.strategyId,
 					run.strategyName,
@@ -107,6 +112,8 @@ export class BacktestRepository {
 					run.skipGaps ? 1 : 0,
 					run.startedAt,
 					run.barCount,
+					run.stepTimeframe,
+					run.stepLimited ? 1 : 0,
 				],
 			).lastInsertRowid,
 		);

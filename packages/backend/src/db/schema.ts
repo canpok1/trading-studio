@@ -89,6 +89,12 @@ export const backtestRuns = sqliteTable("backtest_runs", {
 	finishedAt: integer("finished_at"),
 	/** 期間内の足の数 */
 	barCount: integer("bar_count").notNull(),
+	/** 判定と約定に使った足の粒度。この列を足す前の実行は null（戦略の粒度で進めていた） */
+	stepTimeframe: text("step_timeframe"),
+	/** データが足りず、判定頻度より粗い間隔でしか判定できなかったか */
+	stepLimited: integer("step_limited", { mode: "boolean" })
+		.notNull()
+		.default(false),
 	/** 成績（JSON）。完了したときだけ入る */
 	summary: text("summary"),
 	/** 約定の数・注文の数 */

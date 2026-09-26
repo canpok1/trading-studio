@@ -3,6 +3,7 @@
 import {
 	BacktestError,
 	checkDataResolution,
+	chooseStepTimeframe,
 	conditionStrategy,
 	TIMEFRAME_MS,
 	validateConditionSet,
@@ -111,7 +112,9 @@ export function createBacktestService({
 				}
 				throw e;
 			}
-			const gaps = marketData.gaps(tf, from, to);
+			// 判定頻度が戦略の粒度より短ければ、細かい足で判定する
+			const step = chooseStepTimeframe(params, finest);
+			const gaps = marketData.gaps(step.timeframe, from, to);
 			if (gaps.length > 0 && !input.skipGaps) {
 				return fail({
 					kind: "gaps",
@@ -124,7 +127,11 @@ export function createBacktestService({
 			const history = conditionStrategy.historyBars(params);
 			const candles = marketData.loadCandles(tf, from - history * tfMs, to);
 			const barCount = candles.filter((c) => c.time >= from).length;
-			if (barCount === 0) {
+			const stepCandles =
+				step.timeframe === tf
+					? null
+					: marketData.loadCandles(step.timeframe, from, to);
+			if (barCount === 0 || stepCandles?.length === 0) {
 				return fail({ kind: "no_data", message: "期間に足が無い" });
 			}
 
@@ -140,6 +147,8 @@ export function createBacktestService({
 				initialCash: input.initialCash,
 				fees: input.fees,
 				skipGaps: input.skipGaps,
+				stepTimeframe: step.timeframe,
+				stepLimited: step.limited,
 				startedAt: now(),
 				barCount,
 			});
@@ -149,6 +158,8 @@ export function createBacktestService({
 					params,
 					candles,
 					dataTimeframe: finest,
+					stepCandles,
+					stepTimeframe: step.timeframe,
 					from,
 					to,
 					initialCash: input.initialCash,

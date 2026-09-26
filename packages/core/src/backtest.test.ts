@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { BacktestConfig } from "./backtest";
 import { BacktestAborted, BacktestError, runBacktest } from "./backtest";
+import type { ConditionSet } from "./condition-strategy";
 import { conditionStrategy } from "./condition-strategy";
 import type { Strategy } from "./strategy";
 import { strategyTemplate } from "./templates";
@@ -255,6 +256,98 @@ describe("期間と指標", () => {
 		});
 		expect(seen).toEqual([3, 3]);
 		expect(r.candles).toHaveLength(2);
+	});
+});
+
+describe("判定頻度が戦略の粒度より短い", () => {
+	const M15 = TIMEFRAME_MS["15m"];
+	const P = 10_000_000;
+	// 1時間足の戦略。ポジションありは15分ごとに判定し、買値から1%下がったら損切り
+	const params: ConditionSet = {
+		timeframe: "1h",
+		frequency: {
+			flat: { value: 15, unit: "m" },
+			holding: { value: 15, unit: "m" },
+		},
+		orderSize: Q,
+		buy: {
+			match: "all",
+			conditions: [{ type: "breakout", lookback: 2, direction: "high" }],
+		},
+		takeProfit: { match: "any", conditions: [] },
+		stopLoss: {
+			match: "any",
+			conditions: [{ type: "entryChange", percent: 1, direction: "down" }],
+		},
+	};
+	const flat: Bar = [P, P, P, P];
+	const quarters: Bar[] = [
+		...Array<Bar>(8).fill(flat),
+		[P, P + 200_000, P, P + 200_000], // 直近2本の高値を上抜け → 10,189,800 に指値
+		[P + 200_000, P + 200_000, 10_180_000, P + 200_000], // 指値が約定
+		[P + 200_000, P + 200_000, P, P], // 買値から −1.9% → 成行で売り
+		flat, // 始値で約定
+		...Array<Bar>(4).fill(flat),
+	];
+	const q = quarters.map(([open, high, low, close], i) => ({
+		time: i * M15,
+		open,
+		high,
+		low,
+		close,
+		volume: 0,
+	}));
+	// 15分足から作った1時間足
+	const hours: Candle[] = [];
+	for (let i = 0; i < q.length; i += 4) {
+		const g = q.slice(i, i + 4);
+		hours.push({
+			time: (g[0] as Candle).time,
+			open: (g[0] as Candle).open,
+			high: Math.max(...g.map((c) => c.high)),
+			low: Math.min(...g.map((c) => c.low)),
+			close: (g.at(-1) as Candle).close,
+			volume: 0,
+		});
+	}
+	const base = {
+		strategy: conditionStrategy,
+		params,
+		candles: hours,
+		dataTimeframe: "15m" as const,
+		from: 0,
+		to: hours.length * H,
+		initialCash: 20_000_000,
+		fees: { limitPpm: 0, marketPpm: 0 },
+	};
+
+	test("細かい足を渡すと、足の途中でも判定頻度どおりに判定して売る", () => {
+		const r = runBacktest({ ...base, stepCandles: q, stepTimeframe: "15m" });
+		const [buy, sell] = r.orders;
+		expect(buy).toMatchObject({ price: 10_189_800, placedAt: 2 * H + M15 });
+		expect(buy?.filledAt).toBe(2 * H + M15);
+		expect(sell).toMatchObject({
+			side: "sell",
+			placedAt: 2 * H + 3 * M15,
+			filledAt: 2 * H + 3 * M15,
+			fillPrice: P,
+		});
+		expect(r.decisions).toHaveLength(q.length);
+		// チャートの足は戦略の粒度のまま
+		expect(r.candles).toHaveLength(hours.length);
+	});
+
+	test("細かい足を渡さなければ、戦略の粒度の足の終わりにだけ判定する", () => {
+		const r = runBacktest(base);
+		expect(r.decisions.map((d) => d.time)).toEqual(
+			hours.map((h) => h.time + H),
+		);
+	});
+
+	test("判定に使う足が戦略の粒度より粗ければ実行しない", () => {
+		expect(() =>
+			runBacktest({ ...base, stepCandles: hours, stepTimeframe: "4h" }),
+		).toThrow(BacktestError);
 	});
 });
 

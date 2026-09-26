@@ -53,7 +53,7 @@ function candles(from: number, bars: number): Candle[] {
 
 type T = ReturnType<typeof createTestApp>;
 
-function importBars(t: T, rows: Candle[], tf: "1h" | "1d" = "1h") {
+function importBars(t: T, rows: Candle[], tf: "15m" | "1h" | "1d" = "1h") {
 	const id = t.marketDataRepo.createImport(tf, "a.csv", 0);
 	t.marketDataRepo.insertImported(tf, rows, id);
 	const first = rows[0] as Candle;
@@ -94,6 +94,57 @@ function setup(runner = inlineRunner()) {
 	importBars(t, candles(START, DAYS * 24));
 	return t;
 }
+
+describe("判定に使う足", () => {
+	const often = (params = PARAMS): ConditionSet => ({
+		...params,
+		frequency: {
+			flat: { value: 1, unit: "h" },
+			holding: { value: 15, unit: "m" },
+		},
+	});
+
+	test("判定頻度が戦略の粒度より短ければ、細かい足で判定する", async () => {
+		const t = createTestApp({}, undefined, inlineRunner());
+		// 1時間足を15分足4本に分けて取り込む
+		const q = candles(START, DAYS * 24).flatMap((c) =>
+			[0, 1, 2, 3].map((k) => ({ ...c, time: c.time + k * (H / 4) })),
+		);
+		importBars(t, q, "15m");
+		const r = await post(t, body({ params: often() }));
+		const run = r.json.run as BacktestRun;
+		expect(run).toMatchObject({ stepTimeframe: "15m", stepLimited: false });
+		await t.backtests.running();
+		const done = (
+			await getJson<{ run: BacktestRun }>(t, `/api/backtests/${run.id}`)
+		).run;
+		expect(done.status).toBe("done");
+		// チャートは戦略の粒度の足
+		const chart = await getJson<{ bars: unknown[] }>(
+			t,
+			`/api/backtests/${run.id}/chart`,
+		);
+		expect(chart.bars).toHaveLength(18 * 24);
+	});
+
+	test("細かい足が無ければ、戦略の粒度で判定し、不足として残す", async () => {
+		const t = setup();
+		const r = await post(t, body({ params: often() }));
+		expect(r.json.run).toMatchObject({
+			stepTimeframe: "1h",
+			stepLimited: true,
+		});
+	});
+
+	test("判定頻度が戦略の粒度以上なら、戦略の粒度で判定する", async () => {
+		const t = setup();
+		const r = await post(t, body());
+		expect(r.json.run).toMatchObject({
+			stepTimeframe: "1h",
+			stepLimited: false,
+		});
+	});
+});
 
 describe("バックテストの実行", () => {
 	test("実行すると進捗を経て完了し、成績・チャート・注文が取れる", async () => {
