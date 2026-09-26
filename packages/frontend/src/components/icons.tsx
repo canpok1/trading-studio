@@ -77,6 +77,16 @@ export function DataIcon({ size = 22 }: IconProps) {
 	);
 }
 
+export function ExportIcon({ size = 22 }: IconProps) {
+	return (
+		<Svg size={size} strokeLinecap="round" strokeLinejoin="round">
+			<path d="M12 4v12" />
+			<path d="m7 11 5 5 5-5" />
+			<path d="M4 16v4h16v-4" />
+		</Svg>
+	);
+}
+
 export function SettingsIcon({ size = 22 }: IconProps) {
 	return (
 		<Svg size={size}>

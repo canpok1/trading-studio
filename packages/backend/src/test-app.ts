@@ -1,4 +1,6 @@
 // テスト用。メモリ上の DB で本物のサービスをつないだ app を作る
+import { AnalysisExportRepository } from "./analysis-export/repository";
+import { createAnalysisExportService } from "./analysis-export/service";
 import type { AppDeps } from "./app";
 import { createApp } from "./app";
 import { inlineRunner } from "./backtests/inline-runner";
@@ -109,6 +111,13 @@ export function createTestApp(
 		market: () => live.current,
 		now: () => clock.now,
 	});
+	const analysisExport = createAnalysisExportService({
+		repo: new AnalysisExportRepository(db),
+		scoreRepo,
+		backtestRepo,
+		marketData,
+		now: () => clock.now,
+	});
 	const app = createApp({
 		isDbReachable: () => true,
 		marketData,
@@ -119,6 +128,7 @@ export function createTestApp(
 		scoring,
 		judgments,
 		trading,
+		analysisExport,
 		...over,
 	});
 	return {

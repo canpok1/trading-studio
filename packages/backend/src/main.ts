@@ -2,6 +2,8 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
+import { AnalysisExportRepository } from "./analysis-export/repository";
+import { createAnalysisExportService } from "./analysis-export/service";
 import { createApp } from "./app";
 import { BacktestRepository } from "./backtests/repository";
 import { createBacktestService } from "./backtests/service";
@@ -126,11 +128,12 @@ const tradingEngine = createTradingService({
 trading = tradingEngine;
 const tradingTimer = setInterval(() => tradingEngine.tick(), 1_000);
 
+const marketData = createMarketDataService(marketDataRepo);
 const server = new Hono().route(
 	"/",
 	createApp({
 		isDbReachable: () => isDbReachable(db),
-		marketData: createMarketDataService(marketDataRepo),
+		marketData,
 		market: createMarketService({ collector, repo: marketDataRepo }),
 		strategies,
 		backtests: createBacktestService({
@@ -148,6 +151,12 @@ const server = new Hono().route(
 		}),
 		judgments,
 		trading: tradingEngine,
+		analysisExport: createAnalysisExportService({
+			repo: new AnalysisExportRepository(db),
+			scoreRepo,
+			backtestRepo,
+			marketData,
+		}),
 	}),
 );
 serveFrontend(server, distDir);
