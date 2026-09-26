@@ -3,7 +3,7 @@ import type {
 	StoredStrategy,
 	TimeframeCoverage,
 } from "@trading-studio/backend";
-import type { ConditionSet, Gap } from "@trading-studio/core";
+import type { ConditionSet, Gap, Timeframe } from "@trading-studio/core";
 import {
 	chooseStepTimeframe,
 	isCoarser,
@@ -12,7 +12,6 @@ import {
 	ppmToPercent,
 	TIMEFRAME_LABELS,
 	TIMEFRAME_MS,
-	TIMEFRAMES,
 	validateConditionSet,
 } from "@trading-studio/core";
 import {
@@ -294,18 +293,28 @@ function RunForm({
 	const fromDate = draft.fromDate ?? toDateInputValue(toMs - 30 * DAY);
 	const fromMs = fromDateInputValue(fromDate) ?? 0;
 
-	// 判定に使う足。期間に取り込んだ最も細かい足までしか細かくできない（実際の選び方はサーバーと同じ）
-	const finest = TIMEFRAMES.find((t) => {
-		const c = coverage.find((x) => x.timeframe === t);
-		return (
-			c !== undefined &&
-			c.importedCount > 0 &&
-			c.firstTime !== null &&
-			c.lastTime !== null &&
-			c.firstTime < toMs &&
-			c.lastTime + TIMEFRAME_MS[t] > fromMs
-		);
-	});
+	// 判定に使う足。期間に取り込んだ最も細かい足までしか細かくできない。選び方はサーバーに合わせるため問い合わせる
+	const [usable, setUsable] = useState<{
+		key: string;
+		timeframes: Timeframe[];
+	} | null>(null);
+	const usableKey = `${fromMs}:${toMs}`;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 期間が変わったときだけ問い合わせる
+	useEffect(() => {
+		let alive = true;
+		api.api.data["usable-timeframes"]
+			.$get({ query: { from: String(fromMs), to: String(toMs) } })
+			.then((res) => readJson<{ timeframes: Timeframe[] }>(res))
+			.then((r) => {
+				if (alive) setUsable({ key: usableKey, timeframes: r.timeframes });
+			})
+			.catch(() => {});
+		return () => {
+			alive = false;
+		};
+	}, [usableKey]);
+	const finest =
+		usable?.key === usableKey ? (usable.timeframes[0] ?? null) : null;
 	const step =
 		finest && !isCoarser(finest, tf) ? chooseStepTimeframe(p, finest) : null;
 

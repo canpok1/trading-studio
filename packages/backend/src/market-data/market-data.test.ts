@@ -295,3 +295,20 @@ describe("過去データの取り込み", () => {
 		});
 	});
 });
+
+test("期間のバックテストで使える粒度を返す", async () => {
+	const t = createTestApp();
+	const times = Array.from({ length: 10 }, (_, i) => DAY + i * M);
+	await importCsv(t, csv(times));
+	const res = await t.app.request(
+		`/api/data/usable-timeframes?from=${DAY}&to=${DAY + 10 * M}`,
+	);
+	expect(await res.json()).toEqual({ timeframes: ["1m"] });
+	const empty = await t.app.request(
+		`/api/data/usable-timeframes?from=0&to=${DAY}`,
+	);
+	expect(await empty.json()).toEqual({ timeframes: [] });
+	expect(
+		(await t.app.request("/api/data/usable-timeframes?from=a&to=1")).status,
+	).toBe(400);
+});
