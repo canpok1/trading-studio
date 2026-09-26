@@ -1,0 +1,420 @@
+// 画面で作る「条件のセット」を実行する汎用の条件戦略
+
+import { formatBtc, formatYen } from "./format";
+import { ema } from "./indicators";
+import { limitBuyPriceBelow, notionalYen, SATOSHI_PER_BTC } from "./money";
+import type {
+	Strategy,
+	StrategyInput,
+	StrategyOutput,
+	ValidationError,
+} from "./strategy";
+import type { Timeframe } from "./timeframe";
+import { isTimeframe } from "./timeframe";
+import type { Candle, OrderIntent } from "./types";
+
+export const FREQUENCY_UNITS = ["s", "m", "h"] as const;
+export type FrequencyUnit = (typeof FREQUENCY_UNITS)[number];
+
+export const FREQUENCY_UNIT_LABELS: Record<FrequencyUnit, string> = {
+	s: "秒",
+	m: "分",
+	h: "時間",
+};
+
+const FREQUENCY_UNIT_MS: Record<FrequencyUnit, number> = {
+	s: 1000,
+	m: 60_000,
+	h: 3_600_000,
+};
+
+/** 判定頻度。整数＋単位 */
+export type Frequency = { value: number; unit: FrequencyUnit };
+
+export type Condition =
+	/** 短期 EMA が長期 EMA を上抜け（up）/ 下抜け（down）した */
+	| { type: "emaCross"; fast: number; slow: number; direction: "up" | "down" }
+	/** 終値が直近 N 本の最高値を上抜けた（high）/ 最安値を下抜けた（low） */
+	| { type: "breakout"; lookback: number; direction: "high" | "low" }
+	/** 現在値が買値から percent % 上がった（up）/ 下がった（down）。売りのグループだけで使える */
+	| { type: "entryChange"; percent: number; direction: "up" | "down" };
+
+export type ConditionType = Condition["type"];
+
+export type ConditionGroup = {
+	/** all: すべて満たす / any: どれか1つ */
+	match: "all" | "any";
+	conditions: Condition[];
+};
+
+export const CONDITION_GROUPS = ["buy", "takeProfit", "stopLoss"] as const;
+export type ConditionGroupKey = (typeof CONDITION_GROUPS)[number];
+
+export const CONDITION_GROUP_LABELS: Record<ConditionGroupKey, string> = {
+	buy: "買い注文する条件",
+	takeProfit: "売り注文（利確）する条件",
+	stopLoss: "売り注文（損切り）する条件",
+};
+
+export type ConditionSet = {
+	/** EMA の本数・直近 N 本・指値の取消までの本数は、すべてこの粒度の足で数える */
+	timeframe: Timeframe;
+	frequency: {
+		/** ポジションなしのとき */
+		flat: Frequency;
+		/** ポジションありのとき */
+		holding: Frequency;
+	};
+	/** 1回の注文量（satoshi） */
+	orderSize: number;
+	buy: ConditionGroup;
+	takeProfit: ConditionGroup;
+	stopLoss: ConditionGroup;
+};
+
+/** 買い指値は現在値からこの率だけ下げる（ppm。0.1%） */
+export const BUY_LIMIT_BELOW_PPM = 1000;
+/** 買い指値はこの本数のあいだ約定しなければ取り消す */
+export const BUY_EXPIRE_BARS = 3;
+
+export const LIMITS = {
+	emaPeriod: { min: 2, max: 500 },
+	lookback: { min: 2, max: 1000 },
+	percent: { min: 0.1, max: 100 },
+	frequency: { min: 1, max: 999 },
+	/** 注文量（satoshi）。0.001〜1 BTC */
+	orderSize: { min: 100_000, max: SATOSHI_PER_BTC },
+} as const;
+
+/** EMA を途中から計算しても値がほぼ一致するよう、本数のこの倍の足を渡してもらう */
+const EMA_HISTORY_FACTOR = 10;
+
+type Hit = { ok: true; why: string } | { ok: false } | { insufficient: string };
+
+type Ctx = {
+	candles: readonly Candle[];
+	closes: number[];
+	price: number;
+	entryPrice: number | null;
+	emaCache: Map<number, number[]>;
+};
+
+function emaOf(ctx: Ctx, period: number): number[] {
+	let v = ctx.emaCache.get(period);
+	if (!v) {
+		v = ema(ctx.closes, period);
+		ctx.emaCache.set(period, v);
+	}
+	return v;
+}
+
+function checkCondition(c: Condition, ctx: Ctx): Hit {
+	const n = ctx.candles.length;
+	switch (c.type) {
+		case "emaCross": {
+			const need = c.slow + 1;
+			if (n < need) {
+				return {
+					insufficient: `EMA(${c.slow}) に ${need} 本必要、現在 ${n} 本`,
+				};
+			}
+			const f = emaOf(ctx, c.fast);
+			const s = emaOf(ctx, c.slow);
+			const f0 = f[n - 2] as number;
+			const s0 = s[n - 2] as number;
+			const f1 = f[n - 1] as number;
+			const s1 = s[n - 1] as number;
+			// 等しい場合はクロスとみなさない
+			const hit =
+				c.direction === "up" ? f0 < s0 && f1 > s1 : f0 > s0 && f1 < s1;
+			return hit
+				? {
+						ok: true,
+						why: `短期EMA(${c.fast}) ${formatYen(f1)} が長期EMA(${c.slow}) ${formatYen(s1)} を${c.direction === "up" ? "上抜け" : "下抜け"}`,
+					}
+				: { ok: false };
+		}
+		case "breakout": {
+			const need = c.lookback + 1;
+			if (n < need) {
+				return {
+					insufficient: `直近 ${c.lookback} 本に ${need} 本必要、現在 ${n} 本`,
+				};
+			}
+			// 現在の足を除く直近 N 本
+			const window = ctx.candles.slice(n - 1 - c.lookback, n - 1);
+			if (c.direction === "high") {
+				const high = Math.max(...window.map((x) => x.high));
+				return ctx.price > high
+					? {
+							ok: true,
+							why: `終値 ${formatYen(ctx.price)} が直近 ${c.lookback} 本の最高値 ${formatYen(high)} を上抜け`,
+						}
+					: { ok: false };
+			}
+			const low = Math.min(...window.map((x) => x.low));
+			return ctx.price < low
+				? {
+						ok: true,
+						why: `終値 ${formatYen(ctx.price)} が直近 ${c.lookback} 本の最安値 ${formatYen(low)} を下抜け`,
+					}
+				: { ok: false };
+		}
+		case "entryChange": {
+			if (ctx.entryPrice === null) {
+				return { ok: false };
+			}
+			const change = (ctx.price / ctx.entryPrice - 1) * 100;
+			const hit =
+				c.direction === "up" ? change >= c.percent : -change >= c.percent;
+			const sign = change >= 0 ? "+" : "−";
+			return hit
+				? {
+						ok: true,
+						why: `現在値 ${formatYen(ctx.price)} は買値 ${formatYen(ctx.entryPrice)} から ${sign}${Math.abs(change).toFixed(1)}%（${c.direction === "up" ? "+" : "−"}${c.percent}% 以上）`,
+					}
+				: { ok: false };
+		}
+	}
+}
+
+type GroupResult =
+	| { kind: "hit"; why: string }
+	| { kind: "miss" }
+	| { kind: "insufficient"; why: string };
+
+function evaluateGroup(g: ConditionGroup, ctx: Ctx): GroupResult {
+	if (g.conditions.length === 0) {
+		return { kind: "miss" };
+	}
+	const hits = g.conditions.map((c) => checkCondition(c, ctx));
+	const lacking = hits.find(
+		(h): h is { insufficient: string } => "insufficient" in h,
+	);
+	if (lacking) {
+		return { kind: "insufficient", why: lacking.insufficient };
+	}
+	const ok = hits.filter(
+		(h): h is { ok: true; why: string } => "ok" in h && h.ok,
+	);
+	const satisfied =
+		g.match === "all" ? ok.length === hits.length : ok.length > 0;
+	return satisfied
+		? { kind: "hit", why: `${ok.map((h) => h.why).join("。")}。` }
+		: { kind: "miss" };
+}
+
+export function frequencyMs(f: Frequency): number {
+	return f.value * FREQUENCY_UNIT_MS[f.unit];
+}
+
+/** 戦略が使う EMA の本数（小さい順、重複なし）。チャートの EMA 線に使う */
+export function emaPeriods(params: ConditionSet): number[] {
+	const set = new Set<number>();
+	for (const key of CONDITION_GROUPS) {
+		for (const c of params[key].conditions) {
+			if (c.type === "emaCross") {
+				set.add(c.fast);
+				set.add(c.slow);
+			}
+		}
+	}
+	return [...set].sort((a, b) => a - b);
+}
+
+/** 判定に渡してほしい足の本数（現在の足を含む） */
+export function historyBars(params: ConditionSet): number {
+	let n = 1;
+	for (const key of CONDITION_GROUPS) {
+		for (const c of params[key].conditions) {
+			if (c.type === "emaCross") {
+				n = Math.max(n, c.slow * EMA_HISTORY_FACTOR + 1);
+			} else if (c.type === "breakout") {
+				n = Math.max(n, c.lookback + 1);
+			}
+		}
+	}
+	return n;
+}
+
+function isIntIn(v: unknown, r: { min: number; max: number }): v is number {
+	return (
+		Number.isInteger(v) && (v as number) >= r.min && (v as number) <= r.max
+	);
+}
+
+function isNumIn(v: unknown, r: { min: number; max: number }): v is number {
+	return (
+		typeof v === "number" && Number.isFinite(v) && v >= r.min && v <= r.max
+	);
+}
+
+/** 条件セットの入力検証。path は「buy.conditions.0.fast」のようにフォームの項目を指す */
+export function validateConditionSet(p: ConditionSet): ValidationError[] {
+	const errors: ValidationError[] = [];
+	const err = (path: string, message: string) => errors.push({ path, message });
+
+	if (!isTimeframe(p.timeframe)) {
+		err("timeframe", "足の粒度を選ぶ");
+	}
+	const size = LIMITS.orderSize;
+	if (!isIntIn(p.orderSize, size)) {
+		err(
+			"orderSize",
+			`${formatBtc(size.min)}〜${formatBtc(size.max)} BTC の範囲で入れる（最小単位 0.00000001）`,
+		);
+	}
+	for (const k of ["flat", "holding"] as const) {
+		const f = p.frequency[k];
+		if (!isIntIn(f.value, LIMITS.frequency)) {
+			err(
+				`frequency.${k}`,
+				`${LIMITS.frequency.min}〜${LIMITS.frequency.max} の整数で入れる`,
+			);
+		}
+		if (!FREQUENCY_UNITS.includes(f.unit)) {
+			err(`frequency.${k}`, "単位を選ぶ");
+		}
+	}
+	for (const g of CONDITION_GROUPS) {
+		p[g].conditions.forEach((c, i) => {
+			const at = `${g}.conditions.${i}`;
+			const range = (r: { min: number; max: number }) => `${r.min}〜${r.max}`;
+			switch (c.type) {
+				case "emaCross": {
+					const r = LIMITS.emaPeriod;
+					const fastOk = isIntIn(c.fast, r);
+					const slowOk = isIntIn(c.slow, r);
+					if (!fastOk) err(`${at}.fast`, `${range(r)} の整数で入れる`);
+					if (!slowOk) err(`${at}.slow`, `${range(r)} の整数で入れる`);
+					if (fastOk && slowOk && c.fast >= c.slow) {
+						err(`${at}.fast`, `長期（${c.slow}）より小さくする`);
+					}
+					break;
+				}
+				case "breakout":
+					if (!isIntIn(c.lookback, LIMITS.lookback)) {
+						err(`${at}.lookback`, `${range(LIMITS.lookback)} の整数で入れる`);
+					}
+					break;
+				case "entryChange":
+					if (g === "buy") {
+						err(at, "買値からの % は売りの条件だけで使える");
+					} else if (!isNumIn(c.percent, LIMITS.percent)) {
+						err(`${at}.percent`, `${range(LIMITS.percent)} の範囲で入れる`);
+					}
+					break;
+			}
+		});
+	}
+	if (p.buy.conditions.length === 0) {
+		err("buy", "買い注文の条件を1つ以上追加する");
+	}
+	if (p.stopLoss.conditions.length === 0) {
+		err(
+			"stopLoss",
+			"損切りの条件がないと、下がり続けても売らない。1つ以上追加する",
+		);
+	}
+	return errors;
+}
+
+function nextEval(now: number, p: ConditionSet, holding: boolean): number {
+	return now + frequencyMs(holding ? p.frequency.holding : p.frequency.flat);
+}
+
+export function evaluateConditionSet(
+	input: StrategyInput<ConditionSet>,
+): StrategyOutput {
+	const { now, candles, position, cash, openOrders, params: p, state } = input;
+	const holding = position.quantity > 0;
+	const done = (note: string, intents: OrderIntent[] = []): StrategyOutput => ({
+		intents,
+		nextEvalAt: nextEval(now, p, holding),
+		state,
+		note,
+	});
+
+	const last = candles.at(-1);
+	if (!last) {
+		return done("足が無いため判定しない");
+	}
+	if (openOrders.some((o) => o.side === (holding ? "sell" : "buy"))) {
+		return done(holding ? "売り注文の約定待ち" : "買い注文の約定待ち");
+	}
+	const ctx: Ctx = {
+		candles,
+		closes: candles.map((c) => c.close),
+		price: last.close,
+		entryPrice: position.entryPrice,
+		emaCache: new Map(),
+	};
+
+	if (!holding) {
+		const r = evaluateGroup(p.buy, ctx);
+		if (r.kind === "insufficient") {
+			return done(`指標の本数が足りないため判定しない（${r.why}）`);
+		}
+		if (r.kind === "miss") {
+			return done("買いの条件を満たさない");
+		}
+		const price = limitBuyPriceBelow(ctx.price, BUY_LIMIT_BELOW_PPM);
+		const cost = notionalYen(price, p.orderSize, "ceil");
+		if (cash < cost) {
+			return done(
+				`${r.why}資金 ${formatYen(cash)} 円が注文額 ${formatYen(cost)} 円に足りないため買わない`,
+			);
+		}
+		return done(
+			`${r.why}現在値 ${formatYen(ctx.price)} より 0.1% 下の ${formatYen(price)} に指値で ${formatBtc(p.orderSize)} BTC を買い（${BUY_EXPIRE_BARS} 本のあいだ約定しなければ取消）`,
+			[
+				{
+					kind: "place",
+					side: "buy",
+					type: "limit",
+					price,
+					quantity: p.orderSize,
+					expireAfterBars: BUY_EXPIRE_BARS,
+				},
+			],
+		);
+	}
+
+	// 同じ判定で両方成立したら損切りを優先する（損失を小さく見積もらないため）
+	const sl = evaluateGroup(p.stopLoss, ctx);
+	const tp = evaluateGroup(p.takeProfit, ctx);
+	for (const r of [sl, tp]) {
+		if (r.kind === "insufficient") {
+			return done(`指標の本数が足りないため判定しない（${r.why}）`);
+		}
+	}
+	const hit =
+		sl.kind === "hit"
+			? { why: sl.why, label: "損切り" }
+			: tp.kind === "hit"
+				? { why: tp.why, label: "利確" }
+				: null;
+	if (!hit) {
+		return done("売りの条件を満たさない");
+	}
+	return done(
+		`${hit.why}保有中の ${formatBtc(position.quantity)} BTC を売却（${hit.label}の条件）`,
+		[
+			{
+				kind: "place",
+				side: "sell",
+				type: "market",
+				quantity: position.quantity,
+			},
+		],
+	);
+}
+
+export const conditionStrategy: Strategy<ConditionSet> = {
+	id: "condition",
+	requiredJudges: () => [],
+	minResolution: (p) => p.timeframe,
+	historyBars,
+	validate: validateConditionSet,
+	evaluate: evaluateConditionSet,
+};
