@@ -4,6 +4,7 @@ import { DataPage } from "./pages/DataPage";
 import { OtherPage } from "./pages/OtherPage";
 import { Placeholder } from "./pages/Placeholder";
 import { SettingsPage } from "./pages/SettingsPage";
+import { StrategiesPage } from "./pages/StrategiesPage";
 
 export function App() {
 	return (
@@ -14,7 +15,7 @@ export function App() {
 					path="/backtest"
 					element={<Placeholder title="バックテスト" />}
 				/>
-				<Route path="/strategies" element={<Placeholder title="戦略設定" />} />
+				<Route path="/strategies/:id?" element={<StrategiesPage />} />
 				<Route path="/data" element={<DataPage />} />
 				<Route path="/other" element={<OtherPage />} />
 				<Route path="/settings" element={<SettingsPage />} />
