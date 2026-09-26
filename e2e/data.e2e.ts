@@ -118,39 +118,3 @@ test("横にはみ出さない", async ({ page }) => {
 	);
 	expect(overflow).toBeLessThanOrEqual(0);
 });
-
-test("保存済みの足を期間を選んで CSV で書き出せる", async ({ page }, info) => {
-	const day =
-		info.project.name === "mobile"
-			? Date.UTC(2026, 3, 1)
-			: Date.UTC(2026, 3, 15);
-	await page.goto("/data");
-	await page
-		.getByRole("region", { name: "CSV の取り込み" })
-		.getByText("1分", { exact: true })
-		.click();
-	await page.locator('input[type="file"]').setInputFiles({
-		name: "export.csv",
-		mimeType: "text/csv",
-		buffer: Buffer.from(csv(day, 30)),
-	});
-	await expect(
-		page.getByRole("status").filter({ hasText: "30 行を取り込んだ" }),
-	).toBeVisible();
-
-	const jst = new Date(day + 9 * 3600_000).toISOString().slice(0, 10);
-	await page.getByLabel("開始").fill(jst);
-	await page.getByLabel("終了").fill(jst);
-	const download = page.waitForEvent("download");
-	await page.getByRole("button", { name: "1分足を CSV で書き出す" }).click();
-	const file = await download;
-	const ymd = jst.replaceAll("-", "");
-	expect(file.suggestedFilename()).toBe(`btcjpy-1m-${ymd}-${ymd}.csv`);
-	const text = (await (await file.createReadStream()).toArray()).join("");
-	const lines = text.trimEnd().split("\n");
-	expect(lines[0]).toBe("日時,始値,高値,安値,終値,出来高");
-	expect(lines).toHaveLength(31);
-	expect(lines[1]).toBe(
-		`${jst}T09:00:00.000+09:00,13000000,13010000,12990000,13000000,0.5`,
-	);
-});

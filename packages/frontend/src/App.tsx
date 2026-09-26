@@ -14,6 +14,7 @@ import { AiPage } from "./pages/AiPage";
 import { BacktestResultPage } from "./pages/BacktestResultPage";
 import { BacktestRunPage } from "./pages/BacktestRunPage";
 import { DataPage } from "./pages/DataPage";
+import { ExportPage } from "./pages/ExportPage";
 import { HomePage } from "./pages/HomePage";
 import { OtherPage } from "./pages/OtherPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -44,6 +45,7 @@ function Shell() {
 					<Route path="/strategies/:id?" element={<StrategiesPage />} />
 					<Route path="/trades" element={<TradesPage />} />
 					<Route path="/data" element={<DataPage />} />
+					<Route path="/export" element={<ExportPage />} />
 					<Route path="/other" element={<OtherPage />} />
 					<Route path="/settings" element={<SettingsPage />} />
 					<Route path="*" element={<Navigate to="/home" replace />} />

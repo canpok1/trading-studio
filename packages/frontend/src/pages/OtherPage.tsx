@@ -30,6 +30,18 @@ export function OtherPage() {
 					›
 				</Link>
 				<Link
+					to="/export"
+					className="flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-[15px] hover:bg-surface-2"
+				>
+					<span className="flex-1">
+						エクスポート
+						<span className="block text-xs text-text-2">
+							分析用の ZIP と、価格データの CSV の書き出し
+						</span>
+					</span>
+					›
+				</Link>
+				<Link
 					to="/settings"
 					className="flex w-full items-center gap-3 px-4 py-3.5 text-[15px] hover:bg-surface-2"
 				>

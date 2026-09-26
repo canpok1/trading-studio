@@ -5,6 +5,7 @@ import {
 	AiIcon,
 	BacktestIcon,
 	DataIcon,
+	ExportIcon,
 	HomeIcon,
 	OtherIcon,
 	PaperIcon,
@@ -40,13 +41,19 @@ const NAV: NavItem[] = [
 	{ to: "/trades", label: "取引", icon: <TradesIcon />, show: "both" },
 	{ to: "/ai", label: "AI判定", icon: <AiIcon />, show: "side" },
 	{ to: "/data", label: "過去データ", icon: <DataIcon />, show: "side" },
+	{
+		to: "/export",
+		label: "エクスポート",
+		icon: <ExportIcon />,
+		show: "side",
+	},
 	{ to: "/settings", label: "設定", icon: <SettingsIcon />, show: "side" },
 	{
 		to: "/other",
 		label: "その他",
 		icon: <OtherIcon />,
 		show: "tab",
-		also: ["/settings", "/data", "/ai"],
+		also: ["/settings", "/data", "/export", "/ai"],
 	},
 ];
 
