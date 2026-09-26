@@ -8,6 +8,7 @@
 		"typecheck": "tsc -p ."
 	},
 	"dependencies": {
+		"@trading-studio/core": "workspace:*",
 		"hono": "^4.13.9",
 		"react": "^19.3.0",
 		"react-dom": "^19.3.0",

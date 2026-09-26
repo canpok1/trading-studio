@@ -28,6 +28,7 @@
 	--color-profit: #0e7a45;
 	--color-loss: #c1262e;
 	--color-warn: rgba(214, 150, 20, 0.2);
+	--color-warn-strong: #d89a12;
 	--color-scrim: rgba(15, 17, 19, 0.45);
 }
 
@@ -51,6 +52,7 @@
 	--color-profit: #3fc57e;
 	--color-loss: #f2646c;
 	--color-warn: rgba(240, 180, 40, 0.17);
+	--color-warn-strong: #e8b02f;
 	--color-scrim: rgba(0, 0, 0, 0.6);
 }
 

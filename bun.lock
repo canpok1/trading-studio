@@ -30,6 +30,7 @@
     "packages/frontend": {
       "name": "@trading-studio/frontend",
       "dependencies": {
+        "@trading-studio/core": "workspace:*",
         "hono": "^4.13.9",
         "react": "^19.3.0",
         "react-dom": "^19.3.0",
