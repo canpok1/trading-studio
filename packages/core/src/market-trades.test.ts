@@ -91,10 +91,10 @@ describe("1分足の組み立て", () => {
 		expect(candles.map((c) => c.time)).toEqual([T0 + 2 * M]);
 	});
 
-	test("受け始める前の期間には足を作らない", () => {
+	test("受け始める前の期間には足を作らず、その期間の約定を直前の価格にも使わない", () => {
 		const s = feed(startMinuteCandles(T0 + 5 * M), [tr(T0 + S, 100)]);
 		const { candles } = closeMinutes(s, T0 + 6 * M + 2 * S);
-		expect(candles.map((c) => c.time)).toEqual([T0 + 5 * M]);
+		expect(candles).toEqual([]);
 	});
 
 	test("確定済みの分に遅れて届いた約定は捨てる", () => {

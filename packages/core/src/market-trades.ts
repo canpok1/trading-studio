@@ -19,6 +19,8 @@ export type MarketTrade = {
  * 切断したら捨てて、つなぎ直した後に作り直す（途切れた間の分を作らず、欠損として残すため）
  */
 export type MinuteCandleState = {
+	/** 約定を漏れなく受け始めた時刻 */
+	coveredFrom: number;
 	/** 最初に作る足の開始時刻 */
 	firstMinute: number;
 	/** 次に確定する分の開始時刻 */
@@ -50,6 +52,7 @@ export function startMinuteCandles(coveredFrom: number): MinuteCandleState {
 	const start = candleStart(coveredFrom, "1m");
 	const firstMinute = start === coveredFrom ? start : start + MINUTE;
 	return {
+		coveredFrom,
 		firstMinute,
 		nextMinute: firstMinute,
 		pending: [],
@@ -73,7 +76,9 @@ export function addTrade(
 		}
 	}
 	if (trade.time < state.nextMinute) {
+		// 受け始める前の約定は、その後に取りこぼした約定があるかもしれないので使わない
 		const usableBeforeStart =
+			trade.time >= state.coveredFrom &&
 			state.nextMinute === state.firstMinute &&
 			(state.beforeStart === null ||
 				compareMarketTrades(trade, state.beforeStart) > 0);
