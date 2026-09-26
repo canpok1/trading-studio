@@ -45,7 +45,10 @@ describe("画面遷移", () => {
 				(a) => a.textContent === name,
 			);
 			fireEvent.click(link as HTMLAnchorElement);
-			expect(view.getByRole("heading", { level: 1, name })).toBeTruthy();
+			// 戻るボタンのある画面は、スマホの上部とPCの見出しの2か所に出す
+			expect(
+				view.getAllByRole("heading", { level: 1, name }).length,
+			).toBeGreaterThan(0);
 		}
 	});
 });

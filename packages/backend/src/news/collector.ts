@@ -70,7 +70,13 @@ export function createNewsCollector({
 		tick() {
 			if (running) return;
 			const next = nextRunAt();
-			if (next === null || now() >= next) void collector.run();
+			// 追加したばかりの取得元は、次の収集を待たずに取りに行く
+			const fresh = repo
+				.listSources()
+				.some(
+					(s) => s.enabled && s.lastSuccessAt === null && s.lastError === null,
+				);
+			if (next === null || now() >= next || fresh) void collector.run();
 		},
 		run() {
 			if (!running) {

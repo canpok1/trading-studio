@@ -1,4 +1,5 @@
 import { DEFAULT_SCORING_MODEL, SCORING_MODELS } from "./gemini";
+import { PROMPT_TEMPLATE } from "./prompt";
 import type { NewsRepository } from "./repository";
 import type { ScoreRepository } from "./score-repository";
 import type { Scorer } from "./scorer";
@@ -35,6 +36,7 @@ export function createScoringService({
 		criteria: () => ({
 			versions: repo.listCriteria(),
 			activeVersion: repo.activeCriteriaVersion(),
+			template: PROMPT_TEMPLATE,
 		}),
 
 		addCriteria(text, note) {

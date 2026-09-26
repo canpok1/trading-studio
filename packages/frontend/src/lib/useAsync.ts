@@ -60,3 +60,16 @@ export async function readJson<T>(res: {
 	}
 	return body as T;
 }
+
+/** 画面が見えているか。見えていない間は問い合わせを止める */
+export function usePageVisible(): boolean {
+	const [visible, setVisible] = useState(
+		() => document.visibilityState !== "hidden",
+	);
+	useEffect(() => {
+		const on = () => setVisible(document.visibilityState !== "hidden");
+		document.addEventListener("visibilitychange", on);
+		return () => document.removeEventListener("visibilitychange", on);
+	}, []);
+	return visible;
+}

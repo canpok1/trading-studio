@@ -9,6 +9,7 @@ import {
 import { Layout } from "./components/Layout";
 import { Button } from "./components/ui";
 import { BacktestJobProvider, useBacktestJob } from "./lib/backtest-job";
+import { AiPage } from "./pages/AiPage";
 import { BacktestResultPage } from "./pages/BacktestResultPage";
 import { BacktestRunPage } from "./pages/BacktestRunPage";
 import { DataPage } from "./pages/DataPage";
@@ -35,6 +36,7 @@ function Shell() {
 					<Route path="/home" element={<HomePage />} />
 					<Route path="/backtest" element={<BacktestRunPage />} />
 					<Route path="/backtest/runs/:id" element={<BacktestResultPage />} />
+					<Route path="/ai" element={<AiPage />} />
 					<Route path="/strategies/:id?" element={<StrategiesPage />} />
 					<Route path="/data" element={<DataPage />} />
 					<Route path="/other" element={<OtherPage />} />

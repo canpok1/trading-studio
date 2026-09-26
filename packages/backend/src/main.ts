@@ -11,6 +11,7 @@ import { createCollector } from "./collector/collector";
 import { demoFeed } from "./collector/fake-feed";
 import { migrateDb } from "./db/migrate";
 import { isDbReachable, openDb } from "./db/open";
+import { createJudgmentService } from "./judgments/service";
 import { createMarketService } from "./market/service";
 import { MarketDataRepository } from "./market-data/repository";
 import { createMarketDataService } from "./market-data/service";
@@ -100,6 +101,10 @@ const scorer = createScorer({
 			? demoScoreModel({ isDown: () => existsSync(scoringDownFile) })
 			: geminiModel(process.env.GEMINI_API_KEY),
 	rule: () => scoreRepo.aggregationRule(),
+	// E2E では再試行を待ちきれないので短くする
+	...(process.env.SCORING_MODEL === "demo"
+		? { minIntervalMs: 0, retryDelaysMs: [1_000, 1_000, 1_000] }
+		: {}),
 });
 const scorerTimer = setInterval(() => scorer.tick(), 1_000);
 
@@ -122,6 +127,7 @@ const server = new Hono().route(
 			newsRepo,
 			scorer,
 		}),
+		judgments: createJudgmentService({ repo: scoreRepo }),
 	}),
 );
 serveFrontend(server, distDir);

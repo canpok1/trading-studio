@@ -124,7 +124,12 @@ export type TrialResult =
 
 export interface ScoringService {
 	status(): ScorerStatus;
-	criteria(): { versions: CriteriaVersion[]; activeVersion: number | null };
+	criteria(): {
+		versions: CriteriaVersion[];
+		activeVersion: number | null;
+		/** 固定のひな形。{news} と {criteria} を差し込む */
+		template: string;
+	};
 	addCriteria(
 		text: string,
 		note: string,

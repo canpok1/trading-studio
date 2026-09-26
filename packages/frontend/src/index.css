@@ -31,6 +31,30 @@
 	--color-warn: rgba(214, 150, 20, 0.2);
 	--color-warn-strong: #d89a12;
 	--color-scrim: rgba(15, 17, 19, 0.45);
+
+	/* AI 判定。-bg は背景の塗り、名前だけのものは記号・帯の色 */
+	--color-up-bg: rgba(22, 150, 80, 0.14);
+	--color-down-bg: rgba(205, 45, 55, 0.12);
+	--color-range-bg: rgba(120, 125, 130, 0.1);
+	--color-up: #2e9e61;
+	--color-down: #d2484f;
+	--color-range: #9a9fa5;
+	--color-normal-bg: rgba(0, 0, 0, 0);
+	--color-caution-bg: rgba(214, 150, 20, 0.2);
+	--color-crisis-bg: rgba(200, 30, 45, 0.22);
+	--color-normal: #b9beb6;
+	--color-caution: #d89a12;
+	--color-crisis: #b3131f;
+	--color-sm2: #7a2e86;
+	--color-sm1: #be8bc7;
+	--color-s0: #c7cbc4;
+	--color-sp1: #74bfaf;
+	--color-sp2: #0f7a66;
+	--color-sm2-bg: rgba(122, 46, 134, 0.15);
+	--color-sm1-bg: rgba(190, 139, 199, 0.16);
+	--color-s0-bg: rgba(120, 125, 130, 0.06);
+	--color-sp1-bg: rgba(116, 191, 175, 0.2);
+	--color-sp2-bg: rgba(15, 122, 102, 0.15);
 }
 
 .dark {
@@ -55,6 +79,28 @@
 	--color-warn: rgba(240, 180, 40, 0.17);
 	--color-warn-strong: #e8b02f;
 	--color-scrim: rgba(0, 0, 0, 0.6);
+
+	--color-up-bg: rgba(60, 200, 120, 0.15);
+	--color-down-bg: rgba(240, 90, 100, 0.15);
+	--color-range-bg: rgba(170, 175, 180, 0.08);
+	--color-up: #3fb874;
+	--color-down: #e4585f;
+	--color-range: #7f858b;
+	--color-caution-bg: rgba(240, 180, 40, 0.17);
+	--color-crisis-bg: rgba(240, 50, 65, 0.24);
+	--color-normal: #50565c;
+	--color-caution: #e8b02f;
+	--color-crisis: #f04a57;
+	--color-sm2: #b46cc0;
+	--color-sm1: #7e5687;
+	--color-s0: #4a4f54;
+	--color-sp1: #3e8f80;
+	--color-sp2: #4fc7ae;
+	--color-sm2-bg: rgba(180, 108, 192, 0.18);
+	--color-sm1-bg: rgba(126, 86, 135, 0.2);
+	--color-s0-bg: rgba(170, 175, 180, 0.05);
+	--color-sp1-bg: rgba(62, 143, 128, 0.2);
+	--color-sp2-bg: rgba(79, 199, 174, 0.16);
 }
 
 @layer base {
