@@ -1,10 +1,9 @@
 // バックテストエンジン。過去の足の上で戦略を動かし、注文・約定・成績を計算する
 
-import { formatBtc, formatYen } from "./format";
 import { feeYen, notionalYen, PPM, SATOSHI_PER_BTC } from "./money";
 import type { AggregationRule, ScoredNews } from "./news-judgment";
 import { judgmentCursor } from "./news-judgment";
-import type { Strategy, StrategyOutput } from "./strategy";
+import type { Strategy } from "./strategy";
 import type { Timeframe } from "./timeframe";
 import {
 	candleStart,
@@ -13,21 +12,14 @@ import {
 	TIMEFRAME_MS,
 } from "./timeframe";
 import type {
-	Candle,
-	JsonValue,
-	Order,
-	OrderIntent,
-	OrderType,
-	Position,
-	Side,
-} from "./types";
-import { EMPTY_POSITION } from "./types";
-
-/** 手数料率（ppm） */
-export type FeeRates = { limitPpm: number; marketPpm: number };
-
-/** 既定の手数料率。どちらも 0.1%（Coincheck の実際の率は未確認の仮置き） */
-export const DEFAULT_FEE_RATES: FeeRates = { limitPpm: 1000, marketPpm: 1000 };
+	DecisionLog,
+	FeeRates,
+	StepOutput,
+	Trade,
+	TradeOrder,
+} from "./trading";
+import { cancelAll, newAccount, tradingStep } from "./trading";
+import type { Candle, JsonValue, Order } from "./types";
 
 /** 約定のルール。約定するなら約定価格、しなければ null を返す。差し替えられるようにする */
 export type FillModel = (order: Order, bar: Candle) => number | null;
@@ -82,50 +74,8 @@ export class BacktestAborted extends Error {
 	override name = "BacktestAborted";
 }
 
-export type BacktestOrder = {
-	id: string;
-	side: Side;
-	type: OrderType;
-	/** 指値の価格。成行は null */
-	price: number | null;
-	quantity: number;
-	placedAt: number;
-	status: "open" | "filled" | "canceled";
-	filledAt: number | null;
-	fillPrice: number | null;
-	fee: number | null;
-	canceledAt: number | null;
-	cancelReason: string | null;
-	/** 発注した判断の理由 */
-	reason: string;
-	/** 対応する買い / 売りの注文 */
-	pairId: string | null;
-	/** 売りの約定で確定した往復の損益（手数料込み） */
-	pnl: number | null;
-};
-
-export type DecisionLog = {
-	time: number;
-	/** 判定時の現在値（直前に確定した足の終値） */
-	price: number;
-	cash: number;
-	position: Position;
-	openOrderIds: string[];
-	intents: OrderIntent[];
-	nextEvalAt: number;
-	note: string | null;
-	state: JsonValue;
-};
-
-export type Trade = {
-	buyOrderId: string;
-	sellOrderId: string;
-	entryTime: number;
-	exitTime: number;
-	quantity: number;
-	/** 手数料込みの損益 */
-	pnl: number;
-};
+/** バックテストの注文の記録。全モード共通の TradeOrder と同じ */
+export type BacktestOrder = TradeOrder;
 
 export type BacktestSummary = {
 	initialCash: number;
@@ -246,165 +196,19 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 	// 判定時点で途中の戦略の粒度の足。細かい足から組み立てる
 	let forming = null as Candle | null;
 
-	let cash = initialCash;
-	let position: Position = EMPTY_POSITION;
+	let account = newAccount(initialCash);
 	let state: JsonValue = null;
 	let nextEvalAt = Number.NEGATIVE_INFINITY;
-	let seq = 0;
-	const orders: BacktestOrder[] = [];
-	const open: { order: Order; record: BacktestOrder }[] = [];
+	// 注文の記録。id で最新の内容に置き換える（Map は最初に入れた順を保つので発注順になる）
+	const orders = new Map<string, TradeOrder>();
 	const trades: Trade[] = [];
 	const decisions: DecisionLog[] = [];
-	let entry: { orderId: string; time: number; cost: number } | null = null;
 
 	let peak = initialCash;
 	let peakAt = steps[startIndex]?.time ?? from;
 	let maxDd = 0;
 	let ddFrom: number | null = null;
 	let ddTo: number | null = null;
-
-	const feeRate = (type: OrderType) =>
-		type === "limit" ? fees.limitPpm : fees.marketPpm;
-
-	const applyFill = (
-		item: { order: Order; record: BacktestOrder },
-		price: number,
-		time: number,
-	) => {
-		const { order, record } = item;
-		const fee = feeYen(price, order.quantity, feeRate(order.type));
-		if (order.side === "buy") {
-			const cost = notionalYen(price, order.quantity, "ceil");
-			cash -= cost + fee;
-			// ポジションは1つだけ持つが、買い増しが起きても平均の買値を保つ
-			const qty = position.quantity + order.quantity;
-			const entryPrice =
-				position.entryPrice === null
-					? price
-					: (position.entryPrice * position.quantity + price * order.quantity) /
-						qty;
-			position = {
-				quantity: qty,
-				entryPrice,
-				openedAt: position.openedAt ?? time,
-			};
-			entry = entry
-				? { ...entry, cost: entry.cost + cost + fee }
-				: { orderId: order.id, time, cost: cost + fee };
-		} else {
-			const proceeds = notionalYen(price, order.quantity, "floor");
-			cash += proceeds - fee;
-			const qty = position.quantity - order.quantity;
-			position = qty > 0 ? { ...position, quantity: qty } : EMPTY_POSITION;
-			if (qty === 0 && entry) {
-				// 往復の損益は、売りの受け取り − 買いの支払い（どちらも手数料込み）
-				const pnl = proceeds - fee - entry.cost;
-				trades.push({
-					buyOrderId: entry.orderId,
-					sellOrderId: order.id,
-					entryTime: entry.time,
-					exitTime: time,
-					quantity: order.quantity,
-					pnl,
-				});
-				record.pnl = pnl;
-				record.pairId = entry.orderId;
-				const buyId = entry.orderId;
-				const buy = orders.find((o) => o.id === buyId);
-				if (buy) buy.pairId = order.id;
-				entry = null;
-			}
-		}
-		order.status = "filled";
-		record.status = "filled";
-		record.filledAt = time;
-		record.fillPrice = price;
-		record.fee = fee;
-	};
-
-	/** 成行の買いは約定価格が発注後に決まるため、約定の時点で資金を確かめる。足りなければ取消の理由 */
-	const buyShortfall = (order: Order, price: number): string | null => {
-		if (order.side !== "buy" || order.type !== "market") return null;
-		const need =
-			notionalYen(price, order.quantity, "ceil") +
-			feeYen(price, order.quantity, feeRate(order.type));
-		return cash < need
-			? `資金 ${formatYen(cash)} 円が手数料込みの約定額 ${formatYen(need)} 円に足りないため取消`
-			: null;
-	};
-
-	const place = (
-		intent: Extract<OrderIntent, { kind: "place" }>,
-		now: number,
-		reason: string,
-	) => {
-		if (intent.type === "limit" && intent.price === undefined) {
-			return "指値の価格が無いため発注しない";
-		}
-		if (intent.side === "buy" && intent.type === "limit") {
-			const price = intent.price as number;
-			const need =
-				notionalYen(price, intent.quantity, "ceil") +
-				feeYen(price, intent.quantity, fees.limitPpm);
-			if (cash < need) {
-				return `資金 ${formatYen(cash)} 円が手数料込みの注文額 ${formatYen(need)} 円に足りないため発注しない`;
-			}
-		}
-		if (intent.side === "sell" && intent.quantity > position.quantity) {
-			return `保有 ${formatBtc(position.quantity)} BTC より多くは売れないため発注しない`;
-		}
-		seq++;
-		const order: Order = {
-			id: `o${seq}`,
-			side: intent.side,
-			type: intent.type,
-			price: intent.type === "limit" ? (intent.price as number) : null,
-			quantity: intent.quantity,
-			placedAt: now,
-			expiresAt:
-				intent.expireAfterBars === undefined
-					? null
-					: now + intent.expireAfterBars * tfMs,
-			status: "open",
-		};
-		const record: BacktestOrder = {
-			id: order.id,
-			side: order.side,
-			type: order.type,
-			price: order.price,
-			quantity: order.quantity,
-			placedAt: now,
-			status: "open",
-			filledAt: null,
-			fillPrice: null,
-			fee: null,
-			canceledAt: null,
-			cancelReason: null,
-			reason,
-			pairId: null,
-			pnl: null,
-		};
-		orders.push(record);
-		open.push({ order, record });
-		return null;
-	};
-
-	const cancel = (
-		item: { order: Order; record: BacktestOrder },
-		time: number,
-		reason: string,
-	) => {
-		item.order.status = "canceled";
-		item.record.status = "canceled";
-		item.record.canceledAt = time;
-		item.record.cancelReason = reason;
-	};
-
-	const removeClosed = () => {
-		for (let k = open.length - 1; k >= 0; k--) {
-			if (open[k]?.order.status !== "open") open.splice(k, 1);
-		}
-	};
 
 	for (let i = startIndex; i <= endIndex; i++) {
 		if (shouldAbort?.()) {
@@ -413,38 +217,9 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 		const bar = steps[i] as Candle;
 		const closeAt = bar.time + stepMs;
 
-		// 足の中の約定
-		let filled = false;
-		for (const item of open) {
-			const price = fillModel(item.order, bar);
-			if (price === null) continue;
-			const short = buyShortfall(item.order, price);
-			if (short) {
-				cancel(item, bar.time, short);
-			} else {
-				applyFill(item, price, bar.time);
-				filled = true;
-			}
-		}
-		removeClosed();
-
-		// 足の終わり：期限切れの取消、判定
-		for (const item of open) {
-			const exp = item.order.expiresAt;
-			if (exp !== null && closeAt >= exp) {
-				const bars = Math.round((exp - item.order.placedAt) / tfMs);
-				cancel(
-					item,
-					closeAt,
-					`指値 ${formatYen(item.order.price ?? 0)} が ${bars} 本のあいだ約定しなかったため取消`,
-				);
-			}
-		}
-		removeClosed();
-
 		const barStart = candleStart(bar.time, timeframe);
 		const prev = forming;
-		forming =
+		const current: Candle =
 			prev?.time === barStart
 				? {
 						time: barStart,
@@ -455,56 +230,44 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 						volume: prev.volume + bar.volume,
 					}
 				: { ...bar, time: barStart };
+		forming = current;
 
-		if (filled || closeAt >= nextEvalAt) {
-			while (
-				completed < all.length &&
-				(all[completed] as Candle).time < barStart
-			) {
-				completed++;
-			}
-			// 確定した足に、途中の足（今の足）を足して渡す。細かい足で進めていなければ今の足そのもの
-			const window = [
-				...all.slice(Math.max(0, completed - (history - 1)), completed),
-				forming,
-			];
-			const openOrders = open.map((x) => ({ ...x.order }));
-
-			const out: StrategyOutput = strategy.evaluate({
-				now: closeAt,
-				candles: window,
-				judgments: judgmentsAt(closeAt),
-				position,
-				cash,
-				openOrders,
-				params,
-				state,
-			});
-			const notes: string[] = out.note ? [out.note] : [];
-			for (const intent of out.intents) {
-				if (intent.kind === "place") {
-					const rejected = place(intent, closeAt, out.note ?? "");
-					if (rejected) notes.push(rejected);
-				} else {
-					const item = open.find((x) => x.order.id === intent.orderId);
-					if (item) cancel(item, closeAt, intent.reason ?? "戦略が取消");
+		// 足の中の約定 → 足の終わりに期限切れの取消 → 判定
+		const out: StepOutput = tradingStep({
+			strategy,
+			params,
+			now: closeAt,
+			price: bar.close,
+			account,
+			state,
+			fees,
+			timeframeMs: tfMs,
+			nextEvalAt,
+			fill: { price: (order) => fillModel(order, bar), time: bar.time },
+			inputs: () => {
+				while (
+					completed < all.length &&
+					(all[completed] as Candle).time < barStart
+				) {
+					completed++;
 				}
-			}
-			removeClosed();
-			decisions.push({
-				time: closeAt,
-				price: bar.close,
-				cash,
-				position,
-				openOrderIds: openOrders.map((o) => o.id),
-				intents: out.intents,
-				nextEvalAt: out.nextEvalAt,
-				note: notes.length ? notes.join("。") : null,
-				state: out.state,
-			});
-			state = out.state;
-			nextEvalAt = out.nextEvalAt;
-		}
+				// 確定した足に、途中の足（今の足）を足して渡す。細かい足で進めていなければ今の足そのもの
+				return {
+					candles: [
+						...all.slice(Math.max(0, completed - (history - 1)), completed),
+						current,
+					],
+					judgments: judgmentsAt(closeAt),
+				};
+			},
+		});
+		account = out.account;
+		state = out.state;
+		nextEvalAt = out.nextEvalAt;
+		for (const r of out.changed) orders.set(r.id, r);
+		trades.push(...out.trades);
+		if (out.decision) decisions.push(out.decision);
+		const { cash, position } = account;
 
 		// 足ごとの時価評価でドローダウンを測る
 		const equity = cash + notionalYen(bar.close, position.quantity, "floor");
@@ -527,9 +290,14 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 
 	const first = steps[startIndex] as Candle;
 	const last = steps[endIndex] as Candle;
-	for (const item of open) {
-		cancel(item, last.time + stepMs, "期間の終わりまで約定しなかった");
+	for (const r of cancelAll(
+		account,
+		last.time + stepMs,
+		"期間の終わりまで約定しなかった",
+	).changed) {
+		orders.set(r.id, r);
 	}
+	const { cash, position } = account;
 
 	const finalEquity =
 		cash + notionalYen(last.close, position.quantity, "floor");
@@ -565,7 +333,7 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 				: null,
 			openPositionQuantity: position.quantity,
 		},
-		orders,
+		orders: [...orders.values()],
 		trades,
 		decisions,
 		candles: all.filter((c) => c.time >= from && c.time < to),
