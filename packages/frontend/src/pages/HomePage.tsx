@@ -18,7 +18,7 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useApi } from "../api";
-import type { ChartBar, ChartRange } from "../components/chart/chart-data";
+import type { ChartBar } from "../components/chart/chart-data";
 import { alignJudgments } from "../components/chart/judgment-data";
 import { PriceChart } from "../components/chart/PriceChart";
 import { JudgmentBadge } from "../components/judgment/JudgmentBadge";
@@ -29,9 +29,10 @@ import { useChartBg } from "../lib/chart-bg";
 import {
 	changePercent,
 	collectorTrouble,
-	RANGE_DEFAULT_TIMEFRAME,
-	tooManyTimeframes,
-	usableTimeframe,
+	HOME_DEFAULT_TIMEFRAME,
+	HOME_INITIAL_SPAN_MS,
+	judgmentsFrom,
+	loadRange,
 	withLatestPrice,
 } from "../lib/home";
 import { formatInt, formatSignedPercent } from "../lib/number";
@@ -172,17 +173,11 @@ function HomeBody({
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const active = strategies.active;
 
-	const [range, setRange] = useState<ChartRange>("1d");
-	// null は「おまかせ」（戦略の粒度、戦略が無ければ期間に合わせた粒度）
+	// null は「おまかせ」（戦略の粒度、戦略が無ければ既定の粒度）
 	const [chosenTf, setChosenTf] = useState<Timeframe | null>(null);
-	const disabledTfs = useMemo(
-		() => tooManyTimeframes(range, counts),
-		[range, counts],
-	);
-	const timeframe = usableTimeframe(
-		chosenTf ?? active?.params.timeframe ?? RANGE_DEFAULT_TIMEFRAME[range],
-		disabledTfs,
-	);
+	const timeframe =
+		chosenTf ?? active?.params.timeframe ?? HOME_DEFAULT_TIMEFRAME;
+	const range = loadRange(timeframe, counts);
 
 	// EMA は運用する戦略の粒度で描くときだけ出す（別の粒度では本数の意味がずれる）
 	const periods = useMemo(
@@ -237,7 +232,7 @@ function HomeBody({
 				api.api.judgments.series
 					.$get({
 						query: {
-							from: String(first.time),
+							from: String(judgmentsFrom(first.time, last.time, timeframe)),
 							// 最新の価格から作る今の足にも判定を付けるため、今の時刻まで含める
 							to: String(
 								Math.max(last.time, Date.now()) + TIMEFRAME_MS[timeframe],
@@ -260,7 +255,7 @@ function HomeBody({
 	}, [visible, loadBars]);
 	useInterval(loadBars, BARS_MS, visible);
 
-	// 粒度・期間を切り替えた直後は前の条件の足が残っている。届くまでは最新の価格も EMA も重ねない
+	// 粒度を切り替えた直後は前の条件の足が残っている。届くまでは最新の価格も EMA も重ねない
 	const fresh = bars?.key === barsKey;
 	const shownBars = useMemo(() => {
 		if (!bars) return [];
@@ -372,10 +367,9 @@ function HomeBody({
 					<PriceChart
 						bars={shownBars}
 						emaPeriods={fresh ? emaShown : NO_PERIODS}
-						name="home-chart"
-						range={range}
-						onRangeChange={setRange}
+						initialSpanMs={HOME_INITIAL_SPAN_MS}
 						viewKey={bars?.key ?? ""}
+						currentPrice={latest?.price ?? null}
 						judgments={barJudgments}
 						bg={bg}
 						onBgChange={setBg}
@@ -387,7 +381,6 @@ function HomeBody({
 									size="sm"
 									options={TF_OPTIONS}
 									value={timeframe}
-									disabledValues={disabledTfs}
 									onChange={setChosenTf}
 								/>
 								{active && periods.length > 0 && emaShown.length === 0 && (

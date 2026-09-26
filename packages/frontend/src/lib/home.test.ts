@@ -3,8 +3,8 @@ import { TIMEFRAME_MS } from "@trading-studio/core";
 import {
 	changePercent,
 	collectorTrouble,
-	tooManyTimeframes,
-	usableTimeframe,
+	judgmentsFrom,
+	loadRange,
 	withLatestPrice,
 } from "./home";
 
@@ -13,16 +13,17 @@ const M = TIMEFRAME_MS["1m"];
 const T0 = Date.UTC(2026, 8, 26, 3);
 
 describe("ホームの表示", () => {
-	test("足が5万本を超える粒度は選べない。全期間は保存済みの本数で見る", () => {
-		expect(tooManyTimeframes("1m", {})).toEqual([]);
-		expect(tooManyTimeframes("all", { "1m": 60_000, "5m": 12_000 })).toEqual([
-			"1m",
-		]);
+	test("読み込む期間は、上限の本数に収まる最も長い期間。全期間は保存済みの本数で見る", () => {
+		expect(loadRange("1d", { "1d": 400 })).toBe("all");
+		expect(loadRange("1m", { "1m": 60_000 })).toBe("1w");
+		expect(loadRange("5m", { "5m": 30_000 })).toBe("1m");
+		// 1日も収まらない上限なら1日にする
+		expect(loadRange("1m", { "1m": 60_000 }, 100)).toBe("1d");
 	});
 
-	test("選べない粒度なら、近い粗い粒度にする", () => {
-		expect(usableTimeframe("1m", ["1m", "5m"])).toBe("15m");
-		expect(usableTimeframe("1h", ["1m"])).toBe("1h");
+	test("判定を問い合わせる期間は、長すぎれば最後の足から遡る分だけにする", () => {
+		expect(judgmentsFrom(T0, T0 + 10 * M, "1m")).toBe(T0);
+		expect(judgmentsFrom(T0, T0 + 60_000 * M, "1m")).toBe(T0 + 10_000 * M);
 	});
 
 	test("最新の価格を、同じ足なら終値の置き換え、新しい足なら追加で反映する", () => {

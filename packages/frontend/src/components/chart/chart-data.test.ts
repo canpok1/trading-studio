@@ -3,15 +3,18 @@ import {
 	barStep,
 	fromChartTime,
 	hasOhlc,
+	initialRange,
 	markerColorVar,
 	markerShape,
+	showsLatest,
 	snapToBar,
 	toChartTime,
 	toSlots,
-	visibleRange,
+	zoomRange,
 } from "./chart-data";
 
 const H = 3_600_000;
+const DAY = 24 * H;
 
 describe("chart-data", () => {
 	test("すべての足に4本値があるときだけローソク足で描ける", () => {
@@ -51,17 +54,46 @@ describe("chart-data", () => {
 		);
 	});
 
-	test("表示期間は足の間隔から本数を決める", () => {
-		// 全期間は左端の目盛りが切れないよう余白を空ける
-		expect(visibleRange("all", 100, H)).toEqual({ from: -10, to: 102 });
-		expect(visibleRange("all", 0, H)).toBeNull();
-		expect(visibleRange("1d", 100, H)).toEqual({ from: 75.5, to: 102 });
-		// 足が粗くても最低5本は出す
-		expect(visibleRange("1d", 100, 24 * H)).toEqual({ from: 94.5, to: 102 });
-		expect(visibleRange("1w", 0, H)).toBeNull();
-		// 期間に足りない本数しか無ければ、ある足だけを収める
-		expect(visibleRange("1w", 20, H)).toEqual({ from: -2, to: 22 });
-		expect(visibleRange("1d", 24, H)).toEqual({ from: -0.5, to: 26 });
+	test("最初に見せる範囲は足の間隔から本数を決める", () => {
+		// 全体は左端の目盛りが切れないよう余白を空ける
+		expect(initialRange(null, 100, H)).toEqual({ from: -10, to: 102 });
+		expect(initialRange(null, 0, H)).toBeNull();
+		expect(initialRange(2 * DAY, 100, H)).toEqual({ from: 51.5, to: 102 });
+		// 足が粗くても最低30本は出す
+		expect(initialRange(DAY, 100, DAY)).toEqual({ from: 69.5, to: 102 });
+		expect(initialRange(DAY, 0, H)).toBeNull();
+		// 足りない本数しか無ければ、ある足だけを収める
+		expect(initialRange(7 * DAY, 20, H)).toEqual({ from: -2, to: 22 });
+	});
+
+	test("拡大・縮小は最新が見えていれば右端を保ち、見えていなければ中央を保つ", () => {
+		expect(zoomRange({ from: 60, to: 102 }, 0.5, 100)).toEqual({
+			from: 81,
+			to: 102,
+		});
+		expect(zoomRange({ from: 20, to: 60 }, 0.5, 100)).toEqual({
+			from: 30,
+			to: 50,
+		});
+		expect(zoomRange({ from: 20, to: 60 }, 2, 100)).toEqual({
+			from: 0,
+			to: 80,
+		});
+		// 拡大は10本まで
+		expect(zoomRange({ from: 90, to: 102 }, 0.5, 100)).toEqual({
+			from: 92,
+			to: 102,
+		});
+		// 全体より広げようとしたら全体を収める
+		expect(zoomRange({ from: 40, to: 102 }, 2, 100)).toEqual({
+			from: -10,
+			to: 102,
+		});
+	});
+
+	test("最新の足が画面に入っているか", () => {
+		expect(showsLatest({ from: 50, to: 99 }, 100)).toBe(true);
+		expect(showsLatest({ from: 50, to: 98.5 }, 100)).toBe(false);
 	});
 });
 

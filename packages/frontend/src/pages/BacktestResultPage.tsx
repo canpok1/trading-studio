@@ -466,7 +466,6 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 					emaPeriods={emas}
 					selectedId={selected?.id ?? null}
 					onMarker={(m) => pick(m.id)}
-					name="bt"
 					judgments={judgments}
 					bg={bg}
 					onBgChange={setBg}
