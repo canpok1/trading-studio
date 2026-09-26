@@ -27,6 +27,9 @@ import { createScoringService } from "./news/scoring-service";
 import { createNewsService, DEFAULT_NEWS_SOURCES } from "./news/service";
 import { serveFrontend } from "./static";
 import { createStrategyService } from "./strategies/service";
+import { TradingRepository } from "./trading/repository";
+import type { TradingEngine } from "./trading/service";
+import { createTradingService } from "./trading/service";
 
 const hostname = process.env.HOST ?? "127.0.0.1";
 const port = Number(process.env.PORT ?? 3000);
@@ -63,8 +66,11 @@ const strategies = createStrategyService(db);
 
 // E2E で収集の停止を再現するためのファイル。あれば偽物の取引所が止まる
 const demoDownFile = join(dirname(dbPath), "feed-down");
+// 自動取引は収集より後に作るので、届いた約定は作った後から渡す
+let trading: TradingEngine | null = null;
 // 収集はサーバーが動いている間は常に行う（ON/OFF は作らない）
 const collector = createCollector({
+	onTrades: (trades) => trading?.onTrades(trades),
 	// E2E では取引所へつながず、偽物の約定を流す
 	feed:
 		process.env.MARKET_FEED === "demo"
@@ -110,6 +116,16 @@ const scorerTimer = setInterval(() => scorer.tick(), 1_000);
 
 const judgments = createJudgmentService({ repo: scoreRepo });
 
+const tradingEngine = createTradingService({
+	repo: new TradingRepository(db),
+	strategies,
+	judgments,
+	marketData: marketDataRepo,
+	market: () => collector.live(),
+});
+trading = tradingEngine;
+const tradingTimer = setInterval(() => tradingEngine.tick(), 1_000);
+
 const server = new Hono().route(
 	"/",
 	createApp({
@@ -131,6 +147,7 @@ const server = new Hono().route(
 			scorer,
 		}),
 		judgments,
+		trading: tradingEngine,
 	}),
 );
 serveFrontend(server, distDir);
@@ -144,6 +161,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
 		clearInterval(collectorTimer);
 		clearInterval(newsTimer);
 		clearInterval(scorerTimer);
+		clearInterval(tradingTimer);
 		collector.stop();
 		await http.stop();
 		db.$client.close();

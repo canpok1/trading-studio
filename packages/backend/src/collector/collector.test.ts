@@ -24,13 +24,16 @@ function setup(start = T0) {
 	let clock = start;
 	const repo = new MarketDataRepository(createTestDb());
 	const f = manualFeed();
+	const received: MarketTrade[] = [];
 	const collector = createCollector({
 		feed: f.feed,
 		repo,
 		now: () => clock,
+		onTrades: (trades) => received.push(...trades),
 	});
 	return {
 		repo,
+		received,
 		f,
 		collector,
 		/** 時刻を進めて tick する */
@@ -48,6 +51,17 @@ function setup(start = T0) {
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe("価格収集", () => {
+	test("購読中に届いた約定は渡し、つなぎ直したときに遡って取った約定は渡さない", async () => {
+		const t = setup();
+		const before = tr(T0 - 10 * S, 90);
+		t.f.setRecent([before]);
+		t.f.ready();
+		await flush();
+		const live = tr(T0 + 10 * S, 100);
+		t.f.trades([live]);
+		expect(t.received).toEqual([live]);
+	});
+
 	test("約定を流すと、分ごとに1分足と粗い足が保存される", async () => {
 		const t = setup();
 		t.f.ready();

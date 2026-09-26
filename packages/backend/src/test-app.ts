@@ -21,6 +21,8 @@ import { createScorer } from "./news/scorer";
 import { createScoringService } from "./news/scoring-service";
 import { createNewsService } from "./news/service";
 import { createStrategyService } from "./strategies/service";
+import { TradingRepository } from "./trading/repository";
+import { createTradingService } from "./trading/service";
 
 export function createTestApp(
 	over: Partial<AppDeps> = {},
@@ -96,6 +98,16 @@ export function createTestApp(
 		judgments,
 		now: () => 3_000,
 	});
+	// 常駐処理は動かさず、テストから trading.tick() と trading.onTrades() を呼ぶ
+	const tradingRepo = new TradingRepository(db);
+	const trading = createTradingService({
+		repo: tradingRepo,
+		strategies,
+		judgments,
+		marketData: marketDataRepo,
+		market: () => live.current,
+		now: () => clock.now,
+	});
 	const app = createApp({
 		isDbReachable: () => true,
 		marketData,
@@ -105,6 +117,7 @@ export function createTestApp(
 		news,
 		scoring,
 		judgments,
+		trading,
 		...over,
 	});
 	return {
@@ -122,5 +135,7 @@ export function createTestApp(
 		newsRun,
 		scoreRepo,
 		scorer,
+		trading,
+		tradingRepo,
 	};
 }

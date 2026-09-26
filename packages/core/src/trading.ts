@@ -463,3 +463,17 @@ export function tradingStep<P>(input: StepInput<P>): StepOutput {
 		decision: decided.decision,
 	};
 }
+
+/**
+ * 約定データでの約定の判定（ペーパー）。成行は注文後に最初に成立した売買の価格、
+ * 指値は指値を跨ぐ売買が成立したら指値で約定する。数量は見ない
+ */
+export function tradeFillPrice(
+	order: Order,
+	tradePrice: number,
+): number | null {
+	if (order.type === "market") return tradePrice;
+	const price = order.price as number;
+	if (order.side === "buy") return tradePrice <= price ? price : null;
+	return tradePrice >= price ? price : null;
+}
