@@ -137,9 +137,11 @@ test("チャートに AI 判定の背景と帯が出て、帯をタップする�
 	const box = await chart.boundingBox();
 	if (!box) throw new Error("チャートが無い");
 	// 下端から時間軸（約 26px）と帯の下側を除いた位置
-	await chart.click({
-		position: { x: box.width / 2, y: box.height - 26 - 27 },
-	});
+	const at = { x: box.width / 2, y: box.height - 26 - 27 };
+	// 指した足で上の値の表示の行数が変わり、チャートが上下にずれる（足の無い枠は「データなし」の1行）。
+	// 先に指してずれを済ませてから押す
+	await chart.hover({ position: at });
+	await chart.click({ position: at });
 	await expect(group.getByRole("button", { name: "リスク" })).toHaveAttribute(
 		"aria-pressed",
 		"true",
