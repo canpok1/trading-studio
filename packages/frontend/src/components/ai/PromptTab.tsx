@@ -112,7 +112,8 @@ function PromptBody({
 	>(null);
 	// 差分は「選んだ版 → 使用中の版」。未選択なら使用中の1つ前の版と比べる
 	const [diffFrom, setDiffFrom] = useState<number | null>(null);
-	const dirty = draft !== (active?.text ?? "");
+	// 保存済みのどの版とも違うときだけ保存できる。同じ内容の版を増やさないため
+	const dirty = !versions.some((v) => v.text === draft.trim());
 
 	const run = async (fn: () => Promise<string>) => {
 		setBusy(true);

@@ -5,7 +5,7 @@ import type {
 	ScorerStatus,
 } from "@trading-studio/backend";
 import { JUDGE_LABELS, JUDGES } from "@trading-studio/core";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { useApi } from "../api";
 import { NewsTab } from "../components/ai/NewsTab";
@@ -48,7 +48,10 @@ export function AiPage() {
 
 	const [data, setData] = useState<AiData | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	// 操作の直後と定期の問い合わせが重なると応答の順が入れ替わりうるので、最後に出したものだけ使う
+	const seq = useRef(0);
 	const load = useCallback(async () => {
+		const id = ++seq.current;
 		try {
 			const [current, news, collector, scorer] = await Promise.all([
 				api.api.judgments.current
@@ -62,10 +65,11 @@ export function AiPage() {
 					.then((r) => readJson<NewsCollectorStatus>(r)),
 				api.api.scoring.status.$get().then((r) => readJson<ScorerStatus>(r)),
 			]);
+			if (id !== seq.current) return;
 			setData({ current, news: news.news, collector, scorer });
 			setError(null);
 		} catch (e) {
-			setError(errorMessage(e));
+			if (id === seq.current) setError(errorMessage(e));
 		}
 	}, [api]);
 	useEffect(() => {
