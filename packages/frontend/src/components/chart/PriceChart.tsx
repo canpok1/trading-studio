@@ -135,7 +135,7 @@ export function PriceChart({
 				timeVisible: true,
 				secondsVisible: false,
 				rightOffset: 3,
-				minBarSpacing: 0.02,
+				minBarSpacing: 0.001,
 				tickMarkFormatter: tickLabel,
 			},
 			localization: {
