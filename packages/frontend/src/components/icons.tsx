@@ -97,14 +97,6 @@ export function OtherIcon({ size = 22 }: IconProps) {
 	);
 }
 
-export function BackIcon({ size = 22 }: IconProps) {
-	return (
-		<Svg size={size}>
-			<path d="m15 18-6-6 6-6" />
-		</Svg>
-	);
-}
-
 export function EmptyIcon({ size = 40 }: IconProps) {
 	return (
 		<Svg size={size} strokeWidth={1.5} strokeLinecap="round">

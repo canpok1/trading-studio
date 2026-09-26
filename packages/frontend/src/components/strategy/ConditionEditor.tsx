@@ -1,4 +1,4 @@
-// 条件セットの編集欄。戦略設定とバックテストの実行画面で使う
+// 条件セットの編集欄。「戦略」の画面とバックテストの実行画面で使う
 
 import type {
 	Condition,
@@ -131,7 +131,7 @@ export function FrequencyCard({
 				<div className="flex flex-wrap items-center gap-2">
 					<span className="text-[13px] font-semibold">足の粒度</span>
 					<span className="text-sm">
-						{TIMEFRAME_LABELS[params.timeframe]}（戦略設定で変える）
+						{TIMEFRAME_LABELS[params.timeframe]}（「戦略」の画面で変える）
 					</span>
 				</div>
 			)}

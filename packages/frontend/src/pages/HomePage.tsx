@@ -348,7 +348,7 @@ function HomeBody({
 				)}
 				{strategies.list.length === 0 && (
 					<p className="text-xs text-text-2">
-						戦略がまだ無い。戦略設定で作ると選べる
+						戦略がまだ無い。「戦略」の画面で作ると選べる
 					</p>
 				)}
 			</Card>

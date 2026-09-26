@@ -31,12 +31,12 @@ const NAV: NavItem[] = [
 	{ to: "/ai", label: "AI判定", icon: <AiIcon />, show: "both" },
 	{
 		to: "/strategies",
-		label: "戦略設定",
+		label: "戦略",
 		icon: <StrategyIcon />,
 		show: "both",
 	},
 	{ to: "/data", label: "過去データ", icon: <DataIcon />, show: "side" },
-	{ to: "/settings", label: "表示設定", icon: <SettingsIcon />, show: "side" },
+	{ to: "/settings", label: "設定", icon: <SettingsIcon />, show: "side" },
 	{
 		to: "/other",
 		label: "その他",

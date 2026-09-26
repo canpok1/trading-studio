@@ -6,16 +6,14 @@ import type {
 } from "@trading-studio/backend";
 import { JUDGE_LABELS, JUDGES } from "@trading-studio/core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link } from "react-router";
 import { useApi } from "../api";
 import { NewsTab } from "../components/ai/NewsTab";
-import { PromptTab } from "../components/ai/PromptTab";
-import { RuleTab } from "../components/ai/RuleTab";
-import { SourcesTab } from "../components/ai/SourcesTab";
+import { SettingsIcon } from "../components/icons";
 import { JudgmentBadge, ZoneBar } from "../components/judgment/JudgmentBadge";
 import { Page } from "../components/Page";
 import { ErrorState, Skeleton } from "../components/States";
-import { Button } from "../components/ui";
+import { Button, buttonClass } from "../components/ui";
 import { formatDateTime } from "../format";
 import type { AiData } from "../lib/ai";
 import { aiTroubles } from "../lib/ai";
@@ -30,21 +28,9 @@ import {
 const POLL_MS = 5_000;
 const NEWS_LIMIT = 100;
 
-const TABS = [
-	["news", "ニュースごと"],
-	["rule", "集計ルール"],
-	["prompt", "プロンプト"],
-	["sources", "収集と採点"],
-] as const;
-type Tab = (typeof TABS)[number][0];
-const isTab = (v: string | null): v is Tab => TABS.some(([t]) => t === v);
-
 export function AiPage() {
 	const api = useApi();
 	const visible = usePageVisible();
-	const [params, setParams] = useSearchParams();
-	const tabParam = params.get("tab");
-	const tab: Tab = isTab(tabParam) ? tabParam : "news";
 
 	const [data, setData] = useState<AiData | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -79,7 +65,7 @@ export function AiPage() {
 
 	if (!data) {
 		return (
-			<Page title="AI判定">
+			<Page title="AI判定" actions={<SettingsLink />}>
 				{error ? (
 					<ErrorState
 						what="AI判定を読み込めなかった"
@@ -104,7 +90,7 @@ export function AiPage() {
 	const { current } = data;
 	const troubles = aiTroubles(data.collector, data.scorer);
 	return (
-		<Page title="AI判定">
+		<Page title="AI判定" actions={<SettingsLink />}>
 			<section
 				aria-label="今の判定"
 				className="overflow-hidden rounded-xl border border-line bg-surface"
@@ -153,6 +139,12 @@ export function AiPage() {
 							止まった時刻: {formatDateTime(t.since)}
 						</span>
 					)}
+					<Link
+						to="/settings?tab=sources"
+						className="self-start font-semibold text-accent"
+					>
+						収集と採点の設定を開く
+					</Link>
 				</div>
 			))}
 			{error && (
@@ -160,34 +152,18 @@ export function AiPage() {
 					最新の状態を読み込めなかった（{error}）。5秒ごとに読み直している
 				</p>
 			)}
-			<div
-				role="tablist"
-				aria-label="AI判定の表示"
-				className="grid auto-cols-fr grid-flow-col gap-0.5 rounded-[10px] bg-surface-2 p-[3px]"
-			>
-				{TABS.map(([t, label]) => (
-					<button
-						key={t}
-						type="button"
-						role="tab"
-						aria-selected={tab === t}
-						onClick={() =>
-							setParams(t === "news" ? {} : { tab: t }, { replace: true })
-						}
-						className={`h-9 rounded-lg px-0.5 text-xs whitespace-nowrap sm:text-[13px] ${tab === t ? "bg-surface font-bold text-text shadow-sm" : "text-text-2"}`}
-					>
-						{label}
-					</button>
-				))}
-			</div>
-			<div role="tabpanel" className="flex flex-col gap-3">
-				{tab === "news" && <NewsTab data={data} onChanged={load} />}
-				{tab === "rule" && <RuleTab saved={current.rule} onSaved={load} />}
-				{tab === "prompt" && <PromptTab rule={current.rule} onChanged={load} />}
-				{tab === "sources" && (
-					<SourcesTab collector={data.collector} onChanged={load} />
-				)}
-			</div>
+			<h2 className="text-[15px] font-bold">ニュースごと</h2>
+			<NewsTab data={data} onChanged={load} />
 		</Page>
+	);
+}
+
+/** AI判定の設定（集計ルール・プロンプト・収集と採点）は設定画面に置く */
+function SettingsLink() {
+	return (
+		<Link to="/settings?tab=rule" className={buttonClass("default", "sm")}>
+			<SettingsIcon size={18} />
+			設定
+		</Link>
 	);
 }

@@ -22,8 +22,10 @@ export function OtherPage() {
 					className="flex w-full items-center gap-3 px-4 py-3.5 text-[15px] hover:bg-surface-2"
 				>
 					<span className="flex-1">
-						表示設定
-						<span className="block text-xs text-text-2">ライト / ダーク</span>
+						設定
+						<span className="block text-xs text-text-2">
+							画面の色、AI判定の集計ルール・プロンプト・収集と採点
+						</span>
 					</span>
 					›
 				</Link>

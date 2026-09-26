@@ -99,9 +99,11 @@ test("戦略の複製・リネーム・削除ができ、同じ名前は付け�
 	).toHaveCount(0);
 });
 
-test("戦略設定の画面は横にはみ出さない", async ({ page }) => {
+test("戦略の画面は横にはみ出さない", async ({ page }) => {
 	await page.goto("/strategies");
-	await expect(page.getByRole("heading", { name: "戦略設定" })).toBeVisible();
+	await expect(
+		page.getByRole("heading", { name: "戦略", level: 1 }),
+	).toBeVisible();
 	const overflow = await page.evaluate(
 		() => document.documentElement.scrollWidth - window.innerWidth,
 	);
