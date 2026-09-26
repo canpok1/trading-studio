@@ -87,14 +87,14 @@ export function BacktestResultPage() {
 	const title = "バックテスト結果";
 	if (state.kind === "loading") {
 		return (
-			<Page title={title} back="/backtest">
+			<Page title={title}>
 				<LoadingCard />
 			</Page>
 		);
 	}
 	if (state.kind === "error") {
 		return (
-			<Page title={title} back="/backtest">
+			<Page title={title}>
 				<Card>
 					<ErrorState
 						what={`結果を読み込めなかった（${state.message}）`}
@@ -107,7 +107,7 @@ export function BacktestResultPage() {
 	}
 	const { run, chart, saved } = state.data;
 	return (
-		<Page title={title} back="/backtest" actions={<RerunButton run={run} />}>
+		<Page title={title} actions={<RerunButton run={run} />}>
 			<RunHeader run={run} saved={saved} onSaved={reload} />
 			{run.status === "running" && (
 				<Card className="flex flex-col gap-2.5">

@@ -237,7 +237,7 @@ export function BacktestRunPage() {
 				<Card>
 					<EmptyState
 						title="戦略がまだない"
-						description="戦略設定で戦略を作ってから実行する。"
+						description="「戦略」の画面で戦略を作ってから実行する。"
 						action={
 							<Link to="/strategies" className={buttonClass("primary")}>
 								戦略を作る

@@ -40,20 +40,17 @@ describe("画面遷移", () => {
 	test("タブで各画面へ移れる", () => {
 		const view = renderAt("/backtest");
 		const nav = view.getByRole("navigation", { name: "メイン" });
-		for (const name of ["戦略設定", "過去データ", "その他", "ホーム"]) {
+		for (const name of ["戦略", "過去データ", "設定", "その他", "ホーム"]) {
 			const link = [...nav.querySelectorAll("a")].find(
 				(a) => a.textContent === name,
 			);
 			fireEvent.click(link as HTMLAnchorElement);
-			// 戻るボタンのある画面は、スマホの上部とPCの見出しの2か所に出す
-			expect(
-				view.getAllByRole("heading", { level: 1, name }).length,
-			).toBeGreaterThan(0);
+			expect(view.getByRole("heading", { level: 1, name })).toBeTruthy();
 		}
 	});
 });
 
-describe("表示設定", () => {
+describe("設定", () => {
 	test("ダークを選ぶとクラスが付き、ブラウザに保存される", () => {
 		const view = renderAt("/settings");
 		fireEvent.click(view.getByRole("radio", { name: "ダーク" }));

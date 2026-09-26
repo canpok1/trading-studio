@@ -77,14 +77,14 @@ export function StrategiesPage() {
 
 	if (state.kind === "loading") {
 		return (
-			<Page title="戦略設定">
+			<Page title="戦略">
 				<LoadingCard />
 			</Page>
 		);
 	}
 	if (state.kind === "error") {
 		return (
-			<Page title="戦略設定">
+			<Page title="戦略">
 				<Card>
 					<ErrorState
 						what={`戦略を読み込めなかった（${state.message}）`}
@@ -116,7 +116,7 @@ export function StrategiesPage() {
 
 	if (!current || !params) {
 		return (
-			<Page title="戦略設定">
+			<Page title="戦略">
 				<Card>
 					<EmptyState
 						title="戦略がまだない"
@@ -159,7 +159,7 @@ export function StrategiesPage() {
 	};
 
 	return (
-		<Page title="戦略設定">
+		<Page title="戦略">
 			{/* PC は左に戦略・頻度・注文量、右に注文条件。スマホは 戦略→頻度→条件→注文量→保存 の順 */}
 			<div className="flex flex-col gap-3.5 lg:grid lg:grid-cols-2 lg:items-start">
 				<div className="contents lg:flex lg:flex-col lg:gap-3.5">

@@ -161,7 +161,6 @@ export function DataPage() {
 	return (
 		<Page
 			title="過去データ"
-			back="/other"
 			description="バックテストに使う BTC/JPY の足を CSV で取り込む"
 		>
 			<section

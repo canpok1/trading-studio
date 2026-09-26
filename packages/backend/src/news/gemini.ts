@@ -21,7 +21,7 @@ const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 const TIMEOUT_MS = 60_000;
 
 export const NO_API_KEY =
-	"API キーが設定されていない。「収集と採点」タブで設定する";
+	"API キーが設定されていない。設定画面の「収集と採点」で設定する";
 
 /** キーは画面から保存・削除されるので、問い合わせのたびに読む */
 export function geminiModel(apiKey: () => string | null): ScoreModel {
