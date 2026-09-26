@@ -1,4 +1,5 @@
 import {
+	blob,
 	index,
 	integer,
 	primaryKey,
@@ -62,4 +63,48 @@ export const strategies = sqliteTable("strategies", {
 	params: text("params").notNull(),
 	createdAt: integer("created_at").notNull(),
 	updatedAt: integer("updated_at").notNull(),
+});
+
+/** バックテストの実行。実行時の条件の写しと成績を持つ */
+export const backtestRuns = sqliteTable("backtest_runs", {
+	id: integer("id").primaryKey({ autoIncrement: true }),
+	/** 元の戦略。戦略を削除しても実行は残すので外部キーにしない */
+	strategyId: integer("strategy_id"),
+	/** 実行したときの戦略名 */
+	strategyName: text("strategy_name").notNull(),
+	/** 条件のセット（JSON） */
+	params: text("params").notNull(),
+	timeframe: text("timeframe").notNull(),
+	/** 期間（to は含まない） */
+	fromTime: integer("from_time").notNull(),
+	toTime: integer("to_time").notNull(),
+	initialCash: integer("initial_cash").notNull(),
+	feeLimitPpm: integer("fee_limit_ppm").notNull(),
+	feeMarketPpm: integer("fee_market_ppm").notNull(),
+	/** 期間内の欠損を承知で実行したか */
+	skipGaps: integer("skip_gaps", { mode: "boolean" }).notNull(),
+	/** running / done / failed / canceled */
+	status: text("status").notNull(),
+	startedAt: integer("started_at").notNull(),
+	finishedAt: integer("finished_at"),
+	/** 期間内の足の数 */
+	barCount: integer("bar_count").notNull(),
+	/** 成績（JSON）。完了したときだけ入る */
+	summary: text("summary"),
+	/** 約定の数・注文の数 */
+	filledCount: integer("filled_count").notNull().default(0),
+	orderCount: integer("order_count").notNull().default(0),
+	error: text("error"),
+});
+
+/** バックテストの結果の中身。大きいので gzip した JSON で持つ */
+export const backtestResults = sqliteTable("backtest_results", {
+	runId: integer("run_id")
+		.primaryKey()
+		.references(() => backtestRuns.id),
+	/** 期間内の足の時刻と終値 { times, closes } */
+	bars: blob("bars", { mode: "buffer" }).notNull(),
+	orders: blob("orders", { mode: "buffer" }).notNull(),
+	trades: blob("trades", { mode: "buffer" }).notNull(),
+	decisions: blob("decisions", { mode: "buffer" }).notNull(),
 });
