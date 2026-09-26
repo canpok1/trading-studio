@@ -152,6 +152,10 @@ test("期間に欠損があると確認が出て、飛ばして実行できる",
 	const name = `BT 欠損 ${info.project.name}`;
 	await prepare(request, name);
 	await choose(page, name, "2026-05-25", "2026-06-05");
+	// 取り込み済みの範囲の帯に、色の意味を添える
+	const legend = page.getByRole("list").filter({ hasText: "選んだ期間" });
+	await expect(legend).toContainText("取り込み済み");
+	await expect(legend).toContainText("欠損（足が無い）");
 	await page.getByRole("button", { name: "バックテストを実行" }).click();
 	const alert = page.getByRole("alert");
 	await expect(alert).toContainText("期間内にデータの欠損がある");
