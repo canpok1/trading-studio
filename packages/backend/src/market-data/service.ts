@@ -12,6 +12,8 @@ import type {
 
 /** 1回のトランザクションで保存する行数。この単位で API の応答と中止の受け付けを挟む */
 const CHUNK = 5000;
+/** 書き出しで1回に読む足の数 */
+const EXPORT_PAGE = 5000;
 
 const yieldToEventLoop = () => new Promise((r) => setTimeout(r, 0));
 
@@ -219,6 +221,21 @@ export function createMarketDataService(
 
 		latestClose() {
 			return repo.latestClose();
+		},
+
+		exportCandles(timeframe, from, to) {
+			const range = repo.exportRange(timeframe, from, to);
+			if (!range) return null;
+			function* pages() {
+				let next = from;
+				for (;;) {
+					const page = repo.loadExportPage(timeframe, next, to, EXPORT_PAGE);
+					if (page.length === 0) return;
+					yield page;
+					next = (page[page.length - 1] as { time: number }).time + 1;
+				}
+			}
+			return { ...range, pages: pages() };
 		},
 
 		running() {

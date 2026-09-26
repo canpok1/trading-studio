@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { parseCandleCsv, parseRfc3339 } from "./csv";
+import {
+	CSV_HEADER,
+	formatCandleCsvRow,
+	formatJstRfc3339,
+	parseCandleCsv,
+	parseRfc3339,
+} from "./csv";
 
 describe("parseRfc3339", () => {
 	test("オフセット付き・Z・小数秒なしを読む", () => {
@@ -98,5 +104,37 @@ describe("parseCandleCsv", () => {
 
 	test("データの行が無ければエラー", () => {
 		expect(parseCandleCsv(HEAD, "1m").ok).toBe(false);
+	});
+});
+
+describe("formatCandleCsvRow", () => {
+	test("日時は JST、出来高は BTC で書き、parseCandleCsv で読み戻せる", () => {
+		const candles = [
+			{
+				time: Date.UTC(2026, 8, 25, 15),
+				open: 17_000_000,
+				high: 17_010_000,
+				low: 16_990_000,
+				close: 17_005_000,
+				volume: 12_345_678,
+			},
+			{
+				time: Date.UTC(2026, 8, 25, 15, 1),
+				open: 17_005_000,
+				high: 17_005_000,
+				low: 17_005_000,
+				close: 17_005_000,
+				volume: 0,
+			},
+		];
+		expect(formatJstRfc3339(candles[0]?.time as number)).toBe(
+			"2026-09-26T00:00:00.000+09:00",
+		);
+		expect(formatCandleCsvRow(candles[0] as (typeof candles)[0])).toBe(
+			"2026-09-26T00:00:00.000+09:00,17000000,17010000,16990000,17005000,0.12345678",
+		);
+		const text = [CSV_HEADER, ...candles.map(formatCandleCsvRow)].join("\n");
+		const r = parseCandleCsv(text, "1m");
+		expect(r.ok && r.candles).toEqual(candles);
 	});
 });

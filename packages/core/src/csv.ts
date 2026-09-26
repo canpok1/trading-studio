@@ -1,8 +1,8 @@
-// 過去データの CSV の読み取りと検証
+// 過去データの CSV の読み書きと検証
 
-import { btcToSatoshi, roundYen } from "./money";
+import { btcToSatoshi, roundYen, satoshiToBtcString } from "./money";
 import type { Timeframe } from "./timeframe";
-import { candleStart } from "./timeframe";
+import { candleStart, JST_OFFSET_MS } from "./timeframe";
 import type { Candle } from "./types";
 
 export const CSV_EXPECTED_FORMAT =
@@ -164,4 +164,24 @@ export function parseCandleCsv(
 	}
 	const candles = [...byTime.values()].sort((a, b) => a.time - b.time);
 	return { ok: true, candles, duplicateRows, totalRows: rows };
+}
+
+/** 書き出す CSV のヘッダー。parseCandleCsv で読み戻せる */
+export const CSV_HEADER = "日時,始値,高値,安値,終値,出来高";
+
+/** エポックミリ秒を JST の RFC 3339 へ。例: 2026-09-26T12:00:00.000+09:00 */
+export function formatJstRfc3339(ms: number): string {
+	return `${new Date(ms + JST_OFFSET_MS).toISOString().slice(0, -1)}+09:00`;
+}
+
+/** 足を CSV の1行へ（改行なし）。出来高は BTC の小数で書く */
+export function formatCandleCsvRow(c: Candle): string {
+	return [
+		formatJstRfc3339(c.time),
+		c.open,
+		c.high,
+		c.low,
+		c.close,
+		satoshiToBtcString(c.volume),
+	].join(",");
 }

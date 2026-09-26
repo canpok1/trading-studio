@@ -211,6 +211,62 @@ export class MarketDataRepository {
 	}
 
 	/**
+	 * 書き出す足の条件。自動で作った足のうち、元の細かい足（取り込んだ・収集した足）の最後より
+	 * 後ろまで続くもの（作りかけの今日の日足など）は除く。取り込み直すと取り込んだ足として固定されるため
+	 */
+	private exportFilter(timeframe: Timeframe): { sql: string; end: number } {
+		const finer = TIMEFRAMES.slice(0, TIMEFRAMES.indexOf(timeframe));
+		let end = 0;
+		for (const tf of finer) {
+			const r = this.sql
+				.query<{ last: number | null }, [string]>(
+					"select max(time) as last from candles where timeframe = ? and source != 'derived'",
+				)
+				.get(tf);
+			if (r?.last != null) end = Math.max(end, r.last + TIMEFRAME_MS[tf]);
+		}
+		return {
+			sql: `timeframe = ? and time >= ? and time < ? and not (source = 'derived' and time + ${TIMEFRAME_MS[timeframe]} > ?)`,
+			end,
+		};
+	}
+
+	/** 書き出す期間 [from, to) の足を古い順に最大 limit 本。少しずつ読むのに使う */
+	loadExportPage(
+		timeframe: Timeframe,
+		from: number,
+		to: number,
+		limit: number,
+	): Candle[] {
+		const f = this.exportFilter(timeframe);
+		return this.sql
+			.query<Candle, [string, number, number, number, number]>(
+				`select time, open, high, low, close, volume from candles where ${f.sql} order by time limit ?`,
+			)
+			.all(timeframe, from, to, f.end, limit);
+	}
+
+	/** 書き出す期間 [from, to) の足の最初と最後の開始時刻。足が無ければ null */
+	exportRange(
+		timeframe: Timeframe,
+		from: number,
+		to: number,
+	): { first: number; last: number } | null {
+		const f = this.exportFilter(timeframe);
+		const r = this.sql
+			.query<
+				{ first: number | null; last: number | null },
+				[string, number, number, number]
+			>(
+				`select min(time) as first, max(time) as last from candles where ${f.sql}`,
+			)
+			.get(timeframe, from, to, f.end);
+		return r?.first != null && r.last != null
+			? { first: r.first, last: r.last }
+			: null;
+	}
+
+	/**
 	 * 期間 [from, to) の粗い粒度の足を、1段細かい粒度の足から作り直す（1分→5分→15分→1時間→4時間→日足）。
 	 * 取り込んだ足は上書きせず、足が無い日時と自動で作った足だけを埋める。作った足の数を返す。
 	 * overrideImported なら、細かい足が1本も欠けずに揃っている区切りに限り、取り込んだ足も上書きする
