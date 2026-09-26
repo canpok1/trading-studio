@@ -335,7 +335,7 @@ function RunForm({
 		: firstScoredAt === null
 			? "AI 判定の条件があるが、ニュースの採点の記録がまだ無いため実行できない"
 			: fromMs < firstScoredAt
-				? `AI 判定の記録は ${formatDateTime(firstScoredAt)} から。開始をこの日時以降にすると実行できる`
+				? `AI 判定の記録は ${formatDateTime(firstScoredAt)} から。開始を ${formatDate(firstAllowedFrom(firstScoredAt))} 以降にすると実行できる`
 				: null;
 
 	const bars = useMemo(() => {
@@ -863,4 +863,10 @@ function PastRuns({ runs }: { runs: BacktestRun[] }) {
 			</div>
 		</section>
 	);
+}
+
+/** 開始は日付単位なので、記録が日の途中から始まっていればその翌日が最初に選べる日 */
+function firstAllowedFrom(firstScoredAt: number): number {
+	const day = fromDateInputValue(toDateInputValue(firstScoredAt)) ?? 0;
+	return day === firstScoredAt ? day : day + DAY;
 }
