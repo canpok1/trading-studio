@@ -418,3 +418,83 @@ export const conditionStrategy: Strategy<ConditionSet> = {
 	validate: validateConditionSet,
 	evaluate: evaluateConditionSet,
 };
+
+const isObj = (v: unknown): v is Record<string, unknown> =>
+	typeof v === "object" && v !== null && !Array.isArray(v);
+
+function parseCondition(v: unknown): Condition | null {
+	if (!isObj(v)) return null;
+	const num = (x: unknown) => (typeof x === "number" ? x : Number.NaN);
+	switch (v.type) {
+		case "emaCross":
+			if (v.direction !== "up" && v.direction !== "down") return null;
+			return {
+				type: "emaCross",
+				fast: num(v.fast),
+				slow: num(v.slow),
+				direction: v.direction,
+			};
+		case "breakout":
+			if (v.direction !== "high" && v.direction !== "low") return null;
+			return {
+				type: "breakout",
+				lookback: num(v.lookback),
+				direction: v.direction,
+			};
+		case "entryChange":
+			if (v.direction !== "up" && v.direction !== "down") return null;
+			return {
+				type: "entryChange",
+				percent: num(v.percent),
+				direction: v.direction,
+			};
+		default:
+			return null;
+	}
+}
+
+function parseGroup(v: unknown): ConditionGroup | null {
+	if (
+		!isObj(v) ||
+		(v.match !== "all" && v.match !== "any") ||
+		!Array.isArray(v.conditions)
+	) {
+		return null;
+	}
+	const conditions = v.conditions.map(parseCondition);
+	return conditions.every((c) => c !== null)
+		? { match: v.match, conditions: conditions as Condition[] }
+		: null;
+}
+
+function parseFrequency(v: unknown): Frequency | null {
+	if (!isObj(v) || !FREQUENCY_UNITS.includes(v.unit as FrequencyUnit))
+		return null;
+	return {
+		value: typeof v.value === "number" ? v.value : Number.NaN,
+		unit: v.unit as FrequencyUnit,
+	};
+}
+
+/**
+ * JSON などから受け取った値を条件セットの形に読む。形が違えば null。
+ * 値の範囲は見ない（validateConditionSet で検証する）
+ */
+export function parseConditionSet(v: unknown): ConditionSet | null {
+	if (!isObj(v) || !isTimeframe(v.timeframe) || !isObj(v.frequency))
+		return null;
+	const flat = parseFrequency(v.frequency.flat);
+	const holding = parseFrequency(v.frequency.holding);
+	const buy = parseGroup(v.buy);
+	const takeProfit = parseGroup(v.takeProfit);
+	const stopLoss = parseGroup(v.stopLoss);
+	if (!flat || !holding || !buy || !takeProfit || !stopLoss) return null;
+	return {
+		timeframe: v.timeframe,
+		frequency: { flat, holding },
+		orderSize: typeof v.orderSize === "number" ? v.orderSize : Number.NaN,
+		buy,
+		takeProfit,
+		stopLoss,
+	};
+}

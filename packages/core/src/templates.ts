@@ -90,3 +90,7 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 export function strategyTemplate(id: TemplateId): StrategyTemplate {
 	return JSON.parse(JSON.stringify(TEMPLATES[id]));
 }
+
+export function isTemplateId(v: unknown): v is TemplateId {
+	return (TEMPLATE_IDS as readonly unknown[]).includes(v);
+}

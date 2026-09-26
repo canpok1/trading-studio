@@ -4,6 +4,7 @@ import {
 	emaPeriods,
 	evaluateConditionSet,
 	historyBars,
+	parseConditionSet,
 	validateConditionSet,
 } from "./condition-strategy";
 import type { StrategyInput } from "./strategy";
@@ -333,5 +334,31 @@ describe("emaPeriods / historyBars", () => {
 	test("ひな形を書き換えても次に取るひな形は変わらない", () => {
 		strategyTemplate("trend").params.buy.conditions.length = 0;
 		expect(strategyTemplate("trend").params.buy.conditions).toHaveLength(1);
+	});
+});
+
+describe("parseConditionSet", () => {
+	test("ひな形を JSON にして読み戻せる", () => {
+		const p = strategyTemplate("trend").params;
+		expect(parseConditionSet(JSON.parse(JSON.stringify(p)))).toEqual(p);
+	});
+
+	test("形が違えば null", () => {
+		expect(parseConditionSet(null)).toBeNull();
+		expect(parseConditionSet({ ...params(), timeframe: "2h" })).toBeNull();
+		expect(
+			parseConditionSet({
+				...params(),
+				buy: { match: "all", conditions: [{ type: "unknown" }] },
+			}),
+		).toBeNull();
+	});
+
+	test("数値でない値は NaN にして検証で弾く", () => {
+		const p = parseConditionSet({ ...params(), orderSize: "x" });
+		expect(p?.orderSize).toBeNaN();
+		expect(
+			validateConditionSet(p as ConditionSet).map((e) => e.path),
+		).toContain("orderSize");
 	});
 });
