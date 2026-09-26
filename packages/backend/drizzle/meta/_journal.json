@@ -36,6 +36,13 @@
       "when": 1790405729474,
       "tag": "0004_backtest_step",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1790423096523,
+      "tag": "0005_news",
+      "breakpoints": true
     }
   ]
 }
