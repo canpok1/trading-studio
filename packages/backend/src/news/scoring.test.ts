@@ -96,6 +96,7 @@ function setup(opts: { key?: boolean } = {}) {
 		model,
 		rule: () => repo.aggregationRule(),
 		now: () => clock,
+		minIntervalMs: 0,
 	});
 	const service = createScoringService({
 		repo,
@@ -380,4 +381,46 @@ describe("採点の API", () => {
 				.status,
 		).toBe(200);
 	});
+});
+
+test("問い合わせの間を最短の間隔だけ空ける", async () => {
+	let clock = T0;
+	const db = createTestDb();
+	const newsRepo = new NewsRepository(db);
+	const repo = new ScoreRepository(db);
+	repo.seedCriteria(DEFAULT_CRITERIA, T0);
+	const source = newsRepo.insertSource(
+		{ name: "A", url: "https://a.example/feed", language: "ja" },
+		T0,
+	);
+	newsRepo.saveFetched(
+		source,
+		["a", "b"].map((t) => ({
+			title: t,
+			url: `https://a.example/${t}`,
+			summary: null,
+			publishedAt: T0,
+		})),
+		T0,
+	);
+	let calls = 0;
+	const scorer = createScorer({
+		repo,
+		model: {
+			unavailable: () => null,
+			async generate() {
+				calls++;
+				return { trend: 1, risk: 1, sentiment: 1, comment: "c" };
+			},
+		},
+		rule: () => repo.aggregationRule(),
+		now: () => clock,
+		minIntervalMs: 5000,
+	});
+	for (const t of [0, 1000, 4999, 5000]) {
+		clock = T0 + t;
+		scorer.tick();
+		await scorer.idle();
+	}
+	expect(calls).toBe(2);
 });

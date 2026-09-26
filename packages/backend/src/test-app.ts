@@ -82,6 +82,7 @@ export function createTestApp(
 		model: demoScoreModel(),
 		rule: () => scoreRepo.aggregationRule(),
 		now: () => clock.now,
+		minIntervalMs: 0,
 	});
 	const scoring = createScoringService({
 		repo: scoreRepo,
