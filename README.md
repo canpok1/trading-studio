@@ -30,10 +30,6 @@ mkdir -p data && sudo chown 1000:1000 data
 docker compose up -d
 ```
 
-コンテナはホストの `127.0.0.1:3000` にだけ公開する。スマホからは Tailscale Serve で HTTPS 化して開く。
-
-```sh
-sudo tailscale serve --bg 3000   # https://<マシン名>.<tailnet 名>.ts.net/ で開ける
-```
+コンテナはホストの `3000` 番ポートで自宅 LAN 内へ公開し、スマホからは `http://<mini-pc の LAN 内アドレス>:3000/` で開く。ルーターで外へ転送しないこと。実取引（フェーズ5）の前に Tailscale 経由へ切り替える（ADR 0004）。
 
 **cloudflared（Cloudflare Tunnel）経由では公開しない。** インターネットに公開され、ログイン機能の無いこのアプリを誰でも操作できてしまうため。
