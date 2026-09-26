@@ -22,7 +22,13 @@ import {
 	withLatestPrice,
 } from "../lib/home";
 import { formatInt, formatSignedPercent } from "../lib/number";
-import { errorMessage, readJson, useAsync, useInterval } from "../lib/useAsync";
+import {
+	errorMessage,
+	readJson,
+	useAsync,
+	useInterval,
+	usePageVisible,
+} from "../lib/useAsync";
 
 /** 最新価格を問い合わせる間隔 */
 const LATEST_MS = 5_000;
@@ -37,19 +43,6 @@ const NO_PERIODS: number[] = [];
 const TF_OPTIONS = TIMEFRAMES.map(
 	(t) => [t, TIMEFRAME_LABELS[t].replace("足", "")] as const,
 );
-
-/** 画面が見えているか。見えていない間は問い合わせを止める */
-function usePageVisible(): boolean {
-	const [visible, setVisible] = useState(
-		() => document.visibilityState !== "hidden",
-	);
-	useEffect(() => {
-		const on = () => setVisible(document.visibilityState !== "hidden");
-		document.addEventListener("visibilitychange", on);
-		return () => document.removeEventListener("visibilitychange", on);
-	}, []);
-	return visible;
-}
 
 type Strategies = { list: StoredStrategy[]; active: StoredStrategy | null };
 

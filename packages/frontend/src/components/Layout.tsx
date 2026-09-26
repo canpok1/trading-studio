@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
 import {
+	AiIcon,
 	BacktestIcon,
 	DataIcon,
 	HomeIcon,
@@ -27,20 +28,21 @@ const NAV: NavItem[] = [
 		icon: <BacktestIcon />,
 		show: "both",
 	},
+	{ to: "/ai", label: "AI判定", icon: <AiIcon />, show: "both" },
 	{
 		to: "/strategies",
 		label: "戦略設定",
 		icon: <StrategyIcon />,
 		show: "both",
 	},
-	{ to: "/data", label: "過去データ", icon: <DataIcon />, show: "both" },
+	{ to: "/data", label: "過去データ", icon: <DataIcon />, show: "side" },
 	{ to: "/settings", label: "表示設定", icon: <SettingsIcon />, show: "side" },
 	{
 		to: "/other",
 		label: "その他",
 		icon: <OtherIcon />,
 		show: "tab",
-		also: ["/settings"],
+		also: ["/settings", "/data"],
 	},
 ];
 
