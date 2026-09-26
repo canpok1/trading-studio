@@ -82,6 +82,7 @@ export function markerColorVar(
 
 /**
  * 表示期間に合わせた論理範囲（足の番号）。足が無ければ null（全体を収める）。
+ * 期間に対して足が足りないときは、ある足だけを全期間と同じ形で収める（空いた左側でチャートが潰れないように）。
  * 全期間は左に余白を空ける。最初の足がチャートの左端に来ると、その目盛りの文字が途中で切れるため
  */
 export function visibleRange(
@@ -90,9 +91,12 @@ export function visibleRange(
 	stepMs: number,
 ): { from: number; to: number } | null {
 	if (barCount === 0) return null;
-	if (range === "all") {
+	const k =
+		range === "all"
+			? Number.POSITIVE_INFINITY
+			: Math.max(5, Math.round(RANGE_MS[range] / stepMs));
+	if (barCount < k) {
 		return { from: -Math.ceil(barCount * 0.1), to: barCount - 1 + 3 };
 	}
-	const k = Math.max(5, Math.round(RANGE_MS[range] / stepMs));
 	return { from: barCount - k - 0.5, to: barCount - 1 + 3 };
 }
