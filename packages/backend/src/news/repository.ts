@@ -1,5 +1,6 @@
 import type { Db } from "../db/open";
 import type { FeedItem } from "./rss";
+import { toNewsScore } from "./score-repository";
 import type {
 	NewsItem,
 	NewsLanguage,
@@ -19,7 +20,10 @@ type SourceRow = {
 	error_since: number | null;
 };
 
-type NewsRow = {
+type ScoreRow = Parameters<typeof toNewsScore>[0];
+
+/** news と news_scores を left join した行。採点の行が無ければ採点の列は null */
+type NewsRow = Omit<ScoreRow, "status"> & {
 	id: number;
 	source_id: number;
 	source_name: string;
@@ -29,6 +33,7 @@ type NewsRow = {
 	summary: string | null;
 	published_at: number;
 	fetched_at: number;
+	status: ScoreRow["status"] | null;
 };
 
 const toSource = (r: SourceRow): NewsSource => ({
@@ -53,6 +58,7 @@ export const toNewsItem = (r: NewsRow): NewsItem => ({
 	summary: r.summary,
 	publishedAt: r.published_at,
 	fetchedAt: r.fetched_at,
+	score: r.status === null ? null : toNewsScore({ ...r, status: r.status }),
 });
 
 const INTERVAL_KEY = "news_interval_minutes";
@@ -196,7 +202,7 @@ export class NewsRepository {
 	listNews(limit: number): NewsItem[] {
 		return this.sql
 			.query<NewsRow, [number]>(
-				"select * from news order by published_at desc, id desc limit ?",
+				"select * from news n left join news_scores s on s.news_id = n.id order by n.published_at desc, n.id desc limit ?",
 			)
 			.all(limit)
 			.map(toNewsItem);

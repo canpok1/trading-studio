@@ -12,7 +12,12 @@ import { createTestDb } from "./db/test-db";
 import { createMarketService } from "./market/service";
 import { MarketDataRepository } from "./market-data/repository";
 import { createMarketDataService } from "./market-data/service";
+import { demoScoreModel } from "./news/fake-model";
+import { DEFAULT_CRITERIA } from "./news/prompt";
 import { NewsRepository } from "./news/repository";
+import { ScoreRepository } from "./news/score-repository";
+import { createScorer } from "./news/scorer";
+import { createScoringService } from "./news/scoring-service";
 import { createNewsService } from "./news/service";
 import { createStrategyService } from "./strategies/service";
 
@@ -69,6 +74,21 @@ export function createTestApp(
 		},
 		now: () => 5_000,
 	});
+	const scoreRepo = new ScoreRepository(db);
+	scoreRepo.seedCriteria(DEFAULT_CRITERIA, 0);
+	// 採点は自動では動かさず、テストから scorer.tick() を呼ぶ
+	const scorer = createScorer({
+		repo: scoreRepo,
+		model: demoScoreModel(),
+		rule: () => scoreRepo.aggregationRule(),
+		now: () => clock.now,
+	});
+	const scoring = createScoringService({
+		repo: scoreRepo,
+		newsRepo,
+		scorer,
+		now: () => clock.now,
+	});
 	const app = createApp({
 		isDbReachable: () => true,
 		marketData,
@@ -76,6 +96,7 @@ export function createTestApp(
 		strategies,
 		backtests,
 		news,
+		scoring,
 		...over,
 	});
 	return {
@@ -91,5 +112,7 @@ export function createTestApp(
 		news,
 		newsRepo,
 		newsRun,
+		scoreRepo,
+		scorer,
 	};
 }

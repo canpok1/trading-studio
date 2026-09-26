@@ -150,3 +150,42 @@ export const news = sqliteTable(
 	},
 	(t) => [index("news_published_at").on(t.publishedAt)],
 );
+
+/** 採点の基準の版。上書きせず、版を足していく */
+export const scoringCriteria = sqliteTable("scoring_criteria", {
+	version: integer("version").primaryKey({ autoIncrement: true }),
+	text: text("text").notNull(),
+	/** 版の説明 */
+	note: text("note").notNull(),
+	createdAt: integer("created_at").notNull(),
+});
+
+/** ニュースの採点結果。1件のニュースに1行。削除しない */
+export const newsScores = sqliteTable(
+	"news_scores",
+	{
+		newsId: integer("news_id")
+			.primaryKey()
+			.references(() => news.id),
+		/** done: 採点済み / retry: 再試行を待っている / failed: 採点に失敗 / skipped: 古いので採点しない */
+		status: text("status").notNull(),
+		/** 観点ごとの点数（0〜100）。関係なしは null */
+		trend: integer("trend"),
+		risk: integer("risk"),
+		sentiment: integer("sentiment"),
+		comment: text("comment"),
+		/** 採点した時刻。これより前の判定には使わない */
+		scoredAt: integer("scored_at"),
+		criteriaVersion: integer("criteria_version"),
+		model: text("model"),
+		/** 最後の失敗の理由 */
+		error: text("error"),
+		/** 失敗した回数（手動の再試行で 0 に戻す） */
+		attempts: integer("attempts").notNull().default(0),
+		nextAttemptAt: integer("next_attempt_at"),
+	},
+	(t) => [
+		index("news_scores_status").on(t.status),
+		index("news_scores_scored_at").on(t.scoredAt),
+	],
+);
