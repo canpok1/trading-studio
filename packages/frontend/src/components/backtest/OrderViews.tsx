@@ -13,9 +13,27 @@ const STATUS_LABEL: Record<BacktestOrder["status"], string> = {
 	canceled: "取消",
 };
 
-/** 利確・損切りのどちらで売ったか。戦略の理由から読む */
+/**
+ * 売りのきっかけになった条件（例: EMA12/48下抜け、−2%）。戦略の理由から読む。
+ * 「利確」「損切り」のグループ名で出すと、利確のグループの条件で損失が出た売りも「利確」と読めてしまうため、条件名で出す
+ */
 export function orderKind(o: BacktestOrder): string | null {
 	if (o.side !== "sell") return null;
+	const hits: string[] = [];
+	for (const m of o.reason.matchAll(
+		/短期EMA\((\d+)\)[^。]*?長期EMA\((\d+)\)[^。]*?を(上抜け|下抜け)/g,
+	)) {
+		hits.push(`EMA${m[1]}/${m[2]}${m[3]}`);
+	}
+	for (const m of o.reason.matchAll(
+		/直近 (\d+) 本の(最高値|最安値)[^。]*?を(上抜け|下抜け)/g,
+	)) {
+		hits.push(`${m[1]}本の${m[2] === "最高値" ? "高値上抜け" : "安値下抜け"}`);
+	}
+	for (const m of o.reason.matchAll(/（([+−][\d.]+%) 以上）/g)) {
+		hits.push(m[1] as string);
+	}
+	if (hits.length > 0) return hits.join("・");
 	if (o.reason.includes("損切り")) return "損切り";
 	if (o.reason.includes("利確")) return "利確";
 	return null;

@@ -5,11 +5,14 @@ import type {
 } from "@trading-studio/backend";
 import type { ConditionSet, Gap } from "@trading-studio/core";
 import {
+	chooseStepTimeframe,
+	isCoarser,
 	parseConditionSet,
 	percentToPpm,
 	ppmToPercent,
 	TIMEFRAME_LABELS,
 	TIMEFRAME_MS,
+	TIMEFRAMES,
 	validateConditionSet,
 } from "@trading-studio/core";
 import {
@@ -38,6 +41,7 @@ import {
 	toDateInputValue,
 } from "../format";
 import { useBacktestJob } from "../lib/backtest-job";
+import { stepLimitedText } from "../lib/condition-text";
 import { formatInt, formatSignedPercent } from "../lib/number";
 import { errorMessage, readJson, useAsync } from "../lib/useAsync";
 
@@ -290,6 +294,21 @@ function RunForm({
 	const fromDate = draft.fromDate ?? toDateInputValue(toMs - 30 * DAY);
 	const fromMs = fromDateInputValue(fromDate) ?? 0;
 
+	// 判定に使う足。期間に取り込んだ最も細かい足までしか細かくできない（実際の選び方はサーバーと同じ）
+	const finest = TIMEFRAMES.find((t) => {
+		const c = coverage.find((x) => x.timeframe === t);
+		return (
+			c !== undefined &&
+			c.importedCount > 0 &&
+			c.firstTime !== null &&
+			c.lastTime !== null &&
+			c.firstTime < toMs &&
+			c.lastTime + TIMEFRAME_MS[t] > fromMs
+		);
+	});
+	const step =
+		finest && !isCoarser(finest, tf) ? chooseStepTimeframe(p, finest) : null;
+
 	const bars = useMemo(() => {
 		if (!cov || cov.firstTime === null || cov.lastTime === null) return 0;
 		const a = Math.max(fromMs, cov.firstTime);
@@ -514,8 +533,12 @@ function RunForm({
 							<span className="text-[13px] font-semibold">足の粒度</span>
 							<span className="num text-sm">
 								{TIMEFRAME_LABELS[tf]}（戦略の粒度） · {formatInt(bars)} 本
+								{step && step.timeframe !== tf
+									? ` · ${TIMEFRAME_LABELS[step.timeframe]}で判定`
+									: ""}
 							</span>
 						</div>
+						{step?.limited && <Note>{stepLimitedText(step.timeframe)}</Note>}
 						<div className="flex flex-col gap-1.5">
 							<label htmlFor={ids.cash} className="text-[13px] font-semibold">
 								初期資金（円）

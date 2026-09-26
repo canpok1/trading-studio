@@ -5,6 +5,7 @@ import type {
 	ConditionGroup,
 	ConditionSet,
 	Frequency,
+	Timeframe,
 } from "@trading-studio/core";
 import {
 	FREQUENCY_UNIT_LABELS,
@@ -16,6 +17,11 @@ const freq = (f: Frequency) => `${f.value}${FREQUENCY_UNIT_LABELS[f.unit]}`;
 
 export function frequencyText(p: ConditionSet): string {
 	return `判定 なし${freq(p.frequency.flat)}/あり${freq(p.frequency.holding)}ごと`;
+}
+
+/** 判定頻度より粗い間隔でしか判定できないときの説明 */
+export function stepLimitedText(step: Timeframe): string {
+	return `判定頻度より細かい過去データが無いため、${TIMEFRAME_LABELS[step]}の終わりごとにしか判定しない。判定頻度どおりに試すには、より細かい足の CSV を取り込む`;
 }
 
 export function conditionText(c: Condition): string {

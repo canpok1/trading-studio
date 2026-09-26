@@ -45,7 +45,11 @@ const PARAMS = {
 	},
 };
 
-async function prepare(request: APIRequestContext, name: string) {
+async function prepare(
+	request: APIRequestContext,
+	name: string,
+	params: typeof PARAMS = PARAMS,
+) {
 	const res = await request.post("/api/data/imports", {
 		multipart: {
 			file: {
@@ -65,7 +69,7 @@ async function prepare(request: APIRequestContext, name: string) {
 		})
 		.toBe("done");
 	const s = await request.post("/api/strategies", {
-		data: { name, from: { params: PARAMS } },
+		data: { name, from: { params } },
 	});
 	expect(s.status()).toBe(201);
 }
@@ -158,4 +162,25 @@ test("期間に欠損があると確認が出て、飛ばして実行できる",
 		() => document.documentElement.scrollWidth - window.innerWidth,
 	);
 	expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("判定頻度より細かいデータが無いと、実行前と結果で知らせる", async ({
+	page,
+	request,
+}, info) => {
+	const name = `BT 頻度 ${info.project.name}`;
+	// 1時間足しか無いのに、ポジションありは15分ごとに判定する
+	await prepare(request, name, {
+		...PARAMS,
+		frequency: { ...PARAMS.frequency, holding: { value: 15, unit: "m" } },
+	});
+	await choose(page, name, "2026-05-03", "2026-05-25");
+	const notice = page.getByText(
+		"判定頻度より細かい過去データが無いため、1時間足の終わりごとにしか判定しない",
+		{ exact: false },
+	);
+	await expect(notice).toBeVisible();
+	await page.getByRole("button", { name: "バックテストを実行" }).click();
+	await expect(page).toHaveURL(/\/backtest\/runs\/\d+$/);
+	await expect(notice).toBeVisible();
 });

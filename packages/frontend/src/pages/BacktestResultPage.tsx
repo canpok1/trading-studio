@@ -18,10 +18,15 @@ import { PriceChart } from "../components/chart/PriceChart";
 import { Modal } from "../components/Modal";
 import { Page } from "../components/Page";
 import { EmptyState, ErrorState, LoadingCard } from "../components/States";
-import { Button, Card, ProgressBar, Segmented } from "../components/ui";
+import { Button, Card, Note, ProgressBar, Segmented } from "../components/ui";
 import { formatDate, toDateInputValue } from "../format";
 import { useBacktestJob } from "../lib/backtest-job";
-import { conditionDiff, frequencyText, groupText } from "../lib/condition-text";
+import {
+	conditionDiff,
+	frequencyText,
+	groupText,
+	stepLimitedText,
+} from "../lib/condition-text";
 import { formatInt, formatSignedInt, formatSignedPercent } from "../lib/number";
 import { errorMessage, readJson, useAsync } from "../lib/useAsync";
 import type { BacktestDraft } from "./BacktestRunPage";
@@ -184,6 +189,9 @@ function RunHeader({
 				{formatDate(run.from)}〜{formatDate(run.to - 1)} · 初期資金{" "}
 				{formatInt(run.initialCash)}円
 				{run.skipGaps ? " · 欠損を飛ばして実行" : ""}
+				{run.stepTimeframe !== run.timeframe
+					? ` · ${TIMEFRAME_LABELS[run.stepTimeframe]}で判定`
+					: ""}
 			</span>
 			<ul aria-label="実行条件" className="flex flex-wrap gap-1.5">
 				{chips.map((c) => (
@@ -195,6 +203,7 @@ function RunHeader({
 					</li>
 				))}
 			</ul>
+			{run.stepLimited && <Note>{stepLimitedText(run.stepTimeframe)}</Note>}
 			{run.status === "done" && (
 				<div className="mt-1">
 					{same ? (

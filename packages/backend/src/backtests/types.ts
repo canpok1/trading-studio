@@ -40,6 +40,10 @@ export type BacktestRun = {
 	initialCash: number;
 	fees: FeeRates;
 	skipGaps: boolean;
+	/** 判定と約定に使った足の粒度 */
+	stepTimeframe: Timeframe;
+	/** データが足りず、判定頻度より粗い間隔でしか判定できなかった */
+	stepLimited: boolean;
 	status: BacktestStatus;
 	/** 実行中の進み具合（0〜1） */
 	progress: number;

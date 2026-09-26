@@ -4,7 +4,12 @@ import { formatBtc, formatYen } from "./format";
 import { feeYen, notionalYen, PPM, SATOSHI_PER_BTC } from "./money";
 import type { Strategy, StrategyOutput } from "./strategy";
 import type { Timeframe } from "./timeframe";
-import { isCoarser, TIMEFRAME_LABELS, TIMEFRAME_MS } from "./timeframe";
+import {
+	candleStart,
+	isCoarser,
+	TIMEFRAME_LABELS,
+	TIMEFRAME_MS,
+} from "./timeframe";
 import type {
 	Candle,
 	JsonValue,
@@ -44,6 +49,12 @@ export type BacktestConfig<P> = {
 	candles: readonly Candle[];
 	/** 取り込まれているデータのうち最も細かい粒度。戦略の粒度より粗ければ実行しない */
 	dataTimeframe: Timeframe;
+	/**
+	 * 判定と約定に使う足（古い順、期間内）と粒度。判定頻度が戦略の粒度より短いとき、戦略の粒度より細かい足を渡す。
+	 * 省略すると戦略の粒度の足で進める
+	 */
+	stepCandles?: readonly Candle[];
+	stepTimeframe?: Timeframe;
 	/** 期間。開始時刻が from 以上 to 未満の足で売買する */
 	from: number;
 	to: number;
@@ -140,7 +151,7 @@ export type BacktestResult = {
 	orders: BacktestOrder[];
 	trades: Trade[];
 	decisions: DecisionLog[];
-	/** 期間内の足（チャートに使う） */
+	/** 期間内の戦略の粒度の足（チャートに使う） */
 	candles: Candle[];
 };
 
@@ -190,13 +201,23 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 	checkDataResolution(config.dataTimeframe, timeframe);
 	const tfMs = TIMEFRAME_MS[timeframe];
 	const history = Math.max(1, strategy.historyBars(params));
+	const steps = config.stepCandles ?? all;
+	const stepTimeframe = config.stepTimeframe ?? timeframe;
+	if (isCoarser(stepTimeframe, timeframe)) {
+		throw new BacktestError("判定に使う足が戦略の粒度より粗い");
+	}
+	const stepMs = TIMEFRAME_MS[stepTimeframe];
 
-	const startIndex = all.findIndex((c) => c.time >= from);
-	const endIndex = all.findLastIndex((c) => c.time < to);
+	const startIndex = steps.findIndex((c) => c.time >= from);
+	const endIndex = steps.findLastIndex((c) => c.time < to);
 	if (startIndex < 0 || endIndex < startIndex) {
 		throw new BacktestError("期間に足が無い");
 	}
 	const total = endIndex - startIndex + 1;
+	// 判定時点で確定している戦略の粒度の足の数（all の先頭から）
+	let completed = 0;
+	// 判定時点で途中の戦略の粒度の足。細かい足から組み立てる
+	let forming = null as Candle | null;
 
 	let cash = initialCash;
 	let position: Position = EMPTY_POSITION;
@@ -210,7 +231,7 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 	let entry: { orderId: string; time: number; cost: number } | null = null;
 
 	let peak = initialCash;
-	let peakAt = all[startIndex]?.time ?? from;
+	let peakAt = steps[startIndex]?.time ?? from;
 	let maxDd = 0;
 	let ddFrom: number | null = null;
 	let ddTo: number | null = null;
@@ -351,8 +372,8 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 		if (shouldAbort?.()) {
 			throw new BacktestAborted("中止した");
 		}
-		const bar = all[i] as Candle;
-		const closeAt = bar.time + tfMs;
+		const bar = steps[i] as Candle;
+		const closeAt = bar.time + stepMs;
 
 		// 足の中の約定
 		let filled = false;
@@ -379,8 +400,32 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 		}
 		removeClosed();
 
+		const barStart = candleStart(bar.time, timeframe);
+		const prev = forming;
+		forming =
+			prev?.time === barStart
+				? {
+						time: barStart,
+						open: prev.open,
+						high: Math.max(prev.high, bar.high),
+						low: Math.min(prev.low, bar.low),
+						close: bar.close,
+						volume: prev.volume + bar.volume,
+					}
+				: { ...bar, time: barStart };
+
 		if (filled || closeAt >= nextEvalAt) {
-			const window = all.slice(Math.max(0, i + 1 - history), i + 1);
+			while (
+				completed < all.length &&
+				(all[completed] as Candle).time < barStart
+			) {
+				completed++;
+			}
+			// 確定した足に、途中の足（今の足）を足して渡す。細かい足で進めていなければ今の足そのもの
+			const window = [
+				...all.slice(Math.max(0, completed - (history - 1)), completed),
+				forming,
+			];
 			const openOrders = open.map((x) => ({ ...x.order }));
 			const out: StrategyOutput = strategy.evaluate({
 				now: closeAt,
@@ -437,10 +482,10 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 		}
 	}
 
-	const first = all[startIndex] as Candle;
-	const last = all[endIndex] as Candle;
+	const first = steps[startIndex] as Candle;
+	const last = steps[endIndex] as Candle;
 	for (const item of open) {
-		cancel(item, last.time + tfMs, "期間の終わりまで約定しなかった");
+		cancel(item, last.time + stepMs, "期間の終わりまで約定しなかった");
 	}
 
 	const finalEquity =
@@ -480,6 +525,6 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 		orders,
 		trades,
 		decisions,
-		candles: all.slice(startIndex, endIndex + 1),
+		candles: all.filter((c) => c.time >= from && c.time < to),
 	};
 }
