@@ -5,6 +5,9 @@ import { createApp } from "./app";
 import { BacktestRepository } from "./backtests/repository";
 import { createBacktestService } from "./backtests/service";
 import { workerRunner } from "./backtests/worker-runner";
+import { coincheckFeed } from "./collector/coincheck";
+import { createCollector } from "./collector/collector";
+import { demoFeed } from "./collector/fake-feed";
 import { migrateDb } from "./db/migrate";
 import { isDbReachable, openDb } from "./db/open";
 import { MarketDataRepository } from "./market-data/repository";
@@ -45,6 +48,14 @@ const backtestRepo = new BacktestRepository(db);
 backtestRepo.failInterrupted(Date.now());
 const strategies = createStrategyService(db);
 
+// 収集はサーバーが動いている間は常に行う（ON/OFF は作らない）
+const collector = createCollector({
+	// E2E では取引所へつながず、偽物の約定を流す
+	feed: process.env.MARKET_FEED === "demo" ? demoFeed() : coincheckFeed(),
+	repo: marketDataRepo,
+});
+const collectorTimer = setInterval(() => collector.tick(), 1_000);
+
 const server = new Hono().route(
 	"/",
 	createApp({
@@ -67,6 +78,8 @@ console.log(`listening on http://${hostname}:${port}, db: ${dbPath}`);
 // コンテナでは PID 1 になり、ハンドラが無いと SIGTERM が無視されて入れ替えのたびに強制終了を待つことになる
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
 	process.on(signal, async () => {
+		clearInterval(collectorTimer);
+		collector.stop();
 		await http.stop();
 		db.$client.close();
 		process.exit(0);
