@@ -217,6 +217,23 @@ export class MarketDataRepository {
 		return written;
 	}
 
+	/** 取り込み済みの足のうち、最後に確定した足の終値。足が無ければ null */
+	latestClose(): { time: number; close: number } | null {
+		let best: { time: number; close: number } | null = null;
+		for (const tf of TIMEFRAMES) {
+			const r = this.sql
+				.query<{ time: number; close: number }, [string]>(
+					"select time, close from candles where timeframe = ? order by time desc limit 1",
+				)
+				.get(tf);
+			if (r) {
+				const end = r.time + TIMEFRAME_MS[tf];
+				if (!best || end > best.time) best = { time: end, close: r.close };
+			}
+		}
+		return best;
+	}
+
 	coverage(): TimeframeCoverage[] {
 		return TIMEFRAMES.map((timeframe) => {
 			const s = this.sql

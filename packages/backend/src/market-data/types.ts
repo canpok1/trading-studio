@@ -54,4 +54,6 @@ export interface MarketDataService {
 	cancelImport(id: number): ImportJob | null;
 	listImports(): ImportJob[];
 	coverage(): TimeframeCoverage[];
+	/** 最後に確定した足の終値（time は足の終わりの時刻） */
+	latestClose(): { time: number; close: number } | null;
 }
