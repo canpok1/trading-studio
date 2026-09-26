@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+/* ダークはクラスで切り替える（OS の設定に従うかどうかは theme.ts が決める） */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* キャンバスの配色。ダークは下の .dark で同じ変数を上書きする */
+@theme {
+	--font-sans:
+		"IBM Plex Sans JP", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+	--font-mono:
+		"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+	--color-bg: #f3f4f1;
+	--color-surface: #ffffff;
+	--color-surface-2: #e9ebe6;
+	--color-text: #15171a;
+	--color-text-2: #4b525a;
+	--color-line: #d3d7d0;
+	--color-grid: #e6e8e3;
+	--color-price: #22262b;
+	--color-ema1: #0e8c99;
+	--color-ema2: #9a5b1e;
+	--color-accent: #1d5bd8;
+	--color-accent-ink: #ffffff;
+	--color-buy: #1d5bd8;
+	--color-sell: #c24e0e;
+	--color-cancel: #7d838a;
+	--color-profit: #0e7a45;
+	--color-loss: #c1262e;
+	--color-warn: rgba(214, 150, 20, 0.2);
+	--color-scrim: rgba(15, 17, 19, 0.45);
+}
+
+.dark {
+	color-scheme: dark;
+	--color-bg: #0e1012;
+	--color-surface: #171a1d;
+	--color-surface-2: #22262a;
+	--color-text: #e7e9e5;
+	--color-text-2: #a5acb3;
+	--color-line: #30353a;
+	--color-grid: #23272b;
+	--color-price: #e7e9e5;
+	--color-ema1: #45c7d3;
+	--color-ema2: #d9a066;
+	--color-accent: #6d9bf2;
+	--color-accent-ink: #0e1012;
+	--color-buy: #5c8ff0;
+	--color-sell: #f08a4b;
+	--color-cancel: #8a9198;
+	--color-profit: #3fc57e;
+	--color-loss: #f2646c;
+	--color-warn: rgba(240, 180, 40, 0.17);
+	--color-scrim: rgba(0, 0, 0, 0.6);
+}
+
+@layer base {
+	html,
+	body,
+	#root {
+		height: 100%;
+	}
+	body {
+		background: var(--color-bg);
+		color: var(--color-text);
+		font-family: var(--font-sans);
+		font-size: 14px;
+		line-height: 1.5;
+		-webkit-font-smoothing: antialiased;
+		-webkit-tap-highlight-color: transparent;
+	}
+	:focus-visible {
+		outline: 2px solid var(--color-accent);
+		outline-offset: 2px;
+	}
+	button {
+		cursor: pointer;
+	}
+}
+
+/* 数値は等幅で桁を揃える */
+@utility num {
+	font-family: var(--font-mono);
+	font-variant-numeric: tabular-nums;
+}

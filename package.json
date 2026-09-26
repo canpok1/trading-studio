@@ -15,10 +15,12 @@
 		"typecheck": "tsc -p . && bun run --filter '*' typecheck",
 		"test": "bun test --pass-with-no-tests",
 		"depcruise": "depcruise packages",
-		"check": "bun run lint && bun run typecheck && bun run test && bun run depcruise"
+		"check": "bun run lint && bun run typecheck && bun run test && bun run depcruise",
+		"test:e2e": "bun run build && playwright test"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.14",
+		"@playwright/test": "^1.63.0",
 		"@swc/core": "^1.16.2",
 		"@types/bun": "^1.4.2",
 		"dependency-cruiser": "^18.4.0",
