@@ -12,8 +12,9 @@ test("アプリを開くとホームが出て、現在値が自動で更新さ�
 }) => {
 	await page.goto("/");
 	await expect(page).toHaveURL(/\/home$/);
-	const price = page.getByTestId("home-price");
+	const price = page.getByTestId("chart-close");
 	await expect(price).toHaveText(/^¥[\d,]+$/, { timeout: 15_000 });
+	await expect(page.getByTestId("home-change")).toHaveText(/^24h /);
 	const first = await price.textContent();
 	// 偽物の取引所は1秒ごとに価格を変える。画面は5秒ごとに問い合わせる
 	await expect(price).not.toHaveText(first as string, { timeout: 15_000 });
@@ -24,7 +25,7 @@ test("収集が止まると現在値の下にエラーが出て、直ると消�
 	page,
 }) => {
 	await page.goto("/home");
-	await expect(page.getByTestId("home-price")).toHaveText(/^¥/, {
+	await expect(page.getByTestId("chart-close")).toHaveText(/^¥/, {
 		timeout: 15_000,
 	});
 	const alert = page.getByRole("alert").filter({
@@ -84,7 +85,7 @@ test("ローソク足に切り替えると4本値が出て、再読み込み後�
 	page,
 }) => {
 	await page.goto("/home");
-	await expect(page.getByTestId("home-price")).toHaveText(/^¥[\d,]+$/, {
+	await expect(page.getByTestId("chart-close")).toHaveText(/^¥[\d,]+$/, {
 		timeout: 15_000,
 	});
 	const toggle = page.getByRole("button", { name: "ローソク足", exact: true });
@@ -102,11 +103,31 @@ test("ローソク足に切り替えると4本値が出て、再読み込み後�
 
 test("ホームは横にはみ出さない", async ({ page }) => {
 	await page.goto("/home");
-	await expect(page.getByTestId("home-price")).toBeVisible();
+	await expect(page.getByTestId("chart-close")).toBeVisible();
 	const overflow = await page.evaluate(
 		() => document.documentElement.scrollWidth > window.innerWidth,
 	);
 	expect(overflow).toBe(false);
+});
+
+test("PC 幅では表示の切り替えが状態の右に並び、チャートは2列ぶんの幅を使う", async ({
+	page,
+}, testInfo) => {
+	test.skip(testInfo.project.name !== "desktop", "2列になるのは PC 幅だけ");
+	await page.goto("/home");
+	const status = page.getByLabel("運用する戦略");
+	const controls = page.getByRole("region", { name: "チャートの表示" });
+	const chart = page.getByRole("region", { name: "価格チャート" });
+	await expect(chart).toBeVisible({ timeout: 15_000 });
+	const s = await status.boundingBox();
+	const c = await controls.boundingBox();
+	const ch = await chart.boundingBox();
+	if (!s || !c || !ch) throw new Error("位置を取れなかった");
+	// 切り替えは状態の右、チャートは両方より下で左端から右端まで
+	expect(c.x).toBeGreaterThan(s.x + s.width);
+	expect(ch.y).toBeGreaterThan(c.y + c.height);
+	expect(ch.x).toBeLessThanOrEqual(s.x);
+	expect(ch.x + ch.width).toBeGreaterThanOrEqual(c.x + c.width - 1);
 });
 
 test("チャートに AI 判定の背景と帯が出て、帯をタップすると背景が入れ替わり、再読み込み後も保たれる", async ({
