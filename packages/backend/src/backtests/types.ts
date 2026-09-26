@@ -1,6 +1,7 @@
 // バックテストの API が使う型。app.ts から参照されるため、Bun 固有の型を持ち込まない
 
 import type {
+	AggregationRule,
 	BacktestOrder,
 	BacktestSummary,
 	ConditionSet,
@@ -9,6 +10,7 @@ import type {
 	Timeframe,
 	ValidationError,
 } from "@trading-studio/core";
+import type { JudgmentSeries } from "../judgments/types";
 import type { StoredStrategy } from "../strategies/types";
 
 export type BacktestStatus = "running" | "done" | "failed" | "canceled";
@@ -54,6 +56,8 @@ export type BacktestRun = {
 	filledCount: number;
 	orderCount: number;
 	error: string | null;
+	/** 実行したときの AI 判定の集計ルール。記録する前の実行は null */
+	aggregationRule: AggregationRule | null;
 };
 
 /** チャートに出す注文。時刻と価格は、約定・取消・発注のうち最後の状態のもの */
@@ -69,6 +73,8 @@ export type BacktestMarker = {
 export type BacktestChart = {
 	bars: { time: number; close: number }[];
 	markers: BacktestMarker[];
+	/** 足ごとの AI 判定（実行したときの集計ルールで計算）。ルールを記録する前の実行は null */
+	judgments: JudgmentSeries | null;
 };
 
 export type OrderFilter = "filled" | "all";
