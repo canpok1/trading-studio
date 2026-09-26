@@ -200,6 +200,29 @@ describe("ニュース収集", () => {
 		expect(t.fetched).toEqual([t.a.url, t.b.url, t.a.url]);
 	});
 
+	test("追加した取得元は次の収集を待たずに取得する", async () => {
+		const t = setup();
+		t.feeds.set(t.a.url, rss([]));
+		t.feeds.set(t.b.url, rss([]));
+		await t.at(T0);
+		const c = t.service.addSource({
+			name: "C",
+			url: "https://c.example/feed",
+			language: "en",
+		});
+		if (!c.ok) throw new Error();
+		t.feeds.set(
+			c.source.url,
+			rss([{ title: "c1", link: "https://x.example/c1" }]),
+		);
+		await t.at(T0 + MIN);
+		expect(t.service.listNews(10).map((n) => n.title)).toEqual(["c1"]);
+		// 取得した後は間隔どおり
+		const count = t.fetched.length;
+		await t.at(T0 + 2 * MIN);
+		expect(t.fetched.length).toBe(count);
+	});
+
 	test("取得元が失敗すると状態に理由が出て、直ると消える", async () => {
 		const t = setup();
 		t.feeds.set(t.a.url, rss([]));
