@@ -1,0 +1,70 @@
+// 条件セットを1行で表す文字列。結果の要約と、戦略へ上書きするときの差分に使う
+
+import type {
+	Condition,
+	ConditionGroup,
+	ConditionSet,
+	Frequency,
+} from "@trading-studio/core";
+import {
+	FREQUENCY_UNIT_LABELS,
+	formatBtc,
+	TIMEFRAME_LABELS,
+} from "@trading-studio/core";
+
+const freq = (f: Frequency) => `${f.value}${FREQUENCY_UNIT_LABELS[f.unit]}`;
+
+export function frequencyText(p: ConditionSet): string {
+	return `判定 なし${freq(p.frequency.flat)}/あり${freq(p.frequency.holding)}ごと`;
+}
+
+export function conditionText(c: Condition): string {
+	switch (c.type) {
+		case "emaCross":
+			return `EMA${c.fast}/${c.slow}${c.direction === "up" ? "上抜け" : "下抜け"}`;
+		case "breakout":
+			return `${c.lookback}本の${c.direction === "high" ? "高値上抜け" : "安値下抜け"}`;
+		case "entryChange":
+			return `${c.direction === "up" ? "+" : "−"}${c.percent}%`;
+	}
+}
+
+export function groupText(g: ConditionGroup): string {
+	return (
+		g.conditions
+			.map(conditionText)
+			.join(g.match === "all" ? " かつ " : " または ") || "なし"
+	);
+}
+
+/** 変わった項目だけを [項目名, 変更前, 変更後] で返す */
+export function conditionDiff(
+	before: ConditionSet,
+	after: ConditionSet,
+): [string, string, string][] {
+	const rows: [string, string, string][] = [
+		[
+			"足の粒度",
+			TIMEFRAME_LABELS[before.timeframe],
+			TIMEFRAME_LABELS[after.timeframe],
+		],
+		["判定の頻度", frequencyText(before), frequencyText(after)],
+		["買い注文する条件", groupText(before.buy), groupText(after.buy)],
+		[
+			"売り（利確）の条件",
+			groupText(before.takeProfit),
+			groupText(after.takeProfit),
+		],
+		[
+			"売り（損切り）の条件",
+			groupText(before.stopLoss),
+			groupText(after.stopLoss),
+		],
+		[
+			"1回の注文量",
+			`${formatBtc(before.orderSize)} BTC`,
+			`${formatBtc(after.orderSize)} BTC`,
+		],
+	];
+	return rows.filter(([, a, b]) => a !== b);
+}

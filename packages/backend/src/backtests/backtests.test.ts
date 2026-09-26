@@ -154,6 +154,12 @@ describe("バックテストの実行", () => {
 		const first = await post(t, body());
 		const id = (first.json.run as BacktestRun).id;
 
+		const cur = await getJson<{ run: BacktestRun | null }>(
+			t,
+			"/api/backtests/current",
+		);
+		expect(cur.run?.id).toBe(id);
+
 		const second = await post(t, body());
 		expect(second.status).toBe(409);
 		expect(second.json.kind).toBe("busy");
@@ -167,6 +173,9 @@ describe("バックテストの実行", () => {
 		const run = (await getJson<{ run: BacktestRun }>(t, `/api/backtests/${id}`))
 			.run;
 		expect(run.status).toBe("canceled");
+		expect(
+			(await getJson<{ run: null }>(t, "/api/backtests/current")).run,
+		).toBeNull();
 		// 終われば次を実行できる
 		expect((await post(t, body())).status).toBe(202);
 	});

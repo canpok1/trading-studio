@@ -5,7 +5,11 @@ import { MemoryRouter } from "react-router";
 import { App } from "./App";
 import { ApiProvider, createApiClient } from "./api";
 
-afterEach(cleanup);
+// 画面が読み込みの応答を受け取り終えてから片付ける（DOM を外した後に描画が走らないように）
+afterEach(async () => {
+	await new Promise((r) => setTimeout(r, 20));
+	cleanup();
+});
 beforeEach(() => {
 	localStorage.clear();
 	document.documentElement.classList.remove("dark");

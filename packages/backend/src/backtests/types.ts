@@ -91,6 +91,8 @@ export type SaveRunResult =
 export interface BacktestService {
 	start(input: BacktestInput): StartBacktestResult;
 	get(id: number): BacktestRun | null;
+	/** 実行中のバックテスト。無ければ null */
+	current(): BacktestRun | null;
 	/** 実行中なら中止を求める。中止は計算の区切りで効く */
 	cancel(id: number): BacktestRun | null;
 	list(): BacktestRun[];

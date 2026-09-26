@@ -56,8 +56,13 @@ function ErrorText({ messages }: { messages: string[] }) {
 	);
 }
 
-/** 足の粒度と判定の頻度 */
-export function FrequencyCard({ params, onChange, errors }: Props) {
+/** 足の粒度と判定の頻度。粒度は戦略が持つので、バックテストの実行画面では表示だけにする（timeframeEditable=false） */
+export function FrequencyCard({
+	params,
+	onChange,
+	errors,
+	timeframeEditable = true,
+}: Props & { timeframeEditable?: boolean }) {
 	const freq = (k: "flat" | "holding", label: string, tail: string) => {
 		const f = params.frequency[k];
 		const set = (next: Partial<typeof f>) =>
@@ -99,22 +104,31 @@ export function FrequencyCard({ params, onChange, errors }: Props) {
 	return (
 		<Card className="flex flex-col gap-2.5">
 			<h2 className="text-[15px] font-bold">足と判定の頻度</h2>
-			<label className="flex flex-wrap items-center gap-2">
-				<span className="text-[13px] font-semibold">足の粒度</span>
-				<select
-					value={params.timeframe}
-					onChange={(e) =>
-						onChange({ ...params, timeframe: e.target.value as Timeframe })
-					}
-					className={selectClass}
-				>
-					{TIMEFRAMES.map((t) => (
-						<option key={t} value={t}>
-							{TIMEFRAME_LABELS[t]}
-						</option>
-					))}
-				</select>
-			</label>
+			{timeframeEditable ? (
+				<label className="flex flex-wrap items-center gap-2">
+					<span className="text-[13px] font-semibold">足の粒度</span>
+					<select
+						value={params.timeframe}
+						onChange={(e) =>
+							onChange({ ...params, timeframe: e.target.value as Timeframe })
+						}
+						className={selectClass}
+					>
+						{TIMEFRAMES.map((t) => (
+							<option key={t} value={t}>
+								{TIMEFRAME_LABELS[t]}
+							</option>
+						))}
+					</select>
+				</label>
+			) : (
+				<div className="flex flex-wrap items-center gap-2">
+					<span className="text-[13px] font-semibold">足の粒度</span>
+					<span className="text-sm">
+						{TIMEFRAME_LABELS[params.timeframe]}（戦略設定で変える）
+					</span>
+				</div>
+			)}
 			<p className="text-xs text-text-2">
 				EMA の本数・直近 N
 				本・指値を取り消すまでの本数は、この粒度の足で数える。
