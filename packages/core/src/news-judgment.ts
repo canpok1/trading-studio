@@ -211,7 +211,7 @@ export function classify<J extends Judge>(
 
 export type JudgeResult<J extends Judge = Judge> = {
 	value: JudgmentValue<J>;
-	/** 重み付き平均点。対象が無ければ null */
+	/** 重み付き平均点（整数に丸める）。対象が無ければ null */
 	average: number | null;
 	/** 平均に使ったニュースの件数 */
 	count: number;
@@ -251,8 +251,9 @@ function summarize(
 		if (count[j] === 0) {
 			return { value: NEUTRAL[j], average: null, count: 0 };
 		}
-		// 重みの小数計算の誤差で、しきい値ちょうどの平均が下の段に落ちないよう丸める
-		const average = Math.round((sum[j] / wsum[j]) * 1e6) / 1e6;
+		// 画面に出す整数の点数と判定を揃えるため、整数に丸めてからしきい値と比べる。
+		// 重みの小数計算の誤差で .5 ちょうどの丸めが評価時刻によって揺れないよう、先に小数6桁で丸める
+		const average = Math.round(Math.round((sum[j] / wsum[j]) * 1e6) / 1e6);
 		return { value: classify(j, average, rule), average, count: count[j] };
 	};
 	return {

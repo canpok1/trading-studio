@@ -41,7 +41,7 @@ describe("judgeAt", () => {
 		expect(s.weights.get(1)).toBe(1);
 		expect(s.weights.get(2)).toBeCloseTo(0.5);
 		// (80*1 + 20*0.5) / 1.5 = 60
-		expect(s.results.trend.average).toBeCloseTo(60);
+		expect(s.results.trend.average).toBe(60);
 		expect(s.results.trend.count).toBe(2);
 	});
 
@@ -86,6 +86,16 @@ describe("judgeAt", () => {
 			count: 0,
 		});
 	});
+});
+
+test("平均点は整数に丸めてから判定する", () => {
+	// (60*1 + 59*0.5) / 1.5 = 59.67 → 60 点で上昇
+	const s = judgeAt(
+		[news(1, 0, { trend: 60 }), news(2, 6, { trend: 59 })],
+		NOW,
+		rule,
+	);
+	expect(s.results.trend).toEqual({ value: "up", average: 60, count: 2 });
 });
 
 describe("classify のしきい値の境界", () => {
