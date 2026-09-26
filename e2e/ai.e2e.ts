@@ -154,6 +154,41 @@ test("取得元・収集間隔・モデルの変更が保存される", async ({
 	});
 });
 
+test("API キーは保存・上書き・削除でき、保存したキーは画面に出ない", async ({
+	page,
+}) => {
+	await page.goto("/ai?tab=sources");
+	const state = page.getByTestId("api-key-state");
+	const input = page.getByLabel("Gemini の API キー");
+	await expect(state).toHaveText("未設定");
+	await expect(input).toHaveAttribute("type", "password");
+	// 入力欄と同じ行のボタン。収集間隔・モデルの「保存」と区別する
+	const submit = input.locator("..").getByRole("button");
+	await input.fill("e2e-secret-1");
+	await expect(submit).toHaveText("保存");
+	await submit.click();
+	await expect(page.getByText("API キーを保存した")).toBeVisible();
+	await expect(state).toContainText("設定済み");
+	await expect(input).toHaveValue("");
+
+	await page.reload();
+	await expect(state).toContainText("設定済み");
+	await expect(input).toHaveValue("");
+	await expect(page.locator("body")).not.toContainText("e2e-secret");
+	await input.fill("e2e-secret-2");
+	await expect(submit).toHaveText("上書き");
+	await submit.click();
+	await expect(page.getByText("API キーを保存した")).toBeVisible();
+
+	await page.getByRole("button", { name: "キーを削除" }).click();
+	await page
+		.getByRole("dialog")
+		.getByRole("button", { name: "削除する" })
+		.click();
+	await expect(state).toHaveText("未設定");
+	await expect(page.getByRole("button", { name: "キーを削除" })).toBeHidden();
+});
+
 test("採点に失敗したニュースを再試行できる", async ({ page }, info) => {
 	const name = `失敗 ${info.project.name}`;
 	writeFileSync(scoringDown, "");

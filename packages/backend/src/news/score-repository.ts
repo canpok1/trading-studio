@@ -54,6 +54,8 @@ const toCriteria = (r: CriteriaRow): CriteriaVersion => ({
 const ACTIVE_CRITERIA_KEY = "scoring_criteria_active";
 const MODEL_KEY = "scoring_model";
 const RULE_KEY = "aggregation_rule";
+const API_KEY_KEY = "gemini_api_key";
+const API_KEY_SAVED_AT_KEY = "gemini_api_key_saved_at";
 
 export type NextToScore = {
 	id: number;
@@ -139,6 +141,29 @@ export class ScoreRepository {
 
 	setModel(model: string) {
 		this.setSetting(MODEL_KEY, model);
+	}
+
+	apiKey(): string | null {
+		return this.setting(API_KEY_KEY);
+	}
+
+	apiKeySavedAt(): number | null {
+		const v = this.setting(API_KEY_SAVED_AT_KEY);
+		return v === null ? null : Number(v);
+	}
+
+	setApiKey(key: string, now: number) {
+		this.sql.transaction(() => {
+			this.setSetting(API_KEY_KEY, key);
+			this.setSetting(API_KEY_SAVED_AT_KEY, String(now));
+		})();
+	}
+
+	deleteApiKey() {
+		this.sql.run("delete from settings where key in (?, ?)", [
+			API_KEY_KEY,
+			API_KEY_SAVED_AT_KEY,
+		]);
 	}
 
 	/** 集計ルール。保存されていないか壊れていれば既定値 */

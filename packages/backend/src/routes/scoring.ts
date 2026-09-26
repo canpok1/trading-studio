@@ -55,6 +55,26 @@ export function scoringRoutes(service: ScoringService) {
 					? c.json(service.models(), 200)
 					: c.json({ message: "選べないモデル" }, 400),
 		)
+		.get("/api-key", (c) => c.json(service.apiKey()))
+		.put(
+			"/api-key",
+			validator("json", (v, c) => {
+				if (!isObj(v) || typeof v.key !== "string") {
+					return c.json({ message: "key が必要" }, 400);
+				}
+				return { key: v.key };
+			}),
+			(c) => {
+				const r = service.setApiKey(c.req.valid("json").key);
+				return r.ok
+					? c.json(service.apiKey(), 200)
+					: c.json({ message: r.message }, 400);
+			},
+		)
+		.delete("/api-key", (c) => {
+			service.deleteApiKey();
+			return c.json(service.apiKey(), 200);
+		})
 		.post("/news/:id/retry", (c) =>
 			service.retry(Number(c.req.param("id")))
 				? c.json({ ok: true as const }, 200)

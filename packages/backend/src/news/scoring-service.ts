@@ -7,6 +7,7 @@ import type { ScoringService } from "./types";
 
 export const CRITERIA_MAX = 4000;
 const NOTE_MAX = 100;
+const API_KEY_MAX = 200;
 
 export function createScoringService({
 	repo,
@@ -64,6 +65,23 @@ export function createScoringService({
 			repo.setModel(id);
 			return true;
 		},
+
+		apiKey: () => ({
+			configured: repo.apiKey() !== null,
+			savedAt: repo.apiKeySavedAt(),
+		}),
+
+		setApiKey(key) {
+			const k = key.trim();
+			if (!k) return { ok: false, message: "API キーを入れる" };
+			if (/\s/.test(k)) return { ok: false, message: "空白を含めない" };
+			if (k.length > API_KEY_MAX)
+				return { ok: false, message: `${API_KEY_MAX} 文字以内にする` };
+			repo.setApiKey(k, now());
+			return { ok: true };
+		},
+
+		deleteApiKey: () => repo.deleteApiKey(),
 
 		retry: (newsId) => repo.requestRetry(newsId, now()),
 

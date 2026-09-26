@@ -12,3 +12,4 @@
 | [0006](0006-backtest-evaluates-on-finer-candles.md) | 判定頻度が足の粒度より短い戦略は、バックテストで細かい足を使って判定する | 採用 | 2026-09-26 |
 | [0007](0007-collect-trades-via-public-websocket.md) | 約定は Coincheck の公開 WebSocket で受け、つながった直後は公開 API の直近100件で補う | 採用 | 2026-09-26 |
 | [0008](0008-news-sources-and-scoring-model.md) | ニュースは規約上の問題が少ない日本語の RSS 3つから15分おきに集め、Gemini 3.5 Flash-Lite で採点する | 採用 | 2026-09-26 |
+| [0009](0009-gemini-api-key-set-from-screen.md) | Gemini の API キーは画面から保存して DB に持ち、画面へは返さない | 採用 | 2026-09-26 |

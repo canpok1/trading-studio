@@ -3,7 +3,7 @@ import { DEFAULT_AGGREGATION_RULE } from "@trading-studio/core";
 import { createTestDb } from "../db/test-db";
 import { createTestApp } from "../test-app";
 import type { ScoreModel } from "./gemini";
-import { DEFAULT_SCORING_MODEL } from "./gemini";
+import { DEFAULT_SCORING_MODEL, geminiModel, NO_API_KEY } from "./gemini";
 import { buildPrompt, DEFAULT_CRITERIA, parseScoreResponse } from "./prompt";
 import { NewsRepository } from "./repository";
 import { ScoreRepository } from "./score-repository";
@@ -306,6 +306,63 @@ describe("採点", () => {
 		repo.seedCriteria("b", 0);
 		expect(repo.listCriteria().map((c) => c.text)).toEqual(["a"]);
 		expect(repo.activeCriteriaVersion()).toBe(1);
+	});
+});
+
+describe("API キー", () => {
+	test("保存したキーで採点し、削除すると止まる。キーそのものは返さない", async () => {
+		const t = setup({ key: false });
+		const repo = t.repo;
+		expect(t.service.apiKey()).toEqual({ configured: false, savedAt: null });
+		expect(t.service.setApiKey(" ")).toEqual({
+			ok: false,
+			message: "API キーを入れる",
+		});
+		expect(t.service.setApiKey("a b")).toMatchObject({ ok: false });
+		expect(t.service.setApiKey("x".repeat(201))).toMatchObject({ ok: false });
+		expect(t.service.setApiKey(" k1 ")).toEqual({ ok: true });
+		expect(repo.apiKey()).toBe("k1");
+		expect(t.service.apiKey()).toEqual({ configured: true, savedAt: T0 });
+		t.service.deleteApiKey();
+		expect(t.service.apiKey()).toEqual({ configured: false, savedAt: null });
+		expect(repo.apiKey()).toBeNull();
+	});
+
+	test("Gemini のモデルは保存されたキーを問い合わせのたびに読む", async () => {
+		let key: string | null = null;
+		const model = geminiModel(() => key);
+		expect(model.unavailable()).toBe(NO_API_KEY);
+		await expect(model.generate("m", "p")).rejects.toThrow(NO_API_KEY);
+		key = "k";
+		expect(model.unavailable()).toBeNull();
+	});
+
+	test("API は保存・上書き・削除でき、キーを返さない", async () => {
+		const { app } = createTestApp();
+		const put = (key: unknown) =>
+			app.request("/api/scoring/api-key", {
+				method: "PUT",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ key }),
+			});
+		expect(await (await app.request("/api/scoring/api-key")).json()).toEqual({
+			configured: false,
+			savedAt: null,
+		});
+		expect((await put("")).status).toBe(400);
+		expect((await put(1)).status).toBe(400);
+		const saved = await put("secret-1");
+		expect(saved.status).toBe(200);
+		const body = await saved.text();
+		expect(body).not.toContain("secret-1");
+		expect(JSON.parse(body)).toMatchObject({ configured: true });
+		expect(await (await put("secret-2")).text()).not.toContain("secret-2");
+		const got = await (await app.request("/api/scoring/api-key")).text();
+		expect(got).not.toContain("secret");
+		const deleted = await app.request("/api/scoring/api-key", {
+			method: "DELETE",
+		});
+		expect(await deleted.json()).toEqual({ configured: false, savedAt: null });
 	});
 });
 

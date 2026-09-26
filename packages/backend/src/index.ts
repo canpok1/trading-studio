@@ -9,6 +9,7 @@ export type { CurrentJudgment, JudgmentSeries } from "./judgments/types";
 export type { ChartRangeId, LatestMarket } from "./market/types";
 export type { ImportJob, TimeframeCoverage } from "./market-data/types";
 export type {
+	ApiKeyStatus,
 	CriteriaVersion,
 	NewsCollectorStatus,
 	NewsItem,
