@@ -41,6 +41,9 @@ export function execute(
 				bars: pack({
 					times: r.candles.map((c) => c.time),
 					closes: r.candles.map((c) => c.close),
+					opens: r.candles.map((c) => c.open),
+					highs: r.candles.map((c) => c.high),
+					lows: r.candles.map((c) => c.low),
 				}),
 				orders: pack(r.orders),
 				trades: pack(r.trades),

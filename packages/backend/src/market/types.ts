@@ -18,7 +18,16 @@ export type LatestMarket = {
 };
 
 export type MarketBarsResult =
-	| { ok: true; bars: { time: number; close: number }[] }
+	| {
+			ok: true;
+			bars: {
+				time: number;
+				open: number;
+				high: number;
+				low: number;
+				close: number;
+			}[];
+	  }
 	| { ok: false; kind: "too_many"; count: number; max: number };
 
 export interface MarketService {

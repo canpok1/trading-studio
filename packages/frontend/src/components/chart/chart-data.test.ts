@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	barStep,
 	fromChartTime,
+	hasOhlc,
 	markerColorVar,
 	markerShape,
 	snapToBar,
@@ -13,6 +14,13 @@ import {
 const H = 3_600_000;
 
 describe("chart-data", () => {
+	test("すべての足に4本値があるときだけローソク足で描ける", () => {
+		const full = { time: 0, open: 1, high: 2, low: 1, close: 2 };
+		expect(hasOhlc([full, { ...full, time: H }])).toBe(true);
+		expect(hasOhlc([full, { time: H, close: 2 }])).toBe(false);
+		expect(hasOhlc([])).toBe(false);
+	});
+
 	test("描画用の時刻は JST へずらした秒で、元に戻せる", () => {
 		const ms = Date.UTC(2026, 8, 25, 15, 0); // JST 9/26 0:00
 		const t = toChartTime(ms);

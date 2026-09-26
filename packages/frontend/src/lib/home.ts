@@ -68,9 +68,25 @@ export function withLatestPrice(
 	const last = bars.at(-1);
 	if (last && last.time > start) return [...bars];
 	if (last && last.time === start) {
-		return [...bars.slice(0, -1), { time: start, close: price }];
+		return [...bars.slice(0, -1), withPrice(last, price)];
 	}
-	return [...bars, { time: start, close: price }];
+	return [
+		...bars,
+		{ time: start, open: price, high: price, low: price, close: price },
+	];
+}
+
+/** 足の終値を置き換える。4本値があれば高値・安値も広げる */
+function withPrice(bar: ChartBar, price: number): ChartBar {
+	if (bar.high === undefined || bar.low === undefined) {
+		return { ...bar, close: price };
+	}
+	return {
+		...bar,
+		high: Math.max(bar.high, price),
+		low: Math.min(bar.low, price),
+		close: price,
+	};
 }
 
 /** 24時間の変化率（%）。基準が無ければ null */

@@ -60,7 +60,13 @@ export function createMarketService({
 					? repo.candlesBefore(timeframe, from, history)
 					: [];
 			const bars = [...before, ...repo.loadCandles(timeframe, from, to)].map(
-				(c) => ({ time: c.time, close: c.close }),
+				(c) => ({
+					time: c.time,
+					open: c.open,
+					high: c.high,
+					low: c.low,
+					close: c.close,
+				}),
 			);
 			return { ok: true, bars };
 		},
