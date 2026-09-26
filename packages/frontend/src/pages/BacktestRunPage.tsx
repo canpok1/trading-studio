@@ -33,6 +33,7 @@ import {
 	ConditionGroups,
 	FrequencyCard,
 	OrderSizeCard,
+	RiskLimitCard,
 } from "../components/strategy/ConditionEditor";
 import { Button, buttonClass, Card, Note, ProgressBar } from "../components/ui";
 import {
@@ -638,8 +639,9 @@ function RunForm({
 						</fieldset>
 					</Card>
 					<FrequencyCard {...editor} timeframeEditable={false} />
-					<div className="order-1 lg:order-none">
+					<div className="order-1 flex flex-col gap-3.5 lg:order-none">
 						<OrderSizeCard {...editor} latestPrice={latest} />
+						<RiskLimitCard {...editor} />
 					</div>
 				</div>
 				<div className="contents lg:flex lg:flex-col lg:gap-3.5">

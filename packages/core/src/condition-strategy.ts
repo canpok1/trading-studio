@@ -97,6 +97,8 @@ export type ConditionSet = {
 	};
 	/** 1回の注文量（satoshi） */
 	orderSize: number;
+	/** 1日の損失上限（円）。その日の確定損失がこれに達したら新しい買いを止める */
+	dailyLossLimit: number;
 	buy: ConditionGroup;
 	buyOrder: BuyOrder;
 	takeProfit: ConditionGroup;
@@ -113,7 +115,12 @@ export const LIMITS = {
 	frequency: { min: 1, max: 999 },
 	/** 注文量（satoshi）。0.001〜1 BTC */
 	orderSize: { min: 100_000, max: SATOSHI_PER_BTC },
+	/** 1日の損失上限（円） */
+	dailyLossLimit: { min: 1, max: 100_000_000 },
 } as const;
+
+/** 1日の損失上限の既定（仮置き）。これを持たない保存済みの戦略もこの上限で読む */
+export const DEFAULT_DAILY_LOSS_LIMIT = 30_000;
 
 /** EMA を途中から計算しても値がほぼ一致するよう、本数のこの倍の足を渡してもらう */
 const EMA_HISTORY_FACTOR = 10;
@@ -353,6 +360,12 @@ export function validateConditionSet(p: ConditionSet): ValidationError[] {
 			`${formatBtc(size.min)}〜${formatBtc(size.max)} BTC の範囲で入れる（最小単位 0.00000001）`,
 		);
 	}
+	if (!isIntIn(p.dailyLossLimit, LIMITS.dailyLossLimit)) {
+		err(
+			"dailyLossLimit",
+			`${formatYen(LIMITS.dailyLossLimit.min)}〜${formatYen(LIMITS.dailyLossLimit.max)} 円の整数で入れる`,
+		);
+	}
 	for (const k of ["flat", "holding"] as const) {
 		const f = p.frequency[k];
 		if (!isIntIn(f.value, LIMITS.frequency)) {
@@ -590,6 +603,7 @@ export const conditionStrategy: Strategy<ConditionSet> = {
 	historyBars,
 	validate: validateConditionSet,
 	evaluate: evaluateConditionSet,
+	dailyLossLimit: (p) => p.dailyLossLimit,
 };
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -693,6 +707,12 @@ export function parseConditionSet(v: unknown): ConditionSet | null {
 		timeframe: v.timeframe,
 		frequency: { flat, holding },
 		orderSize: typeof v.orderSize === "number" ? v.orderSize : Number.NaN,
+		dailyLossLimit:
+			v.dailyLossLimit === undefined
+				? DEFAULT_DAILY_LOSS_LIMIT
+				: typeof v.dailyLossLimit === "number"
+					? v.dailyLossLimit
+					: Number.NaN,
 		buy,
 		buyOrder,
 		takeProfit,

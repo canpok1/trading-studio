@@ -14,9 +14,11 @@ import {
 	candleStart,
 	conditionStrategy,
 	DEFAULT_FEE_RATES,
+	dailyLossBlock,
 	decide,
 	expireOrders,
 	newAccount,
+	realizedPnlOn,
 	requiredJudges,
 	settleFills,
 	TIMEFRAME_MS,
@@ -204,6 +206,13 @@ export function createTradingService({
 			waitingForMarket:
 				row.enabled &&
 				(live.status.state !== "running" || live.latestTrade === null),
+			dailyLoss: {
+				loss: Math.max(0, -realizedPnlOn(a.account, t)),
+				limit: s?.params.dailyLossLimit ?? null,
+				blocked:
+					dailyLossBlock(a.account, t, s?.params.dailyLossLimit ?? null) !==
+					null,
+			},
 			account: {
 				mode: row.mode,
 				initialCash: a.initialCash,

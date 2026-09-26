@@ -348,3 +348,31 @@ describe("口座のリセット", () => {
 		);
 	});
 });
+
+describe("1日の損失上限", () => {
+	test("その日の確定損失が上限に達すると買いを止め、売りは続ける。状態に本日の損失と上限を出す", async () => {
+		const t = setup(always({ dailyLossLimit: 1_000 }));
+		await t.call("POST", "/start", { mode: "paper" });
+		t.at(T0 + M);
+		t.fill(P);
+		t.fill(P * 0.98);
+		t.at(T0 + 2 * M + 1_000);
+		t.fill(P * 0.98);
+		expect(t.orders().map((o) => [o.side, o.status])).toEqual([
+			["buy", "filled"],
+			["sell", "filled"],
+		]);
+		const st = t.status();
+		expect(st.dailyLoss).toEqual({
+			loss: 100_100 - (98_000 - 98),
+			limit: 1_000,
+			blocked: true,
+		});
+		t.at(T0 + 4 * M);
+		expect(t.orders()).toHaveLength(2);
+		const last = t.tradingRepo.decision(3);
+		expect(last?.decision.note).toContain(
+			"1日の損失上限 1,000 円に達したため買わない",
+		);
+	});
+});

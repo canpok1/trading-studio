@@ -37,6 +37,7 @@ function params(over: Partial<ConditionSet> = {}): ConditionSet {
 			holding: { value: 15, unit: "m" },
 		},
 		orderSize: 1_000_000,
+		dailyLossLimit: 30_000,
 		buy: { match: "all", conditions: [] },
 		buyOrder: DEFAULT_BUY_ORDER,
 		takeProfit: { match: "any", conditions: [] },
@@ -344,6 +345,7 @@ describe("validateConditionSet", () => {
 		const errs = validateConditionSet(
 			params({
 				orderSize: 1,
+				dailyLossLimit: 30_000,
 				frequency: {
 					flat: { value: 0, unit: "m" },
 					holding: { value: 1.5, unit: "m" },

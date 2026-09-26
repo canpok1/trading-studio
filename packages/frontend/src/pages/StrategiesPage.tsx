@@ -15,6 +15,7 @@ import {
 	ConditionGroups,
 	FrequencyCard,
 	OrderSizeCard,
+	RiskLimitCard,
 } from "../components/strategy/ConditionEditor";
 import { Button, Card } from "../components/ui";
 import { errorMessage, readJson, useAsync } from "../lib/useAsync";
@@ -160,7 +161,7 @@ export function StrategiesPage() {
 
 	return (
 		<Page title="戦略">
-			{/* PC は左に戦略・頻度・注文量、右に注文条件。スマホは 戦略→頻度→条件→注文量→保存 の順 */}
+			{/* PC は左に戦略・頻度・注文量・リスク上限、右に注文条件。スマホは 戦略→頻度→条件→注文量・リスク上限→保存 の順 */}
 			<div className="flex flex-col gap-3.5 lg:grid lg:grid-cols-2 lg:items-start">
 				<div className="contents lg:flex lg:flex-col lg:gap-3.5">
 					<Card className="flex flex-col gap-3">
@@ -210,8 +211,9 @@ export function StrategiesPage() {
 						</div>
 					</Card>
 					<FrequencyCard {...editor} />
-					<div className="order-last lg:order-none">
+					<div className="order-last flex flex-col gap-3.5 lg:order-none">
 						<OrderSizeCard {...editor} latestPrice={state.data.latest} />
+						<RiskLimitCard {...editor} />
 					</div>
 				</div>
 				<div className="contents lg:flex lg:flex-col lg:gap-3.5">

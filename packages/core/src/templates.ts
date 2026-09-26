@@ -1,7 +1,10 @@
 // 戦略のひな形。新しい戦略を作るときの出発点で、作った後の戦略とは切り離される
 
 import type { ConditionSet } from "./condition-strategy";
-import { DEFAULT_BUY_ORDER } from "./condition-strategy";
+import {
+	DEFAULT_BUY_ORDER,
+	DEFAULT_DAILY_LOSS_LIMIT,
+} from "./condition-strategy";
 
 export const TEMPLATE_IDS = ["blank", "trend", "range"] as const;
 export type TemplateId = (typeof TEMPLATE_IDS)[number];
@@ -23,6 +26,7 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 				holding: { value: 15, unit: "m" },
 			},
 			orderSize: 1_000_000,
+			dailyLossLimit: DEFAULT_DAILY_LOSS_LIMIT,
 			buy: { match: "all", conditions: [] },
 			buyOrder: DEFAULT_BUY_ORDER,
 			takeProfit: { match: "any", conditions: [] },
@@ -42,6 +46,7 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 				holding: { value: 15, unit: "m" },
 			},
 			orderSize: 2_000_000,
+			dailyLossLimit: DEFAULT_DAILY_LOSS_LIMIT,
 			buy: {
 				match: "all",
 				conditions: [{ type: "emaCross", fast: 12, slow: 48, direction: "up" }],
@@ -71,6 +76,7 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 				holding: { value: 30, unit: "m" },
 			},
 			orderSize: 1_000_000,
+			dailyLossLimit: DEFAULT_DAILY_LOSS_LIMIT,
 			buy: {
 				match: "all",
 				conditions: [{ type: "breakout", lookback: 24, direction: "low" }],

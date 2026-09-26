@@ -28,7 +28,7 @@ import {
 	TIMEFRAMES,
 } from "@trading-studio/core";
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { formatInt } from "../../lib/number";
 import { Modal } from "../Modal";
 import { NumberInput } from "../NumberInput";
@@ -211,6 +211,41 @@ export function OrderSizeCard({
 			<ErrorText messages={errs} />
 			<p className="text-xs leading-relaxed text-text-2">
 				買いの出し方は「買い注文する条件」で選ぶ。売りは成行。利確・損切りの両方が同時に成り立ったら損切りを優先する。
+			</p>
+		</Card>
+	);
+}
+
+/** 1日の損失上限。戦略の条件とは別に、注文を出す手前で検査する */
+export function RiskLimitCard({ params, onChange, errors }: Props) {
+	const errs = errorsAt(errors, "dailyLossLimit");
+	const id = useId();
+	return (
+		<Card className="flex flex-col gap-2.5">
+			<div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+				<h2 className="text-[15px] font-bold">リスク上限</h2>
+				<span className="text-xs text-text-2">
+					達したら新しい買い注文を止める（翌 0 時に再開）
+				</span>
+			</div>
+			<div className="flex flex-col gap-1.5">
+				<label htmlFor={id} className="text-[13px] font-semibold">
+					1日の損失上限（円）
+				</label>
+				<NumberInput
+					id={id}
+					value={params.dailyLossLimit}
+					onChange={(dailyLossLimit) => onChange({ ...params, dailyLossLimit })}
+					format={formatInt}
+					inputMode="numeric"
+					invalid={errs.length > 0}
+					className="h-11 text-[15px]"
+				/>
+			</div>
+			<ErrorText messages={errs} />
+			<p className="text-xs leading-relaxed text-text-2">
+				その日（0
+				時区切り）に売って確定した損益（手数料込み）で数える。含み損は数えない。売り（利確・損切り）は止めない。バックテストにも効く。
 			</p>
 		</Card>
 	);

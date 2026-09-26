@@ -8,6 +8,7 @@ import type { Account, StepOutput, TradeOrder } from "./trading";
 import {
 	decide,
 	expireOrders,
+	jstDayStart,
 	newAccount,
 	settleFills,
 	tradeFillPrice,
@@ -109,11 +110,7 @@ const fixed = (
 	}),
 });
 
-const decideWith = (
-	strategy: Strategy<null>,
-	account: Account,
-	blockBuy?: string | null,
-) =>
+const decideWith = (strategy: Strategy<null>, account: Account) =>
 	decide({
 		strategy,
 		params: null,
@@ -126,7 +123,6 @@ const decideWith = (
 		fees: FEES,
 		timeframeMs: H,
 		idPrefix: "p",
-		blockBuy,
 	});
 
 describe("注文の作成と約定", () => {
@@ -214,18 +210,57 @@ describe("注文の作成と約定", () => {
 		expect(sold.account.entry).toBeNull();
 	});
 
-	test("blockBuy があれば買いは出さず理由を残し、売りは出す", () => {
-		const both = fixed([
-			{ kind: "place", side: "buy", type: "market", quantity: 1 },
-			{ kind: "place", side: "sell", type: "market", quantity: 1 },
-		]);
+	test("その日（JST）の確定損失が上限に達したら買わず理由を残し、売りは出す。翌 0 時に再開する", () => {
+		const both = {
+			...fixed([
+				{ kind: "place", side: "buy", type: "market", quantity: 1 },
+				{ kind: "place", side: "sell", type: "market", quantity: 1 },
+			]),
+			dailyLossLimit: () => 1_000,
+		} satisfies Strategy<null>;
+		// 10時（UTC）は JST 19時。その日の 0:00 JST は前日 15:00 UTC
+		const day = jstDayStart(10 * H);
+		expect(day).toBe(-9 * H);
 		const account = {
 			...newAccount(1_000_000),
 			position: { quantity: 1, entryPrice: 1, openedAt: 0 },
+			today: { dayStart: day, pnl: -1_000 },
 		};
-		const out = decideWith(both, account, "損失上限のため買わない");
+		const out = decideWith(both, account);
 		expect(out.changed.map((r) => r.side)).toEqual(["sell"]);
-		expect(out.decision.note).toBe("理由。損失上限のため買わない");
+		expect(out.decision.note).toBe(
+			"理由。本日の確定損失 1,000 円が1日の損失上限 1,000 円に達したため買わない（翌 0 時に再開）",
+		);
+		// 含み損は数えない・上限未満なら買う
+		const under = decideWith(both, {
+			...account,
+			today: { dayStart: day, pnl: -999 },
+		});
+		expect(under.changed.map((r) => r.side)).toEqual(["buy", "sell"]);
+		// 前の日の損失は数えない
+		const yesterday = decideWith(both, {
+			...account,
+			today: { dayStart: day - 24 * H, pnl: -5_000 },
+		});
+		expect(yesterday.changed.map((r) => r.side)).toEqual(["buy", "sell"]);
+	});
+
+	test("売りで往復が閉じると、その日の確定損益に足す", () => {
+		const placed = decideWith(buyLimit, newAccount(1_000_000));
+		const bought = settleFills(placed.account, () => 10_000_000, 11 * H, FEES);
+		const sell = fixed([
+			{ kind: "place", side: "sell", type: "market", quantity: 1_000_000 },
+		]);
+		const sold = settleFills(
+			decideWith(sell, bought.account).account,
+			() => 9_000_000,
+			12 * H,
+			FEES,
+		);
+		expect(sold.account.today).toEqual({
+			dayStart: jstDayStart(12 * H),
+			pnl: 90_000 - 90 - 100_100,
+		});
 	});
 
 	test("同じ入力なら同じ結果になる", () => {

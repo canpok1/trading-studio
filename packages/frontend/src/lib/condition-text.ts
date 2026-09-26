@@ -12,6 +12,7 @@ import type {
 import {
 	FREQUENCY_UNIT_LABELS,
 	formatBtc,
+	formatYen,
 	JUDGMENT_VALUE_LABELS,
 	ORDER_TYPE_LABELS,
 	TIMEFRAME_LABELS,
@@ -95,6 +96,11 @@ export function conditionDiff(
 			"1回の注文量",
 			`${formatBtc(before.orderSize)} BTC`,
 			`${formatBtc(after.orderSize)} BTC`,
+		],
+		[
+			"1日の損失上限",
+			`${formatYen(before.dailyLossLimit)} 円`,
+			`${formatYen(after.dailyLossLimit)} 円`,
 		],
 	];
 	return rows.filter(([, a, b]) => a !== b);
