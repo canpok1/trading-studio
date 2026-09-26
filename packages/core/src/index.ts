@@ -12,4 +12,5 @@ export * from "./news-judgment";
 export * from "./strategy";
 export * from "./templates";
 export * from "./timeframe";
+export * from "./trading";
 export * from "./types";
