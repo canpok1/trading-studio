@@ -29,65 +29,83 @@ function respond(c: Context, r: StrategyResult, okStatus: 200 | 201 = 200) {
 }
 
 export function strategyRoutes(service: StrategyService) {
-	return new Hono()
-		.get("/", (c) => c.json({ strategies: service.list() }))
-		.get("/:id", (c) => {
-			const s = service.get(Number(c.req.param("id")));
-			return s
-				? c.json({ strategy: s }, 200)
-				: c.json({ message: "戦略が見つからない" }, 404);
-		})
-		.post(
-			"/",
-			validator("json", (v, c) => {
-				if (!isObj(v) || typeof v.name !== "string" || !isObj(v.from)) {
-					return c.json({ message: "name と from が必要" }, 400);
-				}
-				const f = v.from;
-				let from: CreateStrategyInput["from"] | null = null;
-				if (isTemplateId(f.template)) from = { template: f.template };
-				else if (typeof f.copyOf === "number") from = { copyOf: f.copyOf };
-				else {
-					const params = parseConditionSet(f.params);
-					if (params) from = { params };
-				}
-				if (!from) return c.json({ message: "from の形が違う" }, 400);
-				return { name: v.name, from };
-			}),
-			(c) => respond(c, service.create(c.req.valid("json")), 201),
-		)
-		.put(
-			"/:id/params",
-			validator("json", (v, c) => {
-				const params = parseConditionSet(isObj(v) ? v.params : null);
-				if (!params) return c.json({ message: "条件の形が違う" }, 400);
-				return { params };
-			}),
-			(c) =>
-				respond(
-					c,
-					service.updateParams(
-						Number(c.req.param("id")),
-						c.req.valid("json").params,
+	return (
+		new Hono()
+			.get("/", (c) => c.json({ strategies: service.list() }))
+			// "/:id" より前に置く
+			.get("/active", (c) => c.json({ strategy: service.active() }))
+			.put(
+				"/active",
+				validator("json", (v, c) => {
+					const id = isObj(v) ? v.id : undefined;
+					if (id !== null && !Number.isSafeInteger(id)) {
+						return c.json({ message: "id は戦略の ID か null" }, 400);
+					}
+					return { id: id as number | null };
+				}),
+				(c) =>
+					service.setActive(c.req.valid("json").id)
+						? c.json({ strategy: service.active() }, 200)
+						: c.json({ message: "戦略が見つからない" }, 404),
+			)
+			.get("/:id", (c) => {
+				const s = service.get(Number(c.req.param("id")));
+				return s
+					? c.json({ strategy: s }, 200)
+					: c.json({ message: "戦略が見つからない" }, 404);
+			})
+			.post(
+				"/",
+				validator("json", (v, c) => {
+					if (!isObj(v) || typeof v.name !== "string" || !isObj(v.from)) {
+						return c.json({ message: "name と from が必要" }, 400);
+					}
+					const f = v.from;
+					let from: CreateStrategyInput["from"] | null = null;
+					if (isTemplateId(f.template)) from = { template: f.template };
+					else if (typeof f.copyOf === "number") from = { copyOf: f.copyOf };
+					else {
+						const params = parseConditionSet(f.params);
+						if (params) from = { params };
+					}
+					if (!from) return c.json({ message: "from の形が違う" }, 400);
+					return { name: v.name, from };
+				}),
+				(c) => respond(c, service.create(c.req.valid("json")), 201),
+			)
+			.put(
+				"/:id/params",
+				validator("json", (v, c) => {
+					const params = parseConditionSet(isObj(v) ? v.params : null);
+					if (!params) return c.json({ message: "条件の形が違う" }, 400);
+					return { params };
+				}),
+				(c) =>
+					respond(
+						c,
+						service.updateParams(
+							Number(c.req.param("id")),
+							c.req.valid("json").params,
+						),
 					),
-				),
-		)
-		.put(
-			"/:id/name",
-			validator("json", (v, c) => {
-				if (!isObj(v) || typeof v.name !== "string")
-					return c.json({ message: "name が必要" }, 400);
-				return { name: v.name };
-			}),
-			(c) =>
-				respond(
-					c,
-					service.rename(Number(c.req.param("id")), c.req.valid("json").name),
-				),
-		)
-		.delete("/:id", (c) =>
-			service.remove(Number(c.req.param("id")))
-				? c.json({ ok: true as const }, 200)
-				: c.json({ message: "戦略が見つからない" }, 404),
-		);
+			)
+			.put(
+				"/:id/name",
+				validator("json", (v, c) => {
+					if (!isObj(v) || typeof v.name !== "string")
+						return c.json({ message: "name が必要" }, 400);
+					return { name: v.name };
+				}),
+				(c) =>
+					respond(
+						c,
+						service.rename(Number(c.req.param("id")), c.req.valid("json").name),
+					),
+			)
+			.delete("/:id", (c) =>
+				service.remove(Number(c.req.param("id")))
+					? c.json({ ok: true as const }, 200)
+					: c.json({ message: "戦略が見つからない" }, 404),
+			)
+	);
 }

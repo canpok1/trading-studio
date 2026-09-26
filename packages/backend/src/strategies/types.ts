@@ -39,4 +39,8 @@ export interface StrategyService {
 	updateParams(id: number, params: ConditionSet): StrategyResult;
 	rename(id: number, name: string): StrategyResult;
 	remove(id: number): boolean;
+	/** 運用する戦略。未選択なら null */
+	active(): StoredStrategy | null;
+	/** 運用する戦略を選ぶ。null で未選択にする。戦略が無ければ false */
+	setActive(id: number | null): boolean;
 }

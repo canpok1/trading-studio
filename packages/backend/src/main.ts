@@ -10,6 +10,7 @@ import { createCollector } from "./collector/collector";
 import { demoFeed } from "./collector/fake-feed";
 import { migrateDb } from "./db/migrate";
 import { isDbReachable, openDb } from "./db/open";
+import { createMarketService } from "./market/service";
 import { MarketDataRepository } from "./market-data/repository";
 import { createMarketDataService } from "./market-data/service";
 import { serveFrontend } from "./static";
@@ -61,6 +62,7 @@ const server = new Hono().route(
 	createApp({
 		isDbReachable: () => isDbReachable(db),
 		marketData: createMarketDataService(marketDataRepo),
+		market: createMarketService({ collector, repo: marketDataRepo }),
 		strategies,
 		backtests: createBacktestService({
 			repo: backtestRepo,

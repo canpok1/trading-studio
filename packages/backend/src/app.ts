@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import type { BacktestService } from "./backtests/types";
+import type { MarketService } from "./market/types";
 import type { MarketDataService } from "./market-data/types";
 import { backtestRoutes } from "./routes/backtests";
+import { marketRoutes } from "./routes/market";
 import { marketDataRoutes } from "./routes/market-data";
 import { strategyRoutes } from "./routes/strategies";
 import type { StrategyService } from "./strategies/types";
@@ -9,6 +11,7 @@ import type { StrategyService } from "./strategies/types";
 export type AppDeps = {
 	isDbReachable: () => boolean;
 	marketData: MarketDataService;
+	market: MarketService;
 	strategies: StrategyService;
 	backtests: BacktestService;
 };
@@ -17,6 +20,7 @@ export type AppDeps = {
 export function createApp({
 	isDbReachable,
 	marketData,
+	market,
 	strategies,
 	backtests,
 }: AppDeps) {
@@ -28,6 +32,7 @@ export function createApp({
 			}),
 		)
 		.route("/data", marketDataRoutes(marketData))
+		.route("/market", marketRoutes(market))
 		.route("/strategies", strategyRoutes(strategies))
 		.route("/backtests", backtestRoutes(backtests));
 	return new Hono().route("/api", api);

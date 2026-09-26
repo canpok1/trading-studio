@@ -289,6 +289,47 @@ export class MarketDataRepository {
 		return TIMEFRAMES.filter((t) => covering.has(t));
 	}
 
+	lastCandle(timeframe: Timeframe): Candle | null {
+		return (
+			this.sql
+				.query<Candle, [string]>(
+					"select time, open, high, low, close, volume from candles where timeframe = ? order by time desc limit 1",
+				)
+				.get(timeframe) ?? null
+		);
+	}
+
+	/** 開始時刻が time 以下で最も新しい足 */
+	lastCandleAtOrBefore(timeframe: Timeframe, time: number): Candle | null {
+		return (
+			this.sql
+				.query<Candle, [string, number]>(
+					"select time, open, high, low, close, volume from candles where timeframe = ? and time <= ? order by time desc limit 1",
+				)
+				.get(timeframe, time) ?? null
+		);
+	}
+
+	/** 開始時刻が before より前の足を、新しい方から count 本（古い順に並べて返す） */
+	candlesBefore(timeframe: Timeframe, before: number, count: number): Candle[] {
+		return this.sql
+			.query<Candle, [string, number, number]>(
+				"select time, open, high, low, close, volume from candles where timeframe = ? and time < ? order by time desc limit ?",
+			)
+			.all(timeframe, before, count)
+			.reverse();
+	}
+
+	countCandles(timeframe: Timeframe, from: number, to: number): number {
+		return (
+			this.sql
+				.query<{ n: number }, [string, number, number]>(
+					"select count(*) as n from candles where timeframe = ? and time >= ? and time < ?",
+				)
+				.get(timeframe, from, to) as { n: number }
+		).n;
+	}
+
 	/** 取り込み済みの足のうち、最後に確定した足の終値。足が無ければ null */
 	latestClose(): { time: number; close: number } | null {
 		let best: { time: number; close: number } | null = null;
