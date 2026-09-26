@@ -202,9 +202,11 @@ function HomeBody({
 	} | null>(null);
 	const [barsError, setBarsError] = useState<string | null>(null);
 	// 判定は足と一緒に取り直す。読めなくても価格のチャートは出す
-	const [judged, setJudged] = useState<{
-		current: CurrentJudgment;
-		series: JudgmentSeries | null;
+	const [current, setCurrent] = useState<CurrentJudgment | null>(null);
+	// どの足の条件で取った判定かを持ち、切り替え直後に別の粒度の判定を当てはめない
+	const [series, setSeries] = useState<{
+		key: string;
+		series: JudgmentSeries;
 	} | null>(null);
 	const [bg, setBg] = useChartBg();
 	const barsKey = `${timeframe}:${range}:${history}`;
@@ -221,28 +223,34 @@ function HomeBody({
 				setBars({ key: barsKey, bars: r.bars });
 				setBarsError(null);
 			}
+			// 判定は読めなくても価格のチャートは出すので、失敗は表示を前のまま残すだけにする
+			api.api.judgments.current
+				.$get()
+				.then((res) => readJson<CurrentJudgment>(res))
+				.then((c) => {
+					if (my === barsSeq.current) setCurrent(c);
+				})
+				.catch(() => {});
 			const first = r.bars[0];
 			const last = r.bars.at(-1);
-			const [current, series] = await Promise.all([
-				api.api.judgments.current
-					.$get()
-					.then((res) => readJson<CurrentJudgment>(res)),
-				first && last
-					? api.api.judgments.series
-							.$get({
-								query: {
-									from: String(first.time),
-									// 最新の価格から作る今の足にも判定を付けるため、今の時刻まで含める
-									to: String(
-										Math.max(last.time, Date.now()) + TIMEFRAME_MS[timeframe],
-									),
-									timeframe,
-								},
-							})
-							.then((res) => readJson<JudgmentSeries>(res))
-					: null,
-			]);
-			if (my === barsSeq.current) setJudged({ current, series });
+			if (first && last) {
+				api.api.judgments.series
+					.$get({
+						query: {
+							from: String(first.time),
+							// 最新の価格から作る今の足にも判定を付けるため、今の時刻まで含める
+							to: String(
+								Math.max(last.time, Date.now()) + TIMEFRAME_MS[timeframe],
+							),
+							timeframe,
+						},
+					})
+					.then((res) => readJson<JudgmentSeries>(res))
+					.then((sr) => {
+						if (my === barsSeq.current) setSeries({ key: barsKey, series: sr });
+					})
+					.catch(() => {});
+			}
 		} catch (e) {
 			if (my === barsSeq.current) setBarsError(errorMessage(e));
 		}
@@ -283,13 +291,13 @@ function HomeBody({
 
 	const barJudgments = useMemo(
 		() =>
-			fresh && judged?.series
+			fresh && series?.key === barsKey
 				? alignJudgments(
-						judged.series,
+						series.series,
 						shownBars.map((b) => b.time),
 					)
 				: null,
-		[fresh, judged, shownBars],
+		[fresh, series, barsKey, shownBars],
 	);
 
 	const noData =
@@ -344,7 +352,7 @@ function HomeBody({
 					</p>
 				)}
 			</Card>
-			{judged && <JudgmentTiles current={judged.current} />}
+			{current && <JudgmentTiles current={current} />}
 			<section
 				aria-label="価格チャート"
 				className="flex min-w-0 flex-col gap-2.5 rounded-xl border border-line bg-surface p-3 lg:col-start-2 lg:row-span-6 lg:row-start-1 lg:sticky lg:top-4"

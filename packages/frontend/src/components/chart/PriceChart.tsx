@@ -108,6 +108,9 @@ function chartColors() {
 const NO_MARKERS: readonly ChartMarker[] = [];
 const NO_PERIODS: readonly number[] = [];
 
+/** チャートの高さの最小値（px）。下の className の h-[260px] と揃える */
+const MIN_CHART_PX = 260;
+
 /** アイコンを押したとみなす距離（px）。指で押すため広めにとる */
 const HIT_PX = 18;
 
@@ -321,14 +324,11 @@ export function PriceChart({
 	// biome-ignore lint/correctness/useExhaustiveDependencies: themeTick の変化で色を読み直す
 	useEffect(() => {
 		const c = chartRef.current;
-		const el = box.current;
-		if (!c || !el) return;
+		if (!c) return;
 		c.layer.setData(judgments, bg);
+		// 帯の高さは px で決まるが余白は割合で渡すので、チャートが最も低いとき（スマホ幅）に合わせる
 		const bottom = hasJudgments
-			? Math.min(
-					0.45,
-					(stripArea(true) + 14) / Math.max(120, el.clientHeight - 28),
-				)
+			? (stripArea(true) + 14) / (MIN_CHART_PX - 28)
 			: 0.1;
 		c.price.priceScale().applyOptions({ scaleMargins: { top: 0.1, bottom } });
 	}, [judgments, bg, hasJudgments, themeTick]);
