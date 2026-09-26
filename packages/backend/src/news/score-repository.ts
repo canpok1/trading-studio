@@ -281,6 +281,14 @@ export class ScoreRepository {
 		);
 	}
 
+	/** 失敗したものと再試行を待っているものを、すぐ採点し直す対象へ戻す */
+	retryAllFailed(now: number) {
+		this.sql.run(
+			"update news_scores set status = 'retry', attempts = 0, next_attempt_at = ? where status in ('failed', 'retry')",
+			[now],
+		);
+	}
+
 	getScore(newsId: number): NewsScore | null {
 		const r = this.sql
 			.query<ScoreRow, [number]>("select * from news_scores where news_id = ?")

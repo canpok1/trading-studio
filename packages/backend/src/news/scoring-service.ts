@@ -17,7 +17,7 @@ export function createScoringService({
 }: {
 	repo: ScoreRepository;
 	newsRepo: NewsRepository;
-	scorer: Pick<Scorer, "problem" | "trial">;
+	scorer: Pick<Scorer, "problem" | "trial" | "clearFailure">;
 	now?: () => number;
 }): ScoringService {
 	const isModel = (id: string) => SCORING_MODELS.some((m) => m.id === id);
@@ -78,10 +78,16 @@ export function createScoringService({
 			if (k.length > API_KEY_MAX)
 				return { ok: false, message: `${API_KEY_MAX} 文字以内にする` };
 			repo.setApiKey(k, now());
+			// 前のキーで失敗したものは、新しいキーで採点し直す
+			repo.retryAllFailed(now());
+			scorer.clearFailure();
 			return { ok: true };
 		},
 
-		deleteApiKey: () => repo.deleteApiKey(),
+		deleteApiKey() {
+			repo.deleteApiKey();
+			scorer.clearFailure();
+		},
 
 		retry: (newsId) => repo.requestRetry(newsId, now()),
 

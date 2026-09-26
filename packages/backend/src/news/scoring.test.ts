@@ -328,6 +328,27 @@ describe("API キー", () => {
 		expect(repo.apiKey()).toBeNull();
 	});
 
+	test("キーを保存すると、前のキーでの失敗を消して採点し直す", async () => {
+		const t = setup();
+		const a = t.addNews("a");
+		t.replies.push(
+			...RETRY_DELAYS_MS.map(() => new Error("403")),
+			new Error("403"),
+		);
+		await t.at(T0);
+		let time = T0;
+		for (const d of RETRY_DELAYS_MS) {
+			time += d;
+			await t.at(time);
+		}
+		expect(t.repo.getScore(a)?.status).toBe("failed");
+		expect(t.service.status().state).toBe("stopped");
+		t.service.setApiKey("new");
+		expect(t.service.status().state).toBe("running");
+		await t.at(time + 1);
+		expect(t.repo.getScore(a)?.status).toBe("done");
+	});
+
 	test("Gemini のモデルは保存されたキーを問い合わせのたびに読む", async () => {
 		let key: string | null = null;
 		const model = geminiModel(() => key);
