@@ -32,6 +32,8 @@ const BARS_MS = 60_000;
 const EMA_HISTORY_FACTOR = 3;
 const MAX_HISTORY = 1_000;
 
+const NO_PERIODS: number[] = [];
+
 const TF_OPTIONS = TIMEFRAMES.map(
 	(t) => [t, TIMEFRAME_LABELS[t].replace("足", "")] as const,
 );
@@ -216,18 +218,18 @@ function HomeBody({
 	}, [visible, loadBars]);
 	useInterval(loadBars, BARS_MS, visible);
 
-	const shownBars = useMemo(
-		() =>
-			bars
-				? withLatestPrice(
-						bars.bars,
-						timeframe,
-						latest?.price ?? null,
-						latest?.priceTime ?? null,
-					)
-				: [],
-		[bars, timeframe, latest],
-	);
+	// 粒度・期間を切り替えた直後は前の条件の足が残っている。届くまでは最新の価格も EMA も重ねない
+	const fresh = bars?.key === barsKey;
+	const shownBars = useMemo(() => {
+		if (!bars) return [];
+		if (!fresh) return bars.bars;
+		return withLatestPrice(
+			bars.bars,
+			timeframe,
+			latest?.price ?? null,
+			latest?.priceTime ?? null,
+		);
+	}, [bars, fresh, timeframe, latest]);
 
 	const choose = async (id: number | null) => {
 		setSaving(true);
@@ -315,7 +317,7 @@ function HomeBody({
 				) : (
 					<PriceChart
 						bars={shownBars}
-						emaPeriods={emaShown}
+						emaPeriods={fresh ? emaShown : NO_PERIODS}
 						name="home-chart"
 						range={range}
 						onRangeChange={setRange}
