@@ -8,6 +8,7 @@ import {
 	TIMEFRAME_MS,
 	validateConditionSet,
 } from "@trading-studio/core";
+import type { JudgmentService } from "../judgments/types";
 import type { MarketDataRepository } from "../market-data/repository";
 import type { StrategyService } from "../strategies/types";
 import type { BacktestRepository } from "./repository";
@@ -31,6 +32,7 @@ export type BacktestServiceDeps = {
 	marketData: MarketDataRepository;
 	strategies: StrategyService;
 	runner: BacktestRunner;
+	judgments: Pick<JudgmentService, "rule" | "series">;
 	now?: () => number;
 };
 
@@ -68,6 +70,7 @@ export function createBacktestService({
 	marketData,
 	strategies,
 	runner,
+	judgments,
 	now = Date.now,
 }: BacktestServiceDeps): BacktestService & { running(): Promise<void> | null } {
 	let current: { id: number; job: RunningJob; done: Promise<void> } | null =
@@ -149,6 +152,7 @@ export function createBacktestService({
 				skipGaps: input.skipGaps,
 				stepTimeframe: step.timeframe,
 				stepLimited: step.limited,
+				aggregationRule: judgments.rule(),
 				startedAt: now(),
 				barCount,
 			});
@@ -204,7 +208,20 @@ export function createBacktestService({
 		},
 
 		chart(id) {
-			return repo.chart(id);
+			const chart = repo.chart(id);
+			const run = repo.get(id);
+			if (!chart || !run) return null;
+			const rule = run.aggregationRule;
+			const first = chart.bars[0];
+			const last = chart.bars.at(-1);
+			const tfMs = TIMEFRAME_MS[run.timeframe];
+			return {
+				...chart,
+				judgments:
+					rule && first && last
+						? judgments.series(first.time, last.time + tfMs, tfMs, rule)
+						: null,
+			};
 		},
 
 		orders(id, filter, offset, limit) {

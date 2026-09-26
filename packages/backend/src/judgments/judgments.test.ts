@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { DEFAULT_AGGREGATION_RULE } from "@trading-studio/core";
 import { createTestApp } from "../test-app";
-import type { CurrentJudgment } from "./types";
+import type { CurrentJudgment, JudgmentSeries } from "./types";
 
 const H = 3_600_000;
 
@@ -103,4 +103,48 @@ test("集計ルールの保存で判定が変わる。試算は保存しない",
 		(await t.app.request("/api/judgments/rule", json("PUT", { rule: 1 })))
 			.status,
 	).toBe(400);
+});
+
+test("足ごとの判定は足の終わりの時刻で出し、採点の記録が始まる前は null", async () => {
+	const t = setup();
+	t.add("a", 10, 80);
+	t.add("b", 2, 0);
+	const r = (await (
+		await t.app.request(
+			`/api/judgments/series?from=${88 * H}&to=${102 * H}&timeframe=1h`,
+		)
+	).json()) as JudgmentSeries;
+	expect(r.firstScoredAt).toBe(90 * H);
+	expect(r.values.trend).toEqual([
+		null,
+		"up",
+		"up",
+		"up",
+		"up",
+		"up",
+		"up",
+		"up",
+		"up",
+		"down",
+		"down",
+		"down",
+		// 今より後に終わる足は今の判定
+		"down",
+		"down",
+	]);
+	expect(r.values.risk[0]).toBeNull();
+	expect(r.values.risk[1]).toBe("normal");
+});
+
+test("足の粒度や期間が不正なら 400", async () => {
+	const t = setup();
+	for (const q of [
+		"from=0&to=10&timeframe=2m",
+		"from=10&to=0&timeframe=1m",
+		`from=0&to=${400_000 * 60_000}&timeframe=1m`,
+	]) {
+		expect((await t.app.request(`/api/judgments/series?${q}`)).status).toBe(
+			400,
+		);
+	}
 });

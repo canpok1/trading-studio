@@ -76,6 +76,8 @@ export interface MarketDataService {
 	): { ok: true; job: ImportJob } | { ok: false; job: ImportJob | null };
 	listImports(): ImportJob[];
 	coverage(): TimeframeCoverage[];
+	/** 期間のバックテストで使える粒度（細かい順）。期間の一部にしか無い粒度は除く */
+	usableTimeframes(from: number, to: number): Timeframe[];
 	/** 最後に確定した足の終値（time は足の終わりの時刻） */
 	latestClose(): { time: number; close: number } | null;
 }

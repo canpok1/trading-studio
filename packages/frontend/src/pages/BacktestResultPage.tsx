@@ -10,10 +10,18 @@ import {
 	ppmToPercent,
 	TIMEFRAME_LABELS,
 } from "@trading-studio/core";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useId,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { useNavigate, useParams } from "react-router";
 import { useApi } from "../api";
 import { OrderRow, OrderSheet, Stat } from "../components/backtest/OrderViews";
+import { alignJudgments } from "../components/chart/judgment-data";
 import { PriceChart } from "../components/chart/PriceChart";
 import { Modal } from "../components/Modal";
 import { Page } from "../components/Page";
@@ -21,6 +29,7 @@ import { EmptyState, ErrorState, LoadingCard } from "../components/States";
 import { Button, Card, Note, ProgressBar, Segmented } from "../components/ui";
 import { formatDate, toDateInputValue } from "../format";
 import { useBacktestJob } from "../lib/backtest-job";
+import { useChartBg } from "../lib/chart-bg";
 import {
 	conditionDiff,
 	frequencyText,
@@ -325,6 +334,17 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 	const [total, setTotal] = useState(0);
 	const [listError, setListError] = useState<string | null>(null);
 	const [selected, setSelected] = useState<BacktestOrder | null>(null);
+	const [bg, setBg] = useChartBg();
+	const judgments = useMemo(
+		() =>
+			chart.judgments
+				? alignJudgments(
+						chart.judgments,
+						chart.bars.map((b) => b.time),
+					)
+				: null,
+		[chart],
+	);
 
 	const loadPage = useCallback(
 		async (offset: number) => {
@@ -444,6 +464,9 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 					selectedId={selected?.id ?? null}
 					onMarker={(m) => pick(m.id)}
 					name="bt"
+					judgments={judgments}
+					bg={bg}
+					onBgChange={setBg}
 				/>
 			</div>
 			<section aria-label="注文と約定" className="flex flex-col gap-2">

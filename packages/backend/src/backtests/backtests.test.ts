@@ -356,3 +356,53 @@ describe("バックテストの実行", () => {
 		);
 	});
 });
+
+describe("チャートの AI 判定", () => {
+	test("実行したときの集計ルールで足ごとの判定を出し、採点の記録が始まる前は null", async () => {
+		const t = setup();
+		t.clock.now = START + 30 * 24 * H;
+		const at = START + 10 * 24 * H;
+		const source = t.newsRepo.insertSource(
+			{ name: "A", url: "https://a.example/feed", language: "ja" },
+			0,
+		);
+		t.newsRepo.saveFetched(
+			source,
+			[
+				{
+					title: "a",
+					url: "https://a.example/a",
+					summary: null,
+					publishedAt: at,
+				},
+			],
+			at,
+		);
+		const id = (t.newsRepo.listNews(1)[0] as { id: number }).id;
+		t.scoreRepo.saveScore(
+			id,
+			{ scores: { trend: 80, risk: null, sentiment: null }, comment: "c" },
+			{ scoredAt: at, criteriaVersion: 1, model: "m", attempts: 0 },
+		);
+		const rule = t.scoreRepo.aggregationRule();
+		t.scoreRepo.setAggregationRule({
+			...rule,
+			thresholds: { ...rule.thresholds, trend: { up: 90, down: 40 } },
+		});
+		const run = (await post(t, body())).json.run as BacktestRun;
+		await t.backtests.running();
+		expect(run.aggregationRule?.thresholds.trend.up).toBe(90);
+		// 実行した後にルールを変えても、結果は実行したときのルールで出す
+		t.scoreRepo.setAggregationRule(rule);
+
+		const chart = await getJson<{
+			bars: { time: number }[];
+			judgments: { values: { trend: (string | null)[] } };
+		}>(t, `/api/backtests/${run.id}/chart`);
+		const trend = chart.judgments.values.trend;
+		expect(trend).toHaveLength(chart.bars.length);
+		const i = chart.bars.findIndex((b) => b.time + H >= at);
+		expect(trend[i - 1]).toBeNull();
+		expect(trend[i]).toBe("range");
+	});
+});

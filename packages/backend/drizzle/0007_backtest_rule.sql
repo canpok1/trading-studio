@@ -1,0 +1,1 @@
+ALTER TABLE `backtest_runs` ADD `aggregation_rule` text;

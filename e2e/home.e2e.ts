@@ -88,3 +88,46 @@ test("ホームは横にはみ出さない", async ({ page }) => {
 	);
 	expect(overflow).toBe(false);
 });
+
+test("チャートに AI 判定の背景と帯が出て、帯をタップすると背景が入れ替わり、再読み込み後も保たれる", async ({
+	page,
+}) => {
+	// 足は1分ごとに閉じるので、採点が付いた後の足ができるまで待つことがある
+	test.setTimeout(180_000);
+	await page.goto("/home");
+	await expect(page.getByTestId("home-judge-trend")).toContainText(/点|—/, {
+		timeout: 20_000,
+	});
+	// 偽物の採点が付いた後に閉じた足ができるまで待つ
+	await expect(async () => {
+		await page.reload();
+		await expect(page.getByTestId("chart-judgment-trend")).toBeVisible({
+			timeout: 3_000,
+		});
+	}).toPass({ timeout: 120_000 });
+
+	const group = page.getByRole("group", { name: "背景に使う判定" });
+	await group.getByRole("button", { name: "トレンド" }).click();
+	await expect(group.getByRole("button", { name: "トレンド" })).toHaveAttribute(
+		"aria-pressed",
+		"true",
+	);
+	// 背景がトレンドのとき、帯は上からリスク・センチメント。上の帯（リスク）をタップする
+	const chart = page.getByRole("img", { name: "価格チャート" });
+	const box = await chart.boundingBox();
+	if (!box) throw new Error("チャートが無い");
+	// 下端から時間軸（約 26px）と帯の下側を除いた位置
+	await chart.click({
+		position: { x: box.width / 2, y: box.height - 26 - 27 },
+	});
+	await expect(group.getByRole("button", { name: "リスク" })).toHaveAttribute(
+		"aria-pressed",
+		"true",
+	);
+	await page.reload();
+	await expect(
+		page
+			.getByRole("group", { name: "背景に使う判定" })
+			.getByRole("button", { name: "リスク" }),
+	).toHaveAttribute("aria-pressed", "true", { timeout: 20_000 });
+});

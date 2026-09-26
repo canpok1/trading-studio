@@ -108,6 +108,8 @@ const scorer = createScorer({
 });
 const scorerTimer = setInterval(() => scorer.tick(), 1_000);
 
+const judgments = createJudgmentService({ repo: scoreRepo });
+
 const server = new Hono().route(
 	"/",
 	createApp({
@@ -120,6 +122,7 @@ const server = new Hono().route(
 			marketData: marketDataRepo,
 			strategies,
 			runner: workerRunner,
+			judgments,
 		}),
 		news: createNewsService({ repo: newsRepo, collector: newsCollector }),
 		scoring: createScoringService({
@@ -127,7 +130,7 @@ const server = new Hono().route(
 			newsRepo,
 			scorer,
 		}),
-		judgments: createJudgmentService({ repo: scoreRepo }),
+		judgments,
 	}),
 );
 serveFrontend(server, distDir);

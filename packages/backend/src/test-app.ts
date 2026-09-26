@@ -53,14 +53,6 @@ export function createTestApp(
 		repo: marketDataRepo,
 		now: () => clock.now,
 	});
-	const backtestRepo = new BacktestRepository(db);
-	const backtests = createBacktestService({
-		repo: backtestRepo,
-		marketData: marketDataRepo,
-		strategies,
-		runner,
-		now: () => 3_000,
-	});
 	// 収集は動かさず、テストから newsRepo に書き込む
 	const newsRepo = new NewsRepository(db);
 	const newsRun = {
@@ -91,6 +83,19 @@ export function createTestApp(
 		scorer,
 		now: () => clock.now,
 	});
+	const judgments = createJudgmentService({
+		repo: scoreRepo,
+		now: () => clock.now,
+	});
+	const backtestRepo = new BacktestRepository(db);
+	const backtests = createBacktestService({
+		repo: backtestRepo,
+		marketData: marketDataRepo,
+		strategies,
+		runner,
+		judgments,
+		now: () => 3_000,
+	});
 	const app = createApp({
 		isDbReachable: () => true,
 		marketData,
@@ -99,10 +104,7 @@ export function createTestApp(
 		backtests,
 		news,
 		scoring,
-		judgments: createJudgmentService({
-			repo: scoreRepo,
-			now: () => clock.now,
-		}),
+		judgments,
 		...over,
 	});
 	return {
