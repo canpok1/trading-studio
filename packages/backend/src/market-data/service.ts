@@ -189,6 +189,10 @@ export function createMarketDataService(
 
 		resolveImport(id, overwrite) {
 			if (current?.job.id === id && current.answer) {
+				// 保存は次のイベントループで始まるので、応答の時点で段階を進めておく
+				// （確認待ちのまま返すと、画面が確認の表示を出し続けて二重に押せてしまう）
+				current.job.phase = "saving";
+				current.job.overwrite = overwrite;
 				current.answer(overwrite ? "overwrite" : "skip");
 				return { ok: true, job: snapshot(current.job) };
 			}

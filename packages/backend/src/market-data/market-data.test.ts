@@ -67,6 +67,9 @@ async function resolve(
 		body: JSON.stringify({ overwrite }),
 	});
 	expect(res.status).toBe(200);
+	const { job } = (await res.json()) as { job: ImportJob };
+	// 応答の時点で確認待ちを抜けている
+	expect(job).toMatchObject({ phase: "saving", overwrite });
 	await t.marketData.running();
 	return t.marketData.getImport(id) as ImportJob;
 }
