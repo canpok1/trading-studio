@@ -101,6 +101,8 @@ export const backtestRuns = sqliteTable("backtest_runs", {
 	filledCount: integer("filled_count").notNull().default(0),
 	orderCount: integer("order_count").notNull().default(0),
 	error: text("error"),
+	/** 実行したときの AI 判定の集計ルール（JSON）。この列を足す前の実行は null */
+	aggregationRule: text("aggregation_rule"),
 });
 
 /** バックテストの結果の中身。大きいので gzip した JSON で持つ */

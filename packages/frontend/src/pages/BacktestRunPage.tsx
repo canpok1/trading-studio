@@ -3,16 +3,16 @@ import type {
 	StoredStrategy,
 	TimeframeCoverage,
 } from "@trading-studio/backend";
-import type { ConditionSet, Gap } from "@trading-studio/core";
+import type { ConditionSet, Gap, Timeframe } from "@trading-studio/core";
 import {
 	chooseStepTimeframe,
+	conditionStrategy,
 	isCoarser,
 	parseConditionSet,
 	percentToPpm,
 	ppmToPercent,
 	TIMEFRAME_LABELS,
 	TIMEFRAME_MS,
-	TIMEFRAMES,
 	validateConditionSet,
 } from "@trading-studio/core";
 import {
@@ -97,6 +97,8 @@ type Data = {
 	coverage: TimeframeCoverage[];
 	runs: BacktestRun[];
 	latest: number | null;
+	/** AI 判定の採点の記録の始まり。まだ無ければ null */
+	firstScoredAt: number | null;
 };
 
 export function BacktestRunPage() {
@@ -107,7 +109,7 @@ export function BacktestRunPage() {
 	const job = useBacktestJob();
 
 	const load = useCallback(async (): Promise<Data> => {
-		const [s, c, r, l] = await Promise.all([
+		const [s, c, r, l, j] = await Promise.all([
 			api.api.strategies
 				.$get()
 				.then((res) => readJson<{ strategies: StoredStrategy[] }>(res)),
@@ -120,12 +122,16 @@ export function BacktestRunPage() {
 			api.api.data.latest
 				.$get()
 				.then((res) => readJson<{ latest: { close: number } | null }>(res)),
+			api.api.judgments.current
+				.$get()
+				.then((res) => readJson<{ firstScoredAt: number | null }>(res)),
 		]);
 		return {
 			strategies: s.strategies,
 			coverage: c.timeframes,
 			runs: r.runs,
 			latest: l.latest?.close ?? null,
+			firstScoredAt: j.firstScoredAt,
 		};
 	}, [api]);
 	const { state, reload } = useAsync(load);
@@ -249,6 +255,7 @@ export function BacktestRunPage() {
 			coverage={coverage}
 			runs={runs}
 			latest={state.data.latest}
+			firstScoredAt={state.data.firstScoredAt}
 		/>
 	);
 }
@@ -260,6 +267,7 @@ function RunForm({
 	coverage,
 	runs,
 	latest,
+	firstScoredAt,
 }: {
 	draft: BacktestDraft;
 	setDraft: (d: BacktestDraft) => void;
@@ -267,6 +275,7 @@ function RunForm({
 	coverage: TimeframeCoverage[];
 	runs: BacktestRun[];
 	latest: number | null;
+	firstScoredAt: number | null;
 }) {
 	const api = useApi();
 	const job = useBacktestJob();
@@ -294,20 +303,40 @@ function RunForm({
 	const fromDate = draft.fromDate ?? toDateInputValue(toMs - 30 * DAY);
 	const fromMs = fromDateInputValue(fromDate) ?? 0;
 
-	// 判定に使う足。期間に取り込んだ最も細かい足までしか細かくできない（実際の選び方はサーバーと同じ）
-	const finest = TIMEFRAMES.find((t) => {
-		const c = coverage.find((x) => x.timeframe === t);
-		return (
-			c !== undefined &&
-			c.importedCount > 0 &&
-			c.firstTime !== null &&
-			c.lastTime !== null &&
-			c.firstTime < toMs &&
-			c.lastTime + TIMEFRAME_MS[t] > fromMs
-		);
-	});
+	// 判定に使う足。期間に取り込んだ最も細かい足までしか細かくできない。選び方はサーバーに合わせるため問い合わせる
+	const [usable, setUsable] = useState<{
+		key: string;
+		timeframes: Timeframe[];
+	} | null>(null);
+	const usableKey = `${fromMs}:${toMs}`;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 期間が変わったときだけ問い合わせる
+	useEffect(() => {
+		let alive = true;
+		api.api.data["usable-timeframes"]
+			.$get({ query: { from: String(fromMs), to: String(toMs) } })
+			.then((res) => readJson<{ timeframes: Timeframe[] }>(res))
+			.then((r) => {
+				if (alive) setUsable({ key: usableKey, timeframes: r.timeframes });
+			})
+			.catch(() => {});
+		return () => {
+			alive = false;
+		};
+	}, [usableKey]);
+	const finest =
+		usable?.key === usableKey ? (usable.timeframes[0] ?? null) : null;
 	const step =
 		finest && !isCoarser(finest, tf) ? chooseStepTimeframe(p, finest) : null;
+
+	// AI 判定の条件があれば、評価のたびに記録済みの採点から判定を作る。記録が始まる前は実行できない
+	const usesJudgments = conditionStrategy.requiredJudges(p).length > 0;
+	const judgmentError = !usesJudgments
+		? null
+		: firstScoredAt === null
+			? "AI 判定の条件があるが、ニュースの採点の記録がまだ無いため実行できない"
+			: fromMs < firstScoredAt
+				? `AI 判定の記録は ${formatDateTime(firstScoredAt)} から。開始を ${formatDate(firstAllowedFrom(firstScoredAt))} 以降にすると実行できる`
+				: null;
 
 	const bars = useMemo(() => {
 		if (!cov || cov.firstTime === null || cov.lastTime === null) return 0;
@@ -536,9 +565,20 @@ function RunForm({
 								{step && step.timeframe !== tf
 									? ` · ${TIMEFRAME_LABELS[step.timeframe]}で判定`
 									: ""}
+								{usesJudgments && " · 判定履歴を使う"}
 							</span>
+							{usesJudgments && firstScoredAt !== null && (
+								<span className="num text-xs text-text-2">
+									AI 判定の記録の開始: {formatDateTime(firstScoredAt)}
+								</span>
+							)}
 						</div>
 						{step?.limited && <Note>{stepLimitedText(step.timeframe)}</Note>}
+						{judgmentError && (
+							<span role="alert" className="text-xs font-semibold text-loss">
+								{judgmentError}
+							</span>
+						)}
 						<div className="flex flex-col gap-1.5">
 							<label htmlFor={ids.cash} className="text-[13px] font-semibold">
 								初期資金（円）
@@ -683,7 +723,13 @@ function RunForm({
 						<Button
 							variant="primary"
 							className="w-full shadow-lg"
-							disabled={busy || running !== null || hasErr || bars === 0}
+							disabled={
+								busy ||
+								running !== null ||
+								hasErr ||
+								bars === 0 ||
+								judgmentError !== null
+							}
 							onClick={() => run(false)}
 						>
 							{running
@@ -817,4 +863,10 @@ function PastRuns({ runs }: { runs: BacktestRun[] }) {
 			</div>
 		</section>
 	);
+}
+
+/** 開始は日付単位なので、記録が日の途中から始まっていればその翌日が最初に選べる日 */
+function firstAllowedFrom(firstScoredAt: number): number {
+	const day = fromDateInputValue(toDateInputValue(firstScoredAt)) ?? 0;
+	return day === firstScoredAt ? day : day + DAY;
 }

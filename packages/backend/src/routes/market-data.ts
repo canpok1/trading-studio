@@ -7,6 +7,23 @@ export function marketDataRoutes(service: MarketDataService) {
 	return new Hono()
 		.get("/coverage", (c) => c.json({ timeframes: service.coverage() }))
 		.get("/latest", (c) => c.json({ latest: service.latestClose() }))
+		.get(
+			"/usable-timeframes",
+			validator("query", (q, c) => {
+				const from = Number(q.from);
+				const to = Number(q.to);
+				if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to)) {
+					return c.json({ message: "期間の形が違う" }, 400);
+				}
+				return { from: q.from as string, to: q.to as string };
+			}),
+			(c) => {
+				const q = c.req.valid("query");
+				return c.json({
+					timeframes: service.usableTimeframes(Number(q.from), Number(q.to)),
+				});
+			},
+		)
 		.get("/imports", (c) => c.json({ imports: service.listImports() }))
 		.post(
 			"/imports",

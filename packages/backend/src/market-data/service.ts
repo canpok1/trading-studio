@@ -212,6 +212,7 @@ export function createMarketDataService(
 				: list;
 		},
 
+		usableTimeframes: (from, to) => repo.importedTimeframes(from, to),
 		coverage(): TimeframeCoverage[] {
 			return repo.coverage();
 		},

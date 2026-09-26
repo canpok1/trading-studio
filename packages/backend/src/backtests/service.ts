@@ -8,6 +8,7 @@ import {
 	TIMEFRAME_MS,
 	validateConditionSet,
 } from "@trading-studio/core";
+import type { JudgmentService } from "../judgments/types";
 import type { MarketDataRepository } from "../market-data/repository";
 import type { StrategyService } from "../strategies/types";
 import type { BacktestRepository } from "./repository";
@@ -31,6 +32,10 @@ export type BacktestServiceDeps = {
 	marketData: MarketDataRepository;
 	strategies: StrategyService;
 	runner: BacktestRunner;
+	judgments: Pick<
+		JudgmentService,
+		"rule" | "series" | "firstScoredAt" | "scoredNews"
+	>;
 	now?: () => number;
 };
 
@@ -68,6 +73,7 @@ export function createBacktestService({
 	marketData,
 	strategies,
 	runner,
+	judgments,
 	now = Date.now,
 }: BacktestServiceDeps): BacktestService & { running(): Promise<void> | null } {
 	let current: { id: number; job: RunningJob; done: Promise<void> } | null =
@@ -112,6 +118,22 @@ export function createBacktestService({
 				}
 				throw e;
 			}
+			// 記録が始まる前を中立で埋めると、判定の条件が効いていない結果を正しいものと誤読しやすいので実行しない
+			const rule = judgments.rule();
+			const usesJudgments = conditionStrategy.requiredJudges(params).length > 0;
+			if (usesJudgments) {
+				const firstScoredAt = judgments.firstScoredAt();
+				if (firstScoredAt === null || from < firstScoredAt) {
+					return fail({
+						kind: "no_judgments",
+						firstScoredAt,
+						message:
+							firstScoredAt === null
+								? "AI 判定の条件があるが、ニュースの採点の記録がまだ無いため実行できない"
+								: "AI 判定の条件があるが、期間に採点の記録が始まる前が含まれるため実行できない。開始を記録が始まった日時より後の日にする",
+					});
+				}
+			}
 			// 判定頻度が戦略の粒度より短ければ、細かい足で判定する
 			const step = chooseStepTimeframe(params, finest);
 			const gaps = marketData.gaps(step.timeframe, from, to);
@@ -149,6 +171,7 @@ export function createBacktestService({
 				skipGaps: input.skipGaps,
 				stepTimeframe: step.timeframe,
 				stepLimited: step.limited,
+				aggregationRule: rule,
 				startedAt: now(),
 				barCount,
 			});
@@ -164,6 +187,16 @@ export function createBacktestService({
 					to,
 					initialCash: input.initialCash,
 					fees: input.fees,
+					judgments: usesJudgments
+						? {
+								// 期間の頭で使うニュースは、期間の開始から集計の期間だけ前までに採点されている
+								news: judgments.scoredNews(
+									from - rule.windowHours * 3_600_000,
+									to,
+								),
+								rule,
+							}
+						: null,
 				});
 			} catch (e) {
 				console.error("backtest failed to start", e);
@@ -204,7 +237,20 @@ export function createBacktestService({
 		},
 
 		chart(id) {
-			return repo.chart(id);
+			const chart = repo.chart(id);
+			const run = repo.get(id);
+			if (!chart || !run) return null;
+			const rule = run.aggregationRule;
+			const first = chart.bars[0];
+			const last = chart.bars.at(-1);
+			const tfMs = TIMEFRAME_MS[run.timeframe];
+			return {
+				...chart,
+				judgments:
+					rule && first && last
+						? judgments.series(first.time, last.time + tfMs, tfMs, rule)
+						: null,
+			};
 		},
 
 		orders(id, filter, offset, limit) {

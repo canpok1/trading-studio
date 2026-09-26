@@ -7,7 +7,7 @@ import type {
 	ConditionSet,
 	Timeframe,
 } from "@trading-studio/core";
-import { parseConditionSet } from "@trading-studio/core";
+import { parseAggregationRule, parseConditionSet } from "@trading-studio/core";
 import type { Db } from "../db/open";
 import type { RunnerOutput } from "./runner";
 import type { BacktestChart, BacktestRun, BacktestStatus } from "./types";
@@ -35,6 +35,7 @@ type RunRow = {
 	filled_count: number;
 	order_count: number;
 	error: string | null;
+	aggregation_rule: string | null;
 };
 
 function toRun(r: RunRow): BacktestRun {
@@ -62,6 +63,9 @@ function toRun(r: RunRow): BacktestRun {
 		filledCount: r.filled_count,
 		orderCount: r.order_count,
 		error: r.error,
+		aggregationRule: r.aggregation_rule
+			? parseAggregationRule(JSON.parse(r.aggregation_rule))
+			: null,
 	};
 }
 
@@ -97,8 +101,8 @@ export class BacktestRepository {
 			this.sql.run(
 				`insert into backtest_runs (strategy_id, strategy_name, params, timeframe, from_time, to_time,
 				 initial_cash, fee_limit_ppm, fee_market_ppm, skip_gaps, status, started_at, bar_count,
-				 step_timeframe, step_limited)
-				 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?)`,
+				 step_timeframe, step_limited, aggregation_rule)
+				 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?)`,
 				[
 					run.strategyId,
 					run.strategyName,
@@ -114,6 +118,9 @@ export class BacktestRepository {
 					run.barCount,
 					run.stepTimeframe,
 					run.stepLimited ? 1 : 0,
+					run.aggregationRule === null
+						? null
+						: JSON.stringify(run.aggregationRule),
 				],
 			).lastInsertRowid,
 		);
@@ -183,7 +190,7 @@ export class BacktestRepository {
 		return r?.v ?? null;
 	}
 
-	chart(id: number): BacktestChart | null {
+	chart(id: number): Omit<BacktestChart, "judgments"> | null {
 		const bars = this.blob(id, "bars");
 		const orders = this.orders(id);
 		if (!bars || !orders) return null;

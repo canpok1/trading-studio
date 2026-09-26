@@ -74,6 +74,15 @@ export function backtestRoutes(service: BacktestService) {
 							);
 						case "no_data":
 							return c.json({ kind: e.kind, message: e.message }, 400);
+						case "no_judgments":
+							return c.json(
+								{
+									kind: e.kind,
+									message: e.message,
+									firstScoredAt: e.firstScoredAt,
+								},
+								400,
+							);
 						case "gaps":
 							return c.json(
 								{

@@ -1,6 +1,12 @@
 // 価格チャート。バックテスト結果とホーム（のちにペーパー・ライブも）で使う
 
-import { ema } from "@trading-studio/core";
+import type { Judge } from "@trading-studio/core";
+import {
+	ema,
+	JUDGE_LABELS,
+	JUDGES,
+	JUDGMENT_VALUES,
+} from "@trading-studio/core";
 import type {
 	IChartApi,
 	ISeriesApi,
@@ -18,6 +24,8 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatDateTime } from "../../format";
 import { formatInt } from "../../lib/number";
+import { ShapeIcon } from "../judgment/JudgmentBadge";
+import { valueStyle } from "../judgment/judgment-style";
 import { Segmented } from "../ui";
 import type { ChartBar, ChartMarker, ChartRange } from "./chart-data";
 import {
@@ -31,6 +39,9 @@ import {
 	toSlots,
 	visibleRange,
 } from "./chart-data";
+import { JudgeLayer, stripArea } from "./judge-layer";
+import type { BarJudgments } from "./judgment-data";
+import { slotAligned } from "./judgment-data";
 
 type Props = {
 	bars: readonly ChartBar[];
@@ -51,6 +62,11 @@ type Props = {
 	 * （数秒ごとに最新の価格を足すホームで、そのたびに表示範囲が戻らないように）
 	 */
 	viewKey?: string;
+	/** 足ごとの AI 判定（足の並びと同じ長さ）。無ければ背景と帯を出さない */
+	judgments?: BarJudgments | null;
+	/** 背景に塗る判定。残りは下の帯に並べる */
+	bg?: Judge;
+	onBgChange?: (j: Judge) => void;
 };
 
 const EMA_VARS = ["--color-ema1", "--color-ema2"] as const;
@@ -95,6 +111,9 @@ function chartColors() {
 const NO_MARKERS: readonly ChartMarker[] = [];
 const NO_PERIODS: readonly number[] = [];
 
+/** チャートの高さの最小値（px）。下の className の h-[260px] と揃える */
+const MIN_CHART_PX = 260;
+
 /** アイコンを押したとみなす距離（px）。指で押すため広めにとる */
 const HIT_PX = 18;
 
@@ -109,6 +128,9 @@ export function PriceChart({
 	onRangeChange,
 	toolbar,
 	viewKey,
+	judgments = null,
+	bg = "trend",
+	onBgChange,
 }: Props) {
 	const box = useRef<HTMLDivElement>(null);
 	const chartRef = useRef<{
@@ -116,6 +138,7 @@ export function PriceChart({
 		price: ISeriesApi<"Line">;
 		marks: ISeriesMarkersPluginApi<Time>;
 		emas: ISeriesApi<"Line">[];
+		layer: JudgeLayer;
 	} | null>(null);
 	const [ownRange, setOwnRange] = useState<ChartRange>("all");
 	const range = controlledRange ?? ownRange;
@@ -136,8 +159,8 @@ export function PriceChart({
 	const showEma = emaOn && emaPeriods.length > 0;
 
 	// マーカーの押下判定は描画ライブラリのイベントから呼ぶので、最新の値を ref で渡す
-	const latest = useRef({ markers, onMarker, barTimes, slots });
-	latest.current = { markers, onMarker, barTimes, slots };
+	const latest = useRef({ markers, onMarker, barTimes, slots, onBgChange });
+	latest.current = { markers, onMarker, barTimes, slots, onBgChange };
 
 	// チャートを作る（1回だけ）
 	useEffect(() => {
@@ -182,7 +205,9 @@ export function PriceChart({
 			crosshairMarkerRadius: 4,
 		});
 		const marks = createSeriesMarkers(price, []);
-		chartRef.current = { chart, price, marks, emas: [] };
+		const layer = new JudgeLayer(cssVar);
+		price.attachPrimitive(layer);
+		chartRef.current = { chart, price, marks, emas: [], layer };
 
 		chart.subscribeCrosshairMove((p) => {
 			// 価格の系列は全部の枠を持つので、論理位置がそのまま枠の番号になる
@@ -195,7 +220,13 @@ export function PriceChart({
 		});
 		chart.subscribeClick((p) => {
 			const { markers: ms, onMarker: cb, barTimes: times } = latest.current;
-			if (!p.point || !cb) return;
+			if (!p.point) return;
+			const strip = layer.stripAt(p.point.y);
+			if (strip) {
+				latest.current.onBgChange?.(strip);
+				return;
+			}
+			if (!cb) return;
 			let hit = ms.find((m) => m.id === p.hoveredObjectId) ?? null;
 			if (!hit) {
 				// アイコンは小さいので、近くを押したものも拾う
@@ -296,6 +327,25 @@ export function PriceChart({
 		c.marks.setMarkers(list);
 	}, [markers, barTimes, selectedId, themeTick]);
 
+	// AI 判定の背景と帯。帯の分だけ価格の線を上へ寄せる
+	const hasJudgments = judgments !== null;
+	// 描画拡張は論理位置（枠の番号）で塗るので、判定を枠の並びに置き直す。足の無い枠は塗らない
+	const slotJudgments = useMemo(
+		() => (judgments ? slotAligned(judgments, slots) : null),
+		[judgments, slots],
+	);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: themeTick の変化で色を読み直す
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		c.layer.setData(slotJudgments, bg);
+		// 帯の高さは px で決まるが余白は割合で渡すので、チャートが最も低いとき（スマホ幅）に合わせる
+		const bottom = hasJudgments
+			? (stripArea(true) + 14) / (MIN_CHART_PX - 28)
+			: 0.1;
+		c.price.priceScale().applyOptions({ scaleMargins: { top: 0.1, bottom } });
+	}, [slotJudgments, bg, hasJudgments, themeTick]);
+
 	// 表示期間。viewKey があれば、足が届き始めたときと viewKey が変わったときだけ合わせ直す
 	const hasBars = barTimes.length > 0;
 	const zoomKey = viewKey ?? barTimes;
@@ -334,6 +384,25 @@ export function PriceChart({
 				onChange={setRange}
 			/>
 			{toolbar}
+			{judgments && (
+				<fieldset className="flex flex-wrap items-center gap-2">
+					<legend className="sr-only">背景に使う判定</legend>
+					<span aria-hidden="true" className="text-xs text-text-2">
+						背景
+					</span>
+					{JUDGES.map((j) => (
+						<button
+							key={j}
+							type="button"
+							aria-pressed={j === bg}
+							onClick={() => onBgChange?.(j)}
+							className="h-8 rounded-full border border-line px-3 text-xs font-semibold text-text-2 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-white dark:aria-pressed:text-accent-ink"
+						>
+							{JUDGE_LABELS[j]}
+						</button>
+					))}
+				</fieldset>
+			)}
 			{emaPeriods.length > 0 && (
 				<div className="flex items-center gap-2">
 					<span className="text-xs text-text-2">表示</span>
@@ -361,6 +430,22 @@ export function PriceChart({
 					<>
 						<span className="text-text-2">{formatDateTime(bar.time)}</span>
 						<span className="font-semibold">¥{formatInt(bar.close)}</span>
+						{judgments &&
+							JUDGES.map((j) => {
+								const v = judgments[j][shown as number] ?? null;
+								if (v === null) return null;
+								const st = valueStyle(j, v);
+								return (
+									<span
+										key={j}
+										data-testid={`chart-judgment-${j}`}
+										className="flex items-center gap-1"
+									>
+										<ShapeIcon shape={st.shape} color={`var(${st.solid})`} />
+										{j === "sentiment" ? `感情 ${v}` : st.label}
+									</span>
+								);
+							})}
 						{showEma &&
 							emaPeriods.map((n, j) => {
 								const v = emaValues[j]?.[shown as number];
@@ -384,7 +469,7 @@ export function PriceChart({
 				aria-label="価格チャート"
 				className="h-[260px] w-full lg:h-[360px]"
 			/>
-			{(onMarker || showEma) && (
+			{(onMarker || showEma || judgments) && (
 				<details className="rounded-[10px] border border-line px-3 py-2 text-xs">
 					<summary className="cursor-pointer font-semibold">凡例</summary>
 					<div className="mt-2 flex flex-col gap-2">
@@ -425,11 +510,41 @@ export function PriceChart({
 								))}
 							</LegendRow>
 						)}
+						{judgments &&
+							JUDGES.map((j) => (
+								<LegendRow
+									key={j}
+									title={JUDGE_LABELS[j]}
+									note={j === bg ? "背景" : "下の帯"}
+								>
+									{JUDGMENT_VALUES[j].map((v) => {
+										const st = valueStyle(j, v);
+										return (
+											<span key={v} className="flex items-center gap-1">
+												<i
+													className="inline-block h-2.5 w-3 rounded-sm"
+													style={
+														j === bg
+															? {
+																	background: `var(${st.bg})`,
+																	outline: `1px solid var(${st.solid})`,
+																}
+															: { background: `var(${st.solid})` }
+													}
+												/>
+												{st.label}
+											</span>
+										);
+									})}
+								</LegendRow>
+							))}
 					</div>
 				</details>
 			)}
 			<p className="text-xs text-text-2">
-				{onMarker && "アイコンをタップで詳細 · "}ピンチ / ホイールで拡大
+				{onMarker && "アイコンをタップで詳細 · "}
+				{judgments && "下の帯をタップで背景と入れ替え · "}
+				ピンチ / ホイールで拡大
 			</p>
 		</div>
 	);

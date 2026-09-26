@@ -3,6 +3,7 @@ import type { BacktestConfig } from "./backtest";
 import { BacktestAborted, BacktestError, runBacktest } from "./backtest";
 import type { ConditionSet } from "./condition-strategy";
 import { conditionStrategy } from "./condition-strategy";
+import { DEFAULT_AGGREGATION_RULE } from "./news-judgment";
 import type { Strategy } from "./strategy";
 import { strategyTemplate } from "./templates";
 import { TIMEFRAME_MS } from "./timeframe";
@@ -403,5 +404,61 @@ describe("決定論", () => {
 		const a = run();
 		expect(a.summary.trades).toBeGreaterThan(0);
 		expect(run()).toEqual(a);
+	});
+});
+
+describe("AI 判定", () => {
+	const flat = bars(
+		Array.from(
+			{ length: 10 },
+			() => [100_000, 100_000, 100_000, 100_000] as Bar,
+		),
+	);
+	const params: ConditionSet = {
+		...strategyTemplate("trend").params,
+		frequency: {
+			flat: { value: 1, unit: "h" },
+			holding: { value: 1, unit: "h" },
+		},
+		buy: {
+			match: "all",
+			conditions: [{ type: "judgment", judge: "trend", values: ["up"] }],
+		},
+	};
+	const run = (judgments?: BacktestConfig<ConditionSet>["judgments"]) =>
+		runBacktest({
+			strategy: conditionStrategy,
+			params,
+			candles: flat,
+			dataTimeframe: "1h",
+			from: 0,
+			to: flat.length * H,
+			initialCash: 10_000_000,
+			fees: { limitPpm: 0, marketPpm: 0 },
+			judgments,
+		});
+
+	test("評価時刻までに採点済みの点数だけで判定を作って渡す", () => {
+		const r = run({
+			news: [
+				{
+					id: 1,
+					// 公開は早いが、採点が 5時30分なので 6時の評価から使う
+					publishedAt: 2 * H,
+					fetchedAt: 2 * H,
+					scoredAt: 5.5 * H,
+					scores: { trend: 90, risk: null, sentiment: null },
+				},
+			],
+			rule: DEFAULT_AGGREGATION_RULE,
+		});
+		expect(r.orders[0]?.placedAt).toBe(6 * H);
+		expect(r.decisions.find((d) => d.time === 5 * H)?.note).toContain(
+			"買いの条件を満たさない",
+		);
+	});
+
+	test("判定の条件があるのに材料が無ければ実行しない", () => {
+		expect(() => run()).toThrow(BacktestError);
 	});
 });
