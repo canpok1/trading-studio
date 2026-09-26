@@ -217,6 +217,19 @@ export class MarketDataRepository {
 		return written;
 	}
 
+	/** 期間内に取り込んだ（自動で作っていない）足がある粒度 */
+	importedTimeframes(from: number, to: number): Timeframe[] {
+		const set = new Set(
+			this.sql
+				.query<{ timeframe: string }, [number, number]>(
+					"select distinct timeframe from candles where source = 'import' and time >= ? and time < ?",
+				)
+				.all(from, to)
+				.map((r) => r.timeframe),
+		);
+		return TIMEFRAMES.filter((t) => set.has(t));
+	}
+
 	/** 取り込み済みの足のうち、最後に確定した足の終値。足が無ければ null */
 	latestClose(): { time: number; close: number } | null {
 		let best: { time: number; close: number } | null = null;
