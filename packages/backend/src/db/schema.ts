@@ -45,7 +45,7 @@ export const candles = sqliteTable(
 		low: integer("low").notNull(),
 		close: integer("close").notNull(),
 		volume: integer("volume").notNull(),
-		/** import: CSV から取り込んだ / derived: 細かい足から作った */
+		/** import: CSV から取り込んだ / collect: 収集した / derived: 細かい足から作った */
 		source: text("source").notNull(),
 		importId: integer("import_id").references(() => dataImports.id),
 	},

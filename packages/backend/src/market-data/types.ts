@@ -31,6 +31,7 @@ export type ImportJob = {
 export type TimeframeCoverage = {
 	timeframe: Timeframe;
 	count: number;
+	/** 取り込んだ・収集した（自動で作っていない）足の数 */
 	importedCount: number;
 	firstTime: number | null;
 	/** 最後の足の開始時刻 */

@@ -178,29 +178,47 @@ export class MarketDataRepository {
 
 	/**
 	 * 期間 [from, to) の粗い粒度の足を、1段細かい粒度の足から作り直す（1分→5分→15分→1時間→4時間→日足）。
-	 * 取り込んだ足は上書きせず、足が無い日時と自動で作った足だけを埋める。作った足の数を返す
+	 * 取り込んだ足は上書きせず、足が無い日時と自動で作った足だけを埋める。作った足の数を返す。
+	 * overrideImported なら、細かい足が1本も欠けずに揃っている区切りに限り、取り込んだ足も上書きする
+	 * （収集した足を正とするため。欠けている区切りで上書きすると、完全な足を不完全な足で置き換えてしまう）
 	 */
-	refillDerived(from: number, to: number, importId: number): number {
+	refillDerived(
+		from: number,
+		to: number,
+		importId: number | null,
+		{ overrideImported = false }: { overrideImported?: boolean } = {},
+	): number {
 		const start = candleStart(from, "1d");
 		const end = candleStart(to - 1, "1d") + TIMEFRAME_MS["1d"];
-		const stmt = this.sql.prepare(
-			`insert into candles (timeframe, time, open, high, low, close, volume, source, import_id)
-			 values (?, ?, ?, ?, ?, ?, ?, 'derived', ?)
-			 on conflict (timeframe, time) do update set
-			   open = excluded.open, high = excluded.high, low = excluded.low, close = excluded.close,
-			   volume = excluded.volume, import_id = excluded.import_id
-			 where candles.source = 'derived'`,
-		);
+		const insert = (overwritable: string) =>
+			this.sql.prepare(
+				`insert into candles (timeframe, time, open, high, low, close, volume, source, import_id)
+				 values (?, ?, ?, ?, ?, ?, ?, 'derived', ?)
+				 on conflict (timeframe, time) do update set
+				   open = excluded.open, high = excluded.high, low = excluded.low, close = excluded.close,
+				   volume = excluded.volume, source = 'derived', import_id = excluded.import_id
+				 where candles.source in (${overwritable})`,
+			);
+		const derivedOnly = insert("'derived'");
+		const orImported = insert("'derived', 'import'");
 		let written = 0;
 		for (let i = 1; i < TIMEFRAMES.length; i++) {
 			const source = TIMEFRAMES[i - 1] as Timeframe;
 			const target = TIMEFRAMES[i] as Timeframe;
-			const derived = aggregateCandles(
-				this.loadCandles(source, start, end),
-				target,
-			);
+			const finer = this.loadCandles(source, start, end);
+			const perBucket = TIMEFRAME_MS[target] / TIMEFRAME_MS[source];
+			const counts = new Map<number, number>();
+			for (const c of finer) {
+				const t = candleStart(c.time, target);
+				counts.set(t, (counts.get(t) ?? 0) + 1);
+			}
+			const derived = aggregateCandles(finer, target);
 			this.sql.transaction(() => {
 				for (const c of derived) {
+					const stmt =
+						overrideImported && counts.get(c.time) === perBucket
+							? orImported
+							: derivedOnly;
 					written += stmt.run(
 						target,
 						c.time,
@@ -217,12 +235,28 @@ export class MarketDataRepository {
 		return written;
 	}
 
-	/** 期間内に取り込んだ（自動で作っていない）足がある粒度 */
+	/** 収集した1分足を保存する。同じ日時の足は出どころを問わず上書きする（収集した足を正とする） */
+	upsertCollected(rows: readonly Candle[]): void {
+		const stmt = this.sql.prepare(
+			`insert into candles (timeframe, time, open, high, low, close, volume, source, import_id)
+			 values ('1m', ?, ?, ?, ?, ?, ?, 'collect', null)
+			 on conflict (timeframe, time) do update set
+			   open = excluded.open, high = excluded.high, low = excluded.low, close = excluded.close,
+			   volume = excluded.volume, source = 'collect', import_id = null`,
+		);
+		this.sql.transaction(() => {
+			for (const c of rows) {
+				stmt.run(c.time, c.open, c.high, c.low, c.close, c.volume);
+			}
+		})();
+	}
+
+	/** 期間内に取り込んだ・収集した（自動で作っていない）足がある粒度 */
 	importedTimeframes(from: number, to: number): Timeframe[] {
 		const set = new Set(
 			this.sql
 				.query<{ timeframe: string }, [number, number]>(
-					"select distinct timeframe from candles where source = 'import' and time >= ? and time < ?",
+					"select distinct timeframe from candles where source != 'derived' and time >= ? and time < ?",
 				)
 				.all(from, to)
 				.map((r) => r.timeframe),
@@ -259,7 +293,7 @@ export class MarketDataRepository {
 					},
 					[string]
 				>(
-					"select count(*) as count, sum(source = 'import') as imported, min(time) as first, max(time) as last from candles where timeframe = ?",
+					"select count(*) as count, sum(source != 'derived') as imported, min(time) as first, max(time) as last from candles where timeframe = ?",
 				)
 				.get(timeframe);
 			const gaps = this.gaps(timeframe);
