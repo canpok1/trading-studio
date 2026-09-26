@@ -3,8 +3,9 @@
 /* ダークはクラスで切り替える（OS の設定に従うかどうかは theme.ts が決める） */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* キャンバスの配色。ダークは下の .dark で同じ変数を上書きする */
-@theme {
+/* キャンバスの配色。ダークは下の .dark で同じ変数を上書きする。
+   チャートは JavaScript で変数を読むので、クラスで使っていない変数も出力させる（static） */
+@theme static {
 	--font-sans:
 		"IBM Plex Sans JP", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
 	--font-mono:
