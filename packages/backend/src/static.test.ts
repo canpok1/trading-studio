@@ -3,8 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
-import { createApp } from "./app";
 import { serveFrontend } from "./static";
+import { createTestApp } from "./test-app";
 
 let dir: string;
 let server: Hono;
@@ -17,7 +17,10 @@ beforeAll(async () => {
 	await writeFile(join(dist, "index.html"), "<html>index</html>");
 	await writeFile(join(dist, "assets", "app.js"), "console.log(1)");
 	await writeFile(join(dir, "secret.txt"), "secret");
-	server = new Hono().route("/", createApp({ isDbReachable: () => true }));
+	server = new Hono().route(
+		"/",
+		createTestApp({ isDbReachable: () => true }).app,
+	);
 	serveFrontend(server, dist);
 });
 
