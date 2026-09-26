@@ -36,20 +36,8 @@ export type ChartMarker = {
 	price: number;
 };
 
+/** ホームで読み込む足の期間（サーバーへ渡す） */
 export type ChartRange = "1d" | "1w" | "1m" | "all";
-
-export const CHART_RANGES: readonly (readonly [ChartRange, string])[] = [
-	["1d", "1日"],
-	["1w", "1週"],
-	["1m", "1か月"],
-	["all", "全期間"],
-];
-
-const RANGE_MS: Record<Exclude<ChartRange, "all">, number> = {
-	"1d": 86_400_000,
-	"1w": 7 * 86_400_000,
-	"1m": 30 * 86_400_000,
-};
 
 /**
  * 描画ライブラリの時刻（秒）。ライブラリは時刻を UTC として目盛りを振るので、
@@ -156,23 +144,63 @@ export function markerColorVar(
 	return m.side === "buy" ? "--color-buy" : "--color-sell";
 }
 
+/** 右端の余白（足の本数）。描画ライブラリの rightOffset と揃える */
+export const RIGHT_OFFSET = 3;
+
+/** 最初に見せる足の最小本数。日足で「1日」を見せると1本になってしまうため */
+const MIN_INITIAL_BARS = 30;
+
+/** 拡大の上限（画面に収める足の最小本数） */
+const MIN_ZOOM_BARS = 10;
+
+export type LogicalRange = { from: number; to: number };
+
+/** 全体を収める論理範囲。最初の足がチャートの左端に来ると、その目盛りの文字が途中で切れるため左に余白を空ける */
+function allRange(barCount: number): LogicalRange {
+	return { from: -Math.ceil(barCount * 0.1), to: barCount - 1 + RIGHT_OFFSET };
+}
+
 /**
- * 表示期間に合わせた論理範囲（足の番号）。足が無ければ null（全体を収める）。
- * 期間に対して足が足りないときは、ある足だけを全期間と同じ形で収める（空いた左側でチャートが潰れないように）。
- * 全期間は左に余白を空ける。最初の足がチャートの左端に来ると、その目盛りの文字が途中で切れるため
+ * 最初に見せる論理範囲（足の番号）。spanMs は最新から遡って見せる長さで、null なら全体を収める。
+ * 足が無ければ null（全体を収める）。足が足りないときは全体を収める（空いた左側でチャートが潰れないように）
  */
-export function visibleRange(
-	range: ChartRange,
+export function initialRange(
+	spanMs: number | null,
 	barCount: number,
 	stepMs: number,
-): { from: number; to: number } | null {
+): LogicalRange | null {
 	if (barCount === 0) return null;
 	const k =
-		range === "all"
+		spanMs === null
 			? Number.POSITIVE_INFINITY
-			: Math.max(5, Math.round(RANGE_MS[range] / stepMs));
-	if (barCount < k) {
-		return { from: -Math.ceil(barCount * 0.1), to: barCount - 1 + 3 };
+			: Math.max(MIN_INITIAL_BARS, Math.round(spanMs / stepMs));
+	if (barCount < k) return allRange(barCount);
+	return { from: barCount - k - 0.5, to: barCount - 1 + RIGHT_OFFSET };
+}
+
+/**
+ * +/- のボタンで拡大・縮小した論理範囲。factor が 1 未満で拡大、1 より大きいと縮小。
+ * 最新の足が見えていれば右端を保ち（最新を見たまま拡大できるように）、見えていなければ中央を保つ。
+ * 全体より広げようとしたら全体を収める
+ */
+export function zoomRange(
+	current: LogicalRange,
+	factor: number,
+	barCount: number,
+): LogicalRange {
+	if (barCount === 0) return current;
+	const all = allRange(barCount);
+	const width = current.to - current.from;
+	const next = Math.max(MIN_ZOOM_BARS, width * factor);
+	if (next >= all.to - all.from) return all;
+	if (current.to >= barCount - 1) {
+		return { from: current.to - next, to: current.to };
 	}
-	return { from: barCount - k - 0.5, to: barCount - 1 + 3 };
+	const mid = (current.from + current.to) / 2;
+	return { from: mid - next / 2, to: mid + next / 2 };
+}
+
+/** 最新の足が画面に入っているか */
+export function showsLatest(range: LogicalRange, barCount: number): boolean {
+	return barCount === 0 || range.to >= barCount - 1;
 }

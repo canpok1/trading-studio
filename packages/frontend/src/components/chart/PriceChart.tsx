@@ -9,6 +9,7 @@ import {
 } from "@trading-studio/core";
 import type {
 	IChartApi,
+	IPriceLine,
 	ISeriesApi,
 	ISeriesMarkersPluginApi,
 	Time,
@@ -19,6 +20,7 @@ import {
 	createChart,
 	createSeriesMarkers,
 	LineSeries,
+	LineStyle,
 	TickMarkType,
 } from "lightweight-charts";
 import type { ReactNode } from "react";
@@ -27,19 +29,20 @@ import { formatDateTime } from "../../format";
 import { formatInt } from "../../lib/number";
 import { ShapeIcon } from "../judgment/JudgmentBadge";
 import { valueStyle } from "../judgment/judgment-style";
-import { Segmented } from "../ui";
-import type { ChartBar, ChartMarker, ChartRange } from "./chart-data";
+import type { ChartBar, ChartMarker } from "./chart-data";
 import {
 	barStep,
-	CHART_RANGES,
 	fromChartTime,
 	hasOhlc,
+	initialRange,
 	markerColorVar,
 	markerShape,
+	RIGHT_OFFSET,
+	showsLatest,
 	snapToBar,
 	toChartTime,
 	toSlots,
-	visibleRange,
+	zoomRange,
 } from "./chart-data";
 import { useChartStyle } from "./chart-style";
 import { JudgeLayer, stripArea } from "./judge-layer";
@@ -53,12 +56,14 @@ type Props = {
 	emaPeriods?: readonly number[];
 	selectedId?: string | null;
 	onMarker?: (m: ChartMarker) => void;
-	/** 同じ画面に複数置くときの区別（ラジオボタンの name に使う） */
-	name?: string;
-	/** 表示期間を呼び出し側で持つとき（期間に合わせて足を取り直すホームなど） */
-	range?: ChartRange;
-	onRangeChange?: (r: ChartRange) => void;
-	/** 表示期間の切り替えの下に置く操作（ホームの粒度の切り替えなど） */
+	/** 最初に見せる長さ（最新から遡るミリ秒）。null なら全体を収める */
+	initialSpanMs?: number | null;
+	/**
+	 * 今のレート。渡すと価格の軸に「現在」の線と値を出す（ホーム）。
+	 * 省略すると最後の足の終値を出す（過去のデータを見るバックテスト結果）
+	 */
+	currentPrice?: number | null;
+	/** 表示の切り替えの上に置く操作（ホームの粒度の切り替えなど） */
 	toolbar?: ReactNode;
 	/**
 	 * 表示範囲を合わせ直すきっかけ。指定すると、足が更新されても値が変わるまで利用者の拡大・移動を保つ
@@ -128,6 +133,9 @@ function chartColors() {
 const CHIP =
 	"h-8 rounded-full border border-line px-3 text-xs font-semibold text-text-2 disabled:opacity-40 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-white dark:aria-pressed:text-accent-ink";
 
+const ICON_BTN =
+	"grid size-8 place-items-center rounded-full border border-line text-base font-semibold text-text-2";
+
 const NO_MARKERS: readonly ChartMarker[] = [];
 const NO_PERIODS: readonly number[] = [];
 
@@ -143,9 +151,8 @@ export function PriceChart({
 	emaPeriods = NO_PERIODS,
 	selectedId = null,
 	onMarker,
-	name = "chart",
-	range: controlledRange,
-	onRangeChange,
+	initialSpanMs = null,
+	currentPrice,
 	toolbar,
 	viewKey,
 	judgments = null,
@@ -162,10 +169,14 @@ export function PriceChart({
 		marks: ISeriesMarkersPluginApi<Time>;
 		emas: ISeriesApi<"Line">[];
 		layer: JudgeLayer;
+		/** 「現在」の線と、それを付けた系列 */
+		now: {
+			series: ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
+			line: IPriceLine;
+		} | null;
 	} | null>(null);
-	const [ownRange, setOwnRange] = useState<ChartRange>("all");
-	const range = controlledRange ?? ownRange;
-	const setRange = onRangeChange ?? setOwnRange;
+	// 最新の足が画面に入っているか。入っていれば「最新へ」のボタンを押せなくする
+	const [atLatest, setAtLatest] = useState(true);
 	const [emaOn, setEmaOn] = useState(true);
 	const [style, setStyle] = useChartStyle();
 	const [cursor, setCursor] = useState<number | null>(null);
@@ -205,7 +216,7 @@ export function PriceChart({
 			timeScale: {
 				timeVisible: true,
 				secondsVisible: false,
-				rightOffset: 3,
+				rightOffset: RIGHT_OFFSET,
 				minBarSpacing: 0.001,
 				tickMarkFormatter: tickLabel,
 			},
@@ -248,6 +259,7 @@ export function PriceChart({
 			marks,
 			emas: [],
 			layer,
+			now: null,
 		};
 
 		chart.subscribeCrosshairMove((p) => {
@@ -258,6 +270,9 @@ export function PriceChart({
 				return;
 			}
 			setCursor(Math.min(n - 1, Math.max(0, Math.round(p.logical))));
+		});
+		chart.timeScale().subscribeVisibleLogicalRangeChange((r) => {
+			if (r) setAtLatest(showsLatest(r, latest.current.slots.length));
 		});
 		chart.subscribeClick((p) => {
 			const { markers: ms, onMarker: cb, barTimes: times } = latest.current;
@@ -422,7 +437,41 @@ export function PriceChart({
 		c.price.priceScale().applyOptions({ scaleMargins: { top: 0.1, bottom } });
 	}, [slotJudgments, bg, hasJudgments, themeTick]);
 
-	// 表示期間。viewKey があれば、足が届き始めたときと viewKey が変わったときだけ合わせ直す
+	// 今のレート。組み込みの最後の値の表示を消し、「現在」の線に置き換える。
+	// 系列を付け替えたら（themeTick は色を読み直すため）線を引き直す
+	const showNow = currentPrice !== undefined;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: marksTick で系列の付け替えを、themeTick で色の変化を拾う
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		if (c.now) {
+			c.now.series.removePriceLine(c.now.line);
+			c.now = null;
+		}
+		for (const s of [c.line, c.candle]) {
+			s.applyOptions({
+				priceLineVisible: !showNow,
+				lastValueVisible: !showNow,
+			});
+		}
+		if (currentPrice === undefined || currentPrice === null) return;
+		const color = cssVar("--color-accent");
+		c.now = {
+			series: c.price,
+			line: c.price.createPriceLine({
+				price: currentPrice,
+				color,
+				lineWidth: 1,
+				lineStyle: LineStyle.Dashed,
+				axisLabelVisible: true,
+				axisLabelColor: color,
+				axisLabelTextColor: cssVar("--color-accent-ink"),
+				title: "現在",
+			}),
+		};
+	}, [currentPrice, showNow, marksTick, themeTick]);
+
+	// 表示範囲。viewKey があれば、足が届き始めたときと viewKey が変わったときだけ合わせ直す
 	const hasBars = barTimes.length > 0;
 	const zoomKey = viewKey ?? barTimes;
 	// biome-ignore lint/correctness/useExhaustiveDependencies: 合わせ直すきっかけは zoomKey と hasBars で決める
@@ -430,10 +479,20 @@ export function PriceChart({
 		const c = chartRef.current;
 		if (!c) return;
 		const step = barStep(barTimes) ?? 3_600_000;
-		const r = visibleRange(range, slots.length, step);
+		const r = initialRange(initialSpanMs, slots.length, step);
 		if (r) c.chart.timeScale().setVisibleLogicalRange(r);
 		else c.chart.timeScale().fitContent();
-	}, [range, zoomKey, hasBars]);
+	}, [initialSpanMs, zoomKey, hasBars]);
+
+	// +/- のボタン。factor が 1 未満で拡大
+	const zoom = (factor: number) => {
+		const ts = chartRef.current?.chart.timeScale();
+		const r = ts?.getVisibleLogicalRange();
+		if (!ts || !r) return;
+		ts.setVisibleLogicalRange(zoomRange(r, factor, slots.length));
+	};
+	// 最新の足へ戻る。拡大の度合いは保つ
+	const toLatest = () => chartRef.current?.chart.timeScale().scrollToRealTime();
 
 	// テーマの切り替えに追従する
 	useEffect(() => {
@@ -453,13 +512,6 @@ export function PriceChart({
 
 	return (
 		<div className="flex flex-col gap-2">
-			<Segmented
-				name={`${name}-range`}
-				label="表示する期間"
-				options={CHART_RANGES}
-				value={range}
-				onChange={setRange}
-			/>
 			{toolbar}
 			{judgments && (
 				<fieldset className="flex flex-wrap items-center gap-2">
@@ -506,6 +558,35 @@ export function PriceChart({
 						EMA
 					</button>
 				)}
+				<div className="ml-auto flex items-center gap-1.5">
+					<button
+						type="button"
+						aria-label="縮小"
+						title="縮小"
+						onClick={() => zoom(2)}
+						className={ICON_BTN}
+					>
+						−
+					</button>
+					<button
+						type="button"
+						aria-label="拡大"
+						title="拡大"
+						onClick={() => zoom(0.5)}
+						className={ICON_BTN}
+					>
+						＋
+					</button>
+					<button
+						type="button"
+						disabled={atLatest}
+						title="最新の足へ移動"
+						onClick={toLatest}
+						className={CHIP}
+					>
+						最新へ
+					</button>
+				</div>
 			</div>
 			<div
 				aria-live="off"
@@ -641,7 +722,7 @@ export function PriceChart({
 			<p className="text-xs text-text-2">
 				{onMarker && "アイコンをタップで詳細 · "}
 				{judgments && "下の帯をタップで背景と入れ替え · "}
-				ピンチ / ホイールで拡大
+				ピンチ / ホイール / ＋−で拡大・縮小
 			</p>
 		</div>
 	);
