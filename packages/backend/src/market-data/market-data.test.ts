@@ -312,3 +312,57 @@ test("期間のバックテストで使える粒度を返す", async () => {
 		(await t.app.request("/api/data/usable-timeframes?from=a&to=1")).status,
 	).toBe(400);
 });
+
+describe("過去データの書き出し", () => {
+	test("取り込みと同じ形の CSV を返し、そのまま取り込み直せる", async () => {
+		const t = createTestApp();
+		const times = Array.from({ length: 12 }, (_, i) => DAY + i * M);
+		await importCsv(t, csv(times));
+		const res = await t.app.request(
+			`/api/data/export?timeframe=1m&from=${DAY + M}&to=${DAY + 11 * M}`,
+		);
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toBe("text/csv; charset=utf-8");
+		expect(res.headers.get("content-disposition")).toBe(
+			'attachment; filename="btcjpy-1m-20260926-20260926.csv"',
+		);
+		const text = await res.text();
+		const lines = text.trimEnd().split("\n");
+		expect(lines[0]).toBe("日時,始値,高値,安値,終値,出来高");
+		expect(lines[1]).toBe("2026-09-26T00:01:00.000+09:00,100,110,90,100,0.1");
+		expect(lines).toHaveLength(11);
+
+		const t2 = createTestApp();
+		const job = await importCsv(t2, text);
+		expect(job).toMatchObject({ status: "done", insertedRows: 10 });
+	});
+
+	test("期間を省略すると全期間、足が無ければ 404、粒度が違えば 400", async () => {
+		const t = createTestApp();
+		const times = Array.from({ length: 10 }, (_, i) => DAY + i * M);
+		await importCsv(t, csv(times));
+		const all = await t.app.request("/api/data/export?timeframe=5m");
+		expect((await all.text()).trimEnd().split("\n")).toHaveLength(3);
+		expect(
+			(await t.app.request(`/api/data/export?timeframe=1m&to=${DAY}`)).status,
+		).toBe(404);
+		expect((await t.app.request("/api/data/export?timeframe=2m")).status).toBe(
+			400,
+		);
+		expect(
+			(await t.app.request("/api/data/export?timeframe=1m&from=a")).status,
+		).toBe(400);
+	});
+
+	test("自動で作った足のうち、元の足の最後より後ろまで続く作りかけの足は出さない", async () => {
+		const t = createTestApp();
+		const times = Array.from({ length: 12 }, (_, i) => DAY + i * M);
+		await importCsv(t, csv(times));
+		const five = await t.app.request("/api/data/export?timeframe=5m");
+		// 0〜5分・5〜10分の2本。10〜15分の足は12分までしか無いので出さない
+		expect((await five.text()).trimEnd().split("\n")).toHaveLength(3);
+		expect((await t.app.request("/api/data/export?timeframe=1d")).status).toBe(
+			404,
+		);
+	});
+});
