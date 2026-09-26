@@ -94,6 +94,7 @@ export function Segmented<T extends string>({
 	value,
 	onChange,
 	disabled,
+	disabledValues,
 	size = "md",
 }: {
 	name: string;
@@ -102,6 +103,8 @@ export function Segmented<T extends string>({
 	value: T;
 	onChange: (v: T) => void;
 	disabled?: boolean;
+	/** 選べなくする選択肢 */
+	disabledValues?: readonly T[];
 	size?: "md" | "sm";
 }) {
 	return (
@@ -113,13 +116,14 @@ export function Segmented<T extends string>({
 			{options.map(([v, text]) => (
 				<label
 					key={v}
-					className={`flex cursor-pointer items-center justify-center rounded-lg px-1 text-text-2 has-checked:bg-surface has-checked:font-bold has-checked:text-text has-checked:shadow-sm has-focus-visible:outline-2 has-focus-visible:outline-accent ${size === "sm" ? "h-[30px] text-xs" : "h-9 text-[13px]"}`}
+					className={`flex cursor-pointer items-center justify-center rounded-lg px-1 text-text-2 has-disabled:cursor-not-allowed has-disabled:opacity-45 has-checked:bg-surface has-checked:font-bold has-checked:text-text has-checked:shadow-sm has-focus-visible:outline-2 has-focus-visible:outline-accent ${size === "sm" ? "h-[30px] text-xs" : "h-9 text-[13px]"}`}
 				>
 					<input
 						type="radio"
 						name={name}
 						value={v}
 						checked={value === v}
+						disabled={disabledValues?.includes(v)}
 						onChange={() => onChange(v)}
 						className="sr-only"
 					/>

@@ -32,15 +32,15 @@ const renderAt = (path: string) =>
 	);
 
 describe("画面遷移", () => {
-	test("/ はバックテストへ移る", () => {
+	test("/ はホームへ移る", () => {
 		const view = renderAt("/");
-		expect(view.getByRole("heading", { name: "バックテスト" })).toBeTruthy();
+		expect(view.getByRole("heading", { name: "ホーム" })).toBeTruthy();
 	});
 
 	test("タブで各画面へ移れる", () => {
 		const view = renderAt("/backtest");
 		const nav = view.getByRole("navigation", { name: "メイン" });
-		for (const name of ["戦略設定", "過去データ", "その他"]) {
+		for (const name of ["戦略設定", "過去データ", "その他", "ホーム"]) {
 			const link = [...nav.querySelectorAll("a")].find(
 				(a) => a.textContent === name,
 			);

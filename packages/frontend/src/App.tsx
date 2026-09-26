@@ -12,6 +12,7 @@ import { BacktestJobProvider, useBacktestJob } from "./lib/backtest-job";
 import { BacktestResultPage } from "./pages/BacktestResultPage";
 import { BacktestRunPage } from "./pages/BacktestRunPage";
 import { DataPage } from "./pages/DataPage";
+import { HomePage } from "./pages/HomePage";
 import { OtherPage } from "./pages/OtherPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { StrategiesPage } from "./pages/StrategiesPage";
@@ -30,14 +31,15 @@ function Shell() {
 		<>
 			<Routes>
 				<Route element={<Layout badges={{ "/backtest": running !== null }} />}>
-					<Route index element={<Navigate to="/backtest" replace />} />
+					<Route index element={<Navigate to="/home" replace />} />
+					<Route path="/home" element={<HomePage />} />
 					<Route path="/backtest" element={<BacktestRunPage />} />
 					<Route path="/backtest/runs/:id" element={<BacktestResultPage />} />
 					<Route path="/strategies/:id?" element={<StrategiesPage />} />
 					<Route path="/data" element={<DataPage />} />
 					<Route path="/other" element={<OtherPage />} />
 					<Route path="/settings" element={<SettingsPage />} />
-					<Route path="*" element={<Navigate to="/backtest" replace />} />
+					<Route path="*" element={<Navigate to="/home" replace />} />
 				</Route>
 			</Routes>
 			<FinishedNotice />

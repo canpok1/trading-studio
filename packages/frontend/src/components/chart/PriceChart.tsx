@@ -1,4 +1,4 @@
-// 価格チャート。バックテスト結果（のちにペーパー・ライブも）で使う
+// 価格チャート。バックテスト結果とホーム（のちにペーパー・ライブも）で使う
 
 import { ema } from "@trading-studio/core";
 import type {
@@ -39,6 +39,16 @@ type Props = {
 	onMarker?: (m: ChartMarker) => void;
 	/** 同じ画面に複数置くときの区別（ラジオボタンの name に使う） */
 	name?: string;
+	/** 表示期間を呼び出し側で持つとき（期間に合わせて足を取り直すホームなど） */
+	range?: ChartRange;
+	onRangeChange?: (r: ChartRange) => void;
+	/** 表示期間の切り替えの下に置く操作（ホームの粒度の切り替えなど） */
+	toolbar?: ReactNode;
+	/**
+	 * 表示範囲を合わせ直すきっかけ。指定すると、足が更新されても値が変わるまで利用者の拡大・移動を保つ
+	 * （数秒ごとに最新の価格を足すホームで、そのたびに表示範囲が戻らないように）
+	 */
+	viewKey?: string;
 };
 
 const EMA_VARS = ["--color-ema1", "--color-ema2"] as const;
@@ -93,6 +103,10 @@ export function PriceChart({
 	selectedId = null,
 	onMarker,
 	name = "chart",
+	range: controlledRange,
+	onRangeChange,
+	toolbar,
+	viewKey,
 }: Props) {
 	const box = useRef<HTMLDivElement>(null);
 	const chartRef = useRef<{
@@ -101,7 +115,9 @@ export function PriceChart({
 		marks: ISeriesMarkersPluginApi<Time>;
 		emas: ISeriesApi<"Line">[];
 	} | null>(null);
-	const [range, setRange] = useState<ChartRange>("all");
+	const [ownRange, setOwnRange] = useState<ChartRange>("all");
+	const range = controlledRange ?? ownRange;
+	const setRange = onRangeChange ?? setOwnRange;
 	const [emaOn, setEmaOn] = useState(true);
 	const [cursor, setCursor] = useState<number | null>(null);
 	const [themeTick, setThemeTick] = useState(0);
@@ -273,7 +289,10 @@ export function PriceChart({
 		c.marks.setMarkers(list);
 	}, [markers, barTimes, selectedId, themeTick]);
 
-	// 表示期間
+	// 表示期間。viewKey があれば、足が届き始めたときと viewKey が変わったときだけ合わせ直す
+	const hasBars = barTimes.length > 0;
+	const zoomKey = viewKey ?? barTimes;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 合わせ直すきっかけは zoomKey と hasBars で決める
 	useEffect(() => {
 		const c = chartRef.current;
 		if (!c) return;
@@ -284,7 +303,7 @@ export function PriceChart({
 		const r = visibleRange(range, barTimes.length, step);
 		if (r) c.chart.timeScale().setVisibleLogicalRange(r);
 		else c.chart.timeScale().fitContent();
-	}, [range, barTimes]);
+	}, [range, zoomKey, hasBars]);
 
 	// テーマの切り替えに追従する
 	useEffect(() => {
@@ -309,6 +328,7 @@ export function PriceChart({
 				value={range}
 				onChange={setRange}
 			/>
+			{toolbar}
 			{emaPeriods.length > 0 && (
 				<div className="flex items-center gap-2">
 					<span className="text-xs text-text-2">表示</span>
@@ -353,32 +373,52 @@ export function PriceChart({
 				aria-label="価格チャート"
 				className="h-[260px] w-full lg:h-[360px]"
 			/>
-			<details className="rounded-[10px] border border-line px-3 py-2 text-xs">
-				<summary className="cursor-pointer font-semibold">凡例</summary>
-				<div className="mt-2 flex flex-col gap-2">
-					<LegendRow title="注文">
-						<LegendItem shape="up" colorVar="--color-buy" label="買い約定" />
-						<LegendItem shape="down" colorVar="--color-sell" label="売り約定" />
-						<LegendItem shape="circle" colorVar="--color-buy" label="注文中" />
-						<LegendItem shape="square" colorVar="--color-cancel" label="取消" />
-					</LegendRow>
-					{showEma && (
-						<LegendRow title="EMA" note="戦略の条件で使う移動平均">
-							{emaPeriods.map((n, j) => (
-								<span key={n} className="flex items-center gap-1">
-									<i
-										className="inline-block h-[3px] w-3"
-										style={{ background: `var(${emaVar(j)})` }}
-									/>
-									EMA {n}
-								</span>
-							))}
-						</LegendRow>
-					)}
-				</div>
-			</details>
+			{(onMarker || showEma) && (
+				<details className="rounded-[10px] border border-line px-3 py-2 text-xs">
+					<summary className="cursor-pointer font-semibold">凡例</summary>
+					<div className="mt-2 flex flex-col gap-2">
+						{onMarker && (
+							<LegendRow title="注文">
+								<LegendItem
+									shape="up"
+									colorVar="--color-buy"
+									label="買い約定"
+								/>
+								<LegendItem
+									shape="down"
+									colorVar="--color-sell"
+									label="売り約定"
+								/>
+								<LegendItem
+									shape="circle"
+									colorVar="--color-buy"
+									label="注文中"
+								/>
+								<LegendItem
+									shape="square"
+									colorVar="--color-cancel"
+									label="取消"
+								/>
+							</LegendRow>
+						)}
+						{showEma && (
+							<LegendRow title="EMA" note="戦略の条件で使う移動平均">
+								{emaPeriods.map((n, j) => (
+									<span key={n} className="flex items-center gap-1">
+										<i
+											className="inline-block h-[3px] w-3"
+											style={{ background: `var(${emaVar(j)})` }}
+										/>
+										EMA {n}
+									</span>
+								))}
+							</LegendRow>
+						)}
+					</div>
+				</details>
+			)}
 			<p className="text-xs text-text-2">
-				アイコンをタップで詳細 · ピンチ / ホイールで拡大
+				{onMarker && "アイコンをタップで詳細 · "}ピンチ / ホイールで拡大
 			</p>
 		</div>
 	);

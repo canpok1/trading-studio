@@ -30,6 +30,14 @@ function Svg({ size, strokeWidth = 2, children, ...rest }: SvgProps) {
 	);
 }
 
+export function HomeIcon({ size = 22 }: IconProps) {
+	return (
+		<Svg size={size} strokeLinejoin="round">
+			<path d="M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z" />
+		</Svg>
+	);
+}
+
 export function BacktestIcon({ size = 22 }: IconProps) {
 	return (
 		<Svg size={size} strokeLinecap="round" strokeLinejoin="round">
