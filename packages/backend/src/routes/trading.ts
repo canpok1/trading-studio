@@ -88,6 +88,7 @@ export function tradingRoutes(service: TradingService) {
 							? Math.min(n, MAX_ORDERS)
 							: MAX_ORDERS,
 					),
+					...service.orderSummary(filter),
 				});
 			},
 		)

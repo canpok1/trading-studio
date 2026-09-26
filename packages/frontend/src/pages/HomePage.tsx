@@ -33,7 +33,7 @@ import {
 	ModeTag,
 	TradeOrderSheet,
 } from "../components/trading/TradeViews";
-import { Button, Card, Segmented } from "../components/ui";
+import { Button, Segmented } from "../components/ui";
 import { useChartBg } from "../lib/chart-bg";
 import {
 	changePercent,
@@ -339,8 +339,8 @@ function HomeBody({
 	);
 
 	const markers = useMemo(
-		() => toMarkers(orders ?? [], latest?.price ?? null),
-		[orders, latest],
+		() => toMarkers(orders ?? [], shownBars, latest?.price ?? null),
+		[orders, shownBars, latest],
 	);
 
 	const noData =
@@ -461,10 +461,23 @@ function HomeBody({
 	);
 }
 
-/** 注文をチャートの印にする。成行の注文中は価格が無いので今の価格に置く */
-function toMarkers(orders: StoredOrder[], price: number | null): ChartMarker[] {
+/**
+ * 注文をチャートの印にする。成行は約定するまで価格が無いので、注文中は今の価格、
+ * 取り消したものはその時刻の足の終値に置く（バックテスト結果と同じ）
+ */
+function toMarkers(
+	orders: StoredOrder[],
+	bars: readonly ChartBar[],
+	price: number | null,
+): ChartMarker[] {
 	return orders.flatMap((o) => {
-		const p = o.fillPrice ?? o.price ?? price;
+		const time = orderTime(o);
+		const p =
+			o.fillPrice ??
+			o.price ??
+			(o.status === "open"
+				? price
+				: (bars.findLast((b) => b.time <= time)?.close ?? null));
 		return p === null
 			? []
 			: [
@@ -472,7 +485,7 @@ function toMarkers(orders: StoredOrder[], price: number | null): ChartMarker[] {
 						id: o.id,
 						side: o.side,
 						status: o.status,
-						time: orderTime(o),
+						time,
 						price: p,
 					},
 				];
@@ -553,6 +566,7 @@ function RecentOrders({
 								order={o}
 								selected={o.id === selectedId}
 								onClick={() => onSelect(o.id)}
+								tag={<ModeTag mode={o.mode} />}
 							/>
 						))
 				)}

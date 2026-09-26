@@ -388,6 +388,8 @@ export function createTradingService({
 
 		orders: (filter, limit) => repo.orders(filter, limit),
 
+		orderSummary: (filter) => repo.orderSummary(filter),
+
 		order(m, id) {
 			const order = repo.order(m, id);
 			if (!order) return null;

@@ -2,6 +2,7 @@
 
 import type {
 	AutoTradingStatus,
+	OrderSummary,
 	StoredOrder,
 	TradingMode,
 } from "@trading-studio/backend";
@@ -88,8 +89,9 @@ export function useTradingOrders(query: OrderQuery, active: boolean) {
 	const [state, setState] = useState<{
 		key: string;
 		orders: StoredOrder[] | null;
+		summary: OrderSummary | null;
 		error: string | null;
-	}>({ key, orders: null, error: null });
+	}>({ key, orders: null, summary: null, error: null });
 	const seq = useRef(0);
 	const load = useCallback(async () => {
 		const my = ++seq.current;
@@ -104,15 +106,22 @@ export function useTradingOrders(query: OrderQuery, active: boolean) {
 						...(q.limit && { limit: String(q.limit) }),
 					},
 				})
-				.then((res) => readJson<{ orders: StoredOrder[] }>(res));
-			if (my === seq.current) setState({ key, orders: r.orders, error: null });
+				.then((res) => readJson<{ orders: StoredOrder[] } & OrderSummary>(res));
+			if (my === seq.current) {
+				setState({
+					key,
+					orders: r.orders,
+					summary: { count: r.count, realizedPnl: r.realizedPnl },
+					error: null,
+				});
+			}
 		} catch (e) {
 			if (my === seq.current) {
-				setState((s) => ({
-					key,
-					orders: s.key === key ? s.orders : null,
-					error: errorMessage(e),
-				}));
+				setState((s) =>
+					s.key === key
+						? { ...s, error: errorMessage(e) }
+						: { key, orders: null, summary: null, error: errorMessage(e) },
+				);
 			}
 		}
 	}, [api, key]);
@@ -123,6 +132,8 @@ export function useTradingOrders(query: OrderQuery, active: boolean) {
 	const fresh = state.key === key;
 	return {
 		orders: fresh ? state.orders : null,
+		/** 件数で切らずに数えた件数と実現損益 */
+		summary: fresh ? state.summary : null,
 		error: fresh ? state.error : null,
 		reload: load,
 	};

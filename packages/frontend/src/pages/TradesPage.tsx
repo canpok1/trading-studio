@@ -42,7 +42,7 @@ export function TradesPage() {
 		mode: TradingMode;
 		id: string;
 	} | null>(null);
-	const { orders, error, reload } = useTradingOrders(
+	const { orders, summary, error, reload } = useTradingOrders(
 		{
 			...(mode !== "all" && { mode }),
 			...(kind !== "all" && { status: kind }),
@@ -62,7 +62,7 @@ export function TradesPage() {
 		}
 		return [...map.values()];
 	}, [orders]);
-	const realized = (orders ?? []).reduce((a, o) => a + (o.pnl ?? 0), 0);
+	const realized = summary?.realizedPnl ?? 0;
 	const filtered = mode !== "all" || kind !== "all" || side !== "all";
 
 	return (
@@ -104,7 +104,7 @@ export function TradesPage() {
 			) : (
 				<>
 					<p data-testid="trades-summary" className="num text-xs text-text-2">
-						{orders.length} 件 · 実現損益{" "}
+						{summary?.count ?? orders.length} 件 · 実現損益{" "}
 						<span
 							className={`font-semibold ${realized >= 0 ? "text-profit" : "text-loss"}`}
 						>
@@ -160,6 +160,12 @@ export function TradesPage() {
 								</div>
 							</section>
 						))
+					)}
+					{summary && summary.count > orders.length && (
+						<p className="text-xs text-text-2">
+							一覧は新しい順に {orders.length}{" "}
+							件まで出している。件数と実現損益はすべてを数えている
+						</p>
 					)}
 					{error && (
 						<p role="alert" className="text-xs font-semibold text-loss">

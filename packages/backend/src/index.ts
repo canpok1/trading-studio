@@ -22,6 +22,7 @@ export type {
 export type { StoredStrategy } from "./strategies/types";
 export type {
 	AutoTradingStatus,
+	OrderSummary,
 	StoredDecision,
 	StoredOrder,
 	TradingMode,

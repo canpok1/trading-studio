@@ -222,6 +222,11 @@ describe("仮想の約定", () => {
 		expect(await ids("mode=paper&limit=1")).toEqual(["p2"]);
 		expect(await ids("side=buy&status=filled")).toEqual(["p1"]);
 		expect(await ids("mode=live")).toEqual([]);
+		// 件数と損益の合計は件数の指定で切らない
+		expect((await t.call("GET", "/orders?limit=1")).body).toMatchObject({
+			count: 2,
+			realizedPnl: 102_000 - 102 - 100_100,
+		});
 	});
 
 	test("指値は指値以下の約定が来たら指値で約定し、跨がなければ約定しない", async () => {

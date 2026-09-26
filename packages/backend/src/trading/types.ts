@@ -25,6 +25,12 @@ export type OrderFilter = {
 	side?: TradeOrder["side"];
 };
 
+export type OrderSummary = {
+	count: number;
+	/** 損益（売りの約定の手数料込みの損益）の合計（円） */
+	realizedPnl: number;
+};
+
 export type StoredDecision = {
 	id: number;
 	mode: TradingMode;
@@ -93,6 +99,8 @@ export interface TradingService {
 	reset(initialCash: number): TradingResult;
 	/** 新しい順に最大 limit 件 */
 	orders(filter: OrderFilter, limit?: number): StoredOrder[];
+	/** 件数で切らずに数えた、条件に合う注文の件数と実現損益 */
+	orderSummary(filter: OrderFilter): OrderSummary;
 	order(
 		mode: TradingMode,
 		id: string,
