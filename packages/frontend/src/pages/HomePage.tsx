@@ -24,7 +24,6 @@ import { PriceChart } from "../components/chart/PriceChart";
 import { JudgmentBadge } from "../components/judgment/JudgmentBadge";
 import { EmptyState, ErrorState, Skeleton } from "../components/States";
 import { Button, Card, Segmented } from "../components/ui";
-import { formatDateTime } from "../format";
 import { useChartBg } from "../lib/chart-bg";
 import {
 	changePercent,
@@ -35,7 +34,7 @@ import {
 	loadRange,
 	withLatestPrice,
 } from "../lib/home";
-import { formatInt, formatSignedPercent } from "../lib/number";
+import { formatSignedPercent } from "../lib/number";
 import {
 	errorMessage,
 	readJson,
@@ -58,7 +57,7 @@ const PANEL =
 	"flex min-w-0 flex-col gap-2.5 rounded-xl border border-line bg-surface p-3";
 /** PC 幅では、表示の切り替えを状態の右に、チャート本体を下の段に2列ぶち抜きで置く */
 const SPLIT = {
-	controls: "rounded-xl border border-line bg-surface p-3",
+	controls: "rounded-xl border border-line bg-surface p-3 lg:self-stretch",
 	chart: "rounded-xl border border-line bg-surface p-3 lg:col-span-2",
 };
 
@@ -309,7 +308,6 @@ function HomeBody({
 	return (
 		<HomeFrame>
 			<div className="flex flex-col gap-3.5">
-				<PriceHeader latest={latest} />
 				<CollectorAlert latest={latest} />
 				{latestError && (
 					<div
@@ -384,6 +382,7 @@ function HomeBody({
 					bg={bg}
 					onBgChange={setBg}
 					split={SPLIT}
+					latestNote={<Change24h latest={latest} />}
 					toolbar={
 						<>
 							<Segmented
@@ -433,43 +432,19 @@ function JudgmentTiles({ current }: { current: CurrentJudgment }) {
 	);
 }
 
-/** 見出し・現在値・24時間の変化率。現在値は上がれば緑・下がれば赤で一瞬光る */
-function PriceHeader({ latest }: { latest: LatestMarket | null }) {
-	const [now, setNow] = useState(() => Date.now());
-	useInterval(() => setNow(Date.now()), 1_000, true);
-	const price = latest?.price ?? null;
-	const prev = useRef<number | null>(null);
-	const [flash, setFlash] = useState<"up" | "down" | null>(null);
-	useEffect(() => {
-		const before = prev.current;
-		prev.current = price;
-		if (before === null || price === null || before === price) return;
-		setFlash(price > before ? "up" : "down");
-		const id = setTimeout(() => setFlash(null), 800);
-		return () => clearTimeout(id);
-	}, [price]);
-	const change = changePercent(price, latest?.price24hAgo ?? null);
-
+/** 24時間の変化率。上がれば緑・下がれば赤 */
+function Change24h({ latest }: { latest: LatestMarket | null }) {
+	const change = changePercent(
+		latest?.price ?? null,
+		latest?.price24hAgo ?? null,
+	);
 	return (
-		<div className="flex items-end justify-between gap-2">
-			<div className="flex min-w-0 flex-col gap-0.5">
-				<span className="text-xs text-text-2">
-					BTC/JPY · Coincheck ·{" "}
-					<span className="num">{formatDateTime(now)}</span>
-				</span>
-				<span
-					data-testid="home-price"
-					className={`num text-[28px] font-semibold tracking-tight transition-colors duration-300 ${flash === "up" ? "text-profit" : flash === "down" ? "text-loss" : ""}`}
-				>
-					{price === null ? "—" : `¥${formatInt(price)}`}
-				</span>
-			</div>
-			<span
-				className={`num pb-1.5 text-xs font-semibold ${change === null ? "text-text-2" : change >= 0 ? "text-profit" : "text-loss"}`}
-			>
-				{change === null ? "24h —" : `24h ${formatSignedPercent(change)}`}
-			</span>
-		</div>
+		<span
+			data-testid="home-change"
+			className={`font-semibold ${change === null ? "text-text-2" : change >= 0 ? "text-profit" : "text-loss"}`}
+		>
+			{change === null ? "24h —" : `24h ${formatSignedPercent(change)}`}
+		</span>
 	);
 }
 

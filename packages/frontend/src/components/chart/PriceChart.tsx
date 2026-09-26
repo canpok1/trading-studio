@@ -71,6 +71,8 @@ type Props = {
 	 * 値はそれぞれのパネルに足す className
 	 */
 	split?: { controls: string; chart: string };
+	/** 最新の足を表示しているときだけ、上端の終値の右に出す（ホームの24時間の変化率） */
+	latestNote?: ReactNode;
 	/**
 	 * 表示範囲を合わせ直すきっかけ。指定すると、足が更新されても値が変わるまで利用者の拡大・移動を保つ
 	 * （数秒ごとに最新の価格を足すホームで、そのたびに表示範囲が戻らないように）
@@ -161,6 +163,7 @@ export function PriceChart({
 	currentPrice,
 	toolbar,
 	split,
+	latestNote,
 	viewKey,
 	judgments = null,
 	bg = "trend",
@@ -516,6 +519,7 @@ export function PriceChart({
 	const slot = slots[cursor ?? slots.length - 1] ?? null;
 	const shown = slot?.bar ?? null;
 	const bar = shown === null ? null : bars[shown];
+	const atLastSlot = cursor === null || cursor === slots.length - 1;
 
 	const controls = (
 		<>
@@ -590,7 +594,10 @@ export function PriceChart({
 									{formatInt(bar.low ?? 0)}
 								</span>
 							)}
-							<span className="font-semibold">¥{formatInt(bar.close)}</span>
+							<span data-testid="chart-close" className="font-semibold">
+								¥{formatInt(bar.close)}
+							</span>
+							{atLastSlot && latestNote}
 							{judgments &&
 								JUDGES.map((j) => {
 									const v = judgments[j][shown as number] ?? null;
