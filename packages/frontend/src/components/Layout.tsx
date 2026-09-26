@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from "react-router";
 import {
 	BacktestIcon,
 	DataIcon,
+	HomeIcon,
 	OtherIcon,
 	SettingsIcon,
 	StrategyIcon,
@@ -19,6 +20,7 @@ type NavItem = {
 };
 
 const NAV: NavItem[] = [
+	{ to: "/home", label: "ホーム", icon: <HomeIcon />, show: "both" },
 	{
 		to: "/backtest",
 		label: "バックテスト",
@@ -49,7 +51,7 @@ export function Layout({ badges = {} }: { badges?: Record<string, boolean> }) {
 		<div className="flex min-h-full flex-col lg:flex-row">
 			<nav
 				aria-label="メイン"
-				className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-[220px] lg:shrink-0 lg:flex-col lg:gap-0.5 lg:border-t-0 lg:border-r lg:px-3 lg:py-5"
+				className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-[220px] lg:shrink-0 lg:flex-col lg:gap-0.5 lg:border-t-0 lg:border-r lg:px-3 lg:py-5"
 			>
 				<div className="hidden px-2.5 pb-4 text-[15px] font-bold lg:block">
 					trading-studio

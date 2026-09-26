@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test("各画面へ移動できる", async ({ page, isMobile }) => {
 	await page.goto("/");
-	await expect(page).toHaveURL(/\/backtest$/);
+	await expect(page).toHaveURL(/\/home$/);
 	const nav = page.getByRole("navigation", { name: "メイン" });
 	const items = isMobile
 		? ["戦略設定", "過去データ", "その他", "バックテスト"]

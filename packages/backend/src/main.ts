@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
@@ -49,10 +50,15 @@ const backtestRepo = new BacktestRepository(db);
 backtestRepo.failInterrupted(Date.now());
 const strategies = createStrategyService(db);
 
+// E2E で収集の停止を再現するためのファイル。あれば偽物の取引所が止まる
+const demoDownFile = join(dirname(dbPath), "feed-down");
 // 収集はサーバーが動いている間は常に行う（ON/OFF は作らない）
 const collector = createCollector({
 	// E2E では取引所へつながず、偽物の約定を流す
-	feed: process.env.MARKET_FEED === "demo" ? demoFeed() : coincheckFeed(),
+	feed:
+		process.env.MARKET_FEED === "demo"
+			? demoFeed({ isDown: () => existsSync(demoDownFile) })
+			: coincheckFeed(),
 	repo: marketDataRepo,
 });
 const collectorTimer = setInterval(() => collector.tick(), 1_000);
