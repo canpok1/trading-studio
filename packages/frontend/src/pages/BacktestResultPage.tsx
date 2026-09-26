@@ -31,6 +31,7 @@ import { formatDate, toDateInputValue } from "../format";
 import { useBacktestJob } from "../lib/backtest-job";
 import { useChartBg } from "../lib/chart-bg";
 import {
+	buyOrderText,
 	conditionDiff,
 	frequencyText,
 	groupText,
@@ -185,6 +186,7 @@ function RunHeader({
 	const chips = [
 		frequencyText(p),
 		`買: ${groupText(p.buy)}`,
+		`買いの注文: ${buyOrderText(p.buyOrder)}`,
 		`利確: ${groupText(p.takeProfit)}`,
 		`損切り: ${groupText(p.stopLoss)}`,
 		`${formatBtc(p.orderSize)} BTC`,

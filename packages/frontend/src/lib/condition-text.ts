@@ -2,6 +2,7 @@
 
 import type {
 	AggregationRule,
+	BuyOrder,
 	Condition,
 	ConditionGroup,
 	ConditionSet,
@@ -12,6 +13,7 @@ import {
 	FREQUENCY_UNIT_LABELS,
 	formatBtc,
 	JUDGMENT_VALUE_LABELS,
+	ORDER_TYPE_LABELS,
 	TIMEFRAME_LABELS,
 } from "@trading-studio/core";
 
@@ -47,6 +49,12 @@ export function ruleText(r: AggregationRule): string {
 	return `集計 ${r.windowHours}時間・半減期${r.halfLifeHours}時間 · トレンド ${t.trend.down}/${t.trend.up} · リスク ${t.risk.caution}/${t.risk.crisis} · 感情 ${t.sentiment.minus2}/${t.sentiment.minus1}/${t.sentiment.plus1}/${t.sentiment.plus2}`;
 }
 
+export function buyOrderText(o: BuyOrder): string {
+	return o.type === "limit"
+		? `指値 −${o.belowPercent}%・${o.expireBars}本で取消`
+		: ORDER_TYPE_LABELS[o.type];
+}
+
 export function groupText(g: ConditionGroup): string {
 	return (
 		g.conditions
@@ -68,6 +76,11 @@ export function conditionDiff(
 		],
 		["判定の頻度", frequencyText(before), frequencyText(after)],
 		["買い注文する条件", groupText(before.buy), groupText(after.buy)],
+		[
+			"買いの注文方法",
+			buyOrderText(before.buyOrder),
+			buyOrderText(after.buyOrder),
+		],
 		[
 			"売り（利確）の条件",
 			groupText(before.takeProfit),

@@ -145,3 +145,36 @@ test("AI 判定の条件を追加して保存でき、値を1つも選ばない�
 	await expect(saved.getByLabel("平常")).toBeChecked();
 	await expect(saved.getByLabel("警戒")).not.toBeChecked();
 });
+
+test("買いの注文方法を指値に変えて値幅と本数を保存でき、成行では入力欄を出さない", async ({
+	page,
+}, info) => {
+	await page.goto("/strategies");
+	await createFromTemplate(
+		page,
+		`注文方法 ${info.project.name}`,
+		/^トレンド追随/,
+	);
+	const buy = page.getByRole("region", { name: "買い注文する条件" });
+	const below = buy.getByLabel("指値を現在値から下げる %");
+	// トレンド追随のひな形は成行
+	await expect(buy.getByRole("radio", { name: "成行" })).toBeChecked();
+	await expect(below).toHaveCount(0);
+
+	await buy.getByText("指値", { exact: true }).click();
+	await below.fill("0.5");
+	await buy.getByLabel("指値を取り消すまでの本数").fill("6");
+	await page.getByRole("button", { name: "保存", exact: true }).click();
+	await expect(page.getByRole("status")).toHaveText("保存した");
+
+	await page.reload();
+	await expect(buy.getByRole("radio", { name: "指値" })).toBeChecked();
+	await expect(below).toHaveValue("0.5");
+	await expect(buy.getByLabel("指値を取り消すまでの本数")).toHaveValue("6");
+
+	await below.fill("100");
+	await expect(below).toHaveAttribute("aria-invalid", "true");
+	await expect(
+		page.getByRole("button", { name: "入力を直すと保存できる" }),
+	).toBeDisabled();
+});

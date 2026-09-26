@@ -322,6 +322,17 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 		record.fee = fee;
 	};
 
+	/** 成行の買いは約定価格が発注後に決まるため、約定の時点で資金を確かめる。足りなければ取消の理由 */
+	const buyShortfall = (order: Order, price: number): string | null => {
+		if (order.side !== "buy" || order.type !== "market") return null;
+		const need =
+			notionalYen(price, order.quantity, "ceil") +
+			feeYen(price, order.quantity, feeRate(order.type));
+		return cash < need
+			? `資金 ${formatYen(cash)} 円が手数料込みの約定額 ${formatYen(need)} 円に足りないため取消`
+			: null;
+	};
+
 	const place = (
 		intent: Extract<OrderIntent, { kind: "place" }>,
 		now: number,
@@ -406,7 +417,11 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 		let filled = false;
 		for (const item of open) {
 			const price = fillModel(item.order, bar);
-			if (price !== null) {
+			if (price === null) continue;
+			const short = buyShortfall(item.order, price);
+			if (short) {
+				cancel(item, bar.time, short);
+			} else {
 				applyFill(item, price, bar.time);
 				filled = true;
 			}
