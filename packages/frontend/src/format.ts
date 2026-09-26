@@ -22,6 +22,16 @@ export function formatDateTime(ms: number): string {
 	return `${t.y}/${p2(t.mo)}/${p2(t.d)} ${p2(t.h)}:${p2(t.mi)}:${p2(t.s)}`;
 }
 
+/** 例: 13:14。now と日（JST）が違えば 9/27 13:14 */
+export function formatClock(ms: number, now: number): string {
+	const t = jstParts(ms);
+	const n = jstParts(now);
+	const hm = `${p2(t.h)}:${p2(t.mi)}`;
+	return t.y === n.y && t.mo === n.mo && t.d === n.d
+		? hm
+		: `${t.mo}/${t.d} ${hm}`;
+}
+
 /** 例: 2026/09/26 */
 export function formatDate(ms: number): string {
 	const t = jstParts(ms);

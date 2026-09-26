@@ -66,6 +66,8 @@ export type AutoTradingStatus = {
 	startedAt: number | null;
 	/** 価格の収集が止まっていて判定を待っている */
 	waitingForMarket: boolean;
+	/** 今日（JST）の確定損失（円、損が無ければ 0）と、戦略の1日の損失上限。上限に達していれば新しい買いを止めている */
+	dailyLoss: { loss: number; limit: number | null; blocked: boolean };
 	account: TradingAccountView;
 };
 

@@ -1,11 +1,13 @@
 import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
+import { useTradingStatus } from "../lib/trading";
 import {
 	AiIcon,
 	BacktestIcon,
 	DataIcon,
 	HomeIcon,
 	OtherIcon,
+	PaperIcon,
 	SettingsIcon,
 	StrategyIcon,
 } from "./icons";
@@ -92,8 +94,31 @@ export function Layout({ badges = {} }: { badges?: Record<string, boolean> }) {
 				})}
 			</nav>
 			<main className="min-w-0 flex-1 pb-[calc(88px+env(safe-area-inset-bottom))] lg:pb-8">
+				<TradingBand />
 				<Outlet />
 			</main>
 		</div>
+	);
+}
+
+/** 自動取引がオンの間だけ、全画面の上部に出す帯 */
+function TradingBand() {
+	const { status } = useTradingStatus();
+	if (!status?.enabled) return null;
+	return (
+		<aside
+			aria-label="稼働中の自動取引"
+			className="sticky top-0 z-30 flex min-h-10 items-center gap-2 border-b-[3px] border-dashed border-paper-ink bg-paper px-4 text-xs text-paper-ink"
+		>
+			<PaperIcon />
+			<strong className="text-[13px] whitespace-nowrap">ペーパー稼働中</strong>
+			<span className="hidden sm:inline">最新の実データで模擬売買</span>
+			<span
+				data-testid="band-strategy"
+				className="ml-auto min-w-0 truncate font-bold"
+			>
+				{status.strategy?.name ?? ""}
+			</span>
+		</aside>
 	);
 }

@@ -82,10 +82,45 @@ export type Account = {
 	openOrders: OpenOrder[];
 	/** 注文の通し番号。注文の id に使う */
 	seq: number;
+	/** その日（JST）に確定した損益（手数料込み）。dayStart はその日の 0:00（JST） */
+	today: { dayStart: number; pnl: number };
 };
 
 export function newAccount(cash: number, seq = 0): Account {
-	return { cash, position: EMPTY_POSITION, entry: null, openOrders: [], seq };
+	return {
+		cash,
+		position: EMPTY_POSITION,
+		entry: null,
+		openOrders: [],
+		seq,
+		today: { dayStart: 0, pnl: 0 },
+	};
+}
+
+const DAY_MS = 86_400_000;
+const JST_OFFSET_MS = 9 * 3_600_000;
+
+/** その時刻を含む日の 0:00（JST）。1日の損失はこの区切りで数える */
+export function jstDayStart(time: number): number {
+	return Math.floor((time + JST_OFFSET_MS) / DAY_MS) * DAY_MS - JST_OFFSET_MS;
+}
+
+/** その時刻の日（JST）に確定した損益。前の日の分は数えない */
+export function realizedPnlOn(account: Account, time: number): number {
+	return account.today.dayStart === jstDayStart(time) ? account.today.pnl : 0;
+}
+
+/** 1日の損失上限で新しい買いを止める理由。止めなければ null */
+export function dailyLossBlock(
+	account: Account,
+	time: number,
+	limit: number | null,
+): string | null {
+	if (limit === null) return null;
+	const loss = -realizedPnlOn(account, time);
+	return loss >= limit
+		? `本日の確定損失 ${formatYen(loss)} 円が1日の損失上限 ${formatYen(limit)} 円に達したため買わない（翌 0 時に再開）`
+		: null;
 }
 
 /** 1ステップで変わったもの。changed は発注・約定・取消・対応づけで変わった注文の記録（最新の内容） */
@@ -126,7 +161,7 @@ export function settleFills(
 	time: number,
 	fees: FeeRates,
 ): StepChanges & { account: Account; filled: boolean } {
-	let { cash, position, entry } = account;
+	let { cash, position, entry, today } = account;
 	const changed: TradeOrder[] = [];
 	const trades: Trade[] = [];
 	const remaining: OpenOrder[] = [];
@@ -199,6 +234,11 @@ export function settleFills(
 					quantity: order.quantity,
 					pnl,
 				});
+				const day = jstDayStart(time);
+				today = {
+					dayStart: day,
+					pnl: (today.dayStart === day ? today.pnl : 0) + pnl,
+				};
 				record = { ...record, pnl, pairId: entry.record.id };
 				withChanged(changed, { ...entry.record, pairId: order.id });
 				entry = null;
@@ -208,7 +248,14 @@ export function settleFills(
 		filled = true;
 	}
 	return {
-		account: { ...account, cash, position, entry, openOrders: remaining },
+		account: {
+			...account,
+			cash,
+			position,
+			entry,
+			today,
+			openOrders: remaining,
+		},
 		changed,
 		trades,
 		filled,
@@ -273,11 +320,6 @@ export type DecideInput<P> = {
 	timeframeMs: number;
 	/** 注文の id の頭につける文字。既定は "o" */
 	idPrefix?: string;
-	/**
-	 * 新しい買いを止める理由（リスク上限など）。null なら止めない。
-	 * 戦略の条件とは別に、注文を出す手前で検査する。売りは止めない
-	 */
-	blockBuy?: string | null;
 };
 
 export type DecideOutput = StepChanges & {
@@ -295,6 +337,12 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 	let open = [...input.account.openOrders];
 	const changed: TradeOrder[] = [];
 	const openOrders = open.map((x) => ({ ...x.order }));
+	// リスク上限は戦略の条件とは別に、注文を出す手前で検査する。止めるのは新しい買いだけ
+	const blockBuy = dailyLossBlock(
+		input.account,
+		now,
+		strategy.dailyLossLimit?.(params) ?? null,
+	);
 
 	const out: StrategyOutput = strategy.evaluate({
 		now,
@@ -314,8 +362,8 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 		if (intent.type === "limit" && intent.price === undefined) {
 			return "指値の価格が無いため発注しない";
 		}
-		if (intent.side === "buy" && input.blockBuy) {
-			return input.blockBuy;
+		if (intent.side === "buy" && blockBuy) {
+			return blockBuy;
 		}
 		if (intent.side === "buy" && intent.type === "limit") {
 			const price = intent.price as number;

@@ -178,3 +178,27 @@ test("買いの注文方法を指値に変えて値幅と本数を保存でき�
 		page.getByRole("button", { name: "入力を直すと保存できる" }),
 	).toBeDisabled();
 });
+
+test("1日の損失上限を変えて保存でき、0 円は保存できない", async ({
+	page,
+}, info) => {
+	await page.goto("/strategies");
+	await createFromTemplate(
+		page,
+		`損失上限 ${info.project.name}`,
+		/^トレンド追随/,
+	);
+	const limit = page.getByLabel("1日の損失上限（円）");
+	await expect(limit).toHaveValue("30,000");
+	await limit.fill("50000");
+	await page.getByRole("button", { name: "保存", exact: true }).click();
+	await expect(page.getByRole("status")).toHaveText("保存した");
+	await page.reload();
+	await expect(limit).toHaveValue("50,000");
+
+	await limit.fill("0");
+	await expect(limit).toHaveAttribute("aria-invalid", "true");
+	await expect(
+		page.getByRole("button", { name: "入力を直すと保存できる" }),
+	).toBeDisabled();
+});

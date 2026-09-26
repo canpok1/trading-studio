@@ -18,6 +18,7 @@ const PARAMS: ConditionSet = {
 		holding: { value: 1, unit: "h" },
 	},
 	orderSize: 1_000_000,
+	dailyLossLimit: 30_000,
 	buy: {
 		match: "all",
 		conditions: [{ type: "breakout", lookback: 5, direction: "high" }],
@@ -393,6 +394,21 @@ describe("チャートの AI 判定", () => {
 		const run = (await post(t, body())).json.run as BacktestRun;
 		await t.backtests.running();
 		expect(run.aggregationRule?.thresholds.trend.up).toBe(90);
+		expect(run.dailyLossLimitApplied).toBe(true);
+		// 1日の損失上限を持つ前の実行は、上限を効かせずに回した結果として読む
+		const old = JSON.parse(
+			(
+				t.db.$client
+					.query("select params from backtest_runs where id = ?")
+					.get(run.id) as { params: string }
+			).params,
+		);
+		delete old.dailyLossLimit;
+		t.db.$client.run("update backtest_runs set params = ? where id = ?", [
+			JSON.stringify(old),
+			run.id,
+		]);
+		expect(t.backtests.get(run.id)?.dailyLossLimitApplied).toBe(false);
 		// 実行した後にルールを変えても、結果は実行したときのルールで出す
 		t.scoreRepo.setAggregationRule(rule);
 

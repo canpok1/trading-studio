@@ -46,6 +46,7 @@ function toRun(r: RunRow): BacktestRun {
 		strategyExists: r.current_name !== null,
 		// 保存するときに形を検証しているので、読み出しでは形が崩れていない前提で読む
 		params: parseConditionSet(JSON.parse(r.params)) as ConditionSet,
+		dailyLossLimitApplied: "dailyLossLimit" in JSON.parse(r.params),
 		timeframe: r.timeframe,
 		from: r.from_time,
 		to: r.to_time,
@@ -95,6 +96,7 @@ export class BacktestRepository {
 			| "filledCount"
 			| "orderCount"
 			| "error"
+			| "dailyLossLimitApplied"
 		> & { strategyName: string },
 	): number {
 		return Number(

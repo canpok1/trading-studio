@@ -50,4 +50,9 @@ export type Strategy<P> = {
 	/** パラメータの入力検証。問題が無ければ空配列 */
 	validate(params: P): ValidationError[];
 	evaluate(input: StrategyInput<P>): StrategyOutput;
+	/**
+	 * 1日の損失上限（円）。その日（JST）の確定損失が達したら新しい買いを止める。無ければ止めない。
+	 * 戦略の条件とは別に、売買の1ステップの中で注文を出す手前で検査する
+	 */
+	dailyLossLimit?(params: P): number | null;
 };

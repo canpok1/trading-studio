@@ -58,6 +58,8 @@ export type BacktestRun = {
 	error: string | null;
 	/** 実行したときの AI 判定の集計ルール。記録する前の実行は null */
 	aggregationRule: AggregationRule | null;
+	/** 1日の損失上限を効かせて実行したか。上限を持つ前の実行は false（params には既定の上限が入って読まれる） */
+	dailyLossLimitApplied: boolean;
 };
 
 /** チャートに出す注文。時刻と価格は、約定・取消・発注のうち最後の状態のもの */

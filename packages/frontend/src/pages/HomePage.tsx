@@ -21,6 +21,7 @@ import { useApi } from "../api";
 import type { ChartBar } from "../components/chart/chart-data";
 import { alignJudgments } from "../components/chart/judgment-data";
 import { PriceChart } from "../components/chart/PriceChart";
+import { AutoTradingCard } from "../components/home/AutoTradingCard";
 import { JudgmentBadge } from "../components/judgment/JudgmentBadge";
 import { EmptyState, ErrorState, Skeleton } from "../components/States";
 import { Button, Card, Segmented } from "../components/ui";
@@ -35,6 +36,7 @@ import {
 	withLatestPrice,
 } from "../lib/home";
 import { formatSignedPercent } from "../lib/number";
+import { useTradingStatus } from "../lib/trading";
 import {
 	errorMessage,
 	readJson,
@@ -175,6 +177,20 @@ function HomeBody({
 	visible: boolean;
 }) {
 	const api = useApi();
+	const { refresh: refreshTrading } = useTradingStatus();
+	const [toast, setToast] = useState<string | null>(null);
+	const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const showToast = useCallback((message: string) => {
+		setToast(message);
+		if (toastTimer.current) clearTimeout(toastTimer.current);
+		toastTimer.current = setTimeout(() => setToast(null), 2_600);
+	}, []);
+	useEffect(
+		() => () => {
+			if (toastTimer.current) clearTimeout(toastTimer.current);
+		},
+		[],
+	);
 	const [strategies, setStrategies] = useState(initial);
 	const [saving, setSaving] = useState(false);
 	const [saveError, setSaveError] = useState<string | null>(null);
@@ -284,6 +300,8 @@ function HomeBody({
 				.then((res) => readJson<{ strategy: StoredStrategy | null }>(res));
 			setStrategies((s) => ({ ...s, active: r.strategy }));
 			setChosenTf(null);
+			// オフ中に出す「次の判定」は運用する戦略の粒度で決まる
+			refreshTrading();
 		} catch (e) {
 			setSaveError(errorMessage(e));
 		} finally {
@@ -323,37 +341,18 @@ function HomeBody({
 						</Button>
 					</div>
 				)}
-				<Card className="flex flex-col gap-2">
-					<label htmlFor="home-strategy" className="text-[15px] font-bold">
-						運用する戦略
-					</label>
-					<select
-						id="home-strategy"
-						className="h-11 w-full rounded-lg border border-line bg-surface px-3 text-[15px] font-semibold"
-						value={active?.id ?? ""}
-						disabled={saving}
-						onChange={(e) =>
-							choose(e.target.value === "" ? null : Number(e.target.value))
-						}
-					>
-						<option value="">未選択</option>
-						{strategies.list.map((s) => (
-							<option key={s.id} value={s.id}>
-								{s.name}（{TIMEFRAME_LABELS[s.params.timeframe]}）
-							</option>
-						))}
-					</select>
-					{saveError && (
-						<p role="alert" className="text-xs font-semibold text-loss">
-							保存できなかった: {saveError}
-						</p>
-					)}
-					{strategies.list.length === 0 && (
-						<p className="text-xs text-text-2">
-							戦略がまだ無い。「戦略」の画面で作ると選べる
-						</p>
-					)}
-				</Card>
+				<AutoTradingCard
+					strategies={strategies.list}
+					active={active}
+					saving={saving}
+					onChoose={choose}
+					onToast={showToast}
+				/>
+				{saveError && (
+					<p role="alert" className="text-xs font-semibold text-loss">
+						保存できなかった: {saveError}
+					</p>
+				)}
 				{current && <JudgmentTiles current={current} />}
 			</div>
 			{barsError && !bars ? (
@@ -402,6 +401,14 @@ function HomeBody({
 						</>
 					}
 				/>
+			)}
+			{toast && (
+				<div
+					role="status"
+					className="fixed inset-x-4 bottom-[calc(84px+env(safe-area-inset-bottom))] z-90 mx-auto w-fit max-w-[calc(100%-32px)] rounded-[10px] bg-text px-4 py-2.5 text-[13px] font-semibold text-bg shadow-lg lg:bottom-6"
+				>
+					{toast}
+				</div>
 			)}
 		</HomeFrame>
 	);

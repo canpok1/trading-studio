@@ -323,6 +323,7 @@ describe("判定頻度が戦略の粒度より短い", () => {
 			holding: { value: 15, unit: "m" },
 		},
 		orderSize: Q,
+		dailyLossLimit: 30_000,
 		buy: {
 			match: "all",
 			conditions: [{ type: "breakout", lookback: 2, direction: "high" }],
@@ -513,5 +514,66 @@ describe("AI 判定", () => {
 
 	test("判定の条件があるのに材料が無ければ実行しない", () => {
 		expect(() => run()).toThrow(BacktestError);
+	});
+});
+
+describe("1日の損失上限", () => {
+	// ポジションが無ければ成行で買い、あれば成行で売る。値下がりが続くので毎回損する
+	const churn: Strategy<null> = {
+		id: "churn",
+		requiredJudges: () => [],
+		minResolution: () => "1h",
+		historyBars: () => 1,
+		validate: () => [],
+		evaluate: ({ now, position, state }) => ({
+			intents: [
+				position.quantity > 0
+					? {
+							kind: "place",
+							side: "sell",
+							type: "market",
+							quantity: position.quantity,
+						}
+					: { kind: "place", side: "buy", type: "market", quantity: Q },
+			],
+			nextEvalAt: now + H,
+			state,
+		}),
+		dailyLossLimit: () => 2_000,
+	};
+
+	test("その日（JST）の確定損失が上限に達すると買いを止め、翌 0 時（JST）に再開する", () => {
+		// JST 0:00 = UTC 15:00。UTC 9:00 から 30 本（翌日の JST 0:00 を跨ぐ）
+		const start = 9 * H;
+		const candles = Array.from({ length: 30 }, (_, i) => {
+			const p = 10_000_000 - i * 100_000;
+			return {
+				time: start + i * H,
+				open: p,
+				high: p,
+				low: p,
+				close: p,
+				volume: 0,
+			};
+		});
+		const r = runBacktest({
+			strategy: churn,
+			params: null,
+			candles,
+			dataTimeframe: "1h",
+			from: start,
+			to: start + 30 * H,
+			initialCash: 10_000_000,
+			fees: { limitPpm: 0, marketPpm: 0 },
+		});
+		const buys = r.orders
+			.filter((o) => o.side === "buy")
+			.map((o) => o.placedAt);
+		// 1往復で 1,000 円（0.01 BTC × 10 万円）損する。13時（UTC）の売りで2往復ぶん上限に達する
+		expect(buys.filter((t) => t < 15 * H)).toEqual([10 * H, 12 * H]);
+		expect(buys.filter((t) => t >= 15 * H).at(0)).toBe(15 * H);
+		expect(r.decisions.find((d) => d.time === 14 * H)?.note).toContain(
+			"1日の損失上限 2,000 円に達したため買わない",
+		);
 	});
 });

@@ -30,6 +30,8 @@
 	--color-loss: #c1262e;
 	--color-warn: rgba(214, 150, 20, 0.2);
 	--color-warn-strong: #d89a12;
+	--color-paper: #e3a21a;
+	--color-paper-ink: #2a1e00;
 	--color-scrim: rgba(15, 17, 19, 0.45);
 
 	/* AI 判定。-bg は背景の塗り、名前だけのものは記号・帯の色 */
@@ -78,6 +80,7 @@
 	--color-loss: #f2646c;
 	--color-warn: rgba(240, 180, 40, 0.17);
 	--color-warn-strong: #e8b02f;
+	--color-paper-ink: #1f1600;
 	--color-scrim: rgba(0, 0, 0, 0.6);
 
 	--color-up-bg: rgba(60, 200, 120, 0.15);

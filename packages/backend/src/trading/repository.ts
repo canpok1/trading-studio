@@ -90,7 +90,11 @@ export class TradingRepository {
 		if (row) {
 			return {
 				initialCash: row.initial_cash,
-				account: JSON.parse(row.account) as Account,
+				// 1日の確定損益を持つ前に保存した口座も読めるようにする
+				account: {
+					today: { dayStart: 0, pnl: 0 },
+					...(JSON.parse(row.account) as Partial<Account>),
+				} as Account,
 				resetAt: row.reset_at,
 			};
 		}

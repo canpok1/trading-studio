@@ -31,6 +31,7 @@ const PARAMS = {
 		holding: { value: 1, unit: "h" },
 	},
 	orderSize: 1_000_000,
+	dailyLossLimit: 30_000,
 	buy: {
 		match: "all",
 		conditions: [{ type: "breakout", lookback: 5, direction: "high" }],

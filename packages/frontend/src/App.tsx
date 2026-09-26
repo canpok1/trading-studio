@@ -9,6 +9,7 @@ import {
 import { Layout } from "./components/Layout";
 import { Button } from "./components/ui";
 import { BacktestJobProvider, useBacktestJob } from "./lib/backtest-job";
+import { TradingStatusProvider } from "./lib/trading";
 import { AiPage } from "./pages/AiPage";
 import { BacktestResultPage } from "./pages/BacktestResultPage";
 import { BacktestRunPage } from "./pages/BacktestRunPage";
@@ -21,7 +22,9 @@ import { StrategiesPage } from "./pages/StrategiesPage";
 export function App() {
 	return (
 		<BacktestJobProvider>
-			<Shell />
+			<TradingStatusProvider>
+				<Shell />
+			</TradingStatusProvider>
 		</BacktestJobProvider>
 	);
 }
