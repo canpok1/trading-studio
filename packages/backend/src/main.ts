@@ -16,7 +16,13 @@ import { MarketDataRepository } from "./market-data/repository";
 import { createMarketDataService } from "./market-data/service";
 import { createNewsCollector, httpFetchFeed } from "./news/collector";
 import { demoFetchFeed } from "./news/fake-feed";
+import { demoScoreModel } from "./news/fake-model";
+import { geminiModel } from "./news/gemini";
+import { DEFAULT_CRITERIA } from "./news/prompt";
 import { NewsRepository } from "./news/repository";
+import { ScoreRepository } from "./news/score-repository";
+import { createScorer } from "./news/scorer";
+import { createScoringService } from "./news/scoring-service";
 import { createNewsService, DEFAULT_NEWS_SOURCES } from "./news/service";
 import { serveFrontend } from "./static";
 import { createStrategyService } from "./strategies/service";
@@ -82,6 +88,21 @@ const newsCollector = createNewsCollector({
 const newsTimer = setInterval(() => newsCollector.tick(), 1_000);
 newsCollector.tick();
 
+const scoreRepo = new ScoreRepository(db);
+scoreRepo.seedCriteria(DEFAULT_CRITERIA, Date.now());
+// E2E で採点の失敗を再現するためのファイル。あれば偽物の AI が失敗する
+const scoringDownFile = join(dirname(dbPath), "scoring-down");
+const scorer = createScorer({
+	repo: scoreRepo,
+	// E2E では Gemini へつながず、決まった点数を返す
+	model:
+		process.env.SCORING_MODEL === "demo"
+			? demoScoreModel({ isDown: () => existsSync(scoringDownFile) })
+			: geminiModel(process.env.GEMINI_API_KEY),
+	rule: () => scoreRepo.aggregationRule(),
+});
+const scorerTimer = setInterval(() => scorer.tick(), 1_000);
+
 const server = new Hono().route(
 	"/",
 	createApp({
@@ -96,6 +117,11 @@ const server = new Hono().route(
 			runner: workerRunner,
 		}),
 		news: createNewsService({ repo: newsRepo, collector: newsCollector }),
+		scoring: createScoringService({
+			repo: scoreRepo,
+			newsRepo,
+			scorer,
+		}),
 	}),
 );
 serveFrontend(server, distDir);
@@ -108,6 +134,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
 	process.on(signal, async () => {
 		clearInterval(collectorTimer);
 		clearInterval(newsTimer);
+		clearInterval(scorerTimer);
 		collector.stop();
 		await http.stop();
 		db.$client.close();
