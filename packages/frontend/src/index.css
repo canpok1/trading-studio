@@ -127,6 +127,20 @@
 	}
 }
 
+/* セレクトボックスの矢印。ブラウザ標準の矢印は枠の右端に寄るため、自前の矢印を内側に置く。
+   各画面の px-* より優先させるため、レイヤーに入れない。矢印の色は --color-text-2（data URL では変数を使えない） */
+select:not([multiple]) {
+	appearance: none;
+	padding-right: 2.25rem;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%234b525a' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: right 0.75rem center;
+	background-size: 1rem;
+}
+.dark select:not([multiple]) {
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23a5acb3' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+}
+
 /* 数値は等幅で桁を揃える */
 @utility num {
 	font-family: var(--font-mono);
