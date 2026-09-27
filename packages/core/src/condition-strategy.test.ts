@@ -118,6 +118,76 @@ describe("EMA のクロス", () => {
 	});
 });
 
+describe("RSI", () => {
+	const below: Condition = {
+		type: "rsi",
+		period: 2,
+		threshold: 30,
+		direction: "below",
+	};
+
+	test("RSI がしきい値以下なら成立し、値を記録に残す", () => {
+		// 値動き -10, -10 → RSI 0
+		const out = evaluateConditionSet(
+			input(candles([100, 90, 80]), buyWith(below)),
+		);
+		expect(out.intents).toHaveLength(1);
+		expect(out.note).toContain("RSI(2) 0.0 が 30 以下");
+	});
+
+	test("しきい値ちょうども成立し、超えれば成立しない", () => {
+		// 値動き +2, -1 → RSI 66.67
+		const at: Condition = { ...below, threshold: 66, direction: "above" };
+		expect(
+			evaluateConditionSet(input(candles([10, 12, 11]), buyWith(at))).intents,
+		).toHaveLength(1);
+		expect(
+			evaluateConditionSet(input(candles([10, 12, 11]), buyWith(below)))
+				.intents,
+		).toHaveLength(0);
+		// 下げだけ → RSI 0 は「以下」のしきい値 1 でも成立
+		const edge: Condition = { ...below, threshold: 1 };
+		expect(
+			evaluateConditionSet(input(candles([10, 9, 8]), buyWith(edge))).intents,
+		).toHaveLength(1);
+	});
+
+	test("本数が足りない間は判定しない", () => {
+		const out = evaluateConditionSet(input(candles([100, 90]), buyWith(below)));
+		expect(out.intents).toHaveLength(0);
+		expect(out.note).toContain("RSI(2) に 3 本必要");
+	});
+
+	test("期間としきい値の範囲", () => {
+		const errs = validateConditionSet(
+			buyWith({ ...below, period: 1, threshold: 100 }),
+		).map((e) => e.path);
+		expect(errs).toContain("buy.conditions.0.period");
+		expect(errs).toContain("buy.conditions.0.threshold");
+		expect(
+			validateConditionSet(
+				buyWith({ ...below, period: 100, threshold: 99 }),
+			).filter((e) => e.path.startsWith("buy.conditions")),
+		).toEqual([]);
+	});
+
+	test("必要な足の本数は期間の 10 倍 + 1", () => {
+		expect(historyBars(buyWith({ ...below, period: 14 }))).toBe(141);
+	});
+
+	test("JSON から読み戻せる", () => {
+		const p = buyWith(below);
+		expect(parseConditionSet(JSON.parse(JSON.stringify(p)))).toEqual(p);
+		expect(
+			parseConditionSet(
+				JSON.parse(
+					JSON.stringify(buyWith({ ...below, direction: "up" as "above" })),
+				),
+			),
+		).toBeNull();
+	});
+});
+
 describe("直近の高値・安値", () => {
 	test("終値が現在の足を除く直近 N 本の最高値を上抜けたら成立", () => {
 		const c: Condition = { type: "breakout", lookback: 3, direction: "high" };

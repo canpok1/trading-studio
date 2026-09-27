@@ -28,6 +28,8 @@ export function conditionScreenText(c: Condition): string {
 			return `短期EMA ${c.fast} 本が 長期EMA ${c.slow} 本を${c.direction === "up" ? "上抜けた" : "下抜けた"}`;
 		case "breakout":
 			return `終値が直近 ${c.lookback} 本の${c.direction === "high" ? "最高値を上抜けた" : "最安値を下抜けた"}`;
+		case "rsi":
+			return `RSI ${c.period} 本が ${c.threshold} ${c.direction === "above" ? "以上" : "以下"}`;
 		case "entryChange":
 			return `買値から ${c.percent} % ${c.direction === "up" ? "上がった" : "下がった"}`;
 		case "judgment":
