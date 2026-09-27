@@ -37,7 +37,7 @@ const scripted: Strategy<Script> = {
 	minResolution: () => "1h",
 	historyBars: () => 1,
 	validate: () => [],
-	evaluate: ({ now, position, openOrders, params, state }) => {
+	evaluate: ({ now, position, lots, openOrders, params, state }) => {
 		const next = { intents: [], nextEvalAt: now + H, state };
 		if (position.quantity > 0) {
 			return params.sell === false
@@ -50,6 +50,7 @@ const scripted: Strategy<Script> = {
 								side: "sell",
 								type: "market",
 								quantity: position.quantity,
+								lotId: lots[0]?.id,
 							},
 						],
 						note: "売り",
@@ -309,6 +310,7 @@ describe("判定頻度が戦略の粒度より短い", () => {
 			holding: { value: 15, unit: "m" },
 		},
 		orderSize: Q,
+		maxPositions: 1,
 		dailyLossLimit: 30_000,
 		buy: {
 			match: "all",
@@ -511,7 +513,7 @@ describe("1日の損失上限", () => {
 		minResolution: () => "1h",
 		historyBars: () => 1,
 		validate: () => [],
-		evaluate: ({ now, position, state }) => ({
+		evaluate: ({ now, position, lots, state }) => ({
 			intents: [
 				position.quantity > 0
 					? {
@@ -519,6 +521,7 @@ describe("1日の損失上限", () => {
 							side: "sell",
 							type: "market",
 							quantity: position.quantity,
+							lotId: lots[0]?.id,
 						}
 					: { kind: "place", side: "buy", type: "market", quantity: Q },
 			],
@@ -561,5 +564,68 @@ describe("1日の損失上限", () => {
 		expect(r.decisions.find((d) => d.time === 14 * H)?.note).toContain(
 			"1日の損失上限 2,000 円に達したため買わない",
 		);
+	});
+});
+
+describe("複数ポジション", () => {
+	const P = 10_000_000;
+	const params: ConditionSet = {
+		timeframe: "1h",
+		frequency: {
+			flat: { value: 1, unit: "h" },
+			holding: { value: 1, unit: "h" },
+		},
+		orderSize: Q,
+		maxPositions: 3,
+		dailyLossLimit: 30_000,
+		buy: {
+			match: "all",
+			conditions: [{ type: "breakout", lookback: 1, direction: "high" }],
+		},
+		buyOrder: {
+			lines: [
+				{ type: "limit", belowPercent: 0.5 },
+				{ type: "limit", belowPercent: 1 },
+				{ type: "limit", belowPercent: 1.5 },
+			],
+			expireBars: 3,
+		},
+		takeProfit: {
+			match: "any",
+			conditions: [{ type: "entryChange", percent: 2, direction: "up" }],
+		},
+		stopLoss: { match: "any", conditions: [] },
+	};
+	const list = bars([
+		[P, P, P, P],
+		[P, P + 100_000, P, P + 100_000], // 高値を上抜け → 3件の指値
+		[P + 100_000, P + 100_000, 9_900_000, 9_950_000], // 3件とも約定
+		[9_950_000, 10_300_000, 9_950_000, 10_300_000], // 3ロットとも +2% 以上 → 売り
+		[10_300_000, 10_300_000, 10_300_000, 10_300_000], // 始値で約定
+	]);
+
+	test("階段の指値がそれぞれロットになり、ロットごとに売って往復を数える", () => {
+		const r = runBacktest({
+			strategy: conditionStrategy,
+			params,
+			candles: list,
+			dataTimeframe: "1h",
+			from: 0,
+			to: list.length * H,
+			initialCash: 10_000_000,
+			fees: { limitPpm: 0, marketPpm: 0 },
+		});
+		expect(
+			r.orders.filter((o) => o.side === "buy").map((o) => o.fillPrice),
+		).toEqual([10_049_500, 9_999_000, 9_948_500]);
+		expect(r.trades.map((t) => [t.buyOrderId, t.pnl])).toEqual([
+			["o1", 2_505],
+			["o2", 3_010],
+			["o3", 3_515],
+		]);
+		expect(r.summary.trades).toBe(3);
+		expect(r.summary.openPositionQuantity).toBe(0);
+		// 売りと同じ判定で買いの条件が成立しても、売る前の保有で枠が埋まっているので買わない
+		expect(r.decisions[3]?.note).toContain("最大ポジション数 3 に達している");
 	});
 });

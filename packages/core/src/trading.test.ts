@@ -10,6 +10,7 @@ import {
 	expireOrders,
 	jstDayStart,
 	newAccount,
+	normalizeAccount,
 	settleFills,
 	tradeFillPrice,
 	tradingStep,
@@ -188,7 +189,13 @@ describe("注文の作成と約定", () => {
 		const placed = decideWith(buyLimit, newAccount(1_000_000));
 		const bought = settleFills(placed.account, () => 10_000_000, 11 * H, FEES);
 		const sell = fixed([
-			{ kind: "place", side: "sell", type: "market", quantity: 1_000_000 },
+			{
+				kind: "place",
+				side: "sell",
+				type: "market",
+				quantity: 1_000_000,
+				lotId: "p1",
+			},
 		]);
 		const selling = decideWith(sell, bought.account);
 		const sold = settleFills(selling.account, () => 11_000_000, 12 * H, FEES);
@@ -207,14 +214,20 @@ describe("注文の作成と約定", () => {
 			["p2", "p1"],
 		]);
 		expect(sold.account.position.quantity).toBe(0);
-		expect(sold.account.entry).toBeNull();
+		expect(sold.account.lots).toEqual([]);
 	});
 
 	test("その日（JST）の確定損失が上限に達したら買わず理由を残し、売りは出す。翌 0 時に再開する", () => {
 		const both = {
 			...fixed([
 				{ kind: "place", side: "buy", type: "market", quantity: 1 },
-				{ kind: "place", side: "sell", type: "market", quantity: 1 },
+				{
+					kind: "place",
+					side: "sell",
+					type: "market",
+					quantity: 1,
+					lotId: "b",
+				},
 			]),
 			dailyLossLimit: () => 1_000,
 		} satisfies Strategy<null>;
@@ -224,6 +237,16 @@ describe("注文の作成と約定", () => {
 		const account = {
 			...newAccount(1_000_000),
 			position: { quantity: 1, entryPrice: 1, openedAt: 0 },
+			lots: [
+				{
+					id: "b",
+					quantity: 1,
+					entryPrice: 1,
+					openedAt: 0,
+					cost: 1,
+					record: {} as TradeOrder,
+				},
+			],
 			today: { dayStart: day, pnl: -1_000 },
 		};
 		const out = decideWith(both, account);
@@ -249,7 +272,13 @@ describe("注文の作成と約定", () => {
 		const placed = decideWith(buyLimit, newAccount(1_000_000));
 		const bought = settleFills(placed.account, () => 10_000_000, 11 * H, FEES);
 		const sell = fixed([
-			{ kind: "place", side: "sell", type: "market", quantity: 1_000_000 },
+			{
+				kind: "place",
+				side: "sell",
+				type: "market",
+				quantity: 1_000_000,
+				lotId: "p1",
+			},
 		]);
 		const sold = settleFills(
 			decideWith(sell, bought.account).account,
@@ -299,5 +328,147 @@ describe("約定データでの約定の判定", () => {
 	test("注文より前の秒に成立した売買では約定しない", () => {
 		expect(tradeFillPrice(order, { time: 9_000, price: 99 })).toBeNull();
 		expect(tradeFillPrice(order, { time: 10_000, price: 99 })).toBe(100);
+	});
+});
+
+describe("ロット", () => {
+	const buys = fixed([
+		{
+			kind: "place",
+			side: "buy",
+			type: "limit",
+			price: 10_000_000,
+			quantity: 1_000_000,
+		},
+		{
+			kind: "place",
+			side: "buy",
+			type: "limit",
+			price: 9_000_000,
+			quantity: 1_000_000,
+		},
+	]);
+
+	test("約定した買いを1件ずつロットにし、合計は数量で重み付けした平均の買値", () => {
+		const placed = decideWith(buys, newAccount(1_000_000));
+		const filled = settleFills(placed.account, (o) => o.price, 11 * H, FEES);
+		expect(filled.account.lots.map((l) => [l.id, l.entryPrice])).toEqual([
+			["p1", 10_000_000],
+			["p2", 9_000_000],
+		]);
+		expect(filled.account.position).toEqual({
+			quantity: 2_000_000,
+			entryPrice: 9_500_000,
+			openedAt: 11 * H,
+		});
+	});
+
+	test("ロットを指定した売りは、そのロットだけで往復を閉じる", () => {
+		const placed = decideWith(buys, newAccount(1_000_000));
+		const bought = settleFills(placed.account, (o) => o.price, 11 * H, FEES);
+		const sell = fixed([
+			{
+				kind: "place",
+				side: "sell",
+				type: "market",
+				quantity: 1_000_000,
+				lotId: "p2",
+			},
+		]);
+		const sold = settleFills(
+			decideWith(sell, bought.account).account,
+			() => 9_500_000,
+			12 * H,
+			FEES,
+		);
+		expect(sold.trades).toEqual([
+			{
+				buyOrderId: "p2",
+				sellOrderId: "p3",
+				entryTime: 11 * H,
+				exitTime: 12 * H,
+				quantity: 1_000_000,
+				pnl: 95_000 - 95 - 90_090,
+			},
+		]);
+		expect(sold.account.lots.map((l) => l.id)).toEqual(["p1"]);
+		expect(sold.account.position.entryPrice).toBe(10_000_000);
+	});
+
+	test("ロットが無い・数量が違う・売りが約定待ちなら売りを出さない", () => {
+		const placed = decideWith(buys, newAccount(1_000_000));
+		const bought = settleFills(placed.account, (o) => o.price, 11 * H, FEES);
+		const sellOf = (lotId: string, quantity = 1_000_000) =>
+			fixed([{ kind: "place", side: "sell", type: "market", quantity, lotId }]);
+		expect(decideWith(sellOf("x"), bought.account).decision.note).toContain(
+			"売るロットが無い",
+		);
+		expect(decideWith(sellOf("p1", 1), bought.account).decision.note).toContain(
+			"違う数量は売れない",
+		);
+		const once = decideWith(sellOf("p1"), bought.account);
+		expect(decideWith(sellOf("p1"), once.account).decision.note).toContain(
+			"約定待ち",
+		);
+	});
+
+	test("未約定の買いの額を除いた資金で、次の買いを出せるか見る", () => {
+		const out = decideWith(buys, newAccount(150_000));
+		expect(out.changed.map((r) => r.id)).toEqual(["p1"]);
+		expect(out.decision.note).toContain("未約定の買い 100,100 円を除く");
+	});
+
+	test("同時に出した買いが先に約定して資金が足りなくなったら、約定時に取り消す", () => {
+		const placed = decideWith(buys, newAccount(200_000));
+		const out = settleFills(
+			{ ...placed.account, cash: 150_000 },
+			(o) => o.price,
+			11 * H,
+			FEES,
+		);
+		expect(out.account.lots).toHaveLength(1);
+		expect(out.changed[1]).toMatchObject({ id: "p2", status: "canceled" });
+	});
+});
+
+describe("normalizeAccount", () => {
+	const record = { id: "o1", fillPrice: 10_000_000 } as TradeOrder;
+
+	test("ロットを持つ前の口座は、保有を1ロットとして読み、ロットを持たない売りをそのロットの売りにする", () => {
+		const sell: Order = {
+			id: "o2",
+			side: "sell",
+			type: "market",
+			price: null,
+			quantity: 1_000_000,
+			placedAt: 0,
+			expiresAt: null,
+			status: "open",
+		};
+		const a = normalizeAccount({
+			cash: 500,
+			position: { quantity: 1_000_000, entryPrice: 10_000_000, openedAt: 5 },
+			entry: { record, time: 5, cost: 100_100 },
+			openOrders: [{ order: sell, record: {} as TradeOrder }],
+			seq: 2,
+		});
+		expect(a.lots).toEqual([
+			{
+				id: "o1",
+				quantity: 1_000_000,
+				entryPrice: 10_000_000,
+				openedAt: 5,
+				cost: 100_100,
+				record,
+			},
+		]);
+		expect(a.openOrders[0]?.order.lotId).toBe("o1");
+		expect(a.today).toEqual({ dayStart: 0, pnl: 0 });
+		expect(a).not.toHaveProperty("entry");
+	});
+
+	test("今の形の口座はそのまま読む", () => {
+		const a = newAccount(1_000);
+		expect(normalizeAccount(JSON.parse(JSON.stringify(a)))).toEqual(a);
 	});
 });

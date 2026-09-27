@@ -51,9 +51,12 @@ export function ruleText(r: AggregationRule): string {
 }
 
 export function buyOrderText(o: BuyOrder): string {
-	return o.type === "limit"
-		? `指値 −${o.belowPercent}%・${o.expireBars}本で取消`
-		: ORDER_TYPE_LABELS[o.type];
+	const lines = o.lines.map((l) =>
+		l.type === "limit" ? `指値 −${l.belowPercent}%` : ORDER_TYPE_LABELS[l.type],
+	);
+	return o.lines.some((l) => l.type === "limit")
+		? `${lines.join("・")}・${o.expireBars}本で取消`
+		: lines.join("・");
 }
 
 export function groupText(g: ConditionGroup): string {

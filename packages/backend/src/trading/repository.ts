@@ -6,7 +6,7 @@ import type {
 	JsonValue,
 	TradeOrder,
 } from "@trading-studio/core";
-import { newAccount } from "@trading-studio/core";
+import { newAccount, normalizeAccount } from "@trading-studio/core";
 import type { Db } from "../db/open";
 import type {
 	AutoTradingRow,
@@ -112,11 +112,8 @@ export class TradingRepository {
 		if (row) {
 			return {
 				initialCash: row.initial_cash,
-				// 1日の確定損益を持つ前に保存した口座も読めるようにする
-				account: {
-					today: { dayStart: 0, pnl: 0 },
-					...(JSON.parse(row.account) as Partial<Account>),
-				} as Account,
+				// 1日の確定損益・ロットを持つ前に保存した口座も読めるようにする
+				account: normalizeAccount(JSON.parse(row.account)),
 				resetAt: row.reset_at,
 			};
 		}
