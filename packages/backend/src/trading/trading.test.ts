@@ -416,3 +416,56 @@ describe("オン中の制限", () => {
 		expect(t.status().enabled).toBe(false);
 	});
 });
+
+describe("成績", () => {
+	test("口座をリセットした時点以降の約定から損益・勝率・最大DDを出し、状態に今の価格で評価した資産を出す", async () => {
+		const t = setup();
+		const resetAt = t.status().account.resetAt;
+		await t.call("POST", "/start", { mode: "paper" });
+		t.at(T0 + M);
+		t.fill(P);
+		// 保有中は今の価格で評価する（手数料は含めない）
+		expect(t.status().account.equity).toBe(1_000_000 - 100_100 + 100_000);
+		t.at(T0 + M + 1_000);
+		t.fill(P * 1.02);
+		t.at(T0 + 2 * M + 1_000);
+		t.fill(P * 1.02);
+		const pnl = 102_000 - 102 - 100_100;
+
+		const r = await t.call("GET", "/performance?mode=paper");
+		expect(r.status).toBe(200);
+		expect(r.body.performance).toMatchObject({
+			resetAt,
+			initialCash: 1_000_000,
+			equity: 1_000_000 + pnl,
+			pnl,
+			pnlPercent: (pnl / 1_000_000) * 100,
+			realizedPnl: pnl,
+			trades: 1,
+			wins: 1,
+			losses: 0,
+			winRate: 100,
+			profitFactor: null,
+			// 買いの約定の直後に手数料ぶん下がった
+			maxDrawdownPercent: (100 / 1_000_000) * 100,
+			maxDrawdownFrom: resetAt,
+		});
+		expect(t.status().account.equity).toBe(1_000_000 + pnl);
+
+		// リセットすると前の約定は数えない
+		await t.call("POST", "/stop");
+		await t.call("POST", "/reset", { initialCash: 500_000 });
+		expect(
+			(await t.call("GET", "/performance")).body.performance,
+		).toMatchObject({
+			initialCash: 500_000,
+			equity: 500_000,
+			pnl: 0,
+			realizedPnl: 0,
+			trades: 0,
+			winRate: null,
+			maxDrawdownPercent: 0,
+		});
+		expect((await t.call("GET", "/performance?mode=x")).status).toBe(400);
+	});
+});

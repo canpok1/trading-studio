@@ -5,6 +5,7 @@ import type {
 	OrderSummary,
 	StoredOrder,
 	TradingMode,
+	TradingPerformance,
 } from "@trading-studio/backend";
 import type { ReactNode } from "react";
 import {
@@ -137,4 +138,33 @@ export function useTradingOrders(query: OrderQuery, active: boolean) {
 		error: fresh ? state.error : null,
 		reload: load,
 	};
+}
+
+/** 口座をリセットした時点以降の成績を読み、5秒ごとに読み直す。読めなければ前の値を残す */
+export function useTradingPerformance(mode: TradingMode, active: boolean) {
+	const api = useApi();
+	const [performance, setPerformance] = useState<TradingPerformance | null>(
+		null,
+	);
+	const [error, setError] = useState<string | null>(null);
+	const seq = useRef(0);
+	const load = useCallback(async () => {
+		const my = ++seq.current;
+		try {
+			const r = await api.api.trading.performance
+				.$get({ query: { mode } })
+				.then((res) => readJson<{ performance: TradingPerformance }>(res));
+			if (my === seq.current) {
+				setPerformance(r.performance);
+				setError(null);
+			}
+		} catch (e) {
+			if (my === seq.current) setError(errorMessage(e));
+		}
+	}, [api, mode]);
+	useEffect(() => {
+		if (active) load();
+	}, [active, load]);
+	useInterval(load, STATUS_MS, active);
+	return { performance, error };
 }

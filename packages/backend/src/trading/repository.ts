@@ -209,6 +209,16 @@ export class TradingRepository {
 			.map(toOrder);
 	}
 
+	/** from より後に約定した注文を約定の古い順に。リセットと同じ時刻の約定はリセット前の口座のもの */
+	filledSince(mode: TradingMode, from: number): StoredOrder[] {
+		return this.sql
+			.query<OrderRow, [string, number]>(
+				"select * from trading_orders where mode = ? and status = 'filled' and filled_at > ? order by filled_at, placed_at, id",
+			)
+			.all(mode, from)
+			.map(toOrder);
+	}
+
 	/** 条件に合う注文の件数と、損益の合計（件数で切らない） */
 	orderSummary(filter: OrderFilter = {}): OrderSummary {
 		const { where, args } = orderWhere(filter);

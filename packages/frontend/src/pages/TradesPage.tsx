@@ -1,15 +1,16 @@
-// 取引画面。自動取引の注文・約定・取消を絞り込み、日ごとにまとめて出す
+// 取引画面。上部にペーパーの口座の成績を出し、その下で自動取引の注文・約定・取消を絞り込み、日ごとにまとめて出す
 
 import type { StoredOrder, TradingMode } from "@trading-studio/backend";
 import { useMemo, useState } from "react";
 import { OrderRow, orderTime } from "../components/backtest/OrderViews";
 import { Page } from "../components/Page";
 import { EmptyState, ErrorState, LoadingCard } from "../components/States";
+import { PerformanceCard } from "../components/trading/PerformanceCard";
 import { ModeTag, TradeOrderSheet } from "../components/trading/TradeViews";
 import { Button, Card, Segmented } from "../components/ui";
 import { formatDate, formatDateWeekday } from "../format";
 import { formatSignedInt } from "../lib/number";
-import { useTradingOrders } from "../lib/trading";
+import { useTradingOrders, useTradingPerformance } from "../lib/trading";
 import { usePageVisible } from "../lib/useAsync";
 
 type ModeFilter = "all" | TradingMode;
@@ -50,6 +51,7 @@ export function TradesPage() {
 		},
 		visible,
 	);
+	const paper = useTradingPerformance("paper", visible);
 
 	const groups = useMemo(() => {
 		const map = new Map<string, { time: number; orders: StoredOrder[] }>();
@@ -67,6 +69,11 @@ export function TradesPage() {
 
 	return (
 		<Page title="取引">
+			<PerformanceCard
+				title="ペーパーの成績"
+				performance={paper.performance}
+				error={paper.error}
+			/>
 			<Segmented
 				name="trades-mode"
 				label="モード"

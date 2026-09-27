@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { NavLink, Outlet, useLocation } from "react-router";
+import { Link, NavLink, Outlet, useLocation } from "react-router";
+import { formatSignedInt, formatSignedPercent } from "../lib/number";
 import { useTradingStatus } from "../lib/trading";
 import { AppVersion } from "./AppVersion";
 import {
@@ -112,24 +113,39 @@ export function Layout({ badges = {} }: { badges?: Record<string, boolean> }) {
 	);
 }
 
-/** 自動取引がオンの間だけ、全画面の上部に出す帯 */
+/** 自動取引がオンの間だけ、全画面の上部に出す帯。開始からの損益を出し、押すと取引画面の成績へ */
 function TradingBand() {
 	const { status } = useTradingStatus();
 	if (!status?.enabled) return null;
+	const { equity, initialCash } = status.account;
+	const pnl = equity === null ? null : equity - initialCash;
 	return (
 		<aside
 			aria-label="稼働中の自動取引"
-			className="sticky top-0 z-30 flex min-h-10 items-center gap-2 border-b-[3px] border-dashed border-paper-ink bg-paper px-4 text-xs text-paper-ink"
+			className="sticky top-0 z-30 border-b-[3px] border-dashed border-paper-ink bg-paper text-xs text-paper-ink"
 		>
-			<PaperIcon />
-			<strong className="text-[13px] whitespace-nowrap">ペーパー稼働中</strong>
-			<span className="hidden sm:inline">最新の実データで模擬売買</span>
-			<span
-				data-testid="band-strategy"
-				className="ml-auto min-w-0 truncate font-bold"
-			>
-				{status.strategy?.name ?? ""}
-			</span>
+			<Link to="/trades" className="flex min-h-10 items-center gap-2 px-4">
+				<PaperIcon />
+				<strong className="text-[13px] whitespace-nowrap">
+					ペーパー稼働中
+				</strong>
+				<span className="hidden xl:inline">最新の実データで模擬売買</span>
+				<span
+					data-testid="band-pnl"
+					className="num font-bold whitespace-nowrap"
+				>
+					<span className="sr-only">開始からの損益 </span>
+					{pnl === null
+						? "損益 —"
+						: `${formatSignedInt(pnl)}円（${formatSignedPercent((pnl / initialCash) * 100)}）`}
+				</span>
+				<span
+					data-testid="band-strategy"
+					className="ml-auto min-w-0 truncate font-bold"
+				>
+					{status.strategy?.name ?? ""}
+				</span>
+			</Link>
 		</aside>
 	);
 }

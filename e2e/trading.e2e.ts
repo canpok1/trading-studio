@@ -27,6 +27,9 @@ test("ホームで自動取引をオンにすると帯が全画面に出て、�
 		const band = page.getByRole("complementary", { name: "稼働中の自動取引" });
 		await expect(band).toContainText("ペーパー稼働中");
 		await expect(page.getByTestId("band-strategy")).toHaveText(name);
+		await expect(page.getByTestId("band-pnl")).toHaveText(
+			/^開始からの損益 [+−][\d,]+円（[+−]\d+\.\d%）$/,
+		);
 		await expect(page.getByTestId("auto-state")).toHaveText("稼働中");
 		await expect(page.getByTestId("auto-next")).toHaveText(
 			/^次の判定 \d{2}:\d{2}$/,
@@ -36,9 +39,13 @@ test("ホームで自動取引をオンにすると帯が全画面に出て、�
 			page.getByText("戦略とモードを変えるには先に OFF にする"),
 		).toBeVisible();
 
-		// 帯は他の画面にも出る
+		// 帯は他の画面にも出て、押すと取引画面の成績へ移る
 		await page.goto("/strategies");
 		await expect(band).toBeVisible();
+		await band.getByRole("link").click();
+		await expect(
+			page.getByRole("region", { name: "ペーパーの成績" }),
+		).toContainText("勝率");
 
 		await page.goto("/home");
 		await page.getByRole("switch", { name: "自動取引" }).click();
@@ -141,6 +148,9 @@ test("仮想注文が出て約定すると、ホームの保有・直近の注�
 		await expect(
 			page.getByRole("heading", { level: 1, name: "取引" }),
 		).toBeVisible();
+		await expect(
+			page.getByRole("region", { name: "ペーパーの成績" }),
+		).toContainText("保有 BTC0.020");
 		await expect(page.getByTestId("trades-summary")).toContainText(
 			/^\d+ 件 · 実現損益/,
 		);

@@ -60,6 +60,36 @@ export type TradingAccountView = {
 	position: Position;
 	openOrderCount: number;
 	resetAt: number;
+	/** 現金と保有を今の価格で評価した資産（手数料は含めない）。保有があって価格が分からなければ null */
+	equity: number | null;
+};
+
+/** 口座をリセットした時点以降の成績。指標の意味はバックテストの成績（core の BacktestSummary）と同じ */
+export type TradingPerformance = {
+	resetAt: number;
+	initialCash: number;
+	cash: number;
+	position: Position;
+	/** 評価に使った今の価格。分からなければ null */
+	price: number | null;
+	/** 現金と保有を今の価格で評価した資産。保有があって価格が分からなければ null */
+	equity: number | null;
+	/** 開始時の資金からの損益（保有の評価を含む） */
+	pnl: number | null;
+	pnlPercent: number | null;
+	/** 確定した損益（往復の手数料込みの損益の合計） */
+	realizedPnl: number;
+	/** 往復の回数（未決済は含めない） */
+	trades: number;
+	wins: number;
+	losses: number;
+	winRate: number | null;
+	profitFactor: number | null;
+	/** 最大ドローダウン（%、0 以上）。約定の直後・1時間足の終値・今の時点の資産で測る */
+	maxDrawdownPercent: number;
+	maxDrawdownFrom: number | null;
+	maxDrawdownTo: number | null;
+	averageHoldingMs: number | null;
 };
 
 export type AutoTradingStatus = {
@@ -101,6 +131,8 @@ export interface TradingService {
 	orders(filter: OrderFilter, limit?: number): StoredOrder[];
 	/** 件数で切らずに数えた、条件に合う注文の件数と実現損益 */
 	orderSummary(filter: OrderFilter): OrderSummary;
+	/** 口座をリセットした時点以降の成績 */
+	performance(mode: TradingMode): TradingPerformance;
 	order(
 		mode: TradingMode,
 		id: string,
