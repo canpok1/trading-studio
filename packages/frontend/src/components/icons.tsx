@@ -89,9 +89,23 @@ export function ExportIcon({ size = 22 }: IconProps) {
 
 export function SettingsIcon({ size = 22 }: IconProps) {
 	return (
-		<Svg size={size}>
+		<Svg size={size} strokeLinecap="round" strokeLinejoin="round">
 			<circle cx="12" cy="12" r="3" />
-			<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" />
+			<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+		</Svg>
+	);
+}
+
+/** サイドバーの畳む / 広げる。開いているときは左向き、畳んでいるときは右向き */
+export function CollapseIcon({
+	collapsed,
+	size = 18,
+}: IconProps & { collapsed: boolean }) {
+	return (
+		<Svg size={size} strokeLinecap="round" strokeLinejoin="round">
+			<rect x="3" y="4" width="18" height="16" rx="2" />
+			<path d="M9 4v16" />
+			<path d={collapsed ? "M13 10l2 2-2 2" : "M16 10l-2 2 2 2"} />
 		</Svg>
 	);
 }

@@ -50,6 +50,23 @@ describe("画面遷移", () => {
 	});
 });
 
+describe("サイドメニューの折り畳み", () => {
+	test("畳むとブラウザに保存され、開き直しても畳んだまま", () => {
+		const view = renderAt("/home");
+		fireEvent.click(view.getByRole("button", { name: "サイドメニューを畳む" }));
+		expect(localStorage.getItem("side-collapsed")).toBe("1");
+		// 項目名は読み上げ用に残り、マウスを乗せると出る
+		const link = view.getByRole("link", { name: "戦略" });
+		expect(link.getAttribute("title")).toBe("戦略");
+		cleanup();
+		const again = renderAt("/home");
+		fireEvent.click(
+			again.getByRole("button", { name: "サイドメニューを広げる" }),
+		);
+		expect(localStorage.getItem("side-collapsed")).toBeNull();
+	});
+});
+
 describe("設定", () => {
 	test("ダークを選ぶとクラスが付き、ブラウザに保存される", () => {
 		const view = renderAt("/settings");

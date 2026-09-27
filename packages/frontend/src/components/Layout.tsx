@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useCallback, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router";
 import { formatSignedInt, formatSignedPercent } from "../lib/number";
 import { useTradingStatus } from "../lib/trading";
@@ -6,6 +7,7 @@ import { AppVersion } from "./AppVersion";
 import {
 	AiIcon,
 	BacktestIcon,
+	CollapseIcon,
 	DataIcon,
 	ExportIcon,
 	HomeIcon,
@@ -59,17 +61,67 @@ const NAV: NavItem[] = [
 	},
 ];
 
-/** 画面の枠。スマホは下部タブ、PC（1024px 以上）は左サイドバー */
+const COLLAPSED_KEY = "side-collapsed";
+
+function readCollapsed(): boolean {
+	try {
+		return localStorage.getItem(COLLAPSED_KEY) === "1";
+	} catch {
+		return false;
+	}
+}
+
+/** PC のサイドバーを畳んでいるか。ブラウザに保存し、次に開いたときも保つ */
+function useSideCollapsed(): [boolean, () => void] {
+	const [collapsed, setCollapsed] = useState(readCollapsed);
+	const toggle = useCallback(() => {
+		setCollapsed((c) => {
+			try {
+				if (c) localStorage.removeItem(COLLAPSED_KEY);
+				else localStorage.setItem(COLLAPSED_KEY, "1");
+			} catch {
+				// 保存できない環境（プライベートモードなど）では、この画面を開いている間だけ効く
+			}
+			return !c;
+		});
+	}, []);
+	return [collapsed, toggle];
+}
+
+/** 画面の枠。スマホは下部タブ、PC（1024px 以上）は左サイドバー（アイコンだけに畳める） */
 export function Layout({ badges = {} }: { badges?: Record<string, boolean> }) {
 	const { pathname } = useLocation();
+	const [collapsed, toggleCollapsed] = useSideCollapsed();
 	return (
 		<div className="flex min-h-full flex-col lg:flex-row">
 			<nav
 				aria-label="メイン"
-				className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-[220px] lg:shrink-0 lg:flex-col lg:gap-0.5 lg:border-t-0 lg:border-r lg:px-3 lg:py-5"
+				className={[
+					"fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:sticky lg:top-0 lg:flex lg:h-screen lg:shrink-0 lg:flex-col lg:gap-0.5 lg:border-t-0 lg:border-r lg:py-5",
+					collapsed ? "lg:w-16 lg:px-2" : "lg:w-[220px] lg:px-3",
+				].join(" ")}
 			>
-				<div className="hidden px-2.5 pb-4 text-[15px] font-bold lg:block">
-					trading-studio
+				<div
+					className={[
+						"hidden items-center pb-4 lg:flex",
+						collapsed ? "justify-center" : "justify-between pl-2.5",
+					].join(" ")}
+				>
+					{!collapsed && (
+						<span className="text-[15px] font-bold">trading-studio</span>
+					)}
+					<button
+						type="button"
+						onClick={toggleCollapsed}
+						aria-expanded={!collapsed}
+						aria-label={
+							collapsed ? "サイドメニューを広げる" : "サイドメニューを畳む"
+						}
+						title={collapsed ? "広げる" : "畳む"}
+						className="flex h-8 w-8 items-center justify-center rounded-lg text-text-2 hover:bg-surface-2 hover:text-text"
+					>
+						<CollapseIcon collapsed={collapsed} />
+					</button>
 				</div>
 				{NAV.map((item) => {
 					const extra = item.also?.some((p) => pathname.startsWith(p)) ?? false;
@@ -77,11 +129,15 @@ export function Layout({ badges = {} }: { badges?: Record<string, boolean> }) {
 						<NavLink
 							key={item.to}
 							to={item.to}
+							title={collapsed ? item.label : undefined}
 							className={({ isActive }) => {
 								const active = isActive || extra;
 								return [
 									"relative flex h-16 flex-col items-center justify-center gap-0.5 text-[11px]",
-									"lg:h-[42px] lg:flex-row lg:justify-start lg:gap-2.5 lg:rounded-lg lg:px-2.5 lg:text-sm",
+									"lg:h-[42px] lg:flex-row lg:rounded-lg lg:text-sm",
+									collapsed
+										? "lg:justify-center lg:px-0"
+										: "lg:justify-start lg:gap-2.5 lg:px-2.5",
 									item.show === "tab" ? "lg:hidden" : "",
 									item.show === "side" ? "hidden lg:flex" : "",
 									active
@@ -91,11 +147,16 @@ export function Layout({ badges = {} }: { badges?: Record<string, boolean> }) {
 							}}
 						>
 							{item.icon}
-							{item.label}
+							<span className={collapsed ? "lg:sr-only" : ""}>
+								{item.label}
+							</span>
 							{badges[item.to] && (
 								<span
 									data-testid={`badge-${item.to}`}
-									className="absolute top-2.5 right-[calc(50%-18px)] h-2 w-2 rounded-full bg-accent lg:static lg:ml-auto"
+									className={[
+										"absolute top-2.5 right-[calc(50%-18px)] h-2 w-2 rounded-full bg-accent",
+										collapsed ? "lg:top-2 lg:right-2" : "lg:static lg:ml-auto",
+									].join(" ")}
 								>
 									<span className="sr-only">（実行中）</span>
 								</span>
@@ -103,7 +164,9 @@ export function Layout({ badges = {} }: { badges?: Record<string, boolean> }) {
 						</NavLink>
 					);
 				})}
-				<AppVersion className="mt-auto hidden px-2.5 lg:block" />
+				{!collapsed && (
+					<AppVersion className="mt-auto hidden px-2.5 lg:block" />
+				)}
 			</nav>
 			<main className="min-w-0 flex-1 pb-[calc(88px+env(safe-area-inset-bottom))] lg:pb-8">
 				<TradingBand />
