@@ -9,11 +9,9 @@ import type {
 } from "@trading-studio/backend";
 import type { Timeframe } from "@trading-studio/core";
 import {
-	emaPeriods,
 	formatBtc,
 	JUDGE_LABELS,
 	JUDGES,
-	rsiLines,
 	TIMEFRAME_LABELS,
 	TIMEFRAME_MS,
 	TIMEFRAMES,
@@ -25,7 +23,6 @@ import { useApi } from "../api";
 import { OrderRow, orderTime, Stat } from "../components/backtest/OrderViews";
 import type { ChartBar, ChartMarker } from "../components/chart/chart-data";
 import { alignJudgments } from "../components/chart/judgment-data";
-import type { RsiLine } from "../components/chart/PriceChart";
 import { PriceChart } from "../components/chart/PriceChart";
 import { AutoTradingCard } from "../components/home/AutoTradingCard";
 import { JudgmentBadge } from "../components/judgment/JudgmentBadge";
@@ -39,6 +36,7 @@ import {
 import { Button, Segmented } from "../components/ui";
 import { formatDateTime } from "../format";
 import { useChartBg } from "../lib/chart-bg";
+import { useChartIndicators } from "../lib/chart-indicators";
 import {
 	changePercent,
 	collectorTrouble,
@@ -68,9 +66,6 @@ const MAX_HISTORY = 1_000;
 /** チャートの印に読む注文の数。直近の一覧もここから取る */
 const MARKER_ORDERS = 300;
 const RECENT_ORDERS = 3;
-
-const NO_PERIODS: number[] = [];
-const NO_RSI: RsiLine[] = [];
 
 const PANEL =
 	"flex min-w-0 flex-col gap-2.5 rounded-xl border border-line bg-surface p-3";
@@ -232,24 +227,14 @@ function HomeBody({
 		chosenTf ?? active?.params.timeframe ?? HOME_DEFAULT_TIMEFRAME;
 	const range = loadRange(timeframe, counts);
 
-	// EMA・RSI は運用する戦略の粒度で描くときだけ出す（別の粒度では本数の意味がずれる）
-	const periods = useMemo(
-		() => (active ? emaPeriods(active.params) : []),
-		[active],
-	);
-	const rsis = useMemo(() => (active ? rsiLines(active.params) : []), [active]);
-	const onStrategyTf = active !== null && timeframe === active.params.timeframe;
-	const emaShown = onStrategyTf ? periods : [];
-	const rsiShown = onStrategyTf ? rsis : [];
+	// EMA・RSI の本数は、選んでいる粒度の足で数える
+	const indicators = useChartIndicators(active?.params ?? null);
+	// 表示の切り替えで読み直さないよう、隠している指標の分も読む
 	const history = Math.min(
 		MAX_HISTORY,
-		Math.max(0, ...emaShown, ...rsiShown.map((l) => l.period)) *
+		Math.max(...indicators.ema.value, indicators.rsi.value.period) *
 			EMA_HISTORY_FACTOR,
 	);
-	const indicatorNames = [
-		periods.length > 0 ? "EMA" : null,
-		rsis.length > 0 ? "RSI" : null,
-	].filter((x) => x !== null);
 
 	const [bars, setBars] = useState<{
 		key: string;
@@ -421,8 +406,8 @@ function HomeBody({
 			) : (
 				<PriceChart
 					bars={shownBars}
-					emaPeriods={fresh ? emaShown : NO_PERIODS}
-					rsiLines={fresh ? rsiShown : NO_RSI}
+					indicators={indicators}
+					hideIndicators={!fresh}
 					initialSpanMs={HOME_INITIAL_SPAN_MS}
 					viewKey={bars?.key ?? ""}
 					currentPrice={latest?.price ?? null}
@@ -445,12 +430,6 @@ function HomeBody({
 								value={timeframe}
 								onChange={setChosenTf}
 							/>
-							{active && indicatorNames.length > 0 && !onStrategyTf && (
-								<p className="text-xs text-text-2">
-									{indicatorNames.join("・")} は戦略の粒度（
-									{TIMEFRAME_LABELS[active.params.timeframe]}）でだけ表示する
-								</p>
-							)}
 						</>
 					}
 				/>

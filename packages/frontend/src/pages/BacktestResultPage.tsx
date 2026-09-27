@@ -1,10 +1,8 @@
 import type { BacktestChart, BacktestRun } from "@trading-studio/backend";
 import type { BacktestOrder } from "@trading-studio/core";
 import {
-	emaPeriods,
 	formatBtc,
 	ppmToPercent,
-	rsiLines,
 	TIMEFRAME_LABELS,
 } from "@trading-studio/core";
 import {
@@ -28,6 +26,7 @@ import { Button, Card, Note, ProgressBar, Segmented } from "../components/ui";
 import { formatDate, toDateInputValue } from "../format";
 import { useBacktestJob } from "../lib/backtest-job";
 import { useChartBg } from "../lib/chart-bg";
+import { useChartIndicators } from "../lib/chart-indicators";
 import {
 	buyOrderText,
 	frequencyText,
@@ -342,7 +341,7 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 		}
 	};
 
-	const emas = emaPeriods(run.params);
+	const indicators = useChartIndicators(run.params);
 	const noOrders = run.orderCount === 0;
 	const tone = (n: number) => (n >= 0 ? "text-profit" : "text-loss");
 
@@ -419,8 +418,7 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 				<PriceChart
 					bars={chart.bars}
 					markers={chart.markers}
-					emaPeriods={emas}
-					rsiLines={rsiLines(run.params)}
+					indicators={indicators}
 					selectedId={selected?.id ?? null}
 					onMarker={(m) => pick(m.id)}
 					judgments={judgments}
