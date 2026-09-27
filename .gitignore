@@ -117,3 +117,6 @@ dist
 /.e2e-data/
 /test-results/
 /playwright-report/
+
+# アプリのバージョン（Docker のビルドで書き出す）
+/BUILT_AT

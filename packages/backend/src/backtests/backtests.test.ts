@@ -383,17 +383,23 @@ describe("チャートの AI 判定", () => {
 		const id = (t.newsRepo.listNews(1)[0] as { id: number }).id;
 		t.scoreRepo.saveScore(
 			id,
-			{ scores: { trend: 80, risk: null, sentiment: null }, comment: "c" },
-			{ scoredAt: at, criteriaVersion: 1, model: "m", attempts: 0 },
+			{ scores: { trend: 60, risk: null, sentiment: null }, comment: "c" },
+			{
+				scoredAt: at,
+				criteriaVersion: 1,
+				model: "m",
+				appBuiltAt: null,
+				attempts: 0,
+			},
 		);
 		const rule = t.scoreRepo.aggregationRule();
 		t.scoreRepo.setAggregationRule({
 			...rule,
-			thresholds: { ...rule.thresholds, trend: { up: 90, down: 40 } },
+			thresholds: { ...rule.thresholds, trend: { up: 80, down: -20 } },
 		});
 		const run = (await post(t, body())).json.run as BacktestRun;
 		await t.backtests.running();
-		expect(run.aggregationRule?.thresholds.trend.up).toBe(90);
+		expect(run.aggregationRule?.thresholds.trend.up).toBe(80);
 		expect(run.dailyLossLimitApplied).toBe(true);
 		// 1日の損失上限を持つ前の実行は、上限を効かせずに回した結果として読む
 		const old = JSON.parse(
@@ -458,7 +464,13 @@ describe("AI 判定の条件", () => {
 		t.scoreRepo.saveScore(
 			id,
 			{ scores: { trend, risk: null, sentiment: null }, comment: "c" },
-			{ scoredAt: at, criteriaVersion: 1, model: "m", attempts: 0 },
+			{
+				scoredAt: at,
+				criteriaVersion: 1,
+				model: "m",
+				appBuiltAt: null,
+				attempts: 0,
+			},
 		);
 	}
 
@@ -471,7 +483,7 @@ describe("AI 判定の条件", () => {
 			firstScoredAt: null,
 		});
 
-		score(t, START + 5 * 24 * H, 90);
+		score(t, START + 5 * 24 * H, 80);
 		const before = await post(t, body({ params: withJudgment }));
 		expect(before.json).toMatchObject({
 			kind: "no_judgments",
@@ -484,10 +496,10 @@ describe("AI 判定の条件", () => {
 	test("評価の時点までに採点済みの点数で判定し、条件どおりに注文を出す", async () => {
 		const t = setup();
 		// 記録の開始。中立の点数
-		score(t, START, 50);
+		score(t, START, 0);
 		// 上昇の判定になるのは、この採点から集計の期間（24時間）のあいだだけ
 		const up = START + 5 * 24 * H;
-		score(t, up, 90);
+		score(t, up, 80);
 		const r = await post(t, body({ params: withJudgment }));
 		expect(r.status).toBe(202);
 		const run = r.json.run as BacktestRun;

@@ -22,6 +22,13 @@ export function formatDateTime(ms: number): string {
 	return `${t.y}/${p2(t.mo)}/${p2(t.d)} ${p2(t.h)}:${p2(t.mi)}:${p2(t.s)}`;
 }
 
+/** アプリのバージョン（ビルド日時）。例: Ver 2026-09-27 09:10。null なら none の文言 */
+export function formatVersion(builtAt: number | null, none: string): string {
+	if (builtAt === null) return `Ver ${none}`;
+	const t = jstParts(builtAt);
+	return `Ver ${t.y}-${p2(t.mo)}-${p2(t.d)} ${p2(t.h)}:${p2(t.mi)}`;
+}
+
 /** 例: 13:14。now と日（JST）が違えば 9/27 13:14 */
 export function formatClock(ms: number, now: number): string {
 	const t = jstParts(ms);

@@ -18,6 +18,7 @@ type ScoreRow = {
 	scored_at: number | null;
 	criteria_version: number | null;
 	model: string | null;
+	app_built_at: number | null;
 	error: string | null;
 	attempts: number;
 	next_attempt_at: number | null;
@@ -33,6 +34,7 @@ export const toNewsScore = (r: ScoreRow): NewsScore => ({
 	scoredAt: r.scored_at,
 	criteriaVersion: r.criteria_version,
 	model: r.model,
+	appBuiltAt: r.app_built_at,
 	error: r.error,
 	nextAttemptAt: r.next_attempt_at,
 });
@@ -231,15 +233,18 @@ export class ScoreRepository {
 			scoredAt: number;
 			criteriaVersion: number;
 			model: string;
+			/** 採点したアプリのバージョン（ビルド日時）。開発版は null */
+			appBuiltAt: number | null;
 			attempts: number;
 		},
 	) {
 		this.sql.run(
-			`insert into news_scores (news_id, status, trend, risk, sentiment, comment, scored_at, criteria_version, model, error, attempts, next_attempt_at)
-			 values (?, 'done', ?, ?, ?, ?, ?, ?, ?, null, ?, null)
+			`insert into news_scores (news_id, status, trend, risk, sentiment, comment, scored_at, criteria_version, model, app_built_at, error, attempts, next_attempt_at)
+			 values (?, 'done', ?, ?, ?, ?, ?, ?, ?, ?, null, ?, null)
 			 on conflict (news_id) do update set status = 'done', trend = excluded.trend, risk = excluded.risk,
 			   sentiment = excluded.sentiment, comment = excluded.comment, scored_at = excluded.scored_at,
-			   criteria_version = excluded.criteria_version, model = excluded.model, error = null,
+			   criteria_version = excluded.criteria_version, model = excluded.model,
+			   app_built_at = excluded.app_built_at, error = null,
 			   attempts = excluded.attempts, next_attempt_at = null`,
 			[
 				newsId,
@@ -250,6 +255,7 @@ export class ScoreRepository {
 				meta.scoredAt,
 				meta.criteriaVersion,
 				meta.model,
+				meta.appBuiltAt,
 				meta.attempts,
 			],
 		);

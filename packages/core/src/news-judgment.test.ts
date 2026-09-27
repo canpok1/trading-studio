@@ -64,7 +64,7 @@ describe("judgeAt", () => {
 
 	test("期間（24時間）より前のニュースは使わない", () => {
 		const s = judgeAt(
-			[news(1, 24, { trend: 90 }), news(2, 23.9, { trend: 10 })],
+			[news(1, 24, { trend: 80 }), news(2, 23.9, { trend: -80 })],
 			NOW,
 			rule,
 		);
@@ -89,21 +89,21 @@ describe("judgeAt", () => {
 });
 
 test("平均点は整数に丸めてから判定する", () => {
-	// (60*1 + 59*0.5) / 1.5 = 59.67 → 60 点で上昇
+	// (20*1 + 19*0.5) / 1.5 = 19.67 → 20 点で上昇
 	const s = judgeAt(
-		[news(1, 0, { trend: 60 }), news(2, 6, { trend: 59 })],
+		[news(1, 0, { trend: 20 }), news(2, 6, { trend: 19 })],
 		NOW,
 		rule,
 	);
-	expect(s.results.trend).toEqual({ value: "up", average: 60, count: 2 });
+	expect(s.results.trend).toEqual({ value: "up", average: 20, count: 2 });
 });
 
 describe("classify のしきい値の境界", () => {
 	test.each([
-		[60, "up"],
-		[59.9, "range"],
-		[40.1, "range"],
-		[40, "down"],
+		[20, "up"],
+		[19.9, "range"],
+		[-19.9, "range"],
+		[-20, "down"],
 	] as const)("トレンド %p → %p", (avg, v) => {
 		expect(classify("trend", avg, rule)).toBe(v);
 	});
@@ -116,14 +116,14 @@ describe("classify のしきい値の境界", () => {
 		expect(classify("risk", avg, rule)).toBe(v);
 	});
 	test.each([
-		[80, "+2"],
-		[79.9, "+1"],
-		[60, "+1"],
-		[59.9, "0"],
-		[40, "0"],
-		[39.9, "-1"],
-		[20, "-1"],
-		[19.9, "-2"],
+		[60, "+2"],
+		[59.9, "+1"],
+		[20, "+1"],
+		[19.9, "0"],
+		[-20, "0"],
+		[-20.1, "-1"],
+		[-60, "-1"],
+		[-60.1, "-2"],
 	] as const)("センチメント %p → %p", (avg, v) => {
 		expect(classify("sentiment", avg, rule)).toBe(v);
 	});
@@ -131,8 +131,8 @@ describe("classify のしきい値の境界", () => {
 
 test("重み付き平均がしきい値ちょうどなら、評価時刻によらずその段になる", () => {
 	const list = [
-		news(1, 1.3, { trend: 60, risk: 70, sentiment: 40 }),
-		news(2, 7.7, { trend: 60, risk: 70, sentiment: 40 }),
+		news(1, 1.3, { trend: 20, risk: 70, sentiment: -20 }),
+		news(2, 7.7, { trend: 20, risk: 70, sentiment: -20 }),
 	];
 	const times: number[] = [];
 	for (let i = 0; i < 2000; i++) times.push(NOW + i * 37_003);
@@ -235,12 +235,28 @@ describe("validateAggregationRule", () => {
 		]);
 	});
 
-	test("しきい値が 0〜100 の整数でなければ並びは見ない", () => {
+	test("しきい値が観点の点数の範囲の整数でなければ並びは見ない", () => {
 		const bad = structuredClone(rule);
 		bad.thresholds.trend.up = 101;
+		bad.thresholds.risk.caution = -1;
+		bad.thresholds.sentiment.minus2 = -101;
 		expect(validateAggregationRule(bad).map((e) => e.path)).toEqual([
 			"thresholds.trend.up",
+			"thresholds.risk.caution",
+			"thresholds.sentiment.minus2",
 		]);
+	});
+
+	test("トレンドとセンチメントは負のしきい値を受け付ける", () => {
+		const r = structuredClone(rule);
+		r.thresholds.trend = { up: -10, down: -100 };
+		r.thresholds.sentiment = {
+			plus2: 0,
+			plus1: -10,
+			minus1: -50,
+			minus2: -100,
+		};
+		expect(validateAggregationRule(r)).toEqual([]);
 	});
 });
 

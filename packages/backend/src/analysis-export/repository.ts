@@ -21,6 +21,7 @@ export type NewsExportRow = {
 	scored_at: number | null;
 	criteria_version: number | null;
 	model: string | null;
+	app_built_at: number | null;
 	error: string | null;
 	attempts: number | null;
 };
@@ -78,7 +79,7 @@ export class AnalysisExportRepository {
 			.query<NewsExportRow, [number, number]>(
 				`select n.id, n.source_id, n.source_name, n.language, n.url, n.title, n.summary,
 				   n.published_at, n.fetched_at, s.status, s.trend, s.risk, s.sentiment, s.comment,
-				   s.scored_at, s.criteria_version, s.model, s.error, s.attempts
+				   s.scored_at, s.criteria_version, s.model, s.app_built_at, s.error, s.attempts
 				 from news n left join news_scores s on s.news_id = n.id
 				 where min(n.published_at, n.fetched_at) >= ? and min(n.published_at, n.fetched_at) < ?
 				 order by min(n.published_at, n.fetched_at), n.id`,

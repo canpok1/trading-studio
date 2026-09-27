@@ -175,7 +175,13 @@ describe("分析用エクスポート", () => {
 				scores: { trend: 80, risk: 10, sentiment: null },
 				comment: "上がりそう",
 			},
-			{ scoredAt: DAY + 20 * M, criteriaVersion: 1, model: "m", attempts: 0 },
+			{
+				scoredAt: DAY + 20 * M,
+				criteriaVersion: 1,
+				model: "m",
+				appBuiltAt: null,
+				attempts: 0,
+			},
 		);
 		const failed = addNews(t, DAY + 30 * M, "failed");
 		t.scoreRepo.saveFailure(failed, "壊れた応答", 3, null);

@@ -3,7 +3,7 @@ import type { AggregationRule } from "@trading-studio/core";
 import { JUDGES } from "@trading-studio/core";
 import { useState } from "react";
 import { useApi } from "../../api";
-import { formatDateTime } from "../../format";
+import { formatDateTime, formatVersion } from "../../format";
 import type { AiData } from "../../lib/ai";
 import { newsState } from "../../lib/ai";
 import { errorMessage, readJson } from "../../lib/useAsync";
@@ -124,7 +124,8 @@ function NewsCard({
 					<p className="text-xs leading-relaxed">{n.score.comment}</p>
 					<span className="num text-xs text-text-2">
 						採点 {formatDateTime(n.score.scoredAt ?? 0)} · プロンプト v
-						{n.score.criteriaVersion} · {n.score.model}
+						{n.score.criteriaVersion} · {n.score.model} ·{" "}
+						{formatVersion(n.score.appBuiltAt, "記録なし")}
 					</span>
 				</>
 			)}

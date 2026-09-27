@@ -12,9 +12,9 @@ const DEFAULT_RULE = {
 	windowHours: 24,
 	halfLifeHours: 6,
 	thresholds: {
-		trend: { up: 60, down: 40 },
+		trend: { up: 20, down: -20 },
 		risk: { caution: 40, crisis: 70 },
-		sentiment: { plus2: 80, plus1: 60, minus1: 40, minus2: 20 },
+		sentiment: { plus2: 60, plus1: 20, minus1: -20, minus2: -60 },
 	},
 };
 
@@ -61,9 +61,9 @@ test("集計ルールを保存すると判定が変わる", async ({ page }) => 
 			.getByRole("link", { name: "設定", exact: true })
 			.click();
 		await expect(page).toHaveURL(/\/settings\?tab=rule$/);
-		// 偽物の AI のトレンドは 30〜70 点なので、上昇を 1 点以上にすれば必ず上昇になる
-		await page.getByLabel("下落").fill("0");
-		await page.getByLabel("上昇").fill("1");
+		// 偽物の AI のトレンドは -40〜40 点なので、上昇を -40 点以上にすれば必ず上昇になる。負の数も入れられる
+		await page.getByLabel("下落").fill("-41");
+		await page.getByLabel("上昇").fill("-40");
 		await expect(page.getByTestId("rule-preview")).toContainText("上昇");
 		await page.getByRole("button", { name: "保存" }).click();
 		await expect(
@@ -73,8 +73,8 @@ test("集計ルールを保存すると判定が変わる", async ({ page }) => 
 		await expect(page.getByTestId("badge-trend").first()).toHaveText(/上昇/);
 
 		await page.goto("/settings?tab=rule");
-		await page.getByLabel("上昇").fill("0");
-		await expect(page.getByText("上昇（0）より小さくする")).toBeVisible();
+		await page.getByLabel("上昇").fill("-41");
+		await expect(page.getByText("上昇（-41）より小さくする")).toBeVisible();
 		await expect(page.getByRole("button", { name: "保存" })).toBeDisabled();
 	} finally {
 		await page.request.put("/api/judgments/rule", {

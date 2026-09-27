@@ -120,6 +120,7 @@ export function createTestApp(
 	});
 	const app = createApp({
 		isDbReachable: () => true,
+		appBuiltAt: null,
 		marketData,
 		market,
 		strategies,

@@ -20,6 +20,8 @@ COPY packages/core/src packages/core/src
 COPY packages/backend/src packages/backend/src
 COPY packages/backend/drizzle packages/backend/drizzle
 COPY --from=build /app/packages/frontend/dist packages/frontend/dist
+# ビルド日時をアプリのバージョンとして書き出す（packages/backend/src/version.ts）。上の COPY の中身が変わらなければキャッシュで前回の日時のまま
+RUN date +%s%3N > BUILT_AT
 # data/ は bind mount する。mini-pc の実行ユーザー（1000:1000）と揃え、マウントしないときも書き込めるようにしておく
 RUN mkdir -p data && chown 1000:1000 data
 USER 1000:1000

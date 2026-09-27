@@ -17,9 +17,9 @@ export function demoScoreModel({
 			for (const ch of title)
 				h = (h * 31 + (ch.codePointAt(0) ?? 0)) % 1_000_003;
 			return {
-				trend: 30 + (h % 41),
+				trend: -40 + 2 * (h % 41),
 				risk: h % 3 === 0 ? null : 20 + (h % 51),
-				sentiment: 25 + (h % 51),
+				sentiment: -50 + 2 * (h % 51),
 				comment: "デモの採点。",
 			};
 		},

@@ -21,7 +21,8 @@ export function NumberInput({
 	className?: string;
 	"aria-label"?: string;
 	id?: string;
-	inputMode?: "numeric" | "decimal";
+	/** numeric・decimal は iOS でマイナスを打てない。負の数を入れる欄は text にする */
+	inputMode?: "numeric" | "decimal" | "text";
 }) {
 	const [text, setText] = useState(() =>
 		Number.isFinite(value) ? format(value) : "",

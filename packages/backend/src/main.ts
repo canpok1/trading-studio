@@ -32,6 +32,7 @@ import { createStrategyService } from "./strategies/service";
 import { TradingRepository } from "./trading/repository";
 import type { TradingEngine } from "./trading/service";
 import { createTradingService } from "./trading/service";
+import { readAppBuiltAt } from "./version";
 
 const hostname = process.env.HOST ?? "127.0.0.1";
 const port = Number(process.env.PORT ?? 3000);
@@ -43,6 +44,7 @@ const dbPath =
 	process.env.DB_PATH ??
 	fileURLToPath(new URL("../../../data/trading-studio.db", import.meta.url));
 
+const appBuiltAt = readAppBuiltAt();
 const db = openDb(dbPath);
 try {
 	const { applied, backupPath } = migrateDb(db, {
@@ -109,6 +111,7 @@ const scorer = createScorer({
 			? demoScoreModel({ isDown: () => existsSync(scoringDownFile) })
 			: geminiModel(() => scoreRepo.apiKey()),
 	rule: () => scoreRepo.aggregationRule(),
+	appBuiltAt,
 	// E2E では再試行を待ちきれないので短くする
 	...(process.env.SCORING_MODEL === "demo"
 		? { minIntervalMs: 0, retryDelaysMs: [1_000, 1_000, 1_000] }
@@ -133,6 +136,7 @@ const server = new Hono().route(
 	"/",
 	createApp({
 		isDbReachable: () => isDbReachable(db),
+		appBuiltAt,
 		marketData,
 		market: createMarketService({ collector, repo: marketDataRepo }),
 		strategies,

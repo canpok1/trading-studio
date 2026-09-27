@@ -42,7 +42,14 @@ export const NEUTRAL: { [J in Judge]: JudgmentValue<J> } = {
 	sentiment: "0",
 };
 
-/** 観点ごとの点数。0〜100 の整数、関係なしは null */
+/** 観点ごとの点数の範囲。トレンドとセンチメントは 0 が中立の両側、リスクは 0 が安全の片側 */
+export const SCORE_RANGES: Record<Judge, { min: number; max: number }> = {
+	trend: { min: -100, max: 100 },
+	risk: { min: 0, max: 100 },
+	sentiment: { min: -100, max: 100 },
+};
+
+/** 観点ごとの点数。SCORE_RANGES の範囲の整数、関係なしは null */
 export type Scores = Record<Judge, number | null>;
 
 /** 採点済みのニュース1件。採点に失敗したものは渡さない */
@@ -57,7 +64,7 @@ export type ScoredNews = {
 	scores: Scores;
 };
 
-/** 集計ルール。時間は時間単位の整数、しきい値は 0〜100 の整数 */
+/** 集計ルール。時間は時間単位の整数、しきい値は観点の点数の範囲（SCORE_RANGES）の整数 */
 export type AggregationRule = {
 	windowHours: number;
 	halfLifeHours: number;
@@ -75,15 +82,14 @@ export const DEFAULT_AGGREGATION_RULE: AggregationRule = {
 	windowHours: 24,
 	halfLifeHours: 6,
 	thresholds: {
-		trend: { up: 60, down: 40 },
+		trend: { up: 20, down: -20 },
 		risk: { caution: 40, crisis: 70 },
-		sentiment: { plus2: 80, plus1: 60, minus1: 40, minus2: 20 },
+		sentiment: { plus2: 60, plus1: 20, minus1: -20, minus2: -60 },
 	},
 };
 
 export const RULE_LIMITS = {
 	hours: { min: 1, max: 168 },
-	score: { min: 0, max: 100 },
 } as const;
 
 const HOUR = 3_600_000;
@@ -99,12 +105,12 @@ export function validateAggregationRule(r: AggregationRule): ValidationError[] {
 	const errors: ValidationError[] = [];
 	const err = (path: string, message: string) => errors.push({ path, message });
 	const h = RULE_LIMITS.hours;
-	const s = RULE_LIMITS.score;
 	for (const k of ["windowHours", "halfLifeHours"] as const) {
 		if (!isIntIn(r[k], h)) err(k, `${h.min}〜${h.max} の整数で入れる`);
 	}
 	let scoresOk = true;
 	for (const j of JUDGES) {
+		const s = SCORE_RANGES[j];
 		for (const [k, v] of Object.entries(r.thresholds[j])) {
 			if (!isIntIn(v, s)) {
 				err(`thresholds.${j}.${k}`, `${s.min}〜${s.max} の整数で入れる`);
