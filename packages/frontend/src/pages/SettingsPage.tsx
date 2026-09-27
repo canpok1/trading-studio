@@ -12,6 +12,7 @@ import { RuleTab } from "../components/ai/RuleTab";
 import { SourcesTab } from "../components/ai/SourcesTab";
 import { AdviceSettings } from "../components/backtest/AdviceSettings";
 import { Page } from "../components/Page";
+import { RetentionSetting } from "../components/RetentionSetting";
 import { ErrorState, LoadingCard } from "../components/States";
 import { Button } from "../components/ui";
 import {
@@ -67,6 +68,7 @@ export function SettingsPage() {
 				<div role="tabpanel" className="flex flex-col gap-3">
 					<ThemeSetting />
 					<ApiKeySetting />
+					<RetentionSetting />
 				</div>
 			)}
 			{section === "backtest" && (

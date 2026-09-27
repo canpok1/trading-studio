@@ -32,6 +32,8 @@ import { ScoreRepository } from "./news/score-repository";
 import { createScorer } from "./news/scorer";
 import { createScoringService } from "./news/scoring-service";
 import { createNewsService, DEFAULT_NEWS_SOURCES } from "./news/service";
+import { RetentionRepository } from "./retention/repository";
+import { createRetentionService } from "./retention/service";
 import { serveFrontend } from "./static";
 import { createStrategyService } from "./strategies/service";
 import { TradingRepository } from "./trading/repository";
@@ -136,6 +138,12 @@ const tradingEngine = createTradingService({
 trading = tradingEngine;
 const tradingTimer = setInterval(() => tradingEngine.tick(), 1_000);
 
+const retention = createRetentionService({
+	repo: new RetentionRepository(db),
+});
+const retentionTimer = setInterval(() => retention.tick(), 60_000);
+retention.tick();
+
 const marketData = createMarketDataService(marketDataRepo);
 const backtests = createBacktestService({
 	repo: backtestRepo,
@@ -188,6 +196,7 @@ const server = new Hono()
 				backtestRepo,
 				marketData,
 			}),
+			retention,
 		}),
 	);
 serveFrontend(server, distDir);
@@ -212,6 +221,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
 		clearInterval(newsTimer);
 		clearInterval(scorerTimer);
 		clearInterval(tradingTimer);
+		clearInterval(retentionTimer);
 		collector.stop();
 		await http.stop();
 		db.$client.close();

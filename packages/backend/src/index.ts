@@ -25,6 +25,12 @@ export type {
 	ScoringModelOption,
 	TrialResult,
 } from "./news/types";
+export type {
+	RetentionRun,
+	RetentionSettings,
+	RetentionStatus,
+	RetentionTable,
+} from "./retention/types";
 export type { StoredStrategy } from "./strategies/types";
 export type {
 	AutoTradingStatus,

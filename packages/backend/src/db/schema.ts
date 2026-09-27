@@ -240,7 +240,7 @@ export const tradingOrders = sqliteTable(
 	],
 );
 
-/** 自動取引の判断の記録。評価のたびに1行。削除しない */
+/** 自動取引の判断の記録。評価のたびに1行。保持期間を過ぎたものは消す（注文を出した判断は残す） */
 export const tradingDecisions = sqliteTable(
 	"trading_decisions",
 	{
