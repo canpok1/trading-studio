@@ -50,7 +50,6 @@ export function createRetentionService({
 	};
 
 	async function run(at: number) {
-		const s = repo.settings();
 		const result: RetentionRun = {
 			at,
 			decisions: 0,
@@ -58,6 +57,7 @@ export function createRetentionService({
 			error: null,
 		};
 		try {
+			const s = repo.settings();
 			if (s.decisionsDays !== null) {
 				const before = at - s.decisionsDays * DAY_MS;
 				for (;;) {
@@ -80,7 +80,12 @@ export function createRetentionService({
 			console.error("retention: failed to delete old data", e);
 			result.error = e instanceof Error ? e.message : String(e);
 		}
-		repo.saveLastRun(result);
+		try {
+			repo.saveLastRun(result);
+		} catch (e) {
+			// 常駐処理を落とさない。記録できなければ次の見回りでやり直す
+			console.error("retention: failed to save the result", e);
+		}
 	}
 
 	const check = (field: keyof RetentionSettings, v: number | null) =>

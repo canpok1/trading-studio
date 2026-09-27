@@ -1,5 +1,12 @@
 import { expect, test } from "@playwright/test";
 
+// 他のテストへ影響しないよう、途中で失敗しても既定へ戻す
+test.afterEach(async ({ request }) => {
+	await request.put("/api/retention", {
+		data: { decisionsDays: 90, backtestsDays: null },
+	});
+});
+
 test("設定の「全般」でデータの保持期間を変えられる", async ({ page }, info) => {
 	await page.goto("/settings");
 	const card = page
@@ -22,9 +29,4 @@ test("設定の「全般」でデータの保持期間を変えられる", async
 	await expect(card.getByText("保存した")).toBeVisible();
 	await page.reload();
 	await expect(card.getByLabel("判断の記録")).toHaveValue("180");
-
-	// 他のテストへ影響しないよう戻す
-	await page.request.put("/api/retention", {
-		data: { decisionsDays: 90, backtestsDays: null },
-	});
 });
