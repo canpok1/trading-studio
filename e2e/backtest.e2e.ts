@@ -328,5 +328,5 @@ test("RSI の条件を持つ戦略の結果では、チャートの下に RSI �
 	await expect(toggle).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByTestId("chart-rsi-14")).toHaveText(/^RSI14 \d+\.\d$/);
 	await page.getByText("凡例").click();
-	await expect(page.getByText(/点線は条件のしきい値/)).toBeVisible();
+	await expect(page.getByText(/点線はしきい値/)).toBeVisible();
 });

@@ -28,6 +28,7 @@ import {
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatDateTime } from "../../format";
+import type { ChartIndicators } from "../../lib/chart-indicators";
 import { formatInt } from "../../lib/number";
 import { ShapeIcon } from "../judgment/JudgmentBadge";
 import { valueStyle } from "../judgment/judgment-style";
@@ -47,6 +48,7 @@ import {
 	zoomRange,
 } from "./chart-data";
 import { useChartStyle } from "./chart-style";
+import { EmaSettingsModal, RsiSettingsModal } from "./IndicatorSettings";
 import { JudgeLayer, stripArea } from "./judge-layer";
 import type { BarJudgments } from "./judgment-data";
 import { slotAligned } from "./judgment-data";
@@ -54,10 +56,10 @@ import { slotAligned } from "./judgment-data";
 type Props = {
 	bars: readonly ChartBar[];
 	markers?: readonly ChartMarker[];
-	/** 戦略の条件にある EMA の本数。空なら EMA の表示切り替えを出さない */
-	emaPeriods?: readonly number[];
-	/** 戦略の条件にある RSI の本数と、しきい値。空なら RSI の小窓と表示切り替えを出さない */
-	rsiLines?: readonly RsiLine[];
+	/** EMA・RSI の本数と表示の有無 */
+	indicators: ChartIndicators;
+	/** EMA・RSI を描かない（ホームで粒度を切り替え、足が届く前） */
+	hideIndicators?: boolean;
 	selectedId?: string | null;
 	onMarker?: (m: ChartMarker) => void;
 	/** 最初に見せる長さ（最新から遡るミリ秒）。null なら全体を収める */
@@ -96,7 +98,7 @@ const emaVar = (j: number) => EMA_VARS[j % 2] as string;
 const RSI_VARS = ["--color-rsi1", "--color-rsi2"] as const;
 const rsiVar = (j: number) => RSI_VARS[j % 2] as string;
 
-export type RsiLine = { period: number; thresholds: readonly number[] };
+type RsiLine = { period: number; thresholds: readonly number[] };
 
 /** RSI の小窓の高さの割合。価格 : RSI = 3 : 1 */
 const PRICE_STRETCH = 3;
@@ -160,7 +162,6 @@ const ICON_BTN =
 
 const NO_MARKERS: readonly ChartMarker[] = [];
 const NO_PERIODS: readonly number[] = [];
-const NO_RSI: readonly RsiLine[] = [];
 
 /** チャートの高さの最小値（px）。下の className の h-[260px] と揃える */
 const MIN_CHART_PX = 260;
@@ -171,8 +172,8 @@ const HIT_PX = 18;
 export function PriceChart({
 	bars,
 	markers = NO_MARKERS,
-	emaPeriods = NO_PERIODS,
-	rsiLines = NO_RSI,
+	indicators,
+	hideIndicators = false,
 	selectedId = null,
 	onMarker,
 	initialSpanMs = null,
@@ -210,8 +211,7 @@ export function PriceChart({
 	} | null>(null);
 	// 最新の足が画面に入っているか。入っていれば「最新へ」のボタンを押せなくする
 	const [atLatest, setAtLatest] = useState(true);
-	const [emaOn, setEmaOn] = useState(true);
-	const [rsiOn, setRsiOn] = useState(true);
+	const [editing, setEditing] = useState<"ema" | "rsi" | null>(null);
 	const [style, setStyle] = useChartStyle();
 	const [cursor, setCursor] = useState<number | null>(null);
 	const [themeTick, setThemeTick] = useState(0);
@@ -220,24 +220,29 @@ export function PriceChart({
 
 	const barTimes = useMemo(() => bars.map((b) => b.time), [bars]);
 	const slots = useMemo(() => toSlots(barTimes), [barTimes]);
-	// 呼び出し側が毎回新しい配列を渡しても、本数が同じなら計算し直さない
+	const showEma = indicators.ema.on && !hideIndicators;
+	const showRsi = indicators.rsi.on && !hideIndicators;
+	const emaPeriods = showEma ? indicators.ema.value : NO_PERIODS;
+	const rs = indicators.rsi.value;
+	// 呼び出し側が毎回新しい値を渡しても、本数が同じなら計算し直さない
 	const emaKey = emaPeriods.join(",");
 	// biome-ignore lint/correctness/useExhaustiveDependencies: emaPeriods の中身は emaKey で見る
 	const emaValues = useMemo(() => {
 		const closes = bars.map((b) => b.close);
 		return emaPeriods.map((n) => ema(closes, n));
 	}, [bars, emaKey]);
-	const showEma = emaOn && emaPeriods.length > 0;
-	// 本数としきい値の組が同じなら計算し直さない
-	const rsiKey = rsiLines
-		.map((l) => `${l.period}:${l.thresholds.join("/")}`)
-		.join(",");
+	const rsiKey = showRsi ? `${rs.period}:${rs.lower}/${rs.upper}` : "";
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 本数としきい値の組は rsiKey で見る
+	const rsiLines = useMemo<readonly RsiLine[]>(
+		() =>
+			showRsi ? [{ period: rs.period, thresholds: [rs.lower, rs.upper] }] : [],
+		[rsiKey],
+	);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: rsiLines の中身は rsiKey で見る
 	const rsiValues = useMemo(() => {
 		const closes = bars.map((b) => b.close);
 		return rsiLines.map((l) => rsi(closes, l.period));
 	}, [bars, rsiKey]);
-	const showRsi = rsiOn && rsiLines.length > 0;
 	// 4本値を保存する前のバックテスト結果は終値しか無いので、線でしか描けない
 	const canCandle = useMemo(() => hasOhlc(bars), [bars]);
 	const candle = style === "candle" && canCandle;
@@ -676,27 +681,44 @@ export function PriceChart({
 				>
 					ローソク足
 				</button>
-				{emaPeriods.length > 0 && (
-					<button
-						type="button"
-						aria-pressed={emaOn}
-						onClick={() => setEmaOn((v) => !v)}
-						className={CHIP}
-					>
-						EMA
-					</button>
-				)}
-				{rsiLines.length > 0 && (
-					<button
-						type="button"
-						aria-pressed={rsiOn}
-						onClick={() => setRsiOn((v) => !v)}
-						className={CHIP}
-					>
-						RSI
-					</button>
-				)}
+				{(["ema", "rsi"] as const).map((k) => {
+					const label = k === "ema" ? "EMA" : "RSI";
+					const c = indicators[k];
+					return (
+						<span key={k} className="flex items-center gap-1">
+							<button
+								type="button"
+								aria-pressed={c.on}
+								onClick={() => c.setOn(!c.on)}
+								className={CHIP}
+							>
+								{label}
+							</button>
+							<button
+								type="button"
+								aria-label={`${label} の本数を変える`}
+								title={`${label} の本数を変える`}
+								onClick={() => setEditing(k)}
+								className={ICON_BTN}
+							>
+								⚙
+							</button>
+						</span>
+					);
+				})}
 			</div>
+			{editing === "ema" && (
+				<EmaSettingsModal
+					control={indicators.ema}
+					onClose={() => setEditing(null)}
+				/>
+			)}
+			{editing === "rsi" && (
+				<RsiSettingsModal
+					control={indicators.rsi}
+					onClose={() => setEditing(null)}
+				/>
+			)}
 		</>
 	);
 	const chart = (
@@ -745,7 +767,11 @@ export function PriceChart({
 								emaPeriods.map((n, j) => {
 									const v = emaValues[j]?.[shown as number];
 									return (
-										<span key={n} className="flex items-center gap-1">
+										<span
+											key={n}
+											data-testid={`chart-ema-${n}`}
+											className="flex items-center gap-1"
+										>
 											<i
 												className="inline-block h-[3px] w-2.5"
 												style={{ background: `var(${emaVar(j)})` }}
@@ -845,7 +871,16 @@ export function PriceChart({
 							</LegendRow>
 						)}
 						{showEma && (
-							<LegendRow title="EMA" note="戦略の条件で使う移動平均">
+							<LegendRow
+								title="EMA"
+								note={
+									indicators.ema.custom
+										? "指数移動平均。本数は歯車で変えた値"
+										: indicators.ema.fromStrategy
+											? "指数移動平均。本数は戦略の条件の値"
+											: "指数移動平均。本数は既定の値（歯車で変えられる）"
+								}
+							>
 								{emaPeriods.map((n, j) => (
 									<span key={n} className="flex items-center gap-1">
 										<i
@@ -860,7 +895,7 @@ export function PriceChart({
 						{showRsi && (
 							<LegendRow
 								title="RSI"
-								note="戦略の条件で使う RSI。下の小窓に 0〜100 で描き、点線は条件のしきい値"
+								note="下の小窓に 0〜100 で描き、点線はしきい値。本数・しきい値は歯車で変えられる"
 							>
 								{rsiLines.map((l, j) => (
 									<span key={l.period} className="flex items-center gap-1">

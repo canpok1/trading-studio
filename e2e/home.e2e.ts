@@ -42,7 +42,7 @@ test("収集が止まると現在値の下にエラーが出て、直ると消�
 	await expect(alert).toBeHidden({ timeout: 30_000 });
 });
 
-test("EMA の条件を持つ戦略を選ぶと EMA が出て、戦略の粒度以外では消える", async ({
+test("EMA は戦略で使っていれば表示して始まり、どの粒度でも出せて、本数を変えられる", async ({
 	page,
 }, info) => {
 	const create = async (name: string, template: string) => {
@@ -61,17 +61,35 @@ test("EMA の条件を持つ戦略を選ぶと EMA が出て、戦略の粒度�
 	const ema = page.getByRole("button", { name: "EMA", exact: true });
 
 	await select.selectOption({ label: `${trend}（1時間足）` });
-	await expect(ema).toBeVisible();
+	await expect(ema).toHaveAttribute("aria-pressed", "true");
 	// 戦略の粒度（トレンド追随は1時間足）が選ばれている
 	await expect(page.getByRole("radio", { name: "1時間" })).toBeChecked();
 
+	// 戦略の粒度以外でも出す
 	await page.getByText("5分", { exact: true }).click();
-	await expect(ema).toBeHidden();
-	await expect(page.getByText(/EMA は戦略の粒度/)).toBeVisible();
+	await expect(ema).toHaveAttribute("aria-pressed", "true");
 
+	// EMA を使わない戦略では隠して始まる
 	await select.selectOption({ label: `${range}（1時間足）` });
-	await expect(ema).toBeHidden();
-	await expect(page.getByText(/EMA は戦略の粒度/)).toBeHidden();
+	await expect(ema).toHaveAttribute("aria-pressed", "false");
+
+	// 本数を変えると表示し、再読み込みしても保つ
+	await page.getByRole("button", { name: "EMA の本数を変える" }).click();
+	await page.getByLabel("EMA 1本目の本数").fill("9");
+	await page.getByLabel("EMA 2本目の本数").fill("");
+	await page.getByRole("button", { name: "表示する" }).click();
+	await expect(ema).toHaveAttribute("aria-pressed", "true");
+	await expect(page.getByTestId("chart-ema-9")).toHaveText(/^EMA9 [\d,—]+$/, {
+		timeout: 15_000,
+	});
+	await page.reload();
+	await expect(ema).toHaveAttribute("aria-pressed", "true");
+	await expect(page.getByTestId("chart-ema-9")).toBeVisible({
+		timeout: 15_000,
+	});
+	await page.getByRole("button", { name: "EMA の本数を変える" }).click();
+	await page.getByRole("button", { name: "既定の値に戻す" }).click();
+	await expect(page.getByTestId("chart-ema-20")).toBeVisible();
 
 	// 選んだ戦略は保存される
 	await page.reload();
@@ -126,10 +144,10 @@ test("RSI の条件を持つ戦略を選ぶと RSI の小窓と値が出て、�
 		await toggle.click();
 		await expect(value).toBeVisible();
 
-		// 戦略の粒度以外では出さない
+		// 戦略の粒度以外でも出す
 		await page.getByText("5分", { exact: true }).click();
-		await expect(toggle).toBeHidden();
-		await expect(page.getByText(/RSI は戦略の粒度/)).toBeVisible();
+		await expect(toggle).toHaveAttribute("aria-pressed", "true");
+		await expect(value).toBeVisible({ timeout: 15_000 });
 	} finally {
 		await page.request.put("/api/strategies/active", { data: { id: null } });
 	}
