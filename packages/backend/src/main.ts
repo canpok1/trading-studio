@@ -21,6 +21,7 @@ import { createJudgmentService } from "./judgments/service";
 import { createMarketService } from "./market/service";
 import { MarketDataRepository } from "./market-data/repository";
 import { createMarketDataService } from "./market-data/service";
+import { mcpRoutes } from "./mcp/server";
 import { createNewsCollector, httpFetchFeed } from "./news/collector";
 import { demoFetchFeed } from "./news/fake-feed";
 import { demoScoreModel } from "./news/fake-model";
@@ -160,32 +161,35 @@ const advice = createAdviceService({
 				geminiModel(() => scoreRepo.apiKey(), { timeoutMs: 180_000 }),
 	appBuiltAt,
 });
-const server = new Hono().route(
-	"/",
-	createApp({
-		isDbReachable: () => isDbReachable(db),
-		appBuiltAt,
-		marketData,
-		market: createMarketService({ collector, repo: marketDataRepo }),
-		strategies,
-		backtests,
-		advice,
-		news: createNewsService({ repo: newsRepo, collector: newsCollector }),
-		scoring: createScoringService({
-			repo: scoreRepo,
-			newsRepo,
-			scorer,
-		}),
-		judgments,
-		trading: tradingEngine,
-		analysisExport: createAnalysisExportService({
-			repo: new AnalysisExportRepository(db),
-			scoreRepo,
-			backtestRepo,
+const server = new Hono()
+	// 画面の配信（GET *）より前に置く
+	.route("/mcp", mcpRoutes({ strategies, backtests, marketData }))
+	.route(
+		"/",
+		createApp({
+			isDbReachable: () => isDbReachable(db),
+			appBuiltAt,
 			marketData,
+			market: createMarketService({ collector, repo: marketDataRepo }),
+			strategies,
+			backtests,
+			advice,
+			news: createNewsService({ repo: newsRepo, collector: newsCollector }),
+			scoring: createScoringService({
+				repo: scoreRepo,
+				newsRepo,
+				scorer,
+			}),
+			judgments,
+			trading: tradingEngine,
+			analysisExport: createAnalysisExportService({
+				repo: new AnalysisExportRepository(db),
+				scoreRepo,
+				backtestRepo,
+				marketData,
+			}),
 		}),
-	}),
-);
+	);
 serveFrontend(server, distDir);
 
 const http = Bun.serve({ hostname, port, fetch: server.fetch });

@@ -15,3 +15,4 @@
 | [0009](0009-gemini-api-key-set-from-screen.md) | Gemini の API キーは画面から保存して DB に持ち、画面へは返さない | 採用 | 2026-09-26 |
 | [0010](0010-advice-reduces-bars-around-orders.md) | アドバイスで AI に渡す足が多すぎるときは、全体を粗い足にし注文の前後だけ戦略の足で渡す | 採用 | 2026-09-27 |
 | [0011](0011-hold-positions-as-lots.md) | 保有を買い1件ごとのロットで持ち、売りはロットごとに判定する | 採用 | 2026-09-27 |
+| [0012](0012-mcp-in-backend-for-claude-code.md) | Claude Code から戦略を相談できるよう、backend に MCP を内蔵する | 採用 | 2026-09-27 |
