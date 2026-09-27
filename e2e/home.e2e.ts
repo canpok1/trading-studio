@@ -104,7 +104,13 @@ test("EMA は戦略で使っていれば表示して始まり、どの粒度で�
 	});
 	await page.getByRole("button", { name: "EMA の本数を変える" }).click();
 	await page.getByRole("button", { name: "既定の値に戻す" }).click();
-	await expect(page.getByTestId("chart-ema-20")).toBeVisible();
+	// 値の行はタップした位置の足（データの無い足のこともある）を指すことがあるので、本数は設定の画面で確かめる
+	await openDisplay(page);
+	await expect(ema).toHaveAttribute("aria-pressed", "true");
+	await page.getByRole("button", { name: "EMA の本数を変える" }).click();
+	await expect(page.getByLabel("EMA 1本目の本数")).toHaveValue("20");
+	await expect(page.getByLabel("EMA 2本目の本数")).toHaveValue("50");
+	await page.getByRole("button", { name: "やめる" }).click();
 
 	// 選んだ戦略は保存される
 	await page.reload();
