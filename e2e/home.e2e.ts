@@ -246,3 +246,32 @@ test("チャートに AI 判定の背景と帯が出て、帯をタップする�
 			.getByRole("button", { name: "リスク" }),
 	).toHaveAttribute("aria-pressed", "true", { timeout: 20_000 });
 });
+
+test("ボリンジャーバンドは戦略で使っていなければ隠して始まり、本数と σ を変えると表示する", async ({
+	page,
+}) => {
+	await page.goto("/home");
+	await expect(page.getByTestId("chart-close")).toHaveText(/^¥/, {
+		timeout: 15_000,
+	});
+	const bb = page.getByRole("button", { name: "BB", exact: true });
+	await expect(bb).toHaveAttribute("aria-pressed", "false");
+	await expect(page.getByTestId("chart-bb")).toHaveCount(0);
+
+	await page.getByRole("button", { name: "BB の本数を変える" }).click();
+	await page.getByLabel("ボリンジャーバンドの σ", { exact: true }).fill("2.05");
+	await expect(page.getByRole("button", { name: "表示する" })).toBeDisabled();
+	await page.getByLabel("ボリンジャーバンドの本数", { exact: true }).fill("5");
+	await page.getByLabel("ボリンジャーバンドの σ", { exact: true }).fill("1.5");
+	await page.getByRole("button", { name: "表示する" }).click();
+	await expect(bb).toHaveAttribute("aria-pressed", "true");
+	await expect(page.getByTestId("chart-bb")).toHaveText(
+		/^BB5 [\d,—]+\/[\d,—]+\/[\d,—]+$/,
+	);
+
+	await page.getByRole("button", { name: "BB の本数を変える" }).click();
+	await page.getByRole("button", { name: "既定の値に戻す" }).click();
+	await expect(page.getByTestId("chart-bb")).toHaveText(/^BB20 /);
+	await bb.click();
+	await expect(page.getByTestId("chart-bb")).toHaveCount(0);
+});
