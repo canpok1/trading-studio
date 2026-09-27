@@ -49,7 +49,7 @@ export function OtherPage() {
 					<span className="flex-1">
 						設定
 						<span className="block text-xs text-text-2">
-							画面の色・API キー、ニュースの集計ルール・プロンプト・収集と採点
+							画面の色・API キー、ニュースの採点、バックテストのアドバイス
 						</span>
 					</span>
 					›

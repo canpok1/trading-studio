@@ -16,6 +16,7 @@ import {
 } from "react";
 import { useNavigate, useParams } from "react-router";
 import { useApi } from "../api";
+import { AdviceSection } from "../components/backtest/AdviceSection";
 import { OrderRow, OrderSheet, Stat } from "../components/backtest/OrderViews";
 import { alignJudgments } from "../components/chart/judgment-data";
 import { PriceChart } from "../components/chart/PriceChart";
@@ -423,6 +424,7 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 					onBgChange={setBg}
 				/>
 			</div>
+			<AdviceSection runId={run.id} />
 			<section aria-label="注文と約定" className="flex flex-col gap-2">
 				{noOrders ? (
 					<Card>

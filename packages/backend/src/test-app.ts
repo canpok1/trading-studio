@@ -1,4 +1,8 @@
 // テスト用。メモリ上の DB で本物のサービスをつないだ app を作る
+import { demoAdviceModel } from "./advice/fake-model";
+import { DEFAULT_INSTRUCTIONS } from "./advice/prompt";
+import { AdviceRepository } from "./advice/repository";
+import { createAdviceService } from "./advice/service";
 import { AnalysisExportRepository } from "./analysis-export/repository";
 import { createAnalysisExportService } from "./analysis-export/service";
 import type { AppDeps } from "./app";
@@ -16,6 +20,7 @@ import { createMarketService } from "./market/service";
 import { MarketDataRepository } from "./market-data/repository";
 import { createMarketDataService } from "./market-data/service";
 import { demoScoreModel } from "./news/fake-model";
+import type { GeminiModel } from "./news/gemini";
 import { DEFAULT_CRITERIA } from "./news/prompt";
 import { NewsRepository } from "./news/repository";
 import { ScoreRepository } from "./news/score-repository";
@@ -101,6 +106,21 @@ export function createTestApp(
 		judgments,
 		now: () => 3_000,
 	});
+	const adviceRepo = new AdviceRepository(db);
+	adviceRepo.seedInstructions(DEFAULT_INSTRUCTIONS, 0);
+	// テストから偽物の AI を差し替える
+	const adviceAi: { model: GeminiModel } = { model: demoAdviceModel() };
+	const advice = createAdviceService({
+		repo: adviceRepo,
+		backtests,
+		backtestRepo,
+		model: {
+			unavailable: () => adviceAi.model.unavailable(),
+			generate: (...a) => adviceAi.model.generate(...a),
+		},
+		appBuiltAt: null,
+		now: () => clock.now,
+	});
 	// 常駐処理は動かさず、テストから trading.tick() と trading.onTrades() を呼ぶ
 	const tradingRepo = new TradingRepository(db);
 	const trading = createTradingService({
@@ -125,6 +145,7 @@ export function createTestApp(
 		market,
 		strategies,
 		backtests,
+		advice,
 		news,
 		scoring,
 		judgments,
@@ -140,6 +161,9 @@ export function createTestApp(
 		strategies,
 		backtests,
 		backtestRepo,
+		advice,
+		adviceRepo,
+		adviceAi,
 		live,
 		clock,
 		news,

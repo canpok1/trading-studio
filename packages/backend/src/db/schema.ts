@@ -271,3 +271,31 @@ export const autoTrading = sqliteTable("auto_trading", {
 	reevaluate: integer("reevaluate", { mode: "boolean" }).notNull(),
 	startedAt: integer("started_at"),
 });
+
+/** バックテストのアドバイスの指示の版。上書きせず、版を足していく */
+export const adviceInstructions = sqliteTable("advice_instructions", {
+	version: integer("version").primaryKey({ autoIncrement: true }),
+	text: text("text").notNull(),
+	/** 版の説明 */
+	note: text("note").notNull(),
+	createdAt: integer("created_at").notNull(),
+});
+
+/** バックテストの AI アドバイス。実行ごとに最新の1件だけ持ち、生成し直すと置き換える */
+export const backtestAdvice = sqliteTable("backtest_advice", {
+	runId: integer("run_id")
+		.primaryKey()
+		.references(() => backtestRuns.id),
+	/** running / done / failed */
+	status: text("status").notNull(),
+	/** アドバイスの本文（JSON: 見出しごとの文章）。作り直しの生成中と失敗では前の本文を残す */
+	content: text("content"),
+	model: text("model").notNull(),
+	instructionsVersion: integer("instructions_version").notNull(),
+	/** 生成したアプリのバージョン（ビルド日時）。開発版は null */
+	appBuiltAt: integer("app_built_at"),
+	startedAt: integer("started_at").notNull(),
+	/** 本文を作り終えた時刻 */
+	finishedAt: integer("finished_at"),
+	error: text("error"),
+});
