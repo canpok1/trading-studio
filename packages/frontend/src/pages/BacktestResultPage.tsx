@@ -99,9 +99,11 @@ export function BacktestResultPage() {
 		);
 	}
 	const { run, chart } = state.data;
+	const done = run.status === "done" && run.summary !== null && chart !== null;
 	return (
 		<Page title={title} actions={<RerunButton run={run} />}>
-			<RunHeader run={run} />
+			{/* 結果があれば、条件は成績と並べて結果の中に出す */}
+			{!done && <RunHeader run={run} />}
 			{run.status === "running" && (
 				<Card className="flex flex-col gap-2.5">
 					<strong>バックテストを実行中</strong>
@@ -126,9 +128,7 @@ export function BacktestResultPage() {
 					/>
 				</Card>
 			)}
-			{run.status === "done" && run.summary && chart && (
-				<Result run={run} chart={chart} />
-			)}
+			{done && chart && <Result run={run} chart={chart} />}
 		</Page>
 	);
 }
@@ -178,7 +178,10 @@ function RunHeader({ run }: { run: BacktestRun }) {
 		...(run.aggregationRule ? [ruleText(run.aggregationRule)] : []),
 	];
 	return (
-		<div className="flex flex-col gap-1.5">
+		<section
+			aria-label="実行の条件"
+			className="flex flex-col gap-1.5 rounded-xl border border-line bg-surface px-4 py-3.5"
+		>
 			<strong className="text-[15px]">
 				{run.name} · {TIMEFRAME_LABELS[run.timeframe]}
 			</strong>
@@ -194,7 +197,7 @@ function RunHeader({ run }: { run: BacktestRun }) {
 				{chips.map((c) => (
 					<li
 						key={c}
-						className="num inline-flex h-6 items-center rounded-md bg-surface-2 px-2 text-[11px]"
+						className="num inline-flex min-h-6 items-center rounded-md bg-surface-2 px-2 py-0.5 text-[11px]"
 					>
 						{c}
 					</li>
@@ -224,7 +227,7 @@ function RunHeader({ run }: { run: BacktestRun }) {
 					}}
 				/>
 			)}
-		</div>
+		</section>
 	);
 }
 
@@ -342,7 +345,9 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 	const tone = (n: number) => (n >= 0 ? "text-profit" : "text-loss");
 
 	return (
-		<div className="flex flex-col gap-3.5 lg:grid lg:grid-cols-[360px_minmax(0,1fr)] lg:items-start">
+		// 広い画面は上段に条件と成績を並べ、チャート以下は2列幅で縦に積む
+		<div className="flex flex-col gap-3.5 lg:grid lg:grid-cols-2">
+			<RunHeader run={run} />
 			<section
 				aria-label="成績の要約"
 				className="flex flex-col gap-3.5 rounded-xl border border-line bg-surface px-4 py-3.5"
@@ -412,7 +417,7 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 					</p>
 				)}
 			</section>
-			<div className="rounded-xl border border-line bg-surface px-3 py-3.5 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+			<div className="rounded-xl border border-line bg-surface px-3 py-3.5 lg:col-span-2">
 				<PriceChart
 					bars={chart.bars}
 					markers={chart.markers}
@@ -424,8 +429,13 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 					onBgChange={setBg}
 				/>
 			</div>
-			<AdviceSection runId={run.id} />
-			<section aria-label="注文と約定" className="flex flex-col gap-2">
+			<div className="lg:col-span-2">
+				<AdviceSection runId={run.id} />
+			</div>
+			<section
+				aria-label="注文と約定"
+				className="flex flex-col gap-2 lg:col-span-2"
+			>
 				{noOrders ? (
 					<Card>
 						<EmptyState
