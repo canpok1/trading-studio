@@ -27,6 +27,8 @@ import { ScoreRepository } from "./news/score-repository";
 import { createScorer } from "./news/scorer";
 import { createScoringService } from "./news/scoring-service";
 import { createNewsService } from "./news/service";
+import { RetentionRepository } from "./retention/repository";
+import { createRetentionService } from "./retention/service";
 import { createStrategyService } from "./strategies/service";
 import { TradingRepository } from "./trading/repository";
 import { createTradingService } from "./trading/service";
@@ -138,6 +140,11 @@ export function createTestApp(
 		marketData,
 		now: () => clock.now,
 	});
+	// 定期の削除は動かさず、テストから retention.tick() を呼ぶ
+	const retention = createRetentionService({
+		repo: new RetentionRepository(db),
+		now: () => clock.now,
+	});
 	const app = createApp({
 		isDbReachable: () => true,
 		appBuiltAt: null,
@@ -151,6 +158,7 @@ export function createTestApp(
 		judgments,
 		trading,
 		analysisExport,
+		retention,
 		...over,
 	});
 	return {
@@ -173,5 +181,6 @@ export function createTestApp(
 		scorer,
 		trading,
 		tradingRepo,
+		retention,
 	};
 }

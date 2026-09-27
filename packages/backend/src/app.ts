@@ -6,6 +6,7 @@ import type { JudgmentService } from "./judgments/types";
 import type { MarketService } from "./market/types";
 import type { MarketDataService } from "./market-data/types";
 import type { NewsService, ScoringService } from "./news/types";
+import type { RetentionService } from "./retention/types";
 import { adviceRoutes } from "./routes/advice";
 import { backtestRoutes } from "./routes/backtests";
 import { exportRoutes } from "./routes/export";
@@ -13,6 +14,7 @@ import { judgmentRoutes } from "./routes/judgments";
 import { marketRoutes } from "./routes/market";
 import { marketDataRoutes } from "./routes/market-data";
 import { newsRoutes } from "./routes/news";
+import { retentionRoutes } from "./routes/retention";
 import { scoringRoutes } from "./routes/scoring";
 import { strategyRoutes } from "./routes/strategies";
 import { tradingRoutes } from "./routes/trading";
@@ -33,6 +35,7 @@ export type AppDeps = {
 	judgments: JudgmentService;
 	trading: TradingService;
 	analysisExport: AnalysisExportService;
+	retention: RetentionService;
 };
 
 // frontend は Hono RPC でこの型を使う。Bun 固有の API はここに持ち込まない（frontend の型チェックに Bun の型を入れないため）
@@ -49,6 +52,7 @@ export function createApp({
 	judgments,
 	trading,
 	analysisExport,
+	retention,
 }: AppDeps) {
 	const api = new Hono()
 		.get("/health", (c) =>
@@ -70,7 +74,8 @@ export function createApp({
 		.route("/scoring", scoringRoutes(scoring))
 		.route("/judgments", judgmentRoutes(judgments))
 		.route("/trading", tradingRoutes(trading))
-		.route("/export", exportRoutes(analysisExport));
+		.route("/export", exportRoutes(analysisExport))
+		.route("/retention", retentionRoutes(retention));
 	return new Hono().route("/api", api);
 }
 
