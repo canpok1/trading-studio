@@ -364,10 +364,6 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 							{formatSignedPercent(s.pnlPercent)}
 						</span>
 					</div>
-					<span className="num text-xs text-text-2">
-						同期間のガチホ（買って保有）
-						{formatSignedPercent(s.buyAndHoldPercent)}
-					</span>
 				</div>
 				<div className="grid grid-cols-3 gap-x-2 gap-y-3 border-t border-line pt-3">
 					<Stat

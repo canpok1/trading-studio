@@ -1,6 +1,6 @@
 // バックテストエンジン。過去の足の上で戦略を動かし、注文・約定・成績を計算する
 
-import { feeYen, notionalYen, PPM, SATOSHI_PER_BTC } from "./money";
+import { notionalYen } from "./money";
 import type { AggregationRule, ScoredNews } from "./news-judgment";
 import { judgmentCursor } from "./news-judgment";
 import type { Strategy } from "./strategy";
@@ -83,8 +83,6 @@ export type BacktestSummary = {
 	finalEquity: number;
 	pnl: number;
 	pnlPercent: number;
-	/** 同期間のガチホの損益率 */
-	buyAndHoldPercent: number;
 	/** 往復の回数（未決済は含めない） */
 	trades: number;
 	wins: number;
@@ -122,23 +120,6 @@ export function checkDataResolution(
 			`取り込み済みのデータは${TIMEFRAME_LABELS[dataTimeframe]}までで、戦略の${TIMEFRAME_LABELS[strategyTimeframe]}より粗いため実行できない`,
 		);
 	}
-}
-
-/** 現金で買える最大の数量（手数料込み） */
-function maxAffordable(cash: number, price: number, ratePpm: number): number {
-	const cost = (q: number) =>
-		notionalYen(price, q, "ceil") + feeYen(price, q, ratePpm);
-	// 丸めを無視した上限から二分探索する（1 satoshi ずつ減らすと価格が安いとき終わらない）
-	let lo = 0;
-	let hi = Math.floor(
-		(cash * SATOSHI_PER_BTC * PPM) / (price * (PPM + ratePpm)),
-	);
-	while (lo < hi) {
-		const mid = Math.ceil((lo + hi) / 2);
-		if (cost(mid) <= cash) lo = mid;
-		else hi = mid - 1;
-	}
-	return lo;
 }
 
 export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
@@ -288,7 +269,6 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 		}
 	}
 
-	const first = steps[startIndex] as Candle;
 	const last = steps[endIndex] as Candle;
 	for (const r of cancelAll(
 		account,
@@ -301,12 +281,6 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 
 	const finalEquity =
 		cash + notionalYen(last.close, position.quantity, "floor");
-	const hodlQty = maxAffordable(initialCash, first.open, fees.marketPpm);
-	const hodlFinal =
-		initialCash -
-		notionalYen(first.open, hodlQty, "ceil") -
-		feeYen(first.open, hodlQty, fees.marketPpm) +
-		notionalYen(last.close, hodlQty, "floor");
 	const wins = trades.filter((t) => t.pnl > 0);
 	const losses = trades.filter((t) => t.pnl <= 0);
 	const grossProfit = wins.reduce((a, t) => a + t.pnl, 0);
@@ -318,7 +292,6 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 			finalEquity,
 			pnl: finalEquity - initialCash,
 			pnlPercent: ((finalEquity - initialCash) / initialCash) * 100,
-			buyAndHoldPercent: ((hodlFinal - initialCash) / initialCash) * 100,
 			trades: trades.length,
 			wins: wins.length,
 			losses: losses.length,

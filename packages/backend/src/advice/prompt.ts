@@ -27,7 +27,7 @@ export const ADVICE_TEMPLATE = `<backtest>
 JSON のみを出力: {"analysis": 文字列, "good": 文字列, "bad": 文字列, "improvements": 文字列}`;
 
 /** 指示の初版 */
-export const DEFAULT_INSTRUCTIONS = `- 損益だけでなく、ガチホとの差・最大ドローダウン・取引回数も踏まえて評価する
+export const DEFAULT_INSTRUCTIONS = `- 損益だけでなく、最大ドローダウン・取引回数も踏まえて評価する
 - 負けた取引は、注文の前後の値動きから原因を考える
 - 取引回数が少なく偶然の可能性が高いときは、そう書く
 - 改善案は効果が大きそうな順に 3 つまで`;

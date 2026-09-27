@@ -502,11 +502,6 @@ const backtestRunsTable: Table<BacktestRun> = {
 		),
 		col("pnl", "損益（円）", (r) => r.summary?.pnl),
 		col("pnl_percent", "損益率（%）", (r) => r.summary?.pnlPercent),
-		col(
-			"buy_and_hold_percent",
-			"同期間のガチホ（買って持ち続けた場合）の損益率（%）",
-			(r) => r.summary?.buyAndHoldPercent,
-		),
 		col("trades", "往復の回数（未決済は含めない）", (r) => r.summary?.trades),
 		col("wins", "勝ちの往復の数", (r) => r.summary?.wins),
 		col("losses", "負けの往復の数", (r) => r.summary?.losses),

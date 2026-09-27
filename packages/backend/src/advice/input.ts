@@ -273,7 +273,6 @@ export function buildAdviceSource(
 		lines.push(
 			`- 最終資金: ${s.finalEquity} 円（損益 ${s.pnl} 円、${r2(s.pnlPercent)}%）`,
 		);
-		lines.push(`- 同期間のガチホ: ${r2(s.buyAndHoldPercent)}%`);
 		lines.push(
 			`- 往復の取引: ${s.trades} 回（勝ち ${s.wins}・負け ${s.losses}）`,
 		);
