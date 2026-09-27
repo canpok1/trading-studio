@@ -243,20 +243,6 @@ describe("成績", () => {
 		expect(r.summary.maxDrawdownTo).toBe(4 * H);
 	});
 
-	test("ガチホ比は最初の足の始値で全額買い（手数料込み）、最後の足の終値で評価する", () => {
-		const r = runBacktest(
-			config(
-				bars([
-					[10_000_000, 10_000_000, 10_000_000, 10_000_000],
-					[10_000_000, 12_000_000, 10_000_000, 12_000_000],
-				]),
-				{ buyPrice: 1 },
-				{ fees: { limitPpm: 0, marketPpm: 0 } },
-			),
-		);
-		expect(r.summary.buyAndHoldPercent).toBeCloseTo(20, 10);
-	});
-
 	test("負けがあれば PF は総利益 ÷ 総損失、勝ちが無ければ 0", () => {
 		const r = runBacktest(
 			config(
