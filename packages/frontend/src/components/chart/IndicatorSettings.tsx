@@ -1,13 +1,14 @@
-// チャートの EMA・RSI の本数を変えるモーダル
+// チャートの EMA・RSI・ボリンジャーバンドの本数を変えるモーダル
 
 import { LIMITS } from "@trading-studio/core";
 import { useState } from "react";
 import type {
+	BbSetting,
 	EmaSetting,
 	IndicatorControl,
 	RsiSetting,
 } from "../../lib/chart-indicators";
-import { validEma, validRsi } from "../../lib/chart-indicators";
+import { validBb, validEma, validRsi } from "../../lib/chart-indicators";
 import { Modal } from "../Modal";
 import { NumberInput } from "../NumberInput";
 import { Button } from "../ui";
@@ -163,6 +164,64 @@ export function RsiSettingsModal({
 			{!ok && (
 				<p role="alert" className="text-xs font-semibold text-loss">
 					整数で入れ、下のしきい値は上より小さくする
+				</p>
+			)}
+			<Footer
+				control={control}
+				canApply={ok}
+				onApply={() => {
+					control.save(v);
+					onClose();
+				}}
+				onClose={onClose}
+			/>
+		</Modal>
+	);
+}
+
+export function BbSettingsModal({
+	control,
+	onClose,
+}: {
+	control: IndicatorControl<BbSetting>;
+	onClose: () => void;
+}) {
+	const [v, setV] = useState(control.value);
+	const ok = validBb(v);
+	const b = control.base;
+	return (
+		<Modal title="ボリンジャーバンドの本数と σ" onClose={onClose}>
+			<p className="text-xs text-text-2">
+				本数は {range(LIMITS.bollingerPeriod)}、σ は{" "}
+				{range(LIMITS.bollingerSigma)}（0.1 刻み）。
+				{control.fromStrategy ? "戦略の値" : "戦略で使っていないときの既定"}は{" "}
+				{b.period} 本・{b.sigma}σ
+			</p>
+			<div className={FIELD}>
+				本数
+				<NumberInput
+					value={v.period}
+					onChange={(period) => setV({ ...v, period })}
+					invalid={!ok}
+					inputMode="numeric"
+					aria-label="ボリンジャーバンドの本数"
+					className="w-20"
+				/>
+			</div>
+			<div className={FIELD}>
+				σ
+				<NumberInput
+					value={v.sigma}
+					onChange={(sigma) => setV({ ...v, sigma })}
+					invalid={!ok}
+					inputMode="decimal"
+					aria-label="ボリンジャーバンドの σ"
+					className="w-20"
+				/>
+			</div>
+			{!ok && (
+				<p role="alert" className="text-xs font-semibold text-loss">
+					本数は整数、σ は 0.1 刻みで範囲内に入れる
 				</p>
 			)}
 			<Footer

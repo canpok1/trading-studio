@@ -2,6 +2,7 @@
 
 import type { Judge } from "@trading-studio/core";
 import {
+	bollinger,
 	ema,
 	formatRsi,
 	JUDGE_LABELS,
@@ -48,7 +49,11 @@ import {
 	zoomRange,
 } from "./chart-data";
 import { useChartStyle } from "./chart-style";
-import { EmaSettingsModal, RsiSettingsModal } from "./IndicatorSettings";
+import {
+	BbSettingsModal,
+	EmaSettingsModal,
+	RsiSettingsModal,
+} from "./IndicatorSettings";
 import { JudgeLayer, stripArea } from "./judge-layer";
 import type { BarJudgments } from "./judgment-data";
 import { slotAligned } from "./judgment-data";
@@ -96,6 +101,7 @@ type Props = {
 const EMA_VARS = ["--color-ema1", "--color-ema2"] as const;
 const emaVar = (j: number) => EMA_VARS[j % 2] as string;
 const RSI_VARS = ["--color-rsi1", "--color-rsi2"] as const;
+const INDICATOR_LABELS = { ema: "EMA", bb: "BB", rsi: "RSI" } as const;
 const rsiVar = (j: number) => RSI_VARS[j % 2] as string;
 
 type RsiLine = { period: number; thresholds: readonly number[] };
@@ -196,6 +202,8 @@ export function PriceChart({
 		price: ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
 		marks: ISeriesMarkersPluginApi<Time>;
 		emas: ISeriesApi<"Line">[];
+		/** ボリンジャーバンドの上限・中央・下限 */
+		bbs: ISeriesApi<"Line">[];
 		rsis: ISeriesApi<"Line">[];
 		layer: JudgeLayer;
 		/** 「現在」の線と、それを付けた系列 */
@@ -211,7 +219,7 @@ export function PriceChart({
 	} | null>(null);
 	// 最新の足が画面に入っているか。入っていれば「最新へ」のボタンを押せなくする
 	const [atLatest, setAtLatest] = useState(true);
-	const [editing, setEditing] = useState<"ema" | "rsi" | null>(null);
+	const [editing, setEditing] = useState<"ema" | "bb" | "rsi" | null>(null);
 	const [style, setStyle] = useChartStyle();
 	const [cursor, setCursor] = useState<number | null>(null);
 	const [themeTick, setThemeTick] = useState(0);
@@ -222,6 +230,18 @@ export function PriceChart({
 	const slots = useMemo(() => toSlots(barTimes), [barTimes]);
 	const showEma = indicators.ema.on && !hideIndicators;
 	const showRsi = indicators.rsi.on && !hideIndicators;
+	const showBb = indicators.bb.on && !hideIndicators;
+	const bb = indicators.bb.value;
+	const bbKey = showBb ? `${bb.period}:${bb.sigma}` : "";
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 本数と σ の組は bbKey で見る
+	const bbValues = useMemo(() => {
+		if (!showBb) return null;
+		return bollinger(
+			bars.map((b) => b.close),
+			bb.period,
+			bb.sigma,
+		);
+	}, [bars, bbKey]);
 	const emaPeriods = showEma ? indicators.ema.value : NO_PERIODS;
 	const rs = indicators.rsi.value;
 	// 呼び出し側が毎回新しい値を渡しても、本数が同じなら計算し直さない
@@ -307,6 +327,7 @@ export function PriceChart({
 			price: line,
 			marks,
 			emas: [],
+			bbs: [],
 			rsis: [],
 			layer,
 			now: null,
@@ -442,6 +463,38 @@ export function PriceChart({
 			c.emas.push(s);
 		});
 	}, [slots, emaValues, showEma]);
+
+	// ボリンジャーバンド。上限・下限は実線、中央は点線
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		for (const s of c.bbs) c.chart.removeSeries(s);
+		c.bbs = [];
+		if (!bbValues) return;
+		for (const [values, dashed] of [
+			[bbValues.upper, false],
+			[bbValues.middle, true],
+			[bbValues.lower, false],
+		] as const) {
+			const s = c.chart.addSeries(LineSeries, {
+				color: cssVar("--color-bb"),
+				lineWidth: 1,
+				lineStyle: dashed ? LineStyle.Dashed : LineStyle.Solid,
+				priceLineVisible: false,
+				lastValueVisible: false,
+				crosshairMarkerVisible: false,
+			});
+			s.setData(
+				slots.map((slot) => {
+					const time = toChartTime(slot.time) as UTCTimestamp;
+					const v =
+						slot.bar === null ? Number.NaN : (values[slot.bar] as number);
+					return Number.isNaN(v) ? { time } : { time, value: v };
+				}),
+			);
+			c.bbs.push(s);
+		}
+	}, [slots, bbValues]);
 
 	// RSI の小窓。価格の下の別の区画に 0〜100 で描き、条件のしきい値を点線で引く
 	// biome-ignore lint/correctness/useExhaustiveDependencies: rsiLines の中身は rsiKey で見る
@@ -636,6 +689,7 @@ export function PriceChart({
 		c.emas.forEach((s, j) => {
 			s.applyOptions({ color: cssVar(emaVar(j)) });
 		});
+		for (const s of c.bbs) s.applyOptions({ color: cssVar("--color-bb") });
 	}, [themeTick]);
 
 	const slot = slots[cursor ?? slots.length - 1] ?? null;
@@ -681,8 +735,8 @@ export function PriceChart({
 				>
 					ローソク足
 				</button>
-				{(["ema", "rsi"] as const).map((k) => {
-					const label = k === "ema" ? "EMA" : "RSI";
+				{(["ema", "bb", "rsi"] as const).map((k) => {
+					const label = INDICATOR_LABELS[k];
 					const c = indicators[k];
 					return (
 						<span key={k} className="flex items-center gap-1">
@@ -710,6 +764,12 @@ export function PriceChart({
 			{editing === "ema" && (
 				<EmaSettingsModal
 					control={indicators.ema}
+					onClose={() => setEditing(null)}
+				/>
+			)}
+			{editing === "bb" && (
+				<BbSettingsModal
+					control={indicators.bb}
 					onClose={() => setEditing(null)}
 				/>
 			)}
@@ -781,6 +841,26 @@ export function PriceChart({
 										</span>
 									);
 								})}
+							{bbValues && (
+								<span
+									data-testid="chart-bb"
+									className="flex items-center gap-1"
+								>
+									<i
+										className="inline-block h-[3px] w-2.5"
+										style={{ background: "var(--color-bb)" }}
+									/>
+									BB{bb.period}{" "}
+									{[bbValues.upper, bbValues.middle, bbValues.lower]
+										.map((vs) => {
+											const v = vs[shown as number];
+											return v === undefined || Number.isNaN(v)
+												? "—"
+												: formatInt(v);
+										})
+										.join("/")}
+								</span>
+							)}
 							{showRsi &&
 								rsiLines.map((l, j) => {
 									const v = rsiValues[j]?.[shown as number];
@@ -842,7 +922,7 @@ export function PriceChart({
 						: `h-[260px] ${split ? "lg:h-[480px]" : "lg:h-[360px]"}`
 				}`}
 			/>
-			{(onMarker || showEma || showRsi || judgments) && (
+			{(onMarker || showEma || showBb || showRsi || judgments) && (
 				<details className="rounded-[10px] border border-line px-3 py-2 text-xs">
 					<summary className="cursor-pointer font-semibold">凡例</summary>
 					<div className="mt-2 flex flex-col gap-2">
@@ -890,6 +970,26 @@ export function PriceChart({
 										EMA {n}
 									</span>
 								))}
+							</LegendRow>
+						)}
+						{showBb && (
+							<LegendRow
+								title="ボリンジャーバンド"
+								note={
+									indicators.bb.custom
+										? "上限・中央（点線）・下限。本数と σ は歯車で変えた値"
+										: indicators.bb.fromStrategy
+											? "上限・中央（点線）・下限。本数と σ は戦略の条件の値"
+											: "上限・中央（点線）・下限。本数と σ は既定の値（歯車で変えられる）"
+								}
+							>
+								<span className="flex items-center gap-1">
+									<i
+										className="inline-block h-[3px] w-3"
+										style={{ background: "var(--color-bb)" }}
+									/>
+									{bb.period} 本・{bb.sigma}σ
+								</span>
 							</LegendRow>
 						)}
 						{showRsi && (
