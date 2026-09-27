@@ -46,6 +46,18 @@ export type TradeOrder = {
 	pnl: number | null;
 };
 
+/** 売りに、売るロット（対応する買い）の約定価格を lotPrice として添える。買いと、ロットが分からない売りは null */
+export function withLotPrices<T extends TradeOrder>(
+	orders: readonly T[],
+): (T & { lotPrice: number | null })[] {
+	const price = new Map(orders.map((o) => [o.id, o.fillPrice]));
+	return orders.map((o) => ({
+		...o,
+		lotPrice:
+			o.side === "sell" && o.pairId ? (price.get(o.pairId) ?? null) : null,
+	}));
+}
+
 /** 判断の記録。評価のたびに1件 */
 export type DecisionLog = {
 	time: number;
