@@ -4,7 +4,7 @@ import type { AggregationRule } from "@trading-studio/core";
 import type { ScoreModel } from "./gemini";
 import { DEFAULT_SCORING_MODEL } from "./gemini";
 import type { PromptNews, ScoreResponse } from "./prompt";
-import { buildPrompt, parseScoreResponse } from "./prompt";
+import { buildPrompt, parseScoreResponse, RESPONSE_SCHEMA } from "./prompt";
 import type { ScoreRepository } from "./score-repository";
 
 /** 自動の再試行の間隔。3回まで延ばしながら再試行し、それでも失敗なら止めて手動の再試行を待つ */
@@ -59,7 +59,11 @@ export function createScorer({
 	let lastAskedAt = Number.NEGATIVE_INFINITY;
 
 	async function ask(news: PromptNews, criteria: string, modelId: string) {
-		const raw = await model.generate(modelId, buildPrompt(news, criteria));
+		const raw = await model.generate(
+			modelId,
+			buildPrompt(news, criteria),
+			RESPONSE_SCHEMA,
+		);
 		const parsed = parseScoreResponse(raw);
 		if (typeof parsed === "string")
 			throw new Error(`応答の形が違う: ${parsed}`);

@@ -71,6 +71,13 @@
       "when": 1790468485123,
       "tag": "0009_score_scale_and_version",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1790474239076,
+      "tag": "0010_backtest_advice",
+      "breakpoints": true
     }
   ]
 }

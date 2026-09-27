@@ -10,6 +10,7 @@ import { ApiKeySetting } from "../components/ApiKeySetting";
 import { PromptTab } from "../components/ai/PromptTab";
 import { RuleTab } from "../components/ai/RuleTab";
 import { SourcesTab } from "../components/ai/SourcesTab";
+import { AdviceSettings } from "../components/backtest/AdviceSettings";
 import { Page } from "../components/Page";
 import { ErrorState, LoadingCard } from "../components/States";
 import { Button } from "../components/ui";
@@ -29,6 +30,7 @@ const POLL_MS = 5_000;
 const SECTIONS = [
 	["general", "全般"],
 	["news", "ニュース"],
+	["backtest", "バックテスト"],
 ] as const;
 type SettingsSection = (typeof SECTIONS)[number][0];
 const isSection = (v: string | null): v is SettingsSection =>
@@ -61,12 +63,18 @@ export function SettingsPage() {
 					setParams(s === "general" ? {} : { section: s }, { replace: true })
 				}
 			/>
-			{section === "general" ? (
+			{section === "general" && (
 				<div role="tabpanel" className="flex flex-col gap-3">
 					<ThemeSetting />
 					<ApiKeySetting />
 				</div>
-			) : (
+			)}
+			{section === "backtest" && (
+				<div role="tabpanel" className="flex flex-col gap-3">
+					<AdviceSettings />
+				</div>
+			)}
+			{section === "news" && (
 				<div role="tabpanel" className="flex flex-col gap-3">
 					<Tabs
 						label="ニュースの設定の種類"

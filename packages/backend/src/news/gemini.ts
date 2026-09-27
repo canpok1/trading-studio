@@ -1,13 +1,20 @@
-// Gemini API（generateContent）で採点する。構造化出力で JSON の形を強制する
+// Gemini API（generateContent）へ問い合わせる。ニュースの採点とバックテストのアドバイスで使う。構造化出力で JSON の形を強制する
 
-import { RESPONSE_SCHEMA } from "./prompt";
+/** Gemini の構造化出力の形（responseSchema の書き方） */
+export type ResponseSchema = Record<string, unknown>;
 
-/** 採点に使うモデルへ1回問い合わせ、応答の JSON を返す。テストと E2E では偽物に差し替える */
-export type ScoreModel = {
+/** モデルへ1回問い合わせ、応答の JSON を返す。テストと E2E では偽物に差し替える */
+export type GeminiModel = {
 	/** 使えない理由（API キーが無いなど）。使えれば null */
 	unavailable(): string | null;
-	generate(model: string, prompt: string): Promise<unknown>;
+	generate(
+		model: string,
+		prompt: string,
+		schema: ResponseSchema,
+	): Promise<unknown>;
 };
+/** 採点に使うモデル。名前は採点の側から見たもの */
+export type ScoreModel = GeminiModel;
 
 /** 画面で選べるモデル（docs/adr/0008）。先頭が既定 */
 export const SCORING_MODELS = [
@@ -24,17 +31,20 @@ export const NO_API_KEY =
 	"API キーが設定されていない。設定画面の「全般」で設定する";
 
 /** キーは画面から保存・削除されるので、問い合わせのたびに読む */
-export function geminiModel(apiKey: () => string | null): ScoreModel {
+export function geminiModel(
+	apiKey: () => string | null,
+	{ timeoutMs = TIMEOUT_MS }: { timeoutMs?: number } = {},
+): GeminiModel {
 	return {
 		unavailable: () => (apiKey() ? null : NO_API_KEY),
-		async generate(model, prompt) {
+		async generate(model, prompt, schema) {
 			const key = apiKey();
 			if (!key) throw new Error(NO_API_KEY);
 			const res = await fetch(
 				`${ENDPOINT}/${encodeURIComponent(model)}:generateContent`,
 				{
 					method: "POST",
-					signal: AbortSignal.timeout(TIMEOUT_MS),
+					signal: AbortSignal.timeout(timeoutMs),
 					headers: {
 						"content-type": "application/json",
 						"x-goog-api-key": key,
@@ -43,7 +53,7 @@ export function geminiModel(apiKey: () => string | null): ScoreModel {
 						contents: [{ role: "user", parts: [{ text: prompt }] }],
 						generationConfig: {
 							responseMimeType: "application/json",
-							responseSchema: RESPONSE_SCHEMA,
+							responseSchema: schema,
 						},
 					}),
 				},

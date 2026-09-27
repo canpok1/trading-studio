@@ -2,6 +2,10 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
+import { demoAdviceModel } from "./advice/fake-model";
+import { DEFAULT_INSTRUCTIONS } from "./advice/prompt";
+import { AdviceRepository } from "./advice/repository";
+import { createAdviceService } from "./advice/service";
 import { AnalysisExportRepository } from "./analysis-export/repository";
 import { createAnalysisExportService } from "./analysis-export/service";
 import { createApp } from "./app";
@@ -132,6 +136,30 @@ trading = tradingEngine;
 const tradingTimer = setInterval(() => tradingEngine.tick(), 1_000);
 
 const marketData = createMarketDataService(marketDataRepo);
+const backtests = createBacktestService({
+	repo: backtestRepo,
+	marketData: marketDataRepo,
+	strategies,
+	runner: workerRunner,
+	judgments,
+});
+const adviceRepo = new AdviceRepository(db);
+adviceRepo.failInterrupted();
+adviceRepo.seedInstructions(DEFAULT_INSTRUCTIONS, Date.now());
+// E2E でアドバイスの失敗を再現するためのファイル。あれば偽物の AI が失敗する
+const adviceDownFile = join(dirname(dbPath), "advice-down");
+const advice = createAdviceService({
+	repo: adviceRepo,
+	backtests,
+	backtestRepo,
+	// E2E では Gemini へつながず、決まったアドバイスを返す
+	model:
+		process.env.SCORING_MODEL === "demo"
+			? demoAdviceModel({ isDown: () => existsSync(adviceDownFile) })
+			: // アドバイスは応答が長く、Pro のモデルでは時間がかかるので長めに待つ
+				geminiModel(() => scoreRepo.apiKey(), { timeoutMs: 180_000 }),
+	appBuiltAt,
+});
 const server = new Hono().route(
 	"/",
 	createApp({
@@ -140,13 +168,8 @@ const server = new Hono().route(
 		marketData,
 		market: createMarketService({ collector, repo: marketDataRepo }),
 		strategies,
-		backtests: createBacktestService({
-			repo: backtestRepo,
-			marketData: marketDataRepo,
-			strategies,
-			runner: workerRunner,
-			judgments,
-		}),
+		backtests,
+		advice,
 		news: createNewsService({ repo: newsRepo, collector: newsCollector }),
 		scoring: createScoringService({
 			repo: scoreRepo,
