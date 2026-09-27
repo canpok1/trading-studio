@@ -360,7 +360,7 @@ describe("API キー", () => {
 		let key: string | null = null;
 		const model = geminiModel(() => key);
 		expect(model.unavailable()).toBe(NO_API_KEY);
-		await expect(model.generate("m", "p")).rejects.toThrow(NO_API_KEY);
+		await expect(model.generate("m", "p", {})).rejects.toThrow(NO_API_KEY);
 		key = "k";
 		expect(model.unavailable()).toBeNull();
 	});

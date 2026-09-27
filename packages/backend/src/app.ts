@@ -1,10 +1,12 @@
 import { Hono } from "hono";
+import type { AdviceService } from "./advice/types";
 import type { AnalysisExportService } from "./analysis-export/types";
 import type { BacktestService } from "./backtests/types";
 import type { JudgmentService } from "./judgments/types";
 import type { MarketService } from "./market/types";
 import type { MarketDataService } from "./market-data/types";
 import type { NewsService, ScoringService } from "./news/types";
+import { adviceRoutes } from "./routes/advice";
 import { backtestRoutes } from "./routes/backtests";
 import { exportRoutes } from "./routes/export";
 import { judgmentRoutes } from "./routes/judgments";
@@ -25,6 +27,7 @@ export type AppDeps = {
 	market: MarketService;
 	strategies: StrategyService;
 	backtests: BacktestService;
+	advice: AdviceService;
 	news: NewsService;
 	scoring: ScoringService;
 	judgments: JudgmentService;
@@ -40,6 +43,7 @@ export function createApp({
 	market,
 	strategies,
 	backtests,
+	advice,
 	news,
 	scoring,
 	judgments,
@@ -61,6 +65,7 @@ export function createApp({
 			strategyRoutes(strategies, () => trading.status().enabled),
 		)
 		.route("/backtests", backtestRoutes(backtests))
+		.route("/advice", adviceRoutes(advice))
 		.route("/news", newsRoutes(news))
 		.route("/scoring", scoringRoutes(scoring))
 		.route("/judgments", judgmentRoutes(judgments))

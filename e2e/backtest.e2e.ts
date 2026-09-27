@@ -233,3 +233,62 @@ test("AI 判定の条件がある戦略は、採点の記録が始まる前の�
 		page.getByRole("button", { name: "バックテストを実行" }),
 	).toBeDisabled();
 });
+
+test("結果画面でボタンを押すと AI アドバイスができ、作り直せる", async ({
+	page,
+	request,
+}, info) => {
+	const name = `助言 ${info.project.name}`;
+	await prepare(request, name);
+	await choose(page, name, "2026-05-03", "2026-05-10");
+	await page.getByRole("button", { name: "バックテストを実行" }).click();
+	await expect(page).toHaveURL(/\/backtest\/runs\/\d+$/);
+
+	const advice = page.getByRole("region", { name: "AI アドバイス" });
+	await advice.getByRole("button", { name: "アドバイスを作る" }).click();
+	const content = advice.getByTestId("advice-content");
+	await expect(content).toContainText(/デモの分析。注文は \d+ 件。/);
+	await expect(content).toContainText("改善案");
+	await expect(content).toContainText("指示 v");
+
+	// 画面を開き直しても残り、作り直せる
+	await page.reload();
+	await expect(content).toContainText("デモの分析");
+	await advice.getByRole("button", { name: "作り直す" }).click();
+	await expect(advice.getByRole("button", { name: "作り直す" })).toBeEnabled();
+	await expect(content).toContainText("デモの分析");
+});
+
+test("設定の「バックテスト」でアドバイスのモデルと指示の版を変えられる", async ({
+	page,
+}, info) => {
+	await page.goto("/settings?section=backtest");
+	await page
+		.getByLabel("アドバイスに使うモデル")
+		.selectOption("gemini-3.1-pro-preview");
+	await page.getByRole("button", { name: "保存" }).first().click();
+	await expect(page.getByText("モデルを保存した")).toBeVisible();
+
+	await page.getByLabel(/^指示/).fill(`- E2E の指示 ${info.project.name}`);
+	await page.getByRole("button", { name: /として保存/ }).click();
+	const saved = page.getByRole("status").filter({ hasText: /v\d+ を保存した/ });
+	await expect(saved).toBeVisible();
+	const version = Number(
+		(/v(\d+)/.exec((await saved.textContent()) ?? "") ?? [])[1],
+	);
+	await page
+		.getByTestId(`instructions-v${version}`)
+		.getByRole("button", { name: "使用する" })
+		.click();
+	await expect(page.getByTestId(`instructions-v${version}`)).toContainText(
+		"使用中",
+	);
+
+	await page.reload();
+	await expect(page.getByLabel("アドバイスに使うモデル")).toHaveValue(
+		"gemini-3.1-pro-preview",
+	);
+	await page.request.put("/api/advice/model", {
+		data: { model: "gemini-3.8-flash" },
+	});
+});

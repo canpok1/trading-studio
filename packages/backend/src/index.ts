@@ -1,3 +1,9 @@
+export type {
+	AdviceContent,
+	AdviceModelOption,
+	BacktestAdvice,
+	InstructionsVersion,
+} from "./advice/types";
 export type { AppType } from "./app";
 export type {
 	BacktestChart,
