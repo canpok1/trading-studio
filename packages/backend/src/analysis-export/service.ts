@@ -330,13 +330,21 @@ function decisionColumns<T>(get: (r: T) => DecisionLog): Column<T>[] {
 		),
 		col(
 			"position_entry_price",
-			"保有の平均約定価格（円、手数料を含めない）",
+			"保有の平均約定価格（円、手数料を含めない。ロットの数量で重み付け）",
 			(r) => get(r).position.entryPrice,
 		),
 		...time<T>(
 			"position_opened_at",
-			"保有の買いが約定した時刻",
+			"保有の最初のロットの買いが約定した時刻",
 			(r) => get(r).position.openedAt,
+		),
+		col(
+			"lots",
+			"判断したときのロット（買いの注文の ID:買値（円）:数量（satoshi）を空白区切り）。ロットを持つ前の記録は空",
+			(r) =>
+				(get(r).lots ?? [])
+					.map((l) => `${l.id}:${l.entryPrice}:${l.quantity}`)
+					.join(" "),
 		),
 		col(
 			"open_order_ids",
@@ -398,7 +406,11 @@ function orderColumns<T>(get: (r: T) => BacktestOrder): Column<T>[] {
 		...time<T>("canceled_at", "取り消した時刻", (r) => get(r).canceledAt),
 		col("cancel_reason", "取り消した理由", (r) => get(r).cancelReason),
 		col("reason", "発注した判断の理由", (r) => get(r).reason),
-		col("pair_id", "対応する買い / 売りの注文の ID", (r) => get(r).pairId),
+		col(
+			"pair_id",
+			"対応する注文の ID。売りは売るロット（買いの注文）、買いはそのロットを売った注文",
+			(r) => get(r).pairId,
+		),
 		col(
 			"pnl",
 			"売りの約定で確定した往復の損益（円、手数料込み）",

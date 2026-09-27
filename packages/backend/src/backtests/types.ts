@@ -119,8 +119,11 @@ export interface BacktestService {
 		filter: OrderFilter,
 		offset: number,
 		limit: number,
-	): { orders: BacktestOrder[]; total: number } | null;
-	order(id: number, orderId: string): BacktestOrder | null;
+	): { orders: ListedBacktestOrder[]; total: number } | null;
+	order(id: number, orderId: string): ListedBacktestOrder | null;
 	/** 結果の条件を新しい戦略として保存する */
 	saveToStrategy(id: number, name: string): SaveRunResult;
 }
+
+/** 一覧・詳細で返す注文。売りには売るロットの買値を添える */
+export type ListedBacktestOrder = BacktestOrder & { lotPrice: number | null };

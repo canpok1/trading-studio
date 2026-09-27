@@ -7,6 +7,7 @@ import {
 	conditionStrategy,
 	TIMEFRAME_MS,
 	validateConditionSet,
+	withLotPrices,
 } from "@trading-studio/core";
 import type { JudgmentService } from "../judgments/types";
 import type { MarketDataRepository } from "../market-data/repository";
@@ -254,8 +255,9 @@ export function createBacktestService({
 		},
 
 		orders(id, filter, offset, limit) {
-			const all = repo.orders(id);
-			if (!all) return null;
+			const stored = repo.orders(id);
+			if (!stored) return null;
+			const all = withLotPrices(stored);
 			// 新しい順に並べる
 			const list = (
 				filter === "filled" ? all.filter((o) => o.status === "filled") : all
@@ -267,7 +269,10 @@ export function createBacktestService({
 		},
 
 		order(id, orderId) {
-			return repo.orders(id)?.find((o) => o.id === orderId) ?? null;
+			const stored = repo.orders(id);
+			return stored
+				? (withLotPrices(stored).find((o) => o.id === orderId) ?? null)
+				: null;
 		},
 
 		saveToStrategy(id, name) {

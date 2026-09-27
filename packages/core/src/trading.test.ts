@@ -14,6 +14,7 @@ import {
 	settleFills,
 	tradeFillPrice,
 	tradingStep,
+	withLotPrices,
 } from "./trading";
 import type { Candle, JsonValue, Order } from "./types";
 
@@ -470,5 +471,18 @@ describe("normalizeAccount", () => {
 	test("今の形の口座はそのまま読む", () => {
 		const a = newAccount(1_000);
 		expect(normalizeAccount(JSON.parse(JSON.stringify(a)))).toEqual(a);
+	});
+});
+
+describe("withLotPrices", () => {
+	test("売りに、売るロット（対応する買い）の約定価格を添える", () => {
+		const o = (x: Partial<TradeOrder>) => x as TradeOrder;
+		expect(
+			withLotPrices([
+				o({ id: "b", side: "buy", fillPrice: 100, pairId: "s" }),
+				o({ id: "s", side: "sell", fillPrice: 120, pairId: "b" }),
+				o({ id: "t", side: "sell", fillPrice: 90, pairId: null }),
+			]).map((x) => x.lotPrice),
+		).toEqual([null, 100, null]);
 	});
 });

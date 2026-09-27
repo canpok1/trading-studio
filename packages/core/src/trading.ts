@@ -40,11 +40,23 @@ export type TradeOrder = {
 	cancelReason: string | null;
 	/** 発注した判断の理由 */
 	reason: string;
-	/** 対応する買い / 売りの注文 */
+	/** 対応する買い / 売りの注文。売りは発注時から売るロット（買いの注文）を指す。買いは売りが約定したら持つ */
 	pairId: string | null;
 	/** 売りの約定で確定した往復の損益（手数料込み） */
 	pnl: number | null;
 };
+
+/** 売りに、売るロット（対応する買い）の約定価格を lotPrice として添える。買いと、ロットが分からない売りは null */
+export function withLotPrices<T extends TradeOrder>(
+	orders: readonly T[],
+): (T & { lotPrice: number | null })[] {
+	const price = new Map(orders.map((o) => [o.id, o.fillPrice]));
+	return orders.map((o) => ({
+		...o,
+		lotPrice:
+			o.side === "sell" && o.pairId ? (price.get(o.pairId) ?? null) : null,
+	}));
+}
 
 /** 判断の記録。評価のたびに1件 */
 export type DecisionLog = {
@@ -53,6 +65,8 @@ export type DecisionLog = {
 	price: number;
 	cash: number;
 	position: Position;
+	/** 判定時に持っていたロット。ロットを持つ前の記録には無い */
+	lots?: Lot[];
 	openOrderIds: string[];
 	intents: OrderIntent[];
 	nextEvalAt: number;
@@ -510,7 +524,8 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 			canceledAt: null,
 			cancelReason: null,
 			reason,
-			pairId: null,
+			// 売りは売るロット（買いの注文）と対応づける
+			pairId: order.lotId ?? null,
 			pnl: null,
 		};
 		changed.push(record);
@@ -551,6 +566,7 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 			price: input.price,
 			cash,
 			position,
+			lots: publicLots(lots),
 			openOrderIds: openOrders.map((o) => o.id),
 			intents: out.intents,
 			nextEvalAt: out.nextEvalAt,
