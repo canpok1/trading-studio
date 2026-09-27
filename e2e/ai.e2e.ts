@@ -33,9 +33,9 @@ async function addSource(page: Page, name: string) {
 test("集めて採点したニュースが一覧に出て、判定が表示される", async ({
 	page,
 }) => {
-	await page.goto("/ai");
+	await page.goto("/news");
 	await expect(
-		page.getByRole("heading", { name: "AI判定", level: 1 }),
+		page.getByRole("heading", { name: "ニュース", level: 1 }),
 	).toBeVisible();
 	const scored = page
 		.getByTestId("news-card")
@@ -51,16 +51,16 @@ test("集めて採点したニュースが一覧に出て、判定が表示さ�
 
 test("集計ルールを保存すると判定が変わる", async ({ page }) => {
 	try {
-		await page.goto("/ai");
+		await page.goto("/news");
 		await expect(page.getByTestId("judge-trend")).toContainText("件から算出", {
 			timeout: 20_000,
 		});
-		// 集計ルールは AI判定の右上の「設定」から開く
+		// 集計ルールはニュースの右上の「設定」から開く
 		await page
 			.getByRole("main")
 			.getByRole("link", { name: "設定", exact: true })
 			.click();
-		await expect(page).toHaveURL(/\/settings\?tab=rule$/);
+		await expect(page).toHaveURL(/\/settings\?section=news$/);
 		// 偽物の AI のトレンドは -40〜40 点なので、上昇を -40 点以上にすれば必ず上昇になる。負の数も入れられる
 		await page.getByLabel("下落").fill("-41");
 		await page.getByLabel("上昇").fill("-40");
@@ -69,10 +69,10 @@ test("集計ルールを保存すると判定が変わる", async ({ page }) => 
 		await expect(
 			page.getByRole("status").filter({ hasText: "保存した" }),
 		).toBeVisible();
-		await page.goto("/ai");
+		await page.goto("/news");
 		await expect(page.getByTestId("badge-trend").first()).toHaveText(/上昇/);
 
-		await page.goto("/settings?tab=rule");
+		await page.goto("/settings?section=news");
 		await page.getByLabel("上昇").fill("-41");
 		await expect(page.getByText("上昇（-41）より小さくする")).toBeVisible();
 		await expect(page.getByRole("button", { name: "保存" })).toBeDisabled();
@@ -86,7 +86,7 @@ test("集計ルールを保存すると判定が変わる", async ({ page }) => 
 test("基準を版として保存して使用すると、次に採点するニュースから新しい版になる", async ({
 	page,
 }, info) => {
-	await page.goto("/settings?tab=prompt");
+	await page.goto("/settings?section=news&tab=prompt");
 	const text = page.getByLabel(/採点の基準/);
 	await expect(text).not.toHaveValue("");
 	await text.fill(`- E2E の基準 ${info.project.name}`);
@@ -108,7 +108,7 @@ test("基準を版として保存して使用すると、次に採点するニ�
 	);
 
 	await addSource(page, `版 ${info.project.name}`);
-	await page.goto("/ai");
+	await page.goto("/news");
 	await expect(
 		page
 			.getByTestId("news-card")
@@ -119,7 +119,7 @@ test("基準を版として保存して使用すると、次に採点するニ�
 });
 
 test("取得元・収集間隔・モデルの変更が保存される", async ({ page }, info) => {
-	await page.goto("/settings?tab=sources");
+	await page.goto("/settings?section=news&tab=sources");
 	const name = `追加 ${info.project.name}`;
 	await page.getByLabel("名前").fill(name);
 	await page
@@ -165,12 +165,12 @@ test("取得元・収集間隔・モデルの変更が保存される", async ({
 test("API キーは保存・上書き・削除でき、保存したキーは画面に出ない", async ({
 	page,
 }) => {
-	await page.goto("/settings?tab=sources");
+	await page.goto("/settings");
 	const state = page.getByTestId("api-key-state");
 	const input = page.getByLabel("Gemini の API キー");
 	await expect(state).toHaveText("未設定");
 	await expect(input).toHaveAttribute("type", "password");
-	// 入力欄と同じ行のボタン。収集間隔・モデルの「保存」と区別する
+	// 入力欄と同じ行のボタン
 	const submit = input.locator("..").getByRole("button");
 	await input.fill("e2e-secret-1");
 	await expect(submit).toHaveText("保存");
@@ -202,7 +202,7 @@ test("採点に失敗したニュースを再試行できる", async ({ page }, 
 	writeFileSync(scoringDown, "");
 	try {
 		await addSource(page, name);
-		await page.goto("/ai");
+		await page.goto("/news");
 		await expect(
 			page
 				.getByRole("alert")

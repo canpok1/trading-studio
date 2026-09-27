@@ -1,4 +1,4 @@
-// AI判定画面の表示の計算。描画に依存しない部分をここに置き、単体テストする
+// ニュース画面の表示の計算。描画に依存しない部分をここに置き、単体テストする
 
 import type {
 	CurrentJudgment,
@@ -8,7 +8,7 @@ import type {
 } from "@trading-studio/backend";
 import { formatDateTime } from "../format";
 
-/** AI判定画面が問い合わせて持つデータ */
+/** ニュース画面が問い合わせて持つデータ */
 export type AiData = {
 	current: CurrentJudgment;
 	news: NewsItem[];

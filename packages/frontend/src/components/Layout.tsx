@@ -40,7 +40,7 @@ const NAV: NavItem[] = [
 		show: "both",
 	},
 	{ to: "/trades", label: "取引", icon: <TradesIcon />, show: "both" },
-	{ to: "/ai", label: "AI判定", icon: <AiIcon />, show: "side" },
+	{ to: "/news", label: "ニュース", icon: <AiIcon />, show: "side" },
 	{ to: "/data", label: "過去データ", icon: <DataIcon />, show: "side" },
 	{
 		to: "/export",
@@ -54,7 +54,7 @@ const NAV: NavItem[] = [
 		label: "その他",
 		icon: <OtherIcon />,
 		show: "tab",
-		also: ["/settings", "/data", "/export", "/ai"],
+		also: ["/settings", "/data", "/export", "/news"],
 	},
 ];
 

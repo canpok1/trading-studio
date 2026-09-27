@@ -575,16 +575,16 @@ function RecentOrders({
 	);
 }
 
-/** 今の判定3つ。押すと AI判定画面へ */
+/** 今の判定3つ。押すとニュース画面へ */
 function JudgmentTiles({ current }: { current: CurrentJudgment }) {
 	return (
-		<section aria-label="AI判定" className="grid grid-cols-3 gap-2">
+		<section aria-label="今の判定" className="grid grid-cols-3 gap-2">
 			{JUDGES.map((j) => {
 				const r = current.results[j];
 				return (
 					<Link
 						key={j}
-						to="/ai"
+						to="/news"
 						data-testid={`home-judge-${j}`}
 						className="flex min-w-0 flex-col items-start gap-1.5 rounded-xl border border-line bg-surface px-3 py-2.5"
 					>

@@ -7,7 +7,7 @@ test("各画面へ移動できる", async ({ page, isMobile }) => {
 	const items = isMobile
 		? ["戦略", "取引", "その他", "バックテスト"]
 		: [
-				"AI判定",
+				"ニュース",
 				"戦略",
 				"取引",
 				"過去データ",
@@ -22,11 +22,11 @@ test("各画面へ移動できる", async ({ page, isMobile }) => {
 		).toBeVisible();
 	}
 	if (isMobile) {
-		// スマホの AI判定・過去データ・エクスポート・設定は「その他」の中にある
+		// スマホのニュース・過去データ・エクスポート・設定は「その他」の中にある
 		await nav.getByRole("link", { name: "その他" }).click();
-		await page.getByRole("link", { name: /^AI判定/ }).click();
+		await page.getByRole("link", { name: /^ニュース/ }).click();
 		await expect(
-			page.getByRole("heading", { level: 1, name: "AI判定" }),
+			page.getByRole("heading", { level: 1, name: "ニュース" }),
 		).toBeVisible();
 		await nav.getByRole("link", { name: "その他" }).click();
 		await page.getByRole("link", { name: /過去データ/ }).click();
@@ -44,6 +44,14 @@ test("各画面へ移動できる", async ({ page, isMobile }) => {
 			page.getByRole("heading", { level: 1, name: "設定" }),
 		).toBeVisible();
 	}
+});
+
+test("旧名「AI判定」の URL はニュース画面へ移る", async ({ page }) => {
+	await page.goto("/ai");
+	await expect(page).toHaveURL(/\/news$/);
+	await expect(
+		page.getByRole("heading", { level: 1, name: "ニュース" }),
+	).toBeVisible();
 });
 
 test("ライト / ダークを切り替えられ、再読み込み後も保たれる", async ({

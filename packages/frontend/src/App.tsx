@@ -10,12 +10,12 @@ import { Layout } from "./components/Layout";
 import { Button } from "./components/ui";
 import { BacktestJobProvider, useBacktestJob } from "./lib/backtest-job";
 import { TradingStatusProvider } from "./lib/trading";
-import { AiPage } from "./pages/AiPage";
 import { BacktestResultPage } from "./pages/BacktestResultPage";
 import { BacktestRunPage } from "./pages/BacktestRunPage";
 import { DataPage } from "./pages/DataPage";
 import { ExportPage } from "./pages/ExportPage";
 import { HomePage } from "./pages/HomePage";
+import { NewsPage } from "./pages/NewsPage";
 import { OtherPage } from "./pages/OtherPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { StrategiesPage } from "./pages/StrategiesPage";
@@ -41,7 +41,9 @@ function Shell() {
 					<Route path="/home" element={<HomePage />} />
 					<Route path="/backtest" element={<BacktestRunPage />} />
 					<Route path="/backtest/runs/:id" element={<BacktestResultPage />} />
-					<Route path="/ai" element={<AiPage />} />
+					<Route path="/news" element={<NewsPage />} />
+					{/* 旧名「AI判定」の URL */}
+					<Route path="/ai" element={<Navigate to="/news" replace />} />
 					<Route path="/strategies/:id?" element={<StrategiesPage />} />
 					<Route path="/trades" element={<TradesPage />} />
 					<Route path="/data" element={<DataPage />} />
