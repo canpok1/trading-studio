@@ -29,6 +29,7 @@ import type { LiveMarket } from "../collector/types";
 import type { JudgmentService } from "../judgments/types";
 import type { MarketDataRepository } from "../market-data/repository";
 import type { StoredStrategy, StrategyService } from "../strategies/types";
+import { equityOf, tradingPerformance } from "./performance";
 import type { TradingRepository } from "./repository";
 import type {
 	AutoTradingStatus,
@@ -59,7 +60,10 @@ export function createTradingService({
 	repo: TradingRepository;
 	strategies: Pick<StrategyService, "get" | "active">;
 	judgments: Pick<JudgmentService, "current">;
-	marketData: Pick<MarketDataRepository, "candlesBefore" | "loadCandles">;
+	marketData: Pick<
+		MarketDataRepository,
+		"candlesBefore" | "loadCandles" | "lastCandle"
+	>;
 	market: () => LiveMarket;
 	now?: () => number;
 	fees?: FeeRates;
@@ -192,6 +196,10 @@ export function createTradingService({
 		});
 	};
 
+	/** 資産の評価に使う今の価格。収集が止まっていれば保存済みの最後の1分足の終値 */
+	const currentPrice = (live: LiveMarket): number | null =>
+		live.latestTrade?.price ?? marketData.lastCandle("1m")?.close ?? null;
+
 	const status = (): AutoTradingStatus => {
 		const t = now();
 		const row = repo.autoTrading();
@@ -225,6 +233,11 @@ export function createTradingService({
 				position: a.account.position,
 				openOrderCount: a.account.openOrders.length,
 				resetAt: a.resetAt,
+				equity: equityOf(
+					a.account.cash,
+					a.account.position,
+					currentPrice(live),
+				),
 			},
 		};
 	};
@@ -389,6 +402,26 @@ export function createTradingService({
 		orders: (filter, limit) => repo.orders(filter, limit),
 
 		orderSummary: (filter) => repo.orderSummary(filter),
+
+		performance(m) {
+			const t = now();
+			const a = repo.account(m, t);
+			// ドローダウンは1時間足の終値で追う（1分足では長く運用したときに重いため）
+			const hour = TIMEFRAME_MS["1h"];
+			const prices = marketData
+				.loadCandles("1h", candleStart(a.resetAt, "1h"), t)
+				.map((c) => ({ time: c.time + hour, price: c.close }));
+			return tradingPerformance({
+				initialCash: a.initialCash,
+				resetAt: a.resetAt,
+				now: t,
+				cash: a.account.cash,
+				position: a.account.position,
+				price: currentPrice(market()),
+				fills: repo.filledSince(m, a.resetAt),
+				prices,
+			});
+		},
 
 		order(m, id) {
 			const order = repo.order(m, id);

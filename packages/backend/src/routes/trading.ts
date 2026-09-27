@@ -60,6 +60,12 @@ export function tradingRoutes(service: TradingService) {
 			}),
 			(c) => respond(c, service.reset(c.req.valid("json").initialCash)),
 		)
+		.get("/performance", (c) => {
+			const mode = c.req.query("mode") ?? "paper";
+			return isMode(mode)
+				? c.json({ performance: service.performance(mode) }, 200)
+				: c.json({ message: "mode は paper か live" }, 400);
+		})
 		.get(
 			"/orders",
 			validator("query", (q) => {

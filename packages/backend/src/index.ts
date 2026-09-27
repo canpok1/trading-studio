@@ -26,4 +26,5 @@ export type {
 	StoredDecision,
 	StoredOrder,
 	TradingMode,
+	TradingPerformance,
 } from "./trading/types";
