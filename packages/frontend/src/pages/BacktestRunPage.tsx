@@ -28,6 +28,7 @@ import {
 } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { useApi } from "../api";
+import { Modal } from "../components/Modal";
 import { NumberInput } from "../components/NumberInput";
 import { Page } from "../components/Page";
 import { EmptyState, ErrorState, LoadingCard } from "../components/States";
@@ -61,6 +62,8 @@ type Template = {
 	/** ひな形は `t:<id>`、保存済みの戦略は `s:<id>` */
 	key: string;
 	label: string;
+	/** ひな形の説明。テンプレートを選ぶモーダルに出す */
+	description?: string;
 	params: ConditionSet;
 };
 
@@ -121,7 +124,12 @@ function templates(strategies: StoredStrategy[]): Template[] {
 	return [
 		...TEMPLATE_IDS.map((id) => {
 			const t = strategyTemplate(id);
-			return { key: `t:${id}`, label: t.name, params: t.params };
+			return {
+				key: `t:${id}`,
+				label: t.name,
+				description: t.description,
+				params: t.params,
+			};
 		}),
 		...strategies.map(strategyAsTemplate),
 	];
@@ -331,9 +339,9 @@ function RunForm({
 	const job = useBacktestJob();
 	const [problem, setProblem] = useState<Problem | null>(null);
 	const [busy, setBusy] = useState(false);
+	const [picking, setPicking] = useState(false);
 	const ids = {
 		name: useId(),
-		template: useId(),
 		from: useId(),
 		to: useId(),
 		cash: useId(),
@@ -510,8 +518,9 @@ function RunForm({
 			title="バックテスト"
 			description="テンプレートから条件を作って、取り込んだ CSV の過去データで模擬売買する"
 		>
+			{/* 上段はバックテストの環境（PC は左に名前・口座、右に期間）、見出しの下は「戦略」の画面と同じ並び。スマホは 名前→口座→期間→頻度→条件→注文量・リスク上限→実行 の順 */}
 			<div className="flex flex-col gap-3.5 lg:grid lg:grid-cols-2 lg:items-start">
-				<div className="contents lg:flex lg:flex-col lg:gap-3.5">
+				<div className="flex flex-col gap-3.5">
 					<Card className="flex flex-col gap-3.5">
 						<div className="flex flex-col gap-1.5">
 							<label htmlFor={ids.name} className="text-[13px] font-semibold">
@@ -531,69 +540,19 @@ function RunForm({
 							)}
 						</div>
 						<div className="flex flex-col gap-1.5">
-							<label
-								htmlFor={ids.template}
-								className="text-[13px] font-semibold"
-							>
-								テンプレート
-							</label>
-							<select
-								id={ids.template}
-								value={template?.key ?? ""}
-								onChange={(e) => {
-									const t = choices.find((x) => x.key === e.target.value);
-									if (!t) return;
-									// 名前を自分で変えていなければ、テンプレートに合わせて変える
-									const followed =
-										draft.name === (template ? nameFor(template) : BLANK_NAME);
-									update({
-										template: t,
-										params: t.params,
-										...(followed ? { name: nameFor(t) } : {}),
-									});
-								}}
-								className="h-12 rounded-[10px] border border-line bg-surface px-3 text-[15px]"
-							>
-								{template === null && (
-									<option value="">（選んでいない）</option>
+							<div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+								<Button size="sm" onClick={() => setPicking(true)}>
+									テンプレート読み込み
+								</Button>
+								{template && (
+									<span className="text-xs text-text-2">
+										元: {template.label}
+										{edited && "（変更あり）"}
+									</span>
 								)}
-								{template && !choices.some((t) => t.key === template.key) && (
-									<option value={template.key}>
-										{template.label}（削除済み）
-									</option>
-								)}
-								<optgroup label="ひな形">
-									{choices
-										.filter((t) => t.key.startsWith("t:"))
-										.map((t) => (
-											<option key={t.key} value={t.key}>
-												{t.label}
-											</option>
-										))}
-								</optgroup>
-								{strategies.length > 0 && (
-									<optgroup label="保存済みの戦略">
-										{choices
-											.filter((t) => t.key.startsWith("s:"))
-											.map((t) => (
-												<option key={t.key} value={t.key}>
-													{t.label}
-												</option>
-											))}
-									</optgroup>
-								)}
-							</select>
-							<div className="flex items-start justify-between gap-2">
-								<p className="text-xs text-text-2">
-									{edited
-										? "テンプレートから変えて試している。"
-										: "テンプレートの条件をコピーして試す。"}
-									ここで変えても戦略には保存されない。
-								</p>
 								{edited && template && (
 									<Button
 										variant="link"
-										className="shrink-0"
 										onClick={() => update({ params: template.params })}
 									>
 										テンプレートに戻す
@@ -603,93 +562,7 @@ function RunForm({
 						</div>
 					</Card>
 					<Card className="flex flex-col gap-3.5">
-						<h2 className="text-[15px] font-bold">期間と資金</h2>
-						<div className="flex flex-wrap gap-2">
-							{PRESETS.map(([k, label, days]) => {
-								return (
-									<button
-										key={k}
-										type="button"
-										aria-pressed={
-											toDate === defaultTo && fromMs === toMs - days * DAY
-										}
-										onClick={() =>
-											update({
-												toDate: defaultTo,
-												fromDate: toDateInputValue(
-													(fromDateInputValue(defaultTo) ?? 0) +
-														DAY -
-														days * DAY,
-												),
-											})
-										}
-										className="h-8 rounded-full border border-line px-3 text-xs font-semibold text-text-2 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-white dark:aria-pressed:text-accent-ink"
-									>
-										{label}
-									</button>
-								);
-							})}
-						</div>
-						<div className="grid grid-cols-[minmax(0,1fr)_20px_minmax(0,1fr)] items-end gap-1.5">
-							<div className="flex flex-col gap-1">
-								<label htmlFor={ids.from} className="text-xs text-text-2">
-									開始
-								</label>
-								<input
-									id={ids.from}
-									type="date"
-									value={fromDate}
-									onChange={(e) =>
-										e.target.value &&
-										update({ fromDate: e.target.value, toDate })
-									}
-									className="num h-11 min-w-0 rounded-[10px] border border-line bg-surface px-2 text-sm"
-								/>
-							</div>
-							<span className="pb-3 text-center text-text-2">〜</span>
-							<div className="flex flex-col gap-1">
-								<label htmlFor={ids.to} className="text-xs text-text-2">
-									終了
-								</label>
-								<input
-									id={ids.to}
-									type="date"
-									value={toDate}
-									onChange={(e) =>
-										e.target.value &&
-										update({ toDate: e.target.value, fromDate })
-									}
-									className="num h-11 min-w-0 rounded-[10px] border border-line bg-surface px-2 text-sm"
-								/>
-							</div>
-						</div>
-						{periodError && (
-							<span className="text-xs font-semibold text-loss">
-								{periodError}
-							</span>
-						)}
-						<CoverageBar cov={cov} from={fromMs} to={toMs} />
-						<div className="flex flex-col gap-1">
-							<span className="text-[13px] font-semibold">足の粒度</span>
-							<span className="num text-sm">
-								{TIMEFRAME_LABELS[tf]} · {formatInt(bars)} 本
-								{step && step.timeframe !== tf
-									? ` · ${TIMEFRAME_LABELS[step.timeframe]}で判定`
-									: ""}
-								{usesJudgments && " · 判定履歴を使う"}
-							</span>
-							{usesJudgments && firstScoredAt !== null && (
-								<span className="num text-xs text-text-2">
-									AI 判定の記録の開始: {formatDateTime(firstScoredAt)}
-								</span>
-							)}
-						</div>
-						{step?.limited && <Note>{stepLimitedText(step.timeframe)}</Note>}
-						{judgmentError && (
-							<span role="alert" className="text-xs font-semibold text-loss">
-								{judgmentError}
-							</span>
-						)}
+						<h2 className="text-[15px] font-bold">口座</h2>
 						<div className="flex flex-col gap-1.5">
 							<label htmlFor={ids.cash} className="text-[13px] font-semibold">
 								初期資金（円）
@@ -747,6 +620,99 @@ function RunForm({
 							)}
 						</fieldset>
 					</Card>
+				</div>
+				<Card className="flex flex-col gap-3.5">
+					<h2 className="text-[15px] font-bold">期間</h2>
+					<div className="flex flex-wrap gap-2">
+						{PRESETS.map(([k, label, days]) => {
+							return (
+								<button
+									key={k}
+									type="button"
+									aria-pressed={
+										toDate === defaultTo && fromMs === toMs - days * DAY
+									}
+									onClick={() =>
+										update({
+											toDate: defaultTo,
+											fromDate: toDateInputValue(
+												(fromDateInputValue(defaultTo) ?? 0) + DAY - days * DAY,
+											),
+										})
+									}
+									className="h-8 rounded-full border border-line px-3 text-xs font-semibold text-text-2 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-white dark:aria-pressed:text-accent-ink"
+								>
+									{label}
+								</button>
+							);
+						})}
+					</div>
+					<div className="grid grid-cols-[minmax(0,1fr)_20px_minmax(0,1fr)] items-end gap-1.5">
+						<div className="flex flex-col gap-1">
+							<label htmlFor={ids.from} className="text-xs text-text-2">
+								開始
+							</label>
+							<input
+								id={ids.from}
+								type="date"
+								value={fromDate}
+								onChange={(e) =>
+									e.target.value && update({ fromDate: e.target.value, toDate })
+								}
+								className="num h-11 min-w-0 rounded-[10px] border border-line bg-surface px-2 text-sm"
+							/>
+						</div>
+						<span className="pb-3 text-center text-text-2">〜</span>
+						<div className="flex flex-col gap-1">
+							<label htmlFor={ids.to} className="text-xs text-text-2">
+								終了
+							</label>
+							<input
+								id={ids.to}
+								type="date"
+								value={toDate}
+								onChange={(e) =>
+									e.target.value && update({ toDate: e.target.value, fromDate })
+								}
+								className="num h-11 min-w-0 rounded-[10px] border border-line bg-surface px-2 text-sm"
+							/>
+						</div>
+					</div>
+					{periodError && (
+						<span className="text-xs font-semibold text-loss">
+							{periodError}
+						</span>
+					)}
+					<CoverageBar cov={cov} from={fromMs} to={toMs} />
+					<div className="flex flex-col gap-1">
+						<span className="text-[13px] font-semibold">足の粒度</span>
+						<span className="num text-sm">
+							{TIMEFRAME_LABELS[tf]} · {formatInt(bars)} 本
+							{step && step.timeframe !== tf
+								? ` · ${TIMEFRAME_LABELS[step.timeframe]}で判定`
+								: ""}
+							{usesJudgments && " · 判定履歴を使う"}
+						</span>
+						{usesJudgments && firstScoredAt !== null && (
+							<span className="num text-xs text-text-2">
+								AI 判定の記録の開始: {formatDateTime(firstScoredAt)}
+							</span>
+						)}
+					</div>
+					{step?.limited && <Note>{stepLimitedText(step.timeframe)}</Note>}
+					{judgmentError && (
+						<span role="alert" className="text-xs font-semibold text-loss">
+							{judgmentError}
+						</span>
+					)}
+				</Card>
+				<div className="mt-2 flex flex-col gap-0.5 lg:col-span-2">
+					<h2 className="text-[17px] font-bold">戦略設定</h2>
+					<p className="text-xs text-text-2">
+						テンプレートの条件をコピーして試す。ここで変えても戦略には保存されない。
+					</p>
+				</div>
+				<div className="contents lg:flex lg:flex-col lg:gap-3.5">
 					<FrequencyCard {...editor} />
 					<div className="order-1 flex flex-col gap-3.5 lg:order-none">
 						<OrderSizeCard {...editor} latestPrice={latest} />
@@ -856,7 +822,79 @@ function RunForm({
 					<PastRuns runs={runs} />
 				</div>
 			</div>
+			{picking && (
+				<TemplateDialog
+					choices={choices}
+					replacing={edited || template === null}
+					onClose={() => setPicking(false)}
+					onPick={(t) => {
+						setPicking(false);
+						// 名前を自分で変えていなければ、テンプレートに合わせて変える
+						const followed =
+							draft.name === (template ? nameFor(template) : BLANK_NAME);
+						update({
+							template: t,
+							params: t.params,
+							...(followed ? { name: nameFor(t) } : {}),
+						});
+					}}
+				/>
+			)}
 		</Page>
+	);
+}
+
+/** テンプレートを選ぶモーダル。選ぶとその条件で今の条件を置き換える */
+function TemplateDialog({
+	choices,
+	replacing,
+	onClose,
+	onPick,
+}: {
+	choices: Template[];
+	replacing: boolean;
+	onClose: () => void;
+	onPick: (t: Template) => void;
+}) {
+	const groups = [
+		["ひな形", choices.filter((t) => t.key.startsWith("t:"))],
+		["保存済みの戦略", choices.filter((t) => t.key.startsWith("s:"))],
+	] as const;
+	return (
+		<Modal title="テンプレート読み込み" onClose={onClose}>
+			{replacing && (
+				<Note>今の条件は、選んだテンプレートの条件に置き換わる。</Note>
+			)}
+			{groups.map(
+				([label, items]) =>
+					items.length > 0 && (
+						<div key={label} className="flex shrink-0 flex-col gap-1.5">
+							<span className="text-xs text-text-2">{label}</span>
+							<div className="overflow-hidden rounded-xl border border-line">
+								{items.map((t) => (
+									<button
+										key={t.key}
+										type="button"
+										onClick={() => onPick(t)}
+										className="flex w-full flex-col gap-0.5 border-b border-line px-4 py-3 text-left last:border-b-0 hover:bg-surface-2"
+									>
+										<strong className="text-sm">{t.label}</strong>
+										{t.description && (
+											<span className="text-xs text-text-2">
+												{t.description}
+											</span>
+										)}
+									</button>
+								))}
+							</div>
+						</div>
+					),
+			)}
+			{/* 項目が多くてもモーダルの中で縮めず、スクロールさせる */}
+			<Button className="shrink-0" onClick={onClose}>
+				やめる
+			</Button>
+		</Modal>
 	);
 }
 
