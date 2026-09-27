@@ -67,6 +67,8 @@ type Props = {
 	 * 省略すると最後の足の終値を出す（過去のデータを見るバックテスト結果）
 	 */
 	currentPrice?: number | null;
+	/** 保有中のロットの買値。ロットごとに線を引く */
+	entryPrices?: readonly number[];
 	/** 表示の切り替えの上に置く操作（ホームの粒度の切り替えなど） */
 	toolbar?: ReactNode;
 	/**
@@ -175,6 +177,7 @@ export function PriceChart({
 	onMarker,
 	initialSpanMs = null,
 	currentPrice,
+	entryPrices = NO_PERIODS,
 	toolbar,
 	split,
 	latestNote,
@@ -198,6 +201,11 @@ export function PriceChart({
 		now: {
 			series: ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
 			line: IPriceLine;
+		} | null;
+		/** 買値の線と、それを付けた系列 */
+		entries: {
+			series: ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
+			lines: IPriceLine[];
 		} | null;
 	} | null>(null);
 	// 最新の足が画面に入っているか。入っていれば「最新へ」のボタンを押せなくする
@@ -297,6 +305,7 @@ export function PriceChart({
 			rsis: [],
 			layer,
 			now: null,
+			entries: null,
 		};
 
 		chart.subscribeCrosshairMove((p) => {
@@ -562,6 +571,32 @@ export function PriceChart({
 			}),
 		};
 	}, [currentPrice, showNow, marksTick, themeTick]);
+
+	// 保有中のロットの買値の線。価格の系列を付け替えたら引き直す
+	// biome-ignore lint/correctness/useExhaustiveDependencies: marksTick で系列の付け替えを、themeTick で色の変化を拾う
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		if (c.entries) {
+			for (const l of c.entries.lines) c.entries.series.removePriceLine(l);
+			c.entries = null;
+		}
+		if (entryPrices.length === 0) return;
+		const color = cssVar("--color-buy");
+		c.entries = {
+			series: c.price,
+			lines: entryPrices.map((price) =>
+				c.price.createPriceLine({
+					price,
+					color,
+					lineWidth: 1,
+					lineStyle: LineStyle.Dotted,
+					axisLabelVisible: false,
+					title: "買値",
+				}),
+			),
+		};
+	}, [entryPrices, marksTick, themeTick]);
 
 	// 表示範囲。viewKey があれば、足が届き始めたときと viewKey が変わったときだけ合わせ直す
 	const hasBars = barTimes.length > 0;

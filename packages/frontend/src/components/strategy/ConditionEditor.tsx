@@ -24,6 +24,7 @@ import {
 	JUDGES,
 	JUDGMENT_VALUE_LABELS,
 	JUDGMENT_VALUES,
+	LIMITS,
 	ORDER_TYPE_LABELS,
 	SATOSHI_PER_BTC,
 	TIMEFRAME_LABELS,
@@ -149,6 +150,7 @@ export function OrderSizeCard({
 	latestPrice,
 }: Props & { latestPrice: number | null }) {
 	const errs = errorsAt(errors, "orderSize");
+	const maxErrs = errorsAt(errors, "maxPositions");
 	const size = params.orderSize;
 	const set = (orderSize: number) => onChange({ ...params, orderSize });
 	const step = (d: number) =>
@@ -163,7 +165,7 @@ export function OrderSizeCard({
 		);
 	return (
 		<Card className="flex flex-col gap-2.5">
-			<h2 className="text-[15px] font-bold">1回の注文量</h2>
+			<h2 className="text-[15px] font-bold">注文量とポジション数</h2>
 			<div className="flex items-center gap-2">
 				<Button
 					className="w-11 px-0"
@@ -197,6 +199,27 @@ export function OrderSizeCard({
 				円 （取り込み済みデータの最新の終値で換算）
 			</span>
 			<ErrorText messages={errs} />
+			<div className="flex flex-col gap-1 rounded-[10px] bg-bg px-3 py-2">
+				<div className="flex flex-wrap items-center gap-1.5 text-sm">
+					<span>最大ポジション数</span>
+					<NumberInput
+						value={params.maxPositions}
+						onChange={(maxPositions) => onChange({ ...params, maxPositions })}
+						invalid={maxErrs.length > 0}
+						inputMode="numeric"
+						aria-label="最大ポジション数"
+						className="w-16"
+					/>
+					<span className="text-xs text-text-2">
+						（{LIMITS.maxPositions.min}〜{LIMITS.maxPositions.max}）
+					</span>
+				</div>
+				<ErrorText messages={maxErrs} />
+			</div>
+			<p className="text-xs leading-relaxed text-text-2">
+				約定した買い1件がこの量の1ロットになる。最大ポジション数は同時に持てるロットの数で、約定待ちの買いも数える。2
+				以上にすると保有中も買い、買いの条件が一度外れてから再び成り立ったときに次を買う。売りはロットごとに判定する。
+			</p>
 			<p className="text-xs leading-relaxed text-text-2">
 				買いの出し方は「買い注文する条件」で選ぶ。売りは成行。利確・損切りの両方が同時に成り立ったら損切りを優先する。
 			</p>
@@ -529,8 +552,19 @@ function ConditionRow({
 	);
 }
 
-/** 買い注文の出し方（先頭の1行）。指値のときだけ値幅と取消までの本数を出す */
-function BuyOrderRow({
+/** 行を足すときの指値の %。最後の指値より 0.5% 下、指値が無ければ既定 */
+function nextBelowPercent(lines: BuyOrderLine[]): number {
+	const last = lines.findLast((l) => l.type === "limit");
+	return last?.type === "limit" && Number.isFinite(last.belowPercent)
+		? Math.round((last.belowPercent + 0.5) * 100) / 100
+		: DEFAULT_BUY_BELOW_PERCENT;
+}
+
+/**
+ * 買い注文の出し方。行の数だけ同時に出す。成行は先頭の1行だけ選べ、指値は行ごとに % を入れる。
+ * 取消までの本数は指値の行で共通
+ */
+function BuyOrderLines({
 	order,
 	onChange,
 	errors,
@@ -539,51 +573,121 @@ function BuyOrderRow({
 	onChange: (o: BuyOrder) => void;
 	errors: ValidationError[];
 }) {
-	const below = errorsAt(errors, "buyOrder.lines.0.belowPercent");
+	const { lines } = order;
 	const expire = errorsAt(errors, "buyOrder.expireBars");
-	const line = order.lines[0];
-	const setLine = (next: BuyOrderLine) =>
-		onChange({ ...order, lines: [next, ...order.lines.slice(1)] });
+	const setLines = (next: BuyOrderLine[]) =>
+		onChange({ ...order, lines: next });
+	const setLine = (i: number, next: BuyOrderLine) =>
+		setLines(lines.map((l, j) => (j === i ? next : l)));
+	const hasLimit = lines.some((l) => l.type === "limit");
 	return (
 		<div className="flex flex-col gap-1.5 border-t border-line pt-2.5">
-			<div className="flex flex-wrap items-center gap-2">
-				<span className="text-[13px] font-semibold">注文方法</span>
-				<Segmented<OrderType>
-					name="buy-order-type"
-					label="買いの注文方法"
+			<span className="text-[13px] font-semibold">
+				注文（条件が成り立つと全部を同時に出す）
+			</span>
+			{lines.map((line, i) => {
+				const below = errorsAt(errors, `buyOrder.lines.${i}.belowPercent`);
+				const lineErrs = errorsAt(errors, `buyOrder.lines.${i}`, true);
+				return (
+					// 行は並びで識別する（同じ内容の行を一時的に置けるため）
+					// biome-ignore lint/suspicious/noArrayIndexKey: 同上
+					<div key={i} className="flex flex-col gap-1">
+						<div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-1.5 rounded-[10px] bg-bg py-1.5 pr-1 pl-3">
+							<div className="flex flex-wrap items-center gap-1.5 text-sm">
+								<span className="num text-xs font-bold text-text-2">
+									{i + 1}
+								</span>
+								{i === 0 ? (
+									<Segmented<OrderType>
+										name="buy-order-type"
+										label="1件目の注文方法"
+										size="sm"
+										options={(["limit", "market"] as const).map(
+											(t) => [t, ORDER_TYPE_LABELS[t]] as const,
+										)}
+										value={line.type}
+										onChange={(type) =>
+											setLine(
+												0,
+												type === "market"
+													? { type }
+													: {
+															type,
+															belowPercent: DEFAULT_BUY_BELOW_PERCENT,
+														},
+											)
+										}
+									/>
+								) : (
+									<span>{ORDER_TYPE_LABELS[line.type]}</span>
+								)}
+								{line.type === "limit" ? (
+									<>
+										<span>現在値から</span>
+										<NumberInput
+											value={line.belowPercent}
+											onChange={(belowPercent) =>
+												setLine(i, { ...line, belowPercent })
+											}
+											invalid={below.length > 0}
+											inputMode="decimal"
+											aria-label={`${i + 1}件目の指値を現在値から下げる %`}
+											className="w-16"
+										/>
+										<span>% 下</span>
+									</>
+								) : (
+									<span className="text-xs text-text-2">
+										次の約定の価格で買う
+									</span>
+								)}
+							</div>
+							{lines.length > 1 ? (
+								<button
+									type="button"
+									aria-label={`${i + 1}件目の注文を削除`}
+									onClick={() => setLines(lines.filter((_, j) => j !== i))}
+									className="flex h-9 w-9 items-center justify-center rounded-full text-text-2 hover:bg-surface-2"
+								>
+									<svg
+										width="18"
+										height="18"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										strokeWidth="2"
+										aria-hidden="true"
+									>
+										<path d="M6 6l12 12M18 6 6 18" />
+									</svg>
+								</button>
+							) : (
+								<span className="h-9 w-9" />
+							)}
+						</div>
+						<ErrorText messages={[...lineErrs, ...below]} />
+					</div>
+				);
+			})}
+			<ErrorText messages={errorsAt(errors, "buyOrder.lines", true)} />
+			{lines.length < LIMITS.buyOrderLines.max && (
+				<Button
 					size="sm"
-					options={(["limit", "market"] as const).map(
-						(t) => [t, ORDER_TYPE_LABELS[t]] as const,
-					)}
-					value={line?.type ?? "limit"}
-					onChange={(type) =>
-						setLine(
-							type === "market"
-								? { type }
-								: {
-										type,
-										belowPercent:
-											line?.type === "limit"
-												? line.belowPercent
-												: DEFAULT_BUY_BELOW_PERCENT,
-									},
-						)
+					className="self-start"
+					onClick={() =>
+						setLines([
+							...lines,
+							{ type: "limit", belowPercent: nextBelowPercent(lines) },
+						])
 					}
-				/>
-			</div>
-			{line?.type === "limit" ? (
-				<div className="flex flex-col gap-1 rounded-[10px] bg-bg px-3 py-2">
+				>
+					＋ 指値を追加
+				</Button>
+			)}
+			{hasLimit && (
+				<div className="flex flex-col gap-1">
 					<div className="flex flex-wrap items-center gap-1.5 text-sm">
-						<span>現在値から</span>
-						<NumberInput
-							value={line.belowPercent}
-							onChange={(belowPercent) => setLine({ ...line, belowPercent })}
-							invalid={below.length > 0}
-							inputMode="decimal"
-							aria-label="指値を現在値から下げる %"
-							className="w-16"
-						/>
-						<span>% 下に指値。</span>
+						<span>指値は</span>
 						<NumberInput
 							value={order.expireBars}
 							onChange={(expireBars) => onChange({ ...order, expireBars })}
@@ -594,13 +698,13 @@ function BuyOrderRow({
 						/>
 						<span>本のあいだ約定しなければ取消</span>
 					</div>
-					<ErrorText messages={[...below, ...expire]} />
+					<ErrorText messages={expire} />
 				</div>
-			) : (
-				<p className="text-xs text-text-2">
-					次の約定の価格で買う。資金は判定時の現在値で見積もる。
-				</p>
 			)}
+			<p className="text-xs text-text-2">
+				成行は1件目だけ選べる。指値は下の行ほど大きい %
+				にする。最大ポジション数の空きより多ければ、空きの数だけ上から出す。
+			</p>
 		</div>
 	);
 }
@@ -684,7 +788,7 @@ export function ConditionGroups({ params, onChange, errors }: Props) {
 							＋ 条件を追加
 						</Button>
 						{g === "buy" && (
-							<BuyOrderRow
+							<BuyOrderLines
 								order={params.buyOrder}
 								onChange={(buyOrder) => onChange({ ...params, buyOrder })}
 								errors={errors}
