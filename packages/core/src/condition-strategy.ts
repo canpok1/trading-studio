@@ -844,9 +844,9 @@ export function evaluateConditionSet(
 			}
 			const hit =
 				sl.kind === "hit"
-					? { why: sl.why, label: "損切り" }
+					? { why: sl.why, label: "損切り", exitKind: "stopLoss" as const }
 					: tp.kind === "hit"
-						? { why: tp.why, label: "利確" }
+						? { why: tp.why, label: "利確", exitKind: "takeProfit" as const }
 						: null;
 			if (!hit) continue;
 			const what =
@@ -860,6 +860,7 @@ export function evaluateConditionSet(
 				type: "market",
 				quantity: lot.quantity,
 				lotId: lot.id,
+				exitKind: hit.exitKind,
 			});
 		}
 		if (lacking !== null) {

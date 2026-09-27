@@ -8,15 +8,16 @@ import type { Account, StepOutput, TradeOrder } from "./trading";
 import {
 	decide,
 	expireOrders,
+	inferExitKind,
 	jstDayStart,
 	newAccount,
 	normalizeAccount,
 	settleFills,
 	tradeFillPrice,
 	tradingStep,
-	withLotPrices,
+	withSellDetails,
 } from "./trading";
-import type { Candle, JsonValue, Order } from "./types";
+import type { Candle, ExitKind, JsonValue, Order } from "./types";
 
 const H = TIMEFRAME_MS["1h"];
 const FEES = { limitPpm: 1000, marketPpm: 1000 };
@@ -474,15 +475,56 @@ describe("normalizeAccount", () => {
 	});
 });
 
-describe("withLotPrices", () => {
+describe("withSellDetails", () => {
 	test("売りに、売るロット（対応する買い）の約定価格を添える", () => {
 		const o = (x: Partial<TradeOrder>) => x as TradeOrder;
 		expect(
-			withLotPrices([
+			withSellDetails([
 				o({ id: "b", side: "buy", fillPrice: 100, pairId: "s" }),
-				o({ id: "s", side: "sell", fillPrice: 120, pairId: "b" }),
-				o({ id: "t", side: "sell", fillPrice: 90, pairId: null }),
+				o({ id: "s", side: "sell", fillPrice: 120, pairId: "b", reason: "" }),
+				o({ id: "t", side: "sell", fillPrice: 90, pairId: null, reason: "" }),
 			]).map((x) => x.lotPrice),
 		).toEqual([null, 100, null]);
+	});
+});
+
+describe("inferExitKind", () => {
+	const sell = (reason: string, exitKind?: ExitKind | null) => ({
+		side: "sell" as const,
+		reason,
+		exitKind,
+	});
+
+	test("記録があればそれを使う", () => {
+		expect(inferExitKind(sell("", "takeProfit"), null)).toBe("takeProfit");
+	});
+
+	test("買いは null", () => {
+		expect(
+			inferExitKind({ ...sell("", "stopLoss"), side: "buy" }, null),
+		).toBeNull();
+	});
+
+	test("記録の無い注文は理由の文から読む", () => {
+		expect(
+			inferExitKind(
+				sell(
+					"買値から −2% 以上下がったため保有中の 0.001 BTC を売却（損切りの条件）",
+				),
+				null,
+			),
+		).toBe("stopLoss");
+	});
+
+	test("複数のロットを売った理由は、ロットの買値で自分の文を選ぶ", () => {
+		const reason =
+			"A のため買値 10,000,000 のロット 0.001 BTC を売却（利確の条件）。B のため買値 9,500,000 のロット 0.001 BTC を売却（損切りの条件）";
+		expect(inferExitKind(sell(reason), 10_000_000)).toBe("takeProfit");
+		expect(inferExitKind(sell(reason), 9_500_000)).toBe("stopLoss");
+		expect(inferExitKind(sell(reason), null)).toBeNull();
+	});
+
+	test("読めなければ null", () => {
+		expect(inferExitKind(sell("売りの条件を満たさない"), null)).toBeNull();
 	});
 });
