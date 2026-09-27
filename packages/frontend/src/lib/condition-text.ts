@@ -37,8 +37,16 @@ export function conditionText(c: Condition): string {
 			return `${c.lookback}本の${c.direction === "high" ? "高値上抜け" : "安値下抜け"}`;
 		case "rsi":
 			return `RSI${c.period} ${c.threshold}${c.direction === "above" ? "以上" : "以下"}`;
+		case "emaPosition":
+			return `EMA${c.period}より${c.direction === "above" ? "上" : "下"}`;
+		case "bollinger":
+			return `BB${c.period}/${c.sigma}σ${c.band === "upper" ? "上限以上" : "下限以下"}`;
 		case "entryChange":
 			return `${c.direction === "up" ? "+" : "−"}${c.percent}%`;
+		case "trailingStop":
+			return `最高値−${c.percent}%`;
+		case "holdingBars":
+			return `${c.bars}本保有`;
 		case "judgment":
 			return `${JUDGE_SHORT[c.judge]}${c.values.map((v) => JUDGMENT_VALUE_LABELS[v] ?? v).join("/")}`;
 	}

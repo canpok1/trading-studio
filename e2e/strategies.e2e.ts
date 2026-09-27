@@ -270,3 +270,85 @@ test("1日の損失上限を変えて保存でき、0 円は保存できない",
 		page.getByRole("button", { name: "入力を直すと保存できる" }),
 	).toBeDisabled();
 });
+
+test("終値と EMA の位置・ボリンジャーバンド・最高値からの %・買ってからの本数を追加して保存でき、買いには売り専用の条件が出ない", async ({
+	page,
+}, info) => {
+	await page.goto("/strategies");
+	await createFromTemplate(
+		page,
+		`条件追加 ${info.project.name}`,
+		/^トレンド追随/,
+	);
+	const add = async (group: string, name: string | RegExp) => {
+		await page
+			.getByRole("region", { name: group })
+			.getByRole("button", { name: "＋ 条件を追加" })
+			.click();
+		await page.getByRole("dialog").getByRole("button", { name }).click();
+	};
+	const buy = page.getByRole("region", { name: "買い注文する条件" });
+	await buy.getByRole("button", { name: "＋ 条件を追加" }).click();
+	const dialog = page.getByRole("dialog");
+	await expect(
+		dialog.getByRole("button", { name: /トレーリングストップ/ }),
+	).toHaveCount(0);
+	await expect(
+		dialog.getByRole("button", { name: "買ってからの本数" }),
+	).toHaveCount(0);
+	await dialog.getByRole("button", { name: "やめる" }).click();
+
+	await add("買い注文する条件", "終値と EMA の位置");
+	await expect(buy.getByLabel("EMA の本数", { exact: true })).toHaveValue(
+		"200",
+	);
+	await expect(buy.getByLabel("上下", { exact: true })).toHaveValue("above");
+	await add("買い注文する条件", "ボリンジャーバンド");
+	await expect(
+		buy.getByLabel("ボリンジャーバンドの本数", { exact: true }),
+	).toHaveValue("20");
+	await expect(
+		buy.getByLabel("ボリンジャーバンドの σ", { exact: true }),
+	).toHaveValue("2");
+	await expect(buy.getByLabel("上限・下限", { exact: true })).toHaveValue(
+		"lower",
+	);
+
+	const tp = page.getByRole("region", { name: "売り注文（利確）する条件" });
+	await add("売り注文（利確）する条件", "買ってからの本数");
+	await expect(tp.getByLabel("買ってからの本数", { exact: true })).toHaveValue(
+		"24",
+	);
+	const sl = page.getByRole("region", { name: "売り注文（損切り）する条件" });
+	await add("売り注文（損切り）する条件", /トレーリングストップ/);
+	await expect(sl.getByLabel("最高値からの %", { exact: true })).toHaveValue(
+		"3",
+	);
+
+	await buy.getByLabel("ボリンジャーバンドの σ", { exact: true }).fill("2.55");
+	await expect(buy).toContainText("0.1〜5、0.1 刻みで入れる");
+	await expect(
+		page.getByRole("button", { name: "入力を直すと保存できる" }),
+	).toBeDisabled();
+	await buy.getByLabel("ボリンジャーバンドの σ", { exact: true }).fill("2.5");
+	await sl.getByLabel("最高値からの %", { exact: true }).fill("5");
+	await page.getByRole("button", { name: "保存", exact: true }).click();
+	await expect(page.getByRole("status")).toHaveText("保存した");
+
+	await page.reload();
+	await expect(
+		page
+			.getByRole("region", { name: "買い注文する条件" })
+			.getByLabel("ボリンジャーバンドの σ", { exact: true }),
+	).toHaveValue("2.5");
+	await expect(
+		page
+			.getByRole("region", { name: "売り注文（損切り）する条件" })
+			.getByLabel("最高値からの %", { exact: true }),
+	).toHaveValue("5");
+	await expect(
+		page
+			.getByRole("region", { name: "売り注文（利確）する条件" })
+			.getByLabel("買ってからの本数", { exact: true }),
+	).toHaveValue("24");
+});

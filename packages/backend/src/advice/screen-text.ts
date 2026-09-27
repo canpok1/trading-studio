@@ -30,8 +30,16 @@ export function conditionScreenText(c: Condition): string {
 			return `終値が直近 ${c.lookback} 本の${c.direction === "high" ? "最高値を上抜けた" : "最安値を下抜けた"}`;
 		case "rsi":
 			return `RSI ${c.period} 本が ${c.threshold} ${c.direction === "above" ? "以上" : "以下"}`;
+		case "emaPosition":
+			return `終値が EMA ${c.period} 本より${c.direction === "above" ? "上" : "下"}`;
+		case "bollinger":
+			return `終値がボリンジャーバンド ${c.period} 本・${c.sigma}σ の${c.band === "upper" ? "上限以上" : "下限以下"}`;
 		case "entryChange":
 			return `買値から ${c.percent} % ${c.direction === "up" ? "上がった" : "下がった"}`;
+		case "trailingStop":
+			return `買ってからの最高値から ${c.percent} % 下がった`;
+		case "holdingBars":
+			return `買ってから ${c.bars} 本経った`;
 		case "judgment":
 			return `${JUDGE_LABELS[c.judge]}判定が ${c.values.map((v) => JUDGMENT_VALUE_LABELS[v] ?? v).join("・")} のどれか`;
 	}

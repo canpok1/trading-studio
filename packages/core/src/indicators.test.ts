@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ema, rsi } from "./indicators";
+import { bollinger, ema, rsi } from "./indicators";
 
 describe("ema", () => {
 	test("最初の period 本の単純平均を起点にする", () => {
@@ -35,5 +35,25 @@ describe("rsi", () => {
 
 	test("本数が period 以下ならすべて NaN", () => {
 		expect(rsi([1, 2], 2).every(Number.isNaN)).toBe(true);
+	});
+});
+
+describe("bollinger", () => {
+	test("中央は単純移動平均、幅は母標準偏差の sigma 倍", () => {
+		const { middle, upper, lower } = bollinger([1, 2, 3, 2, 4], 3, 2);
+		expect(middle[1]).toBeNaN();
+		expect(middle[2]).toBe(2);
+		// [1,2,3] の母標準偏差は sqrt(2/3)
+		expect(upper[2]).toBeCloseTo(2 + 2 * Math.sqrt(2 / 3));
+		expect(lower[2]).toBeCloseTo(2 - 2 * Math.sqrt(2 / 3));
+		// [2,3,2] 平均 7/3
+		expect(middle[3]).toBeCloseTo(7 / 3);
+		expect(middle[4]).toBe(3);
+	});
+
+	test("値が動かなければ幅は 0", () => {
+		const { upper, lower } = bollinger([5, 5, 5], 3, 2);
+		expect(upper[2]).toBe(5);
+		expect(lower[2]).toBe(5);
 	});
 });
