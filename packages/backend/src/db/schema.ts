@@ -68,9 +68,9 @@ export const strategies = sqliteTable("strategies", {
 /** バックテストの実行。実行時の条件の写しと成績を持つ */
 export const backtestRuns = sqliteTable("backtest_runs", {
 	id: integer("id").primaryKey({ autoIncrement: true }),
-	/** 元の戦略。戦略を削除しても実行は残すので外部キーにしない */
+	/** 使わない。バックテストが戦略と結び付いていた頃の元の戦略 */
 	strategyId: integer("strategy_id"),
-	/** 実行したときの戦略名 */
+	/** バックテスト名。戦略と結び付いていた頃の実行は、実行したときの戦略名 */
 	strategyName: text("strategy_name").notNull(),
 	/** 条件のセット（JSON） */
 	params: text("params").notNull(),

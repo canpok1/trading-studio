@@ -1,4 +1,4 @@
-// 条件セットを1行で表す文字列。結果の要約と、戦略へ上書きするときの差分に使う
+// 条件セットを1行で表す文字列。結果の要約に使う
 
 import type {
 	AggregationRule,
@@ -11,8 +11,6 @@ import type {
 } from "@trading-studio/core";
 import {
 	FREQUENCY_UNIT_LABELS,
-	formatBtc,
-	formatYen,
 	JUDGMENT_VALUE_LABELS,
 	ORDER_TYPE_LABELS,
 	TIMEFRAME_LABELS,
@@ -62,46 +60,4 @@ export function groupText(g: ConditionGroup): string {
 			.map(conditionText)
 			.join(g.match === "all" ? " かつ " : " または ") || "なし"
 	);
-}
-
-/** 変わった項目だけを [項目名, 変更前, 変更後] で返す */
-export function conditionDiff(
-	before: ConditionSet,
-	after: ConditionSet,
-): [string, string, string][] {
-	const rows: [string, string, string][] = [
-		[
-			"足の粒度",
-			TIMEFRAME_LABELS[before.timeframe],
-			TIMEFRAME_LABELS[after.timeframe],
-		],
-		["判定の頻度", frequencyText(before), frequencyText(after)],
-		["買い注文する条件", groupText(before.buy), groupText(after.buy)],
-		[
-			"買いの注文方法",
-			buyOrderText(before.buyOrder),
-			buyOrderText(after.buyOrder),
-		],
-		[
-			"売り（利確）の条件",
-			groupText(before.takeProfit),
-			groupText(after.takeProfit),
-		],
-		[
-			"売り（損切り）の条件",
-			groupText(before.stopLoss),
-			groupText(after.stopLoss),
-		],
-		[
-			"1回の注文量",
-			`${formatBtc(before.orderSize)} BTC`,
-			`${formatBtc(after.orderSize)} BTC`,
-		],
-		[
-			"1日の損失上限",
-			`${formatYen(before.dailyLossLimit)} 円`,
-			`${formatYen(after.dailyLossLimit)} 円`,
-		],
-	];
-	return rows.filter(([, a, b]) => a !== b);
 }

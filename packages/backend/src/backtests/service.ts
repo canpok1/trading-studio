@@ -10,6 +10,7 @@ import {
 } from "@trading-studio/core";
 import type { JudgmentService } from "../judgments/types";
 import type { MarketDataRepository } from "../market-data/repository";
+import { checkName } from "../strategies/service";
 import type { StrategyService } from "../strategies/types";
 import type { BacktestRepository } from "./repository";
 import type { BacktestRunner, RunningJob } from "./runner";
@@ -60,6 +61,8 @@ function checkInput(input: BacktestInput): StartBacktestFailure | null {
 	) {
 		return bad("initialCash", "1 円以上の整数で入れる");
 	}
+	const nameError = checkName(input.name);
+	if (nameError) return bad("name", nameError);
 	for (const [k, v] of Object.entries(input.fees)) {
 		if (!Number.isSafeInteger(v) || v < 0 || v > MAX_FEE_PPM) {
 			return bad(`fees.${k}`, "0〜10% の範囲で入れる");
@@ -157,11 +160,8 @@ export function createBacktestService({
 				return fail({ kind: "no_data", message: "期間に足が無い" });
 			}
 
-			const strategy =
-				input.strategyId === null ? null : strategies.get(input.strategyId);
 			const id = repo.create({
-				strategyId: strategy?.id ?? null,
-				strategyName: strategy?.name ?? "（保存していない条件）",
+				name: input.name.trim(),
 				params,
 				timeframe: tf,
 				from,
@@ -270,20 +270,10 @@ export function createBacktestService({
 			return repo.orders(id)?.find((o) => o.id === orderId) ?? null;
 		},
 
-		saveToStrategy(id, to) {
+		saveToStrategy(id, name) {
 			const run = repo.get(id);
 			if (run?.status !== "done") return { ok: false, kind: "not_found" };
-			let r: ReturnType<StrategyService["create"]>;
-			if ("overwrite" in to) {
-				if (run.strategyId === null || !run.strategyExists) {
-					return { ok: false, kind: "no_strategy" };
-				}
-				r = strategies.updateParams(run.strategyId, run.params);
-			} else {
-				r = strategies.create({ name: to.name, from: { params: run.params } });
-				// 以後この結果は新しい戦略の条件として扱う
-				if (r.ok) repo.setStrategy(id, r.strategy.id);
-			}
+			const r = strategies.create({ name, from: { params: run.params } });
 			if (r.ok) return { ok: true, strategy: r.strategy };
 			const e = r.error;
 			switch (e.kind) {

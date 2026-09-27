@@ -16,8 +16,8 @@ import type { StoredStrategy } from "../strategies/types";
 export type BacktestStatus = "running" | "done" | "failed" | "canceled";
 
 export type BacktestInput = {
-	/** 元の戦略。条件は保存済みから変えて試すことがあるので、中身は params で受ける */
-	strategyId: number | null;
+	/** バックテスト名。戦略とは切り離し、テンプレートにした戦略の名前は引き継がない */
+	name: string;
 	params: ConditionSet;
 	from: number;
 	/** この時刻は含まない */
@@ -30,11 +30,8 @@ export type BacktestInput = {
 
 export type BacktestRun = {
 	id: number;
-	strategyId: number | null;
-	/** 元の戦略の今の名前。削除済みなら実行したときの名前 */
-	strategyName: string;
-	/** 元の戦略が残っているか */
-	strategyExists: boolean;
+	/** バックテスト名。名前を入れる前の実行は、実行したときの戦略名 */
+	name: string;
 	params: ConditionSet;
 	timeframe: Timeframe;
 	from: number;
@@ -106,7 +103,6 @@ export type StartBacktestFailure =
 export type SaveRunResult =
 	| { ok: true; strategy: StoredStrategy }
 	| { ok: false; kind: "not_found" }
-	| { ok: false; kind: "no_strategy" }
 	| { ok: false; kind: "strategy"; status: 400 | 404 | 409; message: string };
 
 export interface BacktestService {
@@ -125,9 +121,6 @@ export interface BacktestService {
 		limit: number,
 	): { orders: BacktestOrder[]; total: number } | null;
 	order(id: number, orderId: string): BacktestOrder | null;
-	/** 結果の条件を元の戦略へ上書きするか、新しい戦略として保存する */
-	saveToStrategy(
-		id: number,
-		to: { overwrite: true } | { name: string },
-	): SaveRunResult;
+	/** 結果の条件を新しい戦略として保存する */
+	saveToStrategy(id: number, name: string): SaveRunResult;
 }
