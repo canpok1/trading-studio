@@ -26,11 +26,14 @@ export type McpDeps = {
 	sleep?: (ms: number) => Promise<void>;
 };
 
+/** run_backtest が終わりを待つ時間の既定。HTTP の無通信の切断はこれより長くする（main.ts） */
+export const BACKTEST_WAIT_MS = 120_000;
+
 const JST_OFFSET_MS = 9 * 3_600_000;
 
 /** エポックミリ秒を JST の ISO 8601 にする */
 export const jst = (ms: number) =>
-	new Date(ms + JST_OFFSET_MS).toISOString().replace(".000Z", "+09:00");
+	new Date(ms + JST_OFFSET_MS).toISOString().replace(/(\.000)?Z$/, "+09:00");
 
 /** ISO 8601（タイムゾーン付き）か YYYY-MM-DD（JST の 0:00）をエポックミリ秒にする。読めなければ null */
 export function parseTime(s: string): number | null {
@@ -139,7 +142,7 @@ function createServer({
 	strategies,
 	backtests,
 	marketData,
-	backtestWaitMs = 120_000,
+	backtestWaitMs = BACKTEST_WAIT_MS,
 	sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
 }: McpDeps) {
 	const server = new McpServer(

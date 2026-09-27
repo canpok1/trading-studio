@@ -92,6 +92,7 @@ describe("parseTime", () => {
 	});
 	test("出力は JST の ISO 8601", () => {
 		expect(jst(START)).toBe("2026-08-01T00:00:00+09:00");
+		expect(jst(START + 123)).toBe("2026-08-01T00:00:00.123+09:00");
 	});
 });
 
