@@ -76,14 +76,13 @@ type Props = {
 	currentPrice?: number | null;
 	/** 保有中のロットの買値。ロットごとに線を引く */
 	entryPrices?: readonly number[];
-	/** 表示の切り替えの上に置く操作（ホームの粒度の切り替えなど） */
+	/** 表示の切り替えの先頭に置く操作（ホームの粒度の切り替えなど） */
 	toolbar?: ReactNode;
 	/**
-	 * 指定すると、表示の切り替え（toolbar・背景・表示）とチャート本体を別のパネルに分け、
-	 * 包む要素なしで2つを並べて返す。呼び出し側のグリッドへ直接置くため（ホームの PC 幅）。
-	 * 値はそれぞれのパネルに足す className
+	 * 表示の切り替えを1行にまとめる（ホーム）。背景はプルダウン、線の表示は「表示」のメニューに入れる。
+	 * 包む要素をパネルにし、PC 幅では高く描く
 	 */
-	split?: { controls: string; chart: string };
+	compact?: boolean;
 	/** 最新の足を表示しているときだけ、上端の終値の右に出す（ホームの24時間の変化率） */
 	latestNote?: ReactNode;
 	/**
@@ -163,6 +162,10 @@ function chartColors() {
 const CHIP =
 	"h-8 rounded-full border border-line px-3 text-xs font-semibold text-text-2 disabled:opacity-40 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-white dark:aria-pressed:text-accent-ink";
 
+/** 1行にまとめた切り替えのプルダウン */
+const DROP =
+	"h-8 min-w-0 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold";
+
 const ICON_BTN =
 	"grid size-8 place-items-center rounded-full border border-line text-base font-semibold text-text-2";
 
@@ -186,7 +189,7 @@ export function PriceChart({
 	currentPrice,
 	entryPrices = NO_PERIODS,
 	toolbar,
-	split,
+	compact = false,
 	latestNote,
 	viewKey,
 	judgments = null,
@@ -220,6 +223,7 @@ export function PriceChart({
 	// 最新の足が画面に入っているか。入っていれば「最新へ」のボタンを押せなくする
 	const [atLatest, setAtLatest] = useState(true);
 	const [editing, setEditing] = useState<"ema" | "bb" | "rsi" | null>(null);
+	const [menuOpen, setMenuOpen] = useState(false);
 	const [style, setStyle] = useChartStyle();
 	const [cursor, setCursor] = useState<number | null>(null);
 	const [themeTick, setThemeTick] = useState(0);
@@ -697,70 +701,115 @@ export function PriceChart({
 	const bar = shown === null ? null : bars[shown];
 	const atLastSlot = cursor === null || cursor === slots.length - 1;
 
-	const controls = (
-		<>
-			{toolbar}
-			{judgments && (
-				<fieldset className="flex flex-wrap items-center gap-2">
-					<legend className="sr-only">背景に使う判定</legend>
-					<span aria-hidden="true" className="text-xs text-text-2">
-						背景
-					</span>
-					{JUDGES.map((j) => (
-						<button
-							key={j}
-							type="button"
-							aria-pressed={j === bg}
-							onClick={() => onBgChange?.(j)}
-							className="h-8 rounded-full border border-line px-3 text-xs font-semibold text-text-2 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-white dark:aria-pressed:text-accent-ink"
-						>
-							{JUDGE_LABELS[j]}
-						</button>
-					))}
-				</fieldset>
-			)}
-			<div className="flex flex-wrap items-center gap-2">
-				<span className="text-xs text-text-2">表示</span>
+	const bgButtons = judgments && (
+		<fieldset className="flex flex-wrap items-center gap-2">
+			<legend className="sr-only">背景に使う判定</legend>
+			<span aria-hidden="true" className="text-xs text-text-2">
+				背景
+			</span>
+			{JUDGES.map((j) => (
 				<button
+					key={j}
 					type="button"
-					aria-pressed={candle}
-					disabled={!canCandle}
-					title={
-						canCandle
-							? undefined
-							: "この結果は終値だけを保存しているため、ローソク足で描けない"
-					}
-					onClick={() => setStyle(candle ? "line" : "candle")}
+					aria-pressed={j === bg}
+					onClick={() => onBgChange?.(j)}
 					className={CHIP}
 				>
-					ローソク足
+					{JUDGE_LABELS[j]}
 				</button>
-				{(["ema", "bb", "rsi"] as const).map((k) => {
-					const label = INDICATOR_LABELS[k];
-					const c = indicators[k];
-					return (
-						<span key={k} className="flex items-center gap-1">
-							<button
-								type="button"
-								aria-pressed={c.on}
-								onClick={() => c.setOn(!c.on)}
-								className={CHIP}
-							>
-								{label}
-							</button>
-							<button
-								type="button"
-								aria-label={`${label} の本数を変える`}
-								title={`${label} の本数を変える`}
-								onClick={() => setEditing(k)}
-								className={ICON_BTN}
-							>
-								⚙
-							</button>
-						</span>
-					);
-				})}
-			</div>
+			))}
+		</fieldset>
+	);
+	const bgSelect = judgments && (
+		<select
+			aria-label="背景に使う判定"
+			value={bg}
+			onChange={(e) => onBgChange?.(e.target.value as Judge)}
+			className={DROP}
+		>
+			{JUDGES.map((j) => (
+				<option key={j} value={j}>
+					背景 {JUDGE_LABELS[j]}
+				</option>
+			))}
+		</select>
+	);
+	const displayButtons = (
+		<>
+			<button
+				type="button"
+				aria-pressed={candle}
+				disabled={!canCandle}
+				title={
+					canCandle
+						? undefined
+						: "この結果は終値だけを保存しているため、ローソク足で描けない"
+				}
+				onClick={() => setStyle(candle ? "line" : "candle")}
+				className={CHIP}
+			>
+				ローソク足
+			</button>
+			{(["ema", "bb", "rsi"] as const).map((k) => {
+				const label = INDICATOR_LABELS[k];
+				const c = indicators[k];
+				return (
+					<span key={k} className="flex items-center gap-1">
+						<button
+							type="button"
+							aria-pressed={c.on}
+							onClick={() => c.setOn(!c.on)}
+							className={CHIP}
+						>
+							{label}
+						</button>
+						<button
+							type="button"
+							aria-label={`${label} の本数を変える`}
+							title={`${label} の本数を変える`}
+							onClick={() => {
+								setMenuOpen(false);
+								setEditing(k);
+							}}
+							className={ICON_BTN}
+						>
+							⚙
+						</button>
+					</span>
+				);
+			})}
+		</>
+	);
+	const shownLabels = [
+		...(candle ? ["ローソク足"] : []),
+		...(["ema", "bb", "rsi"] as const)
+			.filter((k) => indicators[k].on)
+			.map((k) => INDICATOR_LABELS[k]),
+	];
+	const controls = (
+		<>
+			{compact ? (
+				<div className="flex flex-wrap items-center gap-2">
+					{toolbar}
+					{bgSelect}
+					<DisplayMenu
+						open={menuOpen}
+						onOpenChange={setMenuOpen}
+						summary={shownLabels.length === 0 ? "なし" : shownLabels.join("・")}
+					>
+						{displayButtons}
+					</DisplayMenu>
+				</div>
+			) : (
+				<>
+					{toolbar}
+					{bgButtons}
+					<div className="flex flex-wrap items-center gap-2">
+						<span className="text-xs text-text-2">表示</span>
+						{displayButtons}
+					</div>
+				</>
+			)}
 			{editing === "ema" && (
 				<EmaSettingsModal
 					control={indicators.ema}
@@ -918,8 +967,8 @@ export function PriceChart({
 				aria-label="価格チャート"
 				className={`w-full ${
 					showRsi
-						? `h-[347px] ${split ? "lg:h-[640px]" : "lg:h-[480px]"}`
-						: `h-[260px] ${split ? "lg:h-[480px]" : "lg:h-[360px]"}`
+						? `h-[347px] ${compact ? "lg:h-[640px]" : "lg:h-[480px]"}`
+						: `h-[260px] ${compact ? "lg:h-[480px]" : "lg:h-[360px]"}`
 				}`}
 			/>
 			{(onMarker || showEma || showBb || showRsi || judgments) && (
@@ -1047,28 +1096,73 @@ export function PriceChart({
 		</>
 	);
 
-	if (split) {
+	if (compact) {
 		return (
-			<>
-				<section
-					aria-label="チャートの表示"
-					className={`flex flex-col gap-2 ${split.controls}`}
-				>
-					{controls}
-				</section>
-				<section
-					aria-label="価格チャート"
-					className={`flex min-w-0 flex-col gap-2 ${split.chart}`}
-				>
-					{chart}
-				</section>
-			</>
+			<section
+				aria-label="価格チャート"
+				className="flex min-w-0 flex-col gap-2.5 rounded-xl border border-line bg-surface p-3.5 lg:col-span-2"
+			>
+				{controls}
+				{chart}
+			</section>
 		);
 	}
 	return (
 		<div className="flex flex-col gap-2">
 			{controls}
 			{chart}
+		</div>
+	);
+}
+
+/** 「表示」のボタンと、押すと開く線の表示の切り替え。外を押すか Esc で閉じる */
+function DisplayMenu({
+	open,
+	onOpenChange,
+	summary,
+	children,
+}: {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+	summary: string;
+	children: ReactNode;
+}) {
+	const root = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (!open) return;
+		const onDown = (e: PointerEvent) => {
+			if (!root.current?.contains(e.target as Node)) onOpenChange(false);
+		};
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape") onOpenChange(false);
+		};
+		document.addEventListener("pointerdown", onDown);
+		document.addEventListener("keydown", onKey);
+		return () => {
+			document.removeEventListener("pointerdown", onDown);
+			document.removeEventListener("keydown", onKey);
+		};
+	}, [open, onOpenChange]);
+	return (
+		<div ref={root} className="relative min-w-0">
+			<button
+				type="button"
+				aria-expanded={open}
+				onClick={() => onOpenChange(!open)}
+				className={`${DROP} flex max-w-full items-center gap-1`}
+			>
+				表示
+				<span className="truncate font-normal text-text-2">{summary}</span>
+				<span aria-hidden="true" className="text-text-2">
+					▾
+				</span>
+			</button>
+			{open && (
+				<fieldset className="absolute top-full right-0 z-20 mt-1 flex w-max max-w-[calc(100vw-48px)] flex-col items-start gap-2 rounded-xl border border-line bg-surface p-3 shadow-lg">
+					<legend className="sr-only">表示する線</legend>
+					{children}
+				</fieldset>
+			)}
 		</div>
 	);
 }

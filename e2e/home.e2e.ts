@@ -1,11 +1,20 @@
 import { rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 
 // e2e/server.ts の DB と同じ場所。このファイルがあると偽物の取引所が止まる
 const downFile = fileURLToPath(
 	new URL("../.e2e-data/feed-down", import.meta.url),
 );
+
+/** チャート上端の「表示」のメニューを開く。線の表示の切り替えと本数の歯車はこの中にある */
+async function openDisplay(page: Page) {
+	const button = page.getByRole("button", { name: /^表示/ });
+	if ((await button.getAttribute("aria-expanded")) !== "true") {
+		await button.click();
+	}
+}
 
 test("アプリを開くとホームが出て、現在値が自動で更新される", async ({
 	page,
@@ -61,16 +70,20 @@ test("EMA は戦略で使っていれば表示して始まり、どの粒度で�
 	const ema = page.getByRole("button", { name: "EMA", exact: true });
 
 	await select.selectOption({ label: `${trend}（1時間足）` });
+	await openDisplay(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "true");
 	// 戦略の粒度（トレンド追随は1時間足）が選ばれている
-	await expect(page.getByRole("radio", { name: "1時間" })).toBeChecked();
+	const tf = page.getByLabel("足の粒度");
+	await expect(tf).toHaveValue("1h");
 
 	// 戦略の粒度以外でも出す
-	await page.getByText("5分", { exact: true }).click();
+	await tf.selectOption("5m");
+	await openDisplay(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "true");
 
 	// EMA を使わない戦略では隠して始まる
 	await select.selectOption({ label: `${range}（1時間足）` });
+	await openDisplay(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "false");
 
 	// 本数を変えると表示し、再読み込みしても保つ
@@ -78,18 +91,26 @@ test("EMA は戦略で使っていれば表示して始まり、どの粒度で�
 	await page.getByLabel("EMA 1本目の本数").fill("9");
 	await page.getByLabel("EMA 2本目の本数").fill("");
 	await page.getByRole("button", { name: "表示する" }).click();
+	await openDisplay(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByTestId("chart-ema-9")).toHaveText(/^EMA9 [\d,—]+$/, {
 		timeout: 15_000,
 	});
 	await page.reload();
+	await openDisplay(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByTestId("chart-ema-9")).toBeVisible({
 		timeout: 15_000,
 	});
 	await page.getByRole("button", { name: "EMA の本数を変える" }).click();
 	await page.getByRole("button", { name: "既定の値に戻す" }).click();
-	await expect(page.getByTestId("chart-ema-20")).toBeVisible();
+	// 値の行はタップした位置の足（データの無い足のこともある）を指すことがあるので、本数は設定の画面で確かめる
+	await openDisplay(page);
+	await expect(ema).toHaveAttribute("aria-pressed", "true");
+	await page.getByRole("button", { name: "EMA の本数を変える" }).click();
+	await expect(page.getByLabel("EMA 1本目の本数")).toHaveValue("20");
+	await expect(page.getByLabel("EMA 2本目の本数")).toHaveValue("50");
+	await page.getByRole("button", { name: "やめる" }).click();
 
 	// 選んだ戦略は保存される
 	await page.reload();
@@ -135,6 +156,7 @@ test("RSI の条件を持つ戦略を選ぶと RSI の小窓と値が出て、�
 		await page.goto("/home");
 		const toggle = page.getByRole("button", { name: "RSI", exact: true });
 		const value = page.getByTestId("chart-rsi-2");
+		await openDisplay(page);
 		await expect(toggle).toHaveAttribute("aria-pressed", "true");
 		await expect(value).toHaveText(/^RSI2 (\d+\.\d|—)$/, {
 			timeout: 15_000,
@@ -145,7 +167,8 @@ test("RSI の条件を持つ戦略を選ぶと RSI の小窓と値が出て、�
 		await expect(value).toBeVisible();
 
 		// 戦略の粒度以外でも出す
-		await page.getByText("5分", { exact: true }).click();
+		await page.getByLabel("足の粒度").selectOption("5m");
+		await openDisplay(page);
 		await expect(toggle).toHaveAttribute("aria-pressed", "true");
 		await expect(value).toBeVisible({ timeout: 15_000 });
 	} finally {
@@ -161,12 +184,14 @@ test("ローソク足に切り替えると4本値が出て、再読み込み後�
 		timeout: 15_000,
 	});
 	const toggle = page.getByRole("button", { name: "ローソク足", exact: true });
+	await openDisplay(page);
 	await expect(toggle).toHaveAttribute("aria-pressed", "false");
 	await toggle.click();
 	await expect(toggle).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByText(/^始 [\d,]+ 高 [\d,]+ 安 [\d,]+$/)).toBeVisible();
 
 	await page.reload();
+	await openDisplay(page);
 	await expect(toggle).toHaveAttribute("aria-pressed", "true");
 	await toggle.click();
 	await expect(toggle).toHaveAttribute("aria-pressed", "false");
@@ -182,24 +207,37 @@ test("ホームは横にはみ出さない", async ({ page }) => {
 	expect(overflow).toBe(false);
 });
 
-test("PC 幅では表示の切り替えが状態の右に並び、チャートは2列ぶんの幅を使う", async ({
+test("PC 幅では上の4つのパネルが2列に並び、チャートと注文・約定は2列ぶんの幅を使う", async ({
 	page,
 }, testInfo) => {
 	test.skip(testInfo.project.name !== "desktop", "2列になるのは PC 幅だけ");
 	await page.goto("/home");
-	const status = page.getByLabel("運用する戦略");
-	const controls = page.getByRole("region", { name: "チャートの表示" });
-	const chart = page.getByRole("region", { name: "価格チャート" });
-	await expect(chart).toBeVisible({ timeout: 15_000 });
-	const s = await status.boundingBox();
-	const c = await controls.boundingBox();
-	const ch = await chart.boundingBox();
-	if (!s || !c || !ch) throw new Error("位置を取れなかった");
-	// 切り替えは状態の右、チャートは両方より下で左端から右端まで
-	expect(c.x).toBeGreaterThan(s.x + s.width);
-	expect(ch.y).toBeGreaterThan(c.y + c.height);
-	expect(ch.x).toBeLessThanOrEqual(s.x);
-	expect(ch.x + ch.width).toBeGreaterThanOrEqual(c.x + c.width - 1);
+	const box = async (name: string) => {
+		const b = await page
+			.getByRole("region", { name, exact: true })
+			.boundingBox();
+		if (!b) throw new Error(`${name} の位置を取れなかった`);
+		return b;
+	};
+	await expect(page.getByRole("region", { name: "価格チャート" })).toBeVisible({
+		timeout: 15_000,
+	});
+	const auto = await box("自動取引設定");
+	const account = await box("口座情報");
+	const perf = await box("成績");
+	const ai = await box("AI評価");
+	const chart = await box("価格チャート");
+	const orders = await box("注文・約定");
+	// 自動取引設定の右に口座情報、その下の段に成績・AI評価
+	expect(account.x).toBeGreaterThan(auto.x + auto.width);
+	expect(perf.y).toBeGreaterThan(auto.y + auto.height);
+	expect(ai.x).toBeGreaterThan(perf.x + perf.width);
+	// チャートと注文・約定は両方の列にまたがる
+	for (const b of [chart, orders]) {
+		expect(b.y).toBeGreaterThan(ai.y + ai.height - 1);
+		expect(b.x).toBeLessThanOrEqual(auto.x);
+		expect(b.x + b.width).toBeGreaterThanOrEqual(account.x + account.width - 1);
+	}
 });
 
 test("チャートに AI 判定の背景と帯が出て、帯をタップすると背景が入れ替わり、再読み込み後も保たれる", async ({
@@ -219,12 +257,9 @@ test("チャートに AI 判定の背景と帯が出て、帯をタップする�
 		});
 	}).toPass({ timeout: 120_000 });
 
-	const group = page.getByRole("group", { name: "背景に使う判定" });
-	await group.getByRole("button", { name: "トレンド" }).click();
-	await expect(group.getByRole("button", { name: "トレンド" })).toHaveAttribute(
-		"aria-pressed",
-		"true",
-	);
+	const bgSelect = page.getByLabel("背景に使う判定");
+	await bgSelect.selectOption("trend");
+	await expect(bgSelect).toHaveValue("trend");
 	// 背景がトレンドのとき、帯は上からリスク・センチメント。上の帯（リスク）をタップする
 	const chart = page.getByRole("img", { name: "価格チャート" });
 	const box = await chart.boundingBox();
@@ -235,16 +270,11 @@ test("チャートに AI 判定の背景と帯が出て、帯をタップする�
 	// 先に指してずれを済ませてから押す
 	await chart.hover({ position: at });
 	await chart.click({ position: at });
-	await expect(group.getByRole("button", { name: "リスク" })).toHaveAttribute(
-		"aria-pressed",
-		"true",
-	);
+	await expect(bgSelect).toHaveValue("risk");
 	await page.reload();
-	await expect(
-		page
-			.getByRole("group", { name: "背景に使う判定" })
-			.getByRole("button", { name: "リスク" }),
-	).toHaveAttribute("aria-pressed", "true", { timeout: 20_000 });
+	await expect(page.getByLabel("背景に使う判定")).toHaveValue("risk", {
+		timeout: 20_000,
+	});
 });
 
 test("ボリンジャーバンドは戦略で使っていなければ隠して始まり、本数と σ を変えると表示する", async ({
@@ -255,6 +285,7 @@ test("ボリンジャーバンドは戦略で使っていなければ隠して�
 		timeout: 15_000,
 	});
 	const bb = page.getByRole("button", { name: "BB", exact: true });
+	await openDisplay(page);
 	await expect(bb).toHaveAttribute("aria-pressed", "false");
 	await expect(page.getByTestId("chart-bb")).toHaveCount(0);
 
@@ -264,6 +295,7 @@ test("ボリンジャーバンドは戦略で使っていなければ隠して�
 	await page.getByLabel("ボリンジャーバンドの本数", { exact: true }).fill("5");
 	await page.getByLabel("ボリンジャーバンドの σ", { exact: true }).fill("1.5");
 	await page.getByRole("button", { name: "表示する" }).click();
+	await openDisplay(page);
 	await expect(bb).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByTestId("chart-bb")).toHaveText(
 		/^BB5 [\d,—]+\/[\d,—]+\/[\d,—]+$/,
@@ -272,6 +304,7 @@ test("ボリンジャーバンドは戦略で使っていなければ隠して�
 	await page.getByRole("button", { name: "BB の本数を変える" }).click();
 	await page.getByRole("button", { name: "既定の値に戻す" }).click();
 	await expect(page.getByTestId("chart-bb")).toHaveText(/^BB20 /);
+	await openDisplay(page);
 	await bb.click();
 	await expect(page.getByTestId("chart-bb")).toHaveCount(0);
 });
