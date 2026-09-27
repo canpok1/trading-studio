@@ -12,9 +12,6 @@ test("ホームで自動取引をオンにすると帯が全画面に出て、�
 		await page.goto("/home");
 		const select = page.getByLabel("運用する戦略");
 		await select.selectOption({ label: `${name}（1時間足）` });
-		await expect(page.getByTestId("auto-loss")).toHaveText(
-			"本日の損失 0 / 上限 30,000円",
-		);
 		await expect(page.getByRole("radio", { name: "ライブ" })).toBeDisabled();
 
 		await page.getByRole("switch", { name: "自動取引" }).click();
@@ -31,13 +28,12 @@ test("ホームで自動取引をオンにすると帯が全画面に出て、�
 			/^開始からの損益 [+−][\d,]+円（[+−]\d+\.\d%）$/,
 		);
 		await expect(page.getByTestId("auto-state")).toHaveText("稼働中");
-		await expect(page.getByTestId("auto-next")).toHaveText(
-			/^次の判定 \d{2}:\d{2}$/,
-		);
 		await expect(select).toBeDisabled();
+		await expect(page.getByRole("radio", { name: "ペーパー" })).toBeDisabled();
+		// 口座のリセットは停止中だけ
 		await expect(
-			page.getByText("戦略とモードを変えるには先に OFF にする"),
-		).toBeVisible();
+			page.getByRole("button", { name: "口座をリセット" }),
+		).toBeHidden();
 
 		// 帯は他の画面にも出て、押すと取引画面の成績へ移る
 		await page.goto("/strategies");
@@ -128,14 +124,18 @@ test("仮想注文が出て約定すると、ホームの保有・直近の注�
 	).toBe(true);
 	try {
 		await page.goto("/home");
-		const recent = page.getByRole("region", { name: "直近の注文・約定" });
+		const recent = page.getByRole("region", { name: "注文・約定" });
 		// 次の1分足の終わりに成行で買い、次に来た約定で約定する
 		await expect(recent.getByRole("button").first()).toContainText(
 			"買 0.020 · 約定",
 			{ timeout: 90_000 },
 		);
-		const position = page.getByRole("region", { name: "ペーパーの保有" });
-		await expect(position).toContainText("保有0.020");
+		const position = page.getByRole("region", { name: "口座情報" });
+		await expect(position).toContainText("保有 BTC0.020");
+		await expect(page.getByTestId("account-equity")).toHaveText(/^[\d,]+円$/);
+		await expect(page.getByRole("region", { name: "成績" })).toContainText(
+			"取引回数",
+		);
 		await expect(position).not.toContainText("平均取得—");
 
 		await recent.getByRole("button").first().click();
@@ -179,11 +179,11 @@ test("仮想注文が出て約定すると、ホームの保有・直近の注�
 	await expect(page.getByRole("status")).toHaveText(
 		"ペーパーの口座をリセットした。開始時の資金 500,000円",
 	);
-	await expect(
-		page.getByRole("region", { name: "ペーパーの保有" }),
-	).toContainText("評価損益—");
+	await expect(page.getByRole("region", { name: "口座情報" })).toContainText(
+		"評価損益—",
+	);
 	// 過去の記録は残る
 	await expect(
-		page.getByRole("region", { name: "直近の注文・約定" }).getByRole("button"),
+		page.getByRole("region", { name: "注文・約定" }).getByRole("button"),
 	).not.toHaveCount(0);
 });

@@ -9,7 +9,6 @@ import type {
 } from "@trading-studio/backend";
 import type { Timeframe } from "@trading-studio/core";
 import {
-	formatBtc,
 	JUDGE_LABELS,
 	JUDGES,
 	TIMEFRAME_LABELS,
@@ -20,21 +19,22 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useApi } from "../api";
-import { OrderRow, orderTime, Stat } from "../components/backtest/OrderViews";
+import { OrderRow, orderTime } from "../components/backtest/OrderViews";
 import type { ChartBar, ChartMarker } from "../components/chart/chart-data";
 import { alignJudgments } from "../components/chart/judgment-data";
 import { PriceChart } from "../components/chart/PriceChart";
+import { AccountPanel } from "../components/home/AccountPanel";
 import { AutoTradingCard } from "../components/home/AutoTradingCard";
+import { PANEL, PanelHeader } from "../components/home/Panel";
+import { PerformancePanel } from "../components/home/PerformancePanel";
 import { JudgmentBadge } from "../components/judgment/JudgmentBadge";
-import { Modal } from "../components/Modal";
 import { EmptyState, ErrorState, Skeleton } from "../components/States";
 import {
 	MODE_LABELS,
 	ModeTag,
 	TradeOrderSheet,
 } from "../components/trading/TradeViews";
-import { Button, Segmented } from "../components/ui";
-import { formatDateTime } from "../format";
+import { Button } from "../components/ui";
 import { useChartBg } from "../lib/chart-bg";
 import { useChartIndicators } from "../lib/chart-indicators";
 import {
@@ -46,8 +46,12 @@ import {
 	loadRange,
 	withLatestPrice,
 } from "../lib/home";
-import { formatInt, formatSignedInt, formatSignedPercent } from "../lib/number";
-import { useTradingOrders, useTradingStatus } from "../lib/trading";
+import { formatSignedPercent } from "../lib/number";
+import {
+	useTradingOrders,
+	useTradingPerformance,
+	useTradingStatus,
+} from "../lib/trading";
 import {
 	errorMessage,
 	readJson,
@@ -66,18 +70,6 @@ const MAX_HISTORY = 1_000;
 /** チャートの印に読む注文の数。直近の一覧もここから取る */
 const MARKER_ORDERS = 300;
 const RECENT_ORDERS = 3;
-
-const PANEL =
-	"flex min-w-0 flex-col gap-2.5 rounded-xl border border-line bg-surface p-3";
-/** PC 幅では、表示の切り替えを状態の右に、チャート本体を下の段に2列ぶち抜きで置く */
-const SPLIT = {
-	controls: "rounded-xl border border-line bg-surface p-3 lg:self-stretch",
-	chart: "rounded-xl border border-line bg-surface p-3 lg:col-span-2",
-};
-
-const TF_OPTIONS = TIMEFRAMES.map(
-	(t) => [t, TIMEFRAME_LABELS[t].replace("足", "")] as const,
-);
 
 type Strategies = { list: StoredStrategy[]; active: StoredStrategy | null };
 
@@ -166,7 +158,7 @@ export function HomePage() {
 
 function HomeFrame({ children }: { children: ReactNode }) {
 	return (
-		<div className="mx-auto flex max-w-[720px] flex-col gap-3.5 px-4 pt-4 pb-2 lg:grid lg:max-w-none lg:grid-cols-[minmax(340px,400px)_minmax(0,1fr)] lg:items-start lg:gap-5 lg:px-6">
+		<div className="mx-auto flex max-w-[720px] flex-col gap-3.5 px-4 pt-4 pb-2 lg:grid lg:max-w-none lg:grid-cols-2 lg:items-stretch lg:gap-4 lg:px-6">
 			<h1 className="sr-only">ホーム</h1>
 			{children}
 		</div>
@@ -202,6 +194,7 @@ function HomeBody({
 		{ mode, limit: MARKER_ORDERS },
 		visible && trading !== null,
 	);
+	const perf = useTradingPerformance(mode, visible);
 	const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
 	const [toast, setToast] = useState<string | null>(null);
 	const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -352,22 +345,22 @@ function HomeBody({
 
 	return (
 		<HomeFrame>
-			<div className="flex flex-col gap-3.5">
-				<CollectorAlert latest={latest} />
-				{latestError && (
-					<div
-						role="alert"
-						className="flex items-center gap-3 rounded-[10px] bg-warn px-3.5 py-3 text-xs"
-					>
-						<span className="flex-1">
-							最新の価格を読み込めなかった（{latestError}
-							）。5秒ごとに読み直している
-						</span>
-						<Button size="sm" onClick={onRetryLatest}>
-							今すぐ読み直す
-						</Button>
-					</div>
-				)}
+			<CollectorAlert latest={latest} />
+			{latestError && (
+				<div
+					role="alert"
+					className="flex items-center gap-3 rounded-[10px] bg-warn px-3.5 py-3 text-xs lg:col-span-2"
+				>
+					<span className="flex-1">
+						最新の価格を読み込めなかった（{latestError}
+						）。5秒ごとに読み直している
+					</span>
+					<Button size="sm" onClick={onRetryLatest}>
+						今すぐ読み直す
+					</Button>
+				</div>
+			)}
+			<div className="flex min-w-0 flex-col gap-2">
 				<AutoTradingCard
 					strategies={strategies.list}
 					active={active}
@@ -380,14 +373,19 @@ function HomeBody({
 						保存できなかった: {saveError}
 					</p>
 				)}
-				{trading && (
-					<PositionCard
-						account={trading.account}
-						price={latest?.price ?? null}
-					/>
-				)}
-				{current && <JudgmentTiles current={current} />}
 			</div>
+			{trading ? (
+				<AccountPanel
+					status={trading}
+					performance={perf.performance}
+					price={latest?.price ?? null}
+					onToast={showToast}
+				/>
+			) : (
+				<Skeleton className="h-32 rounded-xl" />
+			)}
+			<PerformancePanel performance={perf.performance} error={perf.error} />
+			<JudgmentPanel current={current} />
 			{barsError && !bars ? (
 				<section aria-label="価格チャート" className={`${PANEL} lg:col-span-2`}>
 					<ErrorState
@@ -418,19 +416,21 @@ function HomeBody({
 					onMarker={(m) => setSelectedOrder(m.id)}
 					bg={bg}
 					onBgChange={setBg}
-					split={SPLIT}
+					compact
 					latestNote={<Change24h latest={latest} />}
 					toolbar={
-						<>
-							<Segmented
-								name="home-timeframe"
-								label="足の粒度"
-								size="sm"
-								options={TF_OPTIONS}
-								value={timeframe}
-								onChange={setChosenTf}
-							/>
-						</>
+						<select
+							aria-label="足の粒度"
+							value={timeframe}
+							onChange={(e) => setChosenTf(e.target.value as Timeframe)}
+							className="h-8 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold"
+						>
+							{TIMEFRAMES.map((t) => (
+								<option key={t} value={t}>
+									{TIMEFRAME_LABELS[t]}
+								</option>
+							))}
+						</select>
 					}
 				/>
 			)}
@@ -492,84 +492,6 @@ function toMarkers(
 	});
 }
 
-/** 保有・平均取得・評価損益。評価損益は手数料を含めず、今の価格で評価する。押すとロットごとの一覧を出す */
-function PositionCard({
-	account,
-	price,
-}: {
-	account: AutoTradingStatus["account"];
-	price: number | null;
-}) {
-	const [open, setOpen] = useState(false);
-	const { quantity, entryPrice } = account.position;
-	const lots = account.lots;
-	const unrealized = (q: number, entry: number | null) =>
-		q > 0 && entry !== null && price !== null
-			? Math.round(((price - entry) * q) / 100_000_000)
-			: null;
-	const pnl = unrealized(quantity, entryPrice);
-	const tone = (v: number | null) =>
-		v === null ? "" : v >= 0 ? "text-profit" : "text-loss";
-	return (
-		<>
-			<section
-				aria-label={`${MODE_LABELS[account.mode]}の保有`}
-				className="overflow-hidden rounded-xl border border-line bg-surface"
-			>
-				<button
-					type="button"
-					disabled={lots.length === 0}
-					onClick={() => setOpen(true)}
-					className="grid w-full grid-cols-3 gap-2 px-4 py-3.5 text-left enabled:hover:bg-surface-2"
-				>
-					<Stat
-						label="保有"
-						value={`${formatBtc(quantity)}`}
-						sub={lots.length > 0 ? `${lots.length} ロット ›` : undefined}
-					/>
-					<Stat
-						label="平均取得"
-						value={entryPrice === null ? "—" : formatInt(entryPrice)}
-					/>
-					<Stat
-						label="評価損益"
-						value={pnl === null ? "—" : `${formatSignedInt(pnl)}円`}
-						tone={tone(pnl)}
-					/>
-				</button>
-			</section>
-			{open && (
-				<Modal title="保有中のロット" onClose={() => setOpen(false)}>
-					<div className="overflow-hidden rounded-xl border border-line">
-						{lots.map((l) => {
-							const v = unrealized(l.quantity, l.entryPrice);
-							return (
-								<div
-									key={l.id}
-									className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-line bg-surface px-3.5 py-3 last:border-b-0"
-								>
-									<span className="flex min-w-0 flex-col gap-0.5">
-										<span className="num text-sm font-semibold">
-											買値 {formatInt(l.entryPrice)} · {formatBtc(l.quantity)}
-										</span>
-										<span className="num text-xs text-text-2">
-											{formatDateTime(l.openedAt)}
-										</span>
-									</span>
-									<span className={`num text-[13px] font-semibold ${tone(v)}`}>
-										{v === null ? "—" : `${formatSignedInt(v)}円`}
-									</span>
-								</div>
-							);
-						})}
-					</div>
-					<Button onClick={() => setOpen(false)}>閉じる</Button>
-				</Modal>
-			)}
-		</>
-	);
-}
-
 /** 直近の注文・約定。「すべて」で取引画面へ */
 function RecentOrders({
 	mode,
@@ -583,19 +505,11 @@ function RecentOrders({
 	onSelect: (id: string) => void;
 }) {
 	return (
-		<section
-			aria-label="直近の注文・約定"
-			className="flex flex-col gap-2 lg:col-span-2"
-		>
-			<div className="flex items-center justify-between gap-2">
-				<h2 className="text-[15px] font-bold">直近の注文・約定</h2>
-				<Link
-					to="/trades"
-					className="h-9 px-1.5 text-[13px] leading-9 font-semibold text-accent"
-				>
-					すべて
-				</Link>
-			</div>
+		<section aria-label="注文・約定" className={`${PANEL} lg:col-span-2`}>
+			<PanelHeader
+				title="注文・約定"
+				link={{ to: "/trades", label: "すべて" }}
+			/>
 			<div className="overflow-hidden rounded-xl border border-line">
 				{orders === null ? (
 					<Skeleton className="m-3 h-10" />
@@ -621,27 +535,34 @@ function RecentOrders({
 	);
 }
 
-/** 今の判定3つ。押すとニュース画面へ */
-function JudgmentTiles({ current }: { current: CurrentJudgment }) {
+/** AI の今の判定3つ。押すとニュース画面へ */
+function JudgmentPanel({ current }: { current: CurrentJudgment | null }) {
 	return (
-		<section aria-label="今の判定" className="grid grid-cols-3 gap-2">
-			{JUDGES.map((j) => {
-				const r = current.results[j];
-				return (
-					<Link
-						key={j}
-						to="/news"
-						data-testid={`home-judge-${j}`}
-						className="flex min-w-0 flex-col items-start gap-1.5 rounded-xl border border-line bg-surface px-3 py-2.5"
-					>
-						<span className="text-xs text-text-2">{JUDGE_LABELS[j]}</span>
-						<JudgmentBadge judge={j} value={r.value} />
-						<span className="num text-xs text-text-2">
-							{r.average === null ? "—" : `${r.average}点`}
-						</span>
-					</Link>
-				);
-			})}
+		<section aria-label="AI評価" className={PANEL}>
+			<PanelHeader title="AI評価" link={{ to: "/news", label: "ニュース ›" }} />
+			{current === null ? (
+				<Skeleton className="h-[74px]" />
+			) : (
+				<div className="grid grid-cols-3 gap-2">
+					{JUDGES.map((j) => {
+						const r = current.results[j];
+						return (
+							<Link
+								key={j}
+								to="/news"
+								data-testid={`home-judge-${j}`}
+								className="flex min-w-0 flex-col items-start gap-1.5 rounded-[10px] border border-line px-3 py-2.5 hover:bg-surface-2"
+							>
+								<span className="text-xs text-text-2">{JUDGE_LABELS[j]}</span>
+								<JudgmentBadge judge={j} value={r.value} />
+								<span className="num text-xs text-text-2">
+									{r.average === null ? "—" : `${r.average}点`}
+								</span>
+							</Link>
+						);
+					})}
+				</div>
+			)}
 		</section>
 	);
 }
@@ -669,7 +590,7 @@ function CollectorAlert({ latest }: { latest: LatestMarket | null }) {
 	return (
 		<div
 			role="alert"
-			className="flex flex-col gap-1 rounded-[10px] bg-warn px-3.5 py-3 text-xs leading-relaxed"
+			className="flex flex-col gap-1 rounded-[10px] bg-warn px-3.5 py-3 text-xs leading-relaxed lg:col-span-2"
 		>
 			<b className="text-[13px]">価格の収集が止まっている</b>
 			<span>{trouble.what}</span>
