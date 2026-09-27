@@ -5,6 +5,7 @@ import type { BacktestRun } from "../backtests/types";
 import { createTestApp } from "../test-app";
 import { aggregateBars, buildAdviceSource, selectBars } from "./input";
 import { buildAdvicePrompt, parseAdviceResponse } from "./prompt";
+import { conditionScreenText } from "./screen-text";
 import type { BacktestAdvice } from "./types";
 
 const M = TIMEFRAME_MS["1m"];
@@ -209,8 +210,14 @@ describe("アドバイスの生成", () => {
 		});
 		expect(a?.content?.analysis).toContain("デモの分析");
 		// 戦略の足（1時間足）で期間の足をすべて渡す
-		expect(prompts[0]).toContain("## 値動き（1時間足、192 本）");
+		expect(prompts[0]).toContain("## 値動き（足の粒度の 1時間足、192 本）");
 		expect(prompts[0]).toContain("## 成績");
+		// 戦略の条件は画面の見出しと項目名で渡し、プログラムの項目名は渡さない
+		expect(prompts[0]).toContain(
+			"### 買い注文する条件（組み合わせ方: すべて満たす）\n1. 終値が直近 5 本の最高値を上抜けた",
+		);
+		expect(prompts[0]).toContain("- 1日の損失上限（円）: 30,000");
+		expect(prompts[0]).not.toContain("orderSize");
 	});
 
 	test("失敗しても前のアドバイスは残し、理由を出す", async () => {
@@ -306,7 +313,7 @@ describe("AI に渡す資料", () => {
 		};
 		const text = buildAdviceSource({
 			run: {
-				params: { timeframe: "1m" },
+				params: { ...PARAMS, timeframe: "1m" },
 				timeframe: "1m",
 				stepTimeframe: "1m",
 				stepLimited: false,
@@ -334,7 +341,7 @@ describe("AI に渡す資料", () => {
 		const text = buildAdviceSource(
 			{
 				run: {
-					params: { timeframe: "1m" },
+					params: { ...PARAMS, timeframe: "1m" },
 					timeframe: "1m",
 					stepTimeframe: "1m",
 					stepLimited: false,
@@ -363,5 +370,25 @@ describe("AI に渡す資料", () => {
 		const overview = text.split("## 値動きの全体")[1]?.split("\n\n")[0] ?? "";
 		expect(overview).toContain("5分足、18 本");
 		expect(overview.trim().split("\n").at(-1)).toMatch(/,上昇,平常,0$/);
+	});
+});
+
+describe("画面の表記", () => {
+	test("条件は戦略画面の文言で書く", () => {
+		expect(
+			conditionScreenText({
+				type: "emaCross",
+				fast: 12,
+				slow: 48,
+				direction: "up",
+			}),
+		).toBe("短期EMA 12 本が 長期EMA 48 本を上抜けた");
+		expect(
+			conditionScreenText({
+				type: "judgment",
+				judge: "trend",
+				values: ["up", "range"],
+			}),
+		).toBe("トレンド判定が 上昇・レンジ のどれか");
 	});
 });

@@ -20,7 +20,9 @@ export const ADVICE_TEMPLATE = `<backtest>
 - analysis: 結果の分析
 - good: うまくいった点
 - bad: 悪かった点
-- improvements: 改善案。変えるパラメータと具体的な値を書く
+- improvements: 改善案。変える項目と具体的な値を書く
+
+設定の変更は、利用者が画面でそのまま設定し直せるよう、<backtest> に書いた画面の見出しと項目名で書く。例: 「買い注文する条件」の「短期EMA」を 12 本から 20 本にする。プログラムの項目名・JSON・添字（conditions[0] など）は使わない
 
 JSON のみを出力: {"analysis": 文字列, "good": 文字列, "bad": 文字列, "improvements": 文字列}`;
 

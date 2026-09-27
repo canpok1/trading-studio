@@ -13,6 +13,11 @@ import {
 } from "@trading-studio/core";
 import type { BacktestChart, BacktestRun } from "../backtests/types";
 import type { JudgmentSeries } from "../judgments/types";
+import {
+	accountScreenText,
+	conditionSetScreenText,
+	ruleScreenText,
+} from "./screen-text";
 
 /** AI に渡す足の上限。1分足で1か月を回すと約4.3万本になり、一度に渡すには多すぎる */
 export const MAX_BARS = 3_000;
@@ -39,7 +44,6 @@ function jst(time: number): string {
 /** 理由の文言は金額の3桁区切りを含むので、表を崩さないよう区切りの文字を置き換える */
 const cell = (text: string) => text.replace(/[,\n]/g, " ");
 const yen = (v: number | null) => (v === null ? "" : String(v));
-const pct = (ppm: number) => `${ppm / 10_000}%`;
 /** 率は小数2桁までにする。桁が多いと AI への資料が読みにくい */
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
@@ -244,26 +248,24 @@ export function buildAdviceSource(
 	const tf = run.timeframe;
 	const step = TIMEFRAME_MS[tf];
 	const lines: string[] = [];
-	lines.push("## 実行の条件");
-	lines.push(`- 期間: ${jst(run.from)} 〜 ${jst(run.to)}（終わりは含まない）`);
-	lines.push(`- 戦略の足: ${TIMEFRAME_LABELS[tf]}`);
-	lines.push(
-		`- 判定と約定に使った足: ${TIMEFRAME_LABELS[run.stepTimeframe]}${run.stepLimited ? "（細かい過去データが無く、判定頻度より粗い間隔でしか判定できなかった）" : ""}`,
-	);
-	lines.push(`- 初期資金: ${run.initialCash} 円`);
-	lines.push(
-		`- 手数料率: 指値 ${pct(run.fees.limitPpm)}・成行 ${pct(run.fees.marketPpm)}`,
-	);
+	lines.push("## バックテストの実行画面");
+	lines.push("### 期間");
+	lines.push(`- ${jst(run.from)} 〜 ${jst(run.to)}（終わりは含まない）`);
+	lines.push("### 口座");
+	lines.push(...accountScreenText(run.initialCash, run.fees));
+	if (run.stepTimeframe !== tf || run.stepLimited) {
+		lines.push(
+			"### 判定と約定に使った足",
+			`- 判定と約定は ${TIMEFRAME_LABELS[run.stepTimeframe]}で見た${run.stepLimited ? "（細かい過去データが無く、判定の頻度より粗い間隔でしか判定できなかった）" : ""}`,
+		);
+	}
 	lines.push("");
-	lines.push("## 戦略のパラメータ（JSON）");
-	lines.push(
-		"単位: orderSize は satoshi（1e-8 BTC）、dailyLossLimit は円、percent は %、fast・slow・lookback・expireBars は戦略の足の本数。改善案もこの項目名で書く",
-	);
-	lines.push(JSON.stringify(run.params));
+	lines.push("## 戦略設定（戦略画面の項目どおり）");
+	lines.push(...conditionSetScreenText(run.params));
 	if (run.aggregationRule && judgments) {
 		lines.push("");
-		lines.push("## AI 判定の集計ルール（JSON）");
-		lines.push(JSON.stringify(run.aggregationRule));
+		lines.push("## ニュースの集計ルール（設定 > ニュース > 集計ルール）");
+		lines.push(...ruleScreenText(run.aggregationRule));
 	}
 	if (s) {
 		lines.push("");
@@ -298,14 +300,16 @@ export function buildAdviceSource(
 	const sel = selectBars(bars, tf, orders, maxBars);
 	lines.push("");
 	if (sel.kind === "all") {
-		lines.push(`## 値動き（${TIMEFRAME_LABELS[tf]}、${sel.bars.length} 本）`);
+		lines.push(
+			`## 値動き（足の粒度の ${TIMEFRAME_LABELS[tf]}、${sel.bars.length} 本）`,
+		);
 		lines.push(barTable(sel.bars, step, judgments));
 	} else {
 		lines.push(
 			`## 値動きの全体（${TIMEFRAME_LABELS[sel.overviewTimeframe]}、${sel.overview.length} 本）`,
 		);
 		lines.push(
-			`戦略の足では ${bars.length} 本あり多すぎるため、全体は粗い足にまとめ、注文の前後だけ戦略の足で下に載せる`,
+			`足の粒度（${TIMEFRAME_LABELS[tf]}）では ${bars.length} 本あり多すぎるため、全体は粗い足にまとめ、注文の前後だけ足の粒度の足で下に載せる`,
 		);
 		lines.push(
 			barTable(sel.overview, TIMEFRAME_MS[sel.overviewTimeframe], judgments),
