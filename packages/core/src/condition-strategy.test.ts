@@ -8,6 +8,7 @@ import {
 	evaluateConditionSet,
 	historyBars,
 	parseConditionSet,
+	rsiLines,
 	validateConditionSet,
 } from "./condition-strategy";
 import type { StrategyInput } from "./strategy";
@@ -169,6 +170,28 @@ describe("RSI", () => {
 				buyWith({ ...below, period: 100, threshold: 99 }),
 			).filter((e) => e.path.startsWith("buy.conditions")),
 		).toEqual([]);
+	});
+
+	test("チャートに出す RSI は本数ごとに、条件のしきい値をまとめる", () => {
+		const p = params({
+			buy: { match: "all", conditions: [{ ...below, period: 14 }] },
+			takeProfit: {
+				match: "any",
+				conditions: [
+					{ ...below, period: 14, threshold: 70, direction: "above" },
+					{ ...below, period: 7, threshold: 80, direction: "above" },
+				],
+			},
+			stopLoss: {
+				match: "any",
+				conditions: [{ ...below, period: 14, threshold: 30 }],
+			},
+		});
+		expect(rsiLines(p)).toEqual([
+			{ period: 7, thresholds: [80] },
+			{ period: 14, thresholds: [30, 70] },
+		]);
+		expect(rsiLines(buyWith())).toEqual([]);
 	});
 
 	test("必要な足の本数は期間の 10 倍 + 1", () => {

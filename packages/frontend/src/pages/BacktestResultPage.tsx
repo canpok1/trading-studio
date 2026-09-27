@@ -4,6 +4,7 @@ import {
 	emaPeriods,
 	formatBtc,
 	ppmToPercent,
+	rsiLines,
 	TIMEFRAME_LABELS,
 } from "@trading-studio/core";
 import {
@@ -418,6 +419,7 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 					bars={chart.bars}
 					markers={chart.markers}
 					emaPeriods={emas}
+					rsiLines={rsiLines(run.params)}
 					selectedId={selected?.id ?? null}
 					onMarker={(m) => pick(m.id)}
 					judgments={judgments}

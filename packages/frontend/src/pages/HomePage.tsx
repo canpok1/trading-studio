@@ -13,6 +13,7 @@ import {
 	formatBtc,
 	JUDGE_LABELS,
 	JUDGES,
+	rsiLines,
 	TIMEFRAME_LABELS,
 	TIMEFRAME_MS,
 	TIMEFRAMES,
@@ -24,6 +25,7 @@ import { useApi } from "../api";
 import { OrderRow, orderTime, Stat } from "../components/backtest/OrderViews";
 import type { ChartBar, ChartMarker } from "../components/chart/chart-data";
 import { alignJudgments } from "../components/chart/judgment-data";
+import type { RsiLine } from "../components/chart/PriceChart";
 import { PriceChart } from "../components/chart/PriceChart";
 import { AutoTradingCard } from "../components/home/AutoTradingCard";
 import { JudgmentBadge } from "../components/judgment/JudgmentBadge";
@@ -58,7 +60,7 @@ import {
 const LATEST_MS = 5_000;
 /** チャートの足を取り直す間隔。その間は最新の価格を最後の足に反映する */
 const BARS_MS = 60_000;
-/** EMA の計算のために期間の前に足す本数（最も長い EMA の何倍か） */
+/** EMA・RSI の計算のために期間の前に足す本数（最も長い本数の何倍か） */
 const EMA_HISTORY_FACTOR = 3;
 const MAX_HISTORY = 1_000;
 /** チャートの印に読む注文の数。直近の一覧もここから取る */
@@ -66,6 +68,7 @@ const MARKER_ORDERS = 300;
 const RECENT_ORDERS = 3;
 
 const NO_PERIODS: number[] = [];
+const NO_RSI: RsiLine[] = [];
 
 const PANEL =
 	"flex min-w-0 flex-col gap-2.5 rounded-xl border border-line bg-surface p-3";
@@ -220,17 +223,24 @@ function HomeBody({
 		chosenTf ?? active?.params.timeframe ?? HOME_DEFAULT_TIMEFRAME;
 	const range = loadRange(timeframe, counts);
 
-	// EMA は運用する戦略の粒度で描くときだけ出す（別の粒度では本数の意味がずれる）
+	// EMA・RSI は運用する戦略の粒度で描くときだけ出す（別の粒度では本数の意味がずれる）
 	const periods = useMemo(
 		() => (active ? emaPeriods(active.params) : []),
 		[active],
 	);
-	const emaShown =
-		active !== null && timeframe === active.params.timeframe ? periods : [];
+	const rsis = useMemo(() => (active ? rsiLines(active.params) : []), [active]);
+	const onStrategyTf = active !== null && timeframe === active.params.timeframe;
+	const emaShown = onStrategyTf ? periods : [];
+	const rsiShown = onStrategyTf ? rsis : [];
 	const history = Math.min(
 		MAX_HISTORY,
-		Math.max(0, ...emaShown) * EMA_HISTORY_FACTOR,
+		Math.max(0, ...emaShown, ...rsiShown.map((l) => l.period)) *
+			EMA_HISTORY_FACTOR,
 	);
+	const indicatorNames = [
+		periods.length > 0 ? "EMA" : null,
+		rsis.length > 0 ? "RSI" : null,
+	].filter((x) => x !== null);
 
 	const [bars, setBars] = useState<{
 		key: string;
@@ -403,6 +413,7 @@ function HomeBody({
 				<PriceChart
 					bars={shownBars}
 					emaPeriods={fresh ? emaShown : NO_PERIODS}
+					rsiLines={fresh ? rsiShown : NO_RSI}
 					initialSpanMs={HOME_INITIAL_SPAN_MS}
 					viewKey={bars?.key ?? ""}
 					currentPrice={latest?.price ?? null}
@@ -424,9 +435,9 @@ function HomeBody({
 								value={timeframe}
 								onChange={setChosenTf}
 							/>
-							{active && periods.length > 0 && emaShown.length === 0 && (
+							{active && indicatorNames.length > 0 && !onStrategyTf && (
 								<p className="text-xs text-text-2">
-									EMA は戦略の粒度（
+									{indicatorNames.join("・")} は戦略の粒度（
 									{TIMEFRAME_LABELS[active.params.timeframe]}）でだけ表示する
 								</p>
 							)}

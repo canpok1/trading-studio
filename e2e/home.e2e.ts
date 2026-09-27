@@ -81,6 +81,60 @@ test("EMA の条件を持つ戦略を選ぶと EMA が出て、戦略の粒度�
 	await select.selectOption("");
 });
 
+test("RSI の条件を持つ戦略を選ぶと RSI の小窓と値が出て、ボタンで隠せる", async ({
+	page,
+}, info) => {
+	const created = await page.request.post("/api/strategies", {
+		data: {
+			name: `ホーム RSI ${info.project.name}`,
+			from: { template: "trend" },
+		},
+	});
+	const { strategy } = (await created.json()) as {
+		strategy: { id: number; params: Record<string, unknown> };
+	};
+	const params = {
+		...strategy.params,
+		timeframe: "1m",
+		buy: {
+			match: "all",
+			conditions: [
+				{ type: "rsi", period: 2, threshold: 30, direction: "below" },
+			],
+		},
+	};
+	expect(
+		(
+			await page.request.put(`/api/strategies/${strategy.id}/params`, {
+				data: { params },
+			})
+		).ok(),
+	).toBe(true);
+	await page.request.put("/api/strategies/active", {
+		data: { id: strategy.id },
+	});
+	try {
+		await page.goto("/home");
+		const toggle = page.getByRole("button", { name: "RSI", exact: true });
+		const value = page.getByTestId("chart-rsi-2");
+		await expect(toggle).toHaveAttribute("aria-pressed", "true");
+		await expect(value).toHaveText(/^RSI2 (\d+\.\d|—)$/, {
+			timeout: 15_000,
+		});
+		await toggle.click();
+		await expect(value).toBeHidden();
+		await toggle.click();
+		await expect(value).toBeVisible();
+
+		// 戦略の粒度以外では出さない
+		await page.getByText("5分", { exact: true }).click();
+		await expect(toggle).toBeHidden();
+		await expect(page.getByText(/RSI は戦略の粒度/)).toBeVisible();
+	} finally {
+		await page.request.put("/api/strategies/active", { data: { id: null } });
+	}
+});
+
 test("ローソク足に切り替えると4本値が出て、再読み込み後も保たれる", async ({
 	page,
 }) => {

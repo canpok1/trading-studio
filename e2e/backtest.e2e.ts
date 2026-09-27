@@ -300,3 +300,33 @@ test("設定の「バックテスト」でアドバイスのモデルと指示�
 		data: { model: "gemini-3.8-flash" },
 	});
 });
+
+test("RSI の条件を持つ戦略の結果では、チャートの下に RSI の小窓と値が出る", async ({
+	page,
+	request,
+}, info) => {
+	const name = `BT RSI ${info.project.name}`;
+	await prepare(request, name, {
+		...PARAMS,
+		buy: {
+			match: "all",
+			conditions: [
+				{ type: "rsi", period: 14, threshold: 30, direction: "below" },
+			],
+		},
+		takeProfit: {
+			match: "any",
+			conditions: [
+				{ type: "rsi", period: 14, threshold: 70, direction: "above" },
+			],
+		},
+	});
+	await choose(page, name, "2026-05-03", "2026-05-10");
+	await page.getByRole("button", { name: "バックテストを実行" }).click();
+	await expect(page).toHaveURL(/\/backtest\/runs\/\d+$/);
+	const toggle = page.getByRole("button", { name: "RSI", exact: true });
+	await expect(toggle).toHaveAttribute("aria-pressed", "true");
+	await expect(page.getByTestId("chart-rsi-14")).toHaveText(/^RSI14 \d+\.\d$/);
+	await page.getByText("凡例").click();
+	await expect(page.getByText(/点線は条件のしきい値/)).toBeVisible();
+});
