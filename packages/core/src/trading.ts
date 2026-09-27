@@ -64,31 +64,45 @@ export function withSellDetails<T extends TradeOrder>(
 	});
 }
 
+/** 判断の理由のうち、ロットの売却を述べる文（「…を売却（損切りの条件）」） */
+const SELL_SENTENCE = /を売却（(損切り|利確)の条件）$/;
+
 /**
- * 売りを出した条件のグループ。記録があればそれを、無い過去の注文は判断の理由の文章（「…を売却（損切りの条件）」）から読む。
- * 1回の判断で複数のロットを売った理由は、売るロットの買値（lotPrice）で自分の文を選ぶ。読めなければ null
+ * 判断の理由から、この売りの部分を文の配列で取り出す。成り立った条件の文が続き、最後が売却の文。
+ * 1回の判断で複数のロットを売った理由は、売るロットの買値（lotPrice）で自分の部分を選ぶ。1つに決まらなければ null
  */
+export function sellReasonPart(
+	reason: string,
+	lotPrice: number | null,
+): string[] | null {
+	const parts: string[][] = [];
+	let current: string[] = [];
+	for (const s of reason.split("。")) {
+		current.push(s);
+		if (SELL_SENTENCE.test(s)) {
+			parts.push(current);
+			current = [];
+		}
+	}
+	const mine =
+		parts.length === 1 || lotPrice === null
+			? parts
+			: parts.filter((p) =>
+					p.at(-1)?.includes(`買値 ${formatYen(lotPrice)} のロット`),
+				);
+	return mine.length === 1 ? (mine[0] as string[]) : null;
+}
+
+/** 売りを出した条件のグループ。記録があればそれを、記録の無い過去の注文は判断の理由（sellReasonPart）から読む。読めなければ null */
 export function inferExitKind(
 	order: Pick<TradeOrder, "side" | "reason" | "exitKind">,
 	lotPrice: number | null,
 ): ExitKind | null {
 	if (order.side !== "sell") return null;
 	if (order.exitKind != null) return order.exitKind;
-	const sells = order.reason
-		.split("。")
-		.filter((s) => /を売却（(損切り|利確)の条件）/.test(s));
-	const mine =
-		sells.length === 1 || lotPrice === null
-			? sells
-			: sells.filter((s) => s.includes(`買値 ${formatYen(lotPrice)} のロット`));
-	const kinds = new Set(
-		mine.map(
-			(s): ExitKind =>
-				s.includes("（損切りの条件）") ? "stopLoss" : "takeProfit",
-		),
-	);
-	// 同じ買値のロットが別の条件で売られたなど、1つに決まらなければ読まない
-	return kinds.size === 1 ? ([...kinds][0] as ExitKind) : null;
+	const last = sellReasonPart(order.reason, lotPrice)?.at(-1);
+	if (last === undefined) return null;
+	return last.endsWith("（損切りの条件）") ? "stopLoss" : "takeProfit";
 }
 
 /** 判断の記録。評価のたびに1件 */
