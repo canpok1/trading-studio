@@ -1060,7 +1060,7 @@ describe("トレーリングストップ", () => {
 	test("約定より後の足の高値から % 下がったら売る", () => {
 		const cs = [bar(0, 100, 100), bar(1, 110, 108), bar(2, 107, 106)];
 		const out = evaluateConditionSet(
-			input(cs, sellOn(trail), { lots: [lot(1 * H)] }),
+			input(cs, sellOn(trail), { lots: [lot(1 * H - 1)] }),
 		);
 		expect(out.intents).toHaveLength(1);
 		expect(out.note).toContain("買ってからの最高値 110 から −3.6%");
@@ -1075,6 +1075,15 @@ describe("トレーリングストップ", () => {
 		);
 		expect(out.intents).toHaveLength(0);
 		expect(out.state).toEqual({ peaks: { b1: 104 } });
+	});
+
+	test("約定時刻が足の開始時刻と同じ（バックテスト）なら、その足も約定した足として終値だけ見る", () => {
+		const cs = [bar(0, 100, 100), bar(1, 110, 100), bar(2, 101, 100)];
+		const out = evaluateConditionSet(
+			input(cs, sellOn(trail), { lots: [lot(1 * H)] }),
+		);
+		expect(out.intents).toHaveLength(0);
+		expect(out.state).toEqual({ peaks: { b1: 101 } });
 	});
 
 	test("前回までの最高値を state で引き継ぐ。売ったロットは消える", () => {

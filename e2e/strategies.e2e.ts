@@ -280,7 +280,7 @@ test("終値と EMA の位置・ボリンジャーバンド・最高値からの
 		`条件追加 ${info.project.name}`,
 		/^トレンド追随/,
 	);
-	const add = async (group: string, name: string) => {
+	const add = async (group: string, name: string | RegExp) => {
 		await page
 			.getByRole("region", { name: group })
 			.getByRole("button", { name: "＋ 条件を追加" })

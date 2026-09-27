@@ -768,8 +768,8 @@ function lotPeaks(
 			typeof prev === "number" && Number.isFinite(prev) ? prev : 0,
 		);
 		for (const c of candles) {
-			// 約定した足は約定前の高値を含みうるので終値だけ見る
-			if (c.time >= lot.openedAt) peak = Math.max(peak, c.high);
+			// 約定した足は約定前の高値を含みうるので終値だけ見る。バックテストの約定時刻は足の開始時刻なので、同じ時刻の足も約定した足
+			if (c.time > lot.openedAt) peak = Math.max(peak, c.high);
 			else if (c.time + timeframeMs > lot.openedAt)
 				peak = Math.max(peak, c.close);
 		}
