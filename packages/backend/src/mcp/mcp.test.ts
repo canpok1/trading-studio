@@ -123,6 +123,10 @@ describe("MCP", () => {
 			"rsi",
 			"entryChange",
 			"judgment",
+			"emaPosition",
+			"bollinger",
+			"trailingStop",
+			"holdingBars",
 		]) {
 			expect(r.text).toContain(`"type":"${type}"`);
 		}
