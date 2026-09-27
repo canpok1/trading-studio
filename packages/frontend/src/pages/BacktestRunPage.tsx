@@ -70,7 +70,7 @@ type Template = {
 /** 実行条件の下書き。試しに変えた条件は画面を離れてもブラウザに残す */
 export type BacktestDraft = {
 	name: string;
-	/** 「テンプレートに戻す」の戻り先。結果から再実行したときは無い */
+	/** 適用したテンプレート。「戦略設定」の見出しの横に出す。結果から再実行したときは無い */
 	template: Template | null;
 	params: ConditionSet;
 	/** JST の日付（終了日を含む）。null はデータの最後から1か月 */
@@ -135,7 +135,7 @@ function templates(strategies: StoredStrategy[]): Template[] {
 	];
 }
 
-/** テンプレートを選んだときのバックテスト名の初期値 */
+/** 初めて開いたときのバックテスト名。テンプレートを読み込み直しても名前は変えない */
 const nameFor = (t: Template) => (t.key === "t:blank" ? BLANK_NAME : t.label);
 
 function checkName(name: string): string | null {
@@ -539,27 +539,6 @@ function RunForm({
 								</span>
 							)}
 						</div>
-						<div className="flex flex-col gap-1.5">
-							<div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-								<Button size="sm" onClick={() => setPicking(true)}>
-									テンプレート読み込み
-								</Button>
-								{template && (
-									<span className="text-xs text-text-2">
-										元: {template.label}
-										{edited && "（変更あり）"}
-									</span>
-								)}
-								{edited && template && (
-									<Button
-										variant="link"
-										onClick={() => update({ params: template.params })}
-									>
-										テンプレートに戻す
-									</Button>
-								)}
-							</div>
-						</div>
 					</Card>
 					<Card className="flex flex-col gap-3.5">
 						<h2 className="text-[15px] font-bold">口座</h2>
@@ -707,7 +686,23 @@ function RunForm({
 					)}
 				</Card>
 				<div className="mt-2 flex flex-col gap-0.5 lg:col-span-2">
-					<h2 className="text-[17px] font-bold">戦略設定</h2>
+					<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+						<h2 className="shrink-0 text-[17px] font-bold">戦略設定</h2>
+						{/* スマホは見出しとボタンの下の行に出す。長い名前は省略し、「変更あり」は残す */}
+						{template && (
+							<span className="order-last flex min-w-0 basis-full text-xs text-text-2 lg:order-none lg:basis-auto">
+								<span className="truncate">{template.label}</span>
+								{edited && <span className="shrink-0">（変更あり）</span>}
+							</span>
+						)}
+						<Button
+							size="sm"
+							className="ml-auto shrink-0"
+							onClick={() => setPicking(true)}
+						>
+							テンプレート読み込み
+						</Button>
+					</div>
 					<p className="text-xs text-text-2">
 						テンプレートの条件をコピーして試す。ここで変えても戦略には保存されない。
 					</p>
@@ -829,14 +824,8 @@ function RunForm({
 					onClose={() => setPicking(false)}
 					onPick={(t) => {
 						setPicking(false);
-						// 名前を自分で変えていなければ、テンプレートに合わせて変える
-						const followed =
-							draft.name === (template ? nameFor(template) : BLANK_NAME);
-						update({
-							template: t,
-							params: t.params,
-							...(followed ? { name: nameFor(t) } : {}),
-						});
+						// バックテスト名は変えない
+						update({ template: t, params: t.params });
 					}}
 				/>
 			)}

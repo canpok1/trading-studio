@@ -89,6 +89,8 @@ async function choose(page: Page, strategy: string, from: string, to: string) {
 	const dialog = page.getByRole("dialog", { name: "テンプレート読み込み" });
 	await dialog.getByRole("button", { name: strategy }).click();
 	await expect(dialog).toBeHidden();
+	// テンプレートを読み込んでも名前は変わらないので、テンプレートと同じ名前を付ける
+	await page.getByLabel("バックテスト名").fill(strategy);
 	await page.getByLabel("開始").fill(from);
 	await page.getByLabel("終了").fill(to);
 }
@@ -100,9 +102,7 @@ test("テンプレートから名前を付けて実行すると結果が出て�
 	const name = `BT ${info.project.name}`;
 	await prepare(request, name);
 	await choose(page, name, "2026-05-03", "2026-05-25");
-	// バックテスト名はテンプレートの名前から始まり、自分で付け直せる
 	const runName = page.getByLabel("バックテスト名");
-	await expect(runName).toHaveValue(name);
 	const title = `${name} 試し`;
 	await runName.fill(title);
 	await expect(page.getByText("1時間足 · 552 本")).toBeVisible();
@@ -110,11 +110,18 @@ test("テンプレートから名前を付けて実行すると結果が出て�
 	const tf = page.getByLabel("足の粒度");
 	await tf.selectOption({ label: "4時間足" });
 	await expect(page.getByText("4時間足 · 138 本")).toBeVisible();
-	await page.getByRole("button", { name: "テンプレートに戻す" }).click();
+	await expect(page.getByText(`${name}（変更あり）`)).toBeVisible();
+	// テンプレートを読み込み直すと条件は戻り、バックテスト名は変わらない
+	await page.getByRole("button", { name: "テンプレート読み込み" }).click();
+	await page
+		.getByRole("dialog", { name: "テンプレート読み込み" })
+		.getByRole("button", { name })
+		.click();
 	await expect(page.getByText("1時間足 · 552 本")).toBeVisible();
+	await expect(runName).toHaveValue(title);
 	// テンプレートから変えて試す
 	await page.getByRole("button", { name: "0.001 増やす" }).click();
-	await expect(page.getByText(`元: ${name}（変更あり）`)).toBeVisible();
+	await expect(page.getByText(`${name}（変更あり）`)).toBeVisible();
 	await page.getByRole("button", { name: "バックテストを実行" }).click();
 
 	await expect(page).toHaveURL(/\/backtest\/runs\/\d+$/);
