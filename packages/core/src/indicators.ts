@@ -52,3 +52,31 @@ export function rsi(values: readonly number[], period: number): number[] {
 	}
 	return out;
 }
+
+/**
+ * ボリンジャーバンド。中央は単純移動平均、幅は直近 period 本の標準偏差（母標準偏差）の sigma 倍。
+ * period − 1 本目（0 始まり）より前は NaN
+ */
+export function bollinger(
+	values: readonly number[],
+	period: number,
+	sigma: number,
+): { middle: number[]; upper: number[]; lower: number[] } {
+	const middle = new Array<number>(values.length).fill(Number.NaN);
+	const upper = new Array<number>(values.length).fill(Number.NaN);
+	const lower = new Array<number>(values.length).fill(Number.NaN);
+	for (let i = period - 1; i < values.length; i++) {
+		let sum = 0;
+		for (let j = i - period + 1; j <= i; j++) sum += values[j] as number;
+		const mean = sum / period;
+		let sq = 0;
+		for (let j = i - period + 1; j <= i; j++) {
+			sq += ((values[j] as number) - mean) ** 2;
+		}
+		const width = Math.sqrt(sq / period) * sigma;
+		middle[i] = mean;
+		upper[i] = mean + width;
+		lower[i] = mean - width;
+	}
+	return { middle, upper, lower };
+}

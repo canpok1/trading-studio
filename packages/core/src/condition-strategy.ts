@@ -1,7 +1,7 @@
 // 画面で作る「条件のセット」を実行する汎用の条件戦略
 
 import { formatBtc, formatYen } from "./format";
-import { ema, rsi } from "./indicators";
+import { bollinger, ema, rsi } from "./indicators";
 import { limitBuyPriceBelow, notionalYen, SATOSHI_PER_BTC } from "./money";
 import type { Judge, JudgmentValue } from "./news-judgment";
 import {
@@ -50,8 +50,21 @@ export type Condition =
 			threshold: number;
 			direction: "above" | "below";
 	  }
+	/** 終値が EMA(period) より上（above）/ 下（below）。どのグループでも使える */
+	| { type: "emaPosition"; period: number; direction: "above" | "below" }
+	/** 終値がボリンジャーバンド（period 本・sigma σ）の上限以上（upper）/ 下限以下（lower）。どのグループでも使える */
+	| {
+			type: "bollinger";
+			period: number;
+			sigma: number;
+			band: "upper" | "lower";
+	  }
 	/** 現在値が買値から percent % 上がった（up）/ 下がった（down）。売りのグループだけで使える */
 	| { type: "entryChange"; percent: number; direction: "up" | "down" }
+	/** 現在値が買ってからの最高値から percent % 下がった。売りのグループだけで使える */
+	| { type: "trailingStop"; percent: number }
+	/** 買ってから戦略の粒度の足で bars 本経った。売りのグループだけで使える */
+	| { type: "holdingBars"; bars: number }
 	/** AI の判定が values のどれか。どのグループでも使える */
 	| { type: "judgment"; judge: Judge; values: JudgmentValue[] };
 
@@ -138,7 +151,11 @@ export const LIMITS = {
 	lookback: { min: 2, max: 1000 },
 	rsiPeriod: { min: 2, max: 100 },
 	rsiThreshold: { min: 1, max: 99 },
+	bollingerPeriod: { min: 2, max: 500 },
+	/** ボリンジャーバンドの σ。0.1 刻み */
+	bollingerSigma: { min: 0.1, max: 5 },
 	percent: { min: 0.1, max: 100 },
+	holdingBars: { min: 1, max: 1000 },
 	/** 買い指値を現在値から下げる %。0 以上 100 未満、0.01 刻み */
 	buyBelowPercent: { min: 0, maxExclusive: 100 },
 	buyExpireBars: { min: 1, max: 100 },
@@ -166,9 +183,13 @@ type Ctx = {
 	judgments: Partial<Record<Judge, JudgmentValue>>;
 	closes: number[];
 	price: number;
-	entryPrice: number | null;
+	now: number;
+	timeframeMs: number;
+	/** 売りの判定中のロット。買いの判定では null */
+	lot: { entryPrice: number; openedAt: number; peak: number } | null;
 	emaCache: Map<number, number[]>;
 	rsiCache: Map<number, number[]>;
+	bollingerCache: Map<string, ReturnType<typeof bollinger>>;
 };
 
 function emaOf(ctx: Ctx, period: number): number[] {
@@ -260,6 +281,51 @@ function checkCondition(c: Condition, ctx: Ctx): Hit {
 					}
 				: { ok: false };
 		}
+		case "emaPosition": {
+			if (n < c.period) {
+				return {
+					insufficient: `EMA(${c.period}) に ${c.period} 本必要、現在 ${n} 本`,
+				};
+			}
+			const v = emaOf(ctx, c.period)[n - 1] as number;
+			const hit = c.direction === "above" ? ctx.price > v : ctx.price < v;
+			return hit
+				? {
+						ok: true,
+						why: `終値 ${formatYen(ctx.price)} が EMA(${c.period}) ${formatYen(v)} より${c.direction === "above" ? "上" : "下"}`,
+					}
+				: { ok: false };
+		}
+		case "bollinger": {
+			if (n < c.period) {
+				return {
+					insufficient: `ボリンジャーバンド(${c.period}) に ${c.period} 本必要、現在 ${n} 本`,
+				};
+			}
+			const key = `${c.period}:${c.sigma}`;
+			let b = ctx.bollingerCache.get(key);
+			if (!b) {
+				b = bollinger(ctx.closes, c.period, c.sigma);
+				ctx.bollingerCache.set(key, b);
+			}
+			const name = `ボリンジャーバンド(${c.period}本・${c.sigma}σ)`;
+			if (c.band === "upper") {
+				const v = b.upper[n - 1] as number;
+				return ctx.price >= v
+					? {
+							ok: true,
+							why: `終値 ${formatYen(ctx.price)} が${name}の上限 ${formatYen(v)} 以上`,
+						}
+					: { ok: false };
+			}
+			const v = b.lower[n - 1] as number;
+			return ctx.price <= v
+				? {
+						ok: true,
+						why: `終値 ${formatYen(ctx.price)} が${name}の下限 ${formatYen(v)} 以下`,
+					}
+				: { ok: false };
+		}
 		case "judgment": {
 			const v = ctx.judgments[c.judge];
 			const name = `${JUDGE_LABELS[c.judge]}判定`;
@@ -275,18 +341,41 @@ function checkCondition(c: Condition, ctx: Ctx): Hit {
 				: { ok: false };
 		}
 		case "entryChange": {
-			if (ctx.entryPrice === null) {
+			if (ctx.lot === null) {
 				return { ok: false };
 			}
-			const change = (ctx.price / ctx.entryPrice - 1) * 100;
+			const { entryPrice } = ctx.lot;
+			const change = (ctx.price / entryPrice - 1) * 100;
 			const hit =
 				c.direction === "up" ? change >= c.percent : -change >= c.percent;
 			const sign = change >= 0 ? "+" : "−";
 			return hit
 				? {
 						ok: true,
-						why: `現在値 ${formatYen(ctx.price)} は買値 ${formatYen(ctx.entryPrice)} から ${sign}${Math.abs(change).toFixed(1)}%（${c.direction === "up" ? "+" : "−"}${c.percent}% 以上）`,
+						why: `現在値 ${formatYen(ctx.price)} は買値 ${formatYen(entryPrice)} から ${sign}${Math.abs(change).toFixed(1)}%（${c.direction === "up" ? "+" : "−"}${c.percent}% 以上）`,
 					}
+				: { ok: false };
+		}
+		case "trailingStop": {
+			if (ctx.lot === null) {
+				return { ok: false };
+			}
+			const { peak } = ctx.lot;
+			const drop = (1 - ctx.price / peak) * 100;
+			return drop >= c.percent
+				? {
+						ok: true,
+						why: `現在値 ${formatYen(ctx.price)} は買ってからの最高値 ${formatYen(peak)} から −${drop.toFixed(1)}%（−${c.percent}% 以上）`,
+					}
+				: { ok: false };
+		}
+		case "holdingBars": {
+			if (ctx.lot === null) {
+				return { ok: false };
+			}
+			const bars = Math.floor((ctx.now - ctx.lot.openedAt) / ctx.timeframeMs);
+			return bars >= c.bars
+				? { ok: true, why: `買ってから ${bars} 本経過（${c.bars} 本以上）` }
 				: { ok: false };
 		}
 	}
@@ -363,6 +452,8 @@ export function emaPeriods(params: ConditionSet): number[] {
 			if (c.type === "emaCross") {
 				set.add(c.fast);
 				set.add(c.slow);
+			} else if (c.type === "emaPosition") {
+				set.add(c.period);
 			}
 		}
 	}
@@ -409,10 +500,19 @@ export function historyBars(params: ConditionSet): number {
 		for (const c of params[key].conditions) {
 			if (c.type === "emaCross") {
 				n = Math.max(n, c.slow * EMA_HISTORY_FACTOR + 1);
-			} else if (c.type === "rsi") {
+			} else if (c.type === "emaPosition" || c.type === "rsi") {
 				n = Math.max(n, c.period * EMA_HISTORY_FACTOR + 1);
 			} else if (c.type === "breakout") {
 				n = Math.max(n, c.lookback + 1);
+			} else if (c.type === "bollinger") {
+				n = Math.max(n, c.period);
+			} else if (c.type === "trailingStop") {
+				// 前回の判定から今回までの足をすべて見て、最高値を取りこぼさないようにする
+				const between = Math.ceil(
+					frequencyMs(params.frequency.holding) /
+						TIMEFRAME_MS[params.timeframe],
+				);
+				n = Math.max(n, between + 1);
 			}
 		}
 	}
@@ -512,11 +612,46 @@ export function validateConditionSet(p: ConditionSet): ValidationError[] {
 					}
 					break;
 				}
+				case "emaPosition":
+					if (!isIntIn(c.period, LIMITS.emaPeriod)) {
+						err(`${at}.period`, `${range(LIMITS.emaPeriod)} の整数で入れる`);
+					}
+					break;
+				case "bollinger": {
+					if (!isIntIn(c.period, LIMITS.bollingerPeriod)) {
+						err(
+							`${at}.period`,
+							`${range(LIMITS.bollingerPeriod)} の整数で入れる`,
+						);
+					}
+					const r = LIMITS.bollingerSigma;
+					if (
+						!isNumIn(c.sigma, r) ||
+						Math.abs(c.sigma * 10 - Math.round(c.sigma * 10)) > 1e-9
+					) {
+						err(`${at}.sigma`, `${range(r)}、0.1 刻みで入れる`);
+					}
+					break;
+				}
 				case "entryChange":
 					if (g === "buy") {
 						err(at, "買値からの % は売りの条件だけで使える");
 					} else if (!isNumIn(c.percent, LIMITS.percent)) {
 						err(`${at}.percent`, `${range(LIMITS.percent)} の範囲で入れる`);
+					}
+					break;
+				case "trailingStop":
+					if (g === "buy") {
+						err(at, "最高値からの % は売りの条件だけで使える");
+					} else if (!isNumIn(c.percent, LIMITS.percent)) {
+						err(`${at}.percent`, `${range(LIMITS.percent)} の範囲で入れる`);
+					}
+					break;
+				case "holdingBars":
+					if (g === "buy") {
+						err(at, "保有本数は売りの条件だけで使える");
+					} else if (!isIntIn(c.bars, LIMITS.holdingBars)) {
+						err(`${at}.bars`, `${range(LIMITS.holdingBars)} の整数で入れる`);
 					}
 					break;
 			}
@@ -605,6 +740,44 @@ function prevBuyHit(state: JsonValue): boolean | null {
 		: null;
 }
 
+function usesCondition(p: ConditionSet, type: ConditionType): boolean {
+	return CONDITION_GROUPS.some((k) =>
+		p[k].conditions.some((c) => c.type === type),
+	);
+}
+
+/**
+ * ロットごとの、買ってからの最高値。前回までの最高値（state）と、渡された足のうち約定より後の値動きから求める。
+ * state は自動取引をオンにし直すと消えるため、足だけでも求められる形にしている
+ */
+function lotPeaks(
+	lots: StrategyInput<ConditionSet>["lots"],
+	candles: readonly Candle[],
+	timeframeMs: number,
+	state: JsonValue,
+): Record<string, number> {
+	const saved =
+		isObj(state) && isObj(state.peaks)
+			? (state.peaks as Record<string, unknown>)
+			: {};
+	const out: Record<string, number> = {};
+	for (const lot of lots) {
+		const prev = saved[lot.id];
+		let peak = Math.max(
+			lot.entryPrice,
+			typeof prev === "number" && Number.isFinite(prev) ? prev : 0,
+		);
+		for (const c of candles) {
+			// 約定した足は約定前の高値を含みうるので終値だけ見る。バックテストの約定時刻は足の開始時刻なので、同じ時刻の足も約定した足
+			if (c.time > lot.openedAt) peak = Math.max(peak, c.high);
+			else if (c.time + timeframeMs > lot.openedAt)
+				peak = Math.max(peak, c.close);
+		}
+		out[lot.id] = peak;
+	}
+	return out;
+}
+
 export function evaluateConditionSet(
 	input: StrategyInput<ConditionSet>,
 ): StrategyOutput {
@@ -625,18 +798,25 @@ export function evaluateConditionSet(
 	if (!last) {
 		return { intents: [], nextEvalAt, state, note: "足が無いため判定しない" };
 	}
+	const timeframeMs = TIMEFRAME_MS[p.timeframe];
 	const ctx: Ctx = {
 		candles,
 		closes: candles.map((c) => c.close),
 		price: last.close,
-		entryPrice: null,
+		now,
+		timeframeMs,
+		lot: null,
 		emaCache: new Map(),
 		rsiCache: new Map(),
+		bollingerCache: new Map(),
 		judgments: latestJudgments(judgments),
 	};
 	const intents: OrderIntent[] = [];
 	const notes: string[] = [];
-	let nextState = state;
+	let buyHit = prevBuyHit(state);
+	const peaks = usesCondition(p, "trailingStop")
+		? lotPeaks(lots, candles, timeframeMs, state)
+		: null;
 
 	// 売り: ロットごとに判定する。同じ判定で利確と損切りの両方が成立したら損切りを優先する（損失を小さく見積もらないため）
 	if (holding) {
@@ -647,7 +827,14 @@ export function evaluateConditionSet(
 		const sells: string[] = [];
 		let lacking: string | null = null;
 		for (const lot of targets) {
-			const lotCtx = { ...ctx, entryPrice: lot.entryPrice };
+			const lotCtx: Ctx = {
+				...ctx,
+				lot: {
+					entryPrice: lot.entryPrice,
+					openedAt: lot.openedAt,
+					peak: peaks?.[lot.id] ?? lot.entryPrice,
+				},
+			};
 			const sl = evaluateGroup(p.stopLoss, lotCtx);
 			const tp = evaluateGroup(p.takeProfit, lotCtx);
 			const short = [sl, tp].find((r) => r.kind === "insufficient");
@@ -696,7 +883,7 @@ export function evaluateConditionSet(
 	const buyCheck = () => {
 		const r = evaluateGroup(p.buy, ctx);
 		if (edge && r.kind !== "insufficient") {
-			nextState = { buyHit: r.kind === "hit" };
+			buyHit = r.kind === "hit";
 		}
 		return r;
 	};
@@ -709,7 +896,7 @@ export function evaluateConditionSet(
 			notes.push(`最大ポジション数 ${p.maxPositions} に達しているため買わない`);
 		}
 	} else {
-		const wasHit = prevBuyHit(state);
+		const wasHit = buyHit;
 		const r = buyCheck();
 		if (r.kind === "insufficient") {
 			notes.push(`指標の本数が足りないため判定しない（${r.why}）`);
@@ -724,6 +911,13 @@ export function evaluateConditionSet(
 		}
 	}
 
+	const nextState: JsonValue =
+		buyHit === null && peaks === null
+			? null
+			: {
+					...(buyHit === null ? {} : { buyHit }),
+					...(peaks === null ? {} : { peaks }),
+				};
 	return { intents, nextEvalAt, state: nextState, note: notes.join("。") };
 }
 
@@ -846,6 +1040,25 @@ function parseCondition(v: unknown): Condition | null {
 				percent: num(v.percent),
 				direction: v.direction,
 			};
+		case "emaPosition":
+			if (v.direction !== "above" && v.direction !== "below") return null;
+			return {
+				type: "emaPosition",
+				period: num(v.period),
+				direction: v.direction,
+			};
+		case "bollinger":
+			if (v.band !== "upper" && v.band !== "lower") return null;
+			return {
+				type: "bollinger",
+				period: num(v.period),
+				sigma: num(v.sigma),
+				band: v.band,
+			};
+		case "trailingStop":
+			return { type: "trailingStop", percent: num(v.percent) };
+		case "holdingBars":
+			return { type: "holdingBars", bars: num(v.bars) };
 		default:
 			return null;
 	}

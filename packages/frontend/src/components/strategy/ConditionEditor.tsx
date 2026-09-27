@@ -128,8 +128,8 @@ export function FrequencyCard({ params, onChange, errors }: Props) {
 				</select>
 			</label>
 			<p className="text-xs text-text-2">
-				EMA の本数・直近 N
-				本・指値を取り消すまでの本数は、この粒度の足で数える。
+				EMA・RSI・ボリンジャーバンドの本数・直近 N
+				本・買ってからの本数・指値を取り消すまでの本数は、この粒度の足で数える。
 			</p>
 			{freq("flat", "ポジションなしのとき", "ごとに買いの条件を判定")}
 			{freq("holding", "ポジションありのとき", "ごとに売りの条件を判定")}
@@ -282,18 +282,40 @@ type ConditionKind =
 
 const CONDITION_NAMES: Record<ConditionKind, string> = {
 	emaCross: "EMA のクロス",
+	emaPosition: "終値と EMA の位置",
 	breakout: "直近の高値・安値の突破",
 	rsi: "RSI",
+	bollinger: "ボリンジャーバンド",
 	entryChange: "買値からの %",
+	trailingStop: "買ってからの最高値からの %（トレーリングストップ）",
+	holdingBars: "買ってからの本数",
 	"judgment:trend": "トレンド判定が指定のどれか",
 	"judgment:risk": "リスク判定が指定のどれか",
 	"judgment:sentiment": "センチメント判定が指定のどれか",
 };
 
 const PRICE_KINDS: Record<ConditionGroupKey, ConditionKind[]> = {
-	buy: ["emaCross", "breakout", "rsi"],
-	takeProfit: ["emaCross", "breakout", "rsi", "entryChange"],
-	stopLoss: ["emaCross", "breakout", "rsi", "entryChange"],
+	buy: ["emaCross", "emaPosition", "breakout", "rsi", "bollinger"],
+	takeProfit: [
+		"emaCross",
+		"emaPosition",
+		"breakout",
+		"rsi",
+		"bollinger",
+		"entryChange",
+		"trailingStop",
+		"holdingBars",
+	],
+	stopLoss: [
+		"emaCross",
+		"emaPosition",
+		"breakout",
+		"rsi",
+		"bollinger",
+		"entryChange",
+		"trailingStop",
+		"holdingBars",
+	],
 };
 
 const JUDGMENT_KINDS = JUDGES.map((j) => `judgment:${j}` as const);
@@ -326,10 +348,23 @@ function defaultCondition(
 			return sell
 				? { type: kind, period: 14, threshold: 70, direction: "above" }
 				: { type: kind, period: 14, threshold: 30, direction: "below" };
+		case "emaPosition":
+			return { type: kind, period: 200, direction: sell ? "below" : "above" };
+		case "bollinger":
+			return {
+				type: kind,
+				period: 20,
+				sigma: 2,
+				band: sell ? "upper" : "lower",
+			};
 		case "entryChange":
 			return group === "stopLoss"
 				? { type: kind, percent: 2, direction: "down" }
 				: { type: kind, percent: 4, direction: "up" };
+		case "trailingStop":
+			return { type: kind, percent: 3 };
+		case "holdingBars":
+			return { type: kind, bars: 24 };
 		default: {
 			const judge = kind.slice("judgment:".length) as Judge;
 			return {
@@ -456,6 +491,103 @@ function ConditionRow({
 						<option value="above">以上</option>
 						<option value="below">以下</option>
 					</select>
+				</>
+			);
+			break;
+		case "emaPosition":
+			body = (
+				<>
+					<span>終値が EMA</span>
+					<NumberInput
+						value={c.period}
+						onChange={(period) => onChange({ ...c, period })}
+						invalid={bad("period")}
+						inputMode="numeric"
+						aria-label="EMA の本数"
+						className="w-16"
+					/>
+					<span>本より</span>
+					<select
+						aria-label="上下"
+						value={c.direction}
+						onChange={(e) =>
+							onChange({
+								...c,
+								direction: e.target.value as "above" | "below",
+							})
+						}
+						className={selectClass}
+					>
+						<option value="above">上</option>
+						<option value="below">下</option>
+					</select>
+				</>
+			);
+			break;
+		case "bollinger":
+			body = (
+				<>
+					<span>終値がボリンジャーバンド</span>
+					<NumberInput
+						value={c.period}
+						onChange={(period) => onChange({ ...c, period })}
+						invalid={bad("period")}
+						inputMode="numeric"
+						aria-label="ボリンジャーバンドの本数"
+						className="w-16"
+					/>
+					<span>本・</span>
+					<NumberInput
+						value={c.sigma}
+						onChange={(sigma) => onChange({ ...c, sigma })}
+						invalid={bad("sigma")}
+						inputMode="decimal"
+						aria-label="ボリンジャーバンドの σ"
+						className="w-16"
+					/>
+					<span>σ の</span>
+					<select
+						aria-label="上限・下限"
+						value={c.band}
+						onChange={(e) =>
+							onChange({ ...c, band: e.target.value as "upper" | "lower" })
+						}
+						className={selectClass}
+					>
+						<option value="upper">上限以上</option>
+						<option value="lower">下限以下</option>
+					</select>
+				</>
+			);
+			break;
+		case "trailingStop":
+			body = (
+				<>
+					<span>買ってからの最高値から</span>
+					<NumberInput
+						value={c.percent}
+						onChange={(percent) => onChange({ ...c, percent })}
+						invalid={bad("percent")}
+						aria-label="最高値からの %"
+						className="w-16"
+					/>
+					<span>% 下がった</span>
+				</>
+			);
+			break;
+		case "holdingBars":
+			body = (
+				<>
+					<span>買ってから</span>
+					<NumberInput
+						value={c.bars}
+						onChange={(bars) => onChange({ ...c, bars })}
+						invalid={bad("bars")}
+						inputMode="numeric"
+						aria-label="買ってからの本数"
+						className="w-16"
+					/>
+					<span>本経った</span>
 				</>
 			);
 			break;
