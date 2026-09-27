@@ -28,7 +28,7 @@ import {
 const POLL_MS = 5_000;
 const NEWS_LIMIT = 100;
 
-export function AiPage() {
+export function NewsPage() {
 	const api = useApi();
 	const visible = usePageVisible();
 
@@ -65,10 +65,10 @@ export function AiPage() {
 
 	if (!data) {
 		return (
-			<Page title="AI判定" actions={<SettingsLink />}>
+			<Page title="ニュース" actions={<SettingsLink />}>
 				{error ? (
 					<ErrorState
-						what="AI判定を読み込めなかった"
+						what="ニュースと判定を読み込めなかった"
 						next={error}
 						action={<Button onClick={load}>もう一度読み込む</Button>}
 					/>
@@ -90,7 +90,7 @@ export function AiPage() {
 	const { current } = data;
 	const troubles = aiTroubles(data.collector, data.scorer);
 	return (
-		<Page title="AI判定" actions={<SettingsLink />}>
+		<Page title="ニュース" actions={<SettingsLink />}>
 			<section
 				aria-label="今の判定"
 				className="overflow-hidden rounded-xl border border-line bg-surface"
@@ -140,7 +140,7 @@ export function AiPage() {
 						</span>
 					)}
 					<Link
-						to="/settings?tab=sources"
+						to="/settings?section=news&tab=sources"
 						className="self-start font-semibold text-accent"
 					>
 						収集と採点の設定を開く
@@ -158,10 +158,10 @@ export function AiPage() {
 	);
 }
 
-/** AI判定の設定（集計ルール・プロンプト・収集と採点）は設定画面に置く */
+/** ニュースの設定（集計ルール・プロンプト・収集と採点）は設定画面に置く */
 function SettingsLink() {
 	return (
-		<Link to="/settings?tab=rule" className={buttonClass("default", "sm")}>
+		<Link to="/settings?section=news" className={buttonClass("default", "sm")}>
 			<SettingsIcon size={18} />
 			設定
 		</Link>

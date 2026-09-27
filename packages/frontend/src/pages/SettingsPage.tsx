@@ -6,6 +6,7 @@ import type { AggregationRule } from "@trading-studio/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { useApi } from "../api";
+import { ApiKeySetting } from "../components/ApiKeySetting";
 import { PromptTab } from "../components/ai/PromptTab";
 import { RuleTab } from "../components/ai/RuleTab";
 import { SourcesTab } from "../components/ai/SourcesTab";
@@ -24,46 +25,102 @@ import { useTheme } from "../theme";
 /** 収集の状態（取得元ごとの最後の取得）を問い合わせる間隔 */
 const POLL_MS = 5_000;
 
-const TABS = [
-	["display", "表示"],
+/** 区分はメニューに合わせる。複数のメニューで使う設定は「全般」に置く */
+const SECTIONS = [
+	["general", "全般"],
+	["news", "ニュース"],
+] as const;
+type SettingsSection = (typeof SECTIONS)[number][0];
+const isSection = (v: string | null): v is SettingsSection =>
+	SECTIONS.some(([s]) => s === v);
+
+const NEWS_TABS = [
 	["rule", "集計ルール"],
 	["prompt", "プロンプト"],
 	["sources", "収集と採点"],
 ] as const;
-export type SettingsTab = (typeof TABS)[number][0];
-const isTab = (v: string | null): v is SettingsTab =>
-	TABS.some(([t]) => t === v);
+type NewsSettingsTab = (typeof NEWS_TABS)[number][0];
+const isNewsTab = (v: string | null): v is NewsSettingsTab =>
+	NEWS_TABS.some(([t]) => t === v);
 
 export function SettingsPage() {
 	const [params, setParams] = useSearchParams();
+	const sectionParam = params.get("section");
+	const section: SettingsSection = isSection(sectionParam)
+		? sectionParam
+		: "general";
 	const tabParam = params.get("tab");
-	const tab: SettingsTab = isTab(tabParam) ? tabParam : "display";
+	const newsTab: NewsSettingsTab = isNewsTab(tabParam) ? tabParam : "rule";
 	return (
 		<Page title="設定">
-			<div
-				role="tablist"
-				aria-label="設定の種類"
-				className="grid auto-cols-fr grid-flow-col gap-0.5 rounded-[10px] bg-surface-2 p-[3px]"
-			>
-				{TABS.map(([t, label]) => (
-					<button
-						key={t}
-						type="button"
-						role="tab"
-						aria-selected={tab === t}
-						onClick={() =>
-							setParams(t === "display" ? {} : { tab: t }, { replace: true })
+			<Tabs
+				label="設定の区分"
+				items={SECTIONS}
+				current={section}
+				onSelect={(s) =>
+					setParams(s === "general" ? {} : { section: s }, { replace: true })
+				}
+			/>
+			{section === "general" ? (
+				<div role="tabpanel" className="flex flex-col gap-3">
+					<ThemeSetting />
+					<ApiKeySetting />
+				</div>
+			) : (
+				<div role="tabpanel" className="flex flex-col gap-3">
+					<Tabs
+						label="ニュースの設定の種類"
+						items={NEWS_TABS}
+						current={newsTab}
+						onSelect={(t) =>
+							setParams(
+								t === "rule"
+									? { section: "news" }
+									: { section: "news", tab: t },
+								{ replace: true },
+							)
 						}
-						className={`h-9 rounded-lg px-0.5 text-xs whitespace-nowrap sm:text-[13px] ${tab === t ? "bg-surface font-bold text-text shadow-sm" : "text-text-2"}`}
-					>
-						{label}
-					</button>
-				))}
-			</div>
-			<div role="tabpanel" className="flex flex-col gap-3">
-				{tab === "display" ? <ThemeSetting /> : <AiSettings tab={tab} />}
-			</div>
+						small
+					/>
+					<NewsSettings tab={newsTab} />
+				</div>
+			)}
 		</Page>
+	);
+}
+
+function Tabs<T extends string>({
+	label,
+	items,
+	current,
+	onSelect,
+	small = false,
+}: {
+	label: string;
+	items: readonly (readonly [T, string])[];
+	current: T;
+	onSelect: (value: T) => void;
+	small?: boolean;
+}) {
+	return (
+		<div
+			role="tablist"
+			aria-label={label}
+			className={`grid auto-cols-fr grid-flow-col gap-0.5 rounded-[10px] p-[3px] ${small ? "border border-line" : "bg-surface-2"}`}
+		>
+			{items.map(([value, text]) => (
+				<button
+					key={value}
+					type="button"
+					role="tab"
+					aria-selected={current === value}
+					onClick={() => onSelect(value)}
+					className={`rounded-lg px-0.5 text-xs whitespace-nowrap sm:text-[13px] ${small ? "h-8" : "h-9"} ${current === value ? (small ? "bg-surface-2 font-bold text-text" : "bg-surface font-bold text-text shadow-sm") : "text-text-2"}`}
+				>
+					{text}
+				</button>
+			))}
+		</div>
 	);
 }
 
@@ -102,16 +159,16 @@ function ThemeSetting() {
 	);
 }
 
-type AiSettingsData = {
+type NewsSettingsData = {
 	rule: AggregationRule;
 	collector: NewsCollectorStatus;
 };
 
-/** AI判定の設定。集計ルールと収集の状態を読み、収集の状態は定期的に読み直す */
-function AiSettings({ tab }: { tab: Exclude<SettingsTab, "display"> }) {
+/** ニュースの設定。集計ルールと収集の状態を読み、収集の状態は定期的に読み直す */
+function NewsSettings({ tab }: { tab: NewsSettingsTab }) {
 	const api = useApi();
 	const visible = usePageVisible();
-	const [data, setData] = useState<AiSettingsData | null>(null);
+	const [data, setData] = useState<NewsSettingsData | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	// 操作の直後と定期の問い合わせが重なると応答の順が入れ替わりうるので、最後に出したものだけ使う
 	const seq = useRef(0);
