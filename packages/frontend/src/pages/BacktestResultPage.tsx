@@ -33,7 +33,12 @@ import {
 	ruleText,
 	stepLimitedText,
 } from "../lib/condition-text";
-import { formatInt, formatSignedInt, formatSignedPercent } from "../lib/number";
+import {
+	formatInt,
+	formatSignedInt,
+	formatSignedPercent,
+	holdingText,
+} from "../lib/number";
 import { errorMessage, readJson, useAsync } from "../lib/useAsync";
 import type { BacktestDraft } from "./BacktestRunPage";
 
@@ -274,11 +279,6 @@ function SaveDialog({
 			<Button onClick={onClose}>やめる</Button>
 		</Modal>
 	);
-}
-
-function holdingText(ms: number): string {
-	const h = ms / 3_600_000;
-	return h >= 24 ? `${(h / 24).toFixed(1)}日` : `${h.toFixed(1)}時間`;
 }
 
 function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {

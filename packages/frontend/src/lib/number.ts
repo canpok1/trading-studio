@@ -12,3 +12,9 @@ export function formatSignedPercent(p: number): string {
 export function formatSignedInt(n: number): string {
 	return `${n >= 0 ? "+" : "−"}${formatInt(Math.abs(n))}`;
 }
+
+/** 保有期間。1日以上なら日、未満なら時間（小数1桁） */
+export function holdingText(ms: number): string {
+	const h = ms / 3_600_000;
+	return h >= 24 ? `${(h / 24).toFixed(1)}日` : `${h.toFixed(1)}時間`;
+}
