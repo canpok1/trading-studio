@@ -3,10 +3,15 @@
 import type {
 	Account,
 	DecisionLog,
+	ExitKind,
 	JsonValue,
 	TradeOrder,
 } from "@trading-studio/core";
-import { newAccount, normalizeAccount } from "@trading-studio/core";
+import {
+	inferExitKind,
+	newAccount,
+	normalizeAccount,
+} from "@trading-studio/core";
 import type { Db } from "../db/open";
 import type {
 	AutoTradingRow,
@@ -34,6 +39,7 @@ type OrderRow = {
 	reason: string;
 	pair_id: string | null;
 	pnl: number | null;
+	exit_kind: ExitKind | null;
 	decision_id: number | null;
 	strategy_id: number | null;
 	strategy_name: string;
@@ -65,6 +71,11 @@ const toOrder = (r: OrderRow): StoredOrder => ({
 	strategyId: r.strategy_id,
 	strategyName: r.strategy_name,
 	lotPrice: r.lot_price ?? null,
+	// exit_kind を足す前の売りは理由から読む
+	exitKind: inferExitKind(
+		{ side: r.side, reason: r.reason, exitKind: r.exit_kind },
+		r.lot_price ?? null,
+	),
 });
 
 function orderWhere(filter: OrderFilter): {
@@ -161,8 +172,8 @@ export class TradingRepository {
 		},
 	): void {
 		const stmt = this.sql.prepare(
-			`insert into trading_orders (mode, id, side, type, price, quantity, placed_at, status, filled_at, fill_price, fee, canceled_at, cancel_reason, reason, pair_id, pnl, decision_id, strategy_id, strategy_name)
-			values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`insert into trading_orders (mode, id, side, type, price, quantity, placed_at, status, filled_at, fill_price, fee, canceled_at, cancel_reason, reason, pair_id, pnl, exit_kind, decision_id, strategy_id, strategy_name)
+			values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			on conflict (mode, id) do update set status = excluded.status, filled_at = excluded.filled_at, fill_price = excluded.fill_price, fee = excluded.fee,
 			canceled_at = excluded.canceled_at, cancel_reason = excluded.cancel_reason, pair_id = excluded.pair_id, pnl = excluded.pnl`,
 		);
@@ -184,6 +195,7 @@ export class TradingRepository {
 				o.reason,
 				o.pairId,
 				o.pnl,
+				o.exitKind ?? null,
 				origin.decisionId,
 				origin.strategyId,
 				origin.strategyName,

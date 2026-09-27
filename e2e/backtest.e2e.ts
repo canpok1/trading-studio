@@ -140,6 +140,10 @@ test("テンプレートから名前を付けて実行すると結果が出て�
 	const sheet = page.getByRole("dialog", { name: "注文の詳細" });
 	await expect(sheet).toContainText("戦略の理由");
 	await expect(sheet).toContainText("売り · 約定");
+	// どちらの条件で売ったかと条件の名前のバッジ
+	await expect(sheet.getByTestId("exit-badge")).toHaveText(
+		/^(利確: \+1%|損切り: −1%)$/,
+	);
 	await sheet.getByRole("button", { name: "対応する買いを見る" }).click();
 	await expect(sheet).toContainText("買い · 約定");
 	await sheet.getByRole("button", { name: "閉じる" }).click();

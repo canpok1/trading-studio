@@ -190,7 +190,7 @@ function HomeBody({
 		[entryKey],
 	);
 	const mode = trading?.mode ?? "paper";
-	const { orders } = useTradingOrders(
+	const { orders, reload: reloadOrders } = useTradingOrders(
 		{ mode, limit: MARKER_ORDERS },
 		visible && trading !== null,
 	);
@@ -380,6 +380,10 @@ function HomeBody({
 					performance={perf.performance}
 					price={latest?.price ?? null}
 					onToast={showToast}
+					onReset={() => {
+						perf.reload();
+						reloadOrders();
+					}}
 				/>
 			) : (
 				<Skeleton className="h-32 rounded-xl" />

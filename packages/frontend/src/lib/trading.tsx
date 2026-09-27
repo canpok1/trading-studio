@@ -166,5 +166,5 @@ export function useTradingPerformance(mode: TradingMode, active: boolean) {
 		if (active) load();
 	}, [active, load]);
 	useInterval(load, STATUS_MS, active);
-	return { performance, error };
+	return { performance, error, reload: load };
 }

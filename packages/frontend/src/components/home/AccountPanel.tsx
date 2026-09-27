@@ -30,11 +30,14 @@ export function AccountPanel({
 	performance,
 	price,
 	onToast,
+	onReset,
 }: {
 	status: AutoTradingStatus;
 	performance: TradingPerformance | null;
 	price: number | null;
 	onToast: (message: string) => void;
+	/** リセットできた後に呼ぶ。成績と注文は状態と別に読んでいるので、読み直してもらう */
+	onReset: () => void;
 }) {
 	const api = useApi();
 	const { set } = useTradingStatus();
@@ -58,6 +61,7 @@ export function AccountPanel({
 				.$post({ json: { initialCash } })
 				.then((res) => readJson<{ status: AutoTradingStatus }>(res));
 			set(r.status);
+			onReset();
 			onToast(
 				`ペーパーの口座をリセットした。開始時の資金 ${formatInt(initialCash)}円`,
 			);
