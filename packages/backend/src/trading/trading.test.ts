@@ -383,7 +383,7 @@ describe("口座のリセット", () => {
 		]);
 		// 通し番号は引き継ぎ、過去の注文と id が重ならない
 		await t.call("POST", "/start", { mode: "paper" });
-		t.at(T0 + 2 * M);
+		t.at(T0 + 3 * M);
 		expect(t.orders().map((o) => o.id)).toEqual(["p1", "p2"]);
 	});
 
@@ -492,5 +492,68 @@ describe("成績", () => {
 			maxDrawdownPercent: 0,
 		});
 		expect((await t.call("GET", "/performance?mode=x")).status).toBe(400);
+	});
+});
+
+describe("複数ポジション", () => {
+	test("同時に出した買いがそれぞれロットになり、ロットごとに売る。売りには売るロットの買値を添える", async () => {
+		const t = setup(
+			always({
+				maxPositions: 2,
+				buyOrder: {
+					lines: [{ type: "market" }, { type: "limit", belowPercent: 0.5 }],
+					expireBars: 10,
+				},
+			}),
+		);
+		await t.call("POST", "/start", { mode: "paper" });
+		t.at(T0 + M);
+		expect(
+			t
+				.orders()
+				.sort((a, b) => a.id.localeCompare(b.id))
+				.map((o) => [o.id, o.type, o.price]),
+		).toEqual([
+			["p1", "market", null],
+			["p2", "limit", 9_950_000],
+		]);
+		t.fill(P);
+		t.at(T0 + M + 1000);
+		t.fill(9_950_000);
+		t.at(T0 + M + 2000);
+		expect(t.status().account.lots.map((l) => [l.id, l.entryPrice])).toEqual([
+			["p1", P],
+			["p2", 9_950_000],
+		]);
+		// p2 だけ買値から +1%
+		t.fill(10_060_000);
+		t.at(T0 + 3 * M);
+		const sell = t.orders().find((o) => o.side === "sell") as StoredOrder;
+		expect(sell).toMatchObject({ pairId: "p2", lotPrice: 9_950_000 });
+		t.fill(10_060_000);
+		expect(t.status().account.lots.map((l) => l.id)).toEqual(["p1"]);
+		expect(t.trading.order("paper", sell.id)?.order).toMatchObject({
+			status: "filled",
+			lotPrice: 9_950_000,
+		});
+	});
+
+	test("ロットを持つ前に保存した口座は、保有を1ロットとして読む", () => {
+		const t = setup();
+		const repo = new TradingRepository(t.db);
+		repo.account("paper", T0);
+		t.db.$client.run("update trading_accounts set account = ? where mode = ?", [
+			JSON.stringify({
+				cash: 900_000,
+				position: { quantity: 1_000_000, entryPrice: P, openedAt: T0 },
+				entry: { record: { id: "p1" }, time: T0, cost: 100_100 },
+				openOrders: [],
+				seq: 1,
+			}),
+			"paper",
+		]);
+		expect(t.status().account.lots).toEqual([
+			{ id: "p1", quantity: 1_000_000, entryPrice: P, openedAt: T0 },
+		]);
 	});
 });

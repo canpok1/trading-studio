@@ -3,6 +3,7 @@
 import type {
 	DecisionLog,
 	JsonValue,
+	Lot,
 	Position,
 	TradeOrder,
 	ValidationError,
@@ -17,6 +18,8 @@ export type StoredOrder = TradeOrder & {
 	decisionId: number | null;
 	strategyId: number | null;
 	strategyName: string;
+	/** 売りが売るロットの買値（買いの約定価格）。買い・ロットが分からない売りは null */
+	lotPrice: number | null;
 };
 
 export type OrderFilter = {
@@ -58,6 +61,8 @@ export type TradingAccountView = {
 	initialCash: number;
 	cash: number;
 	position: Position;
+	/** 保有中のロット（買いの約定順） */
+	lots: Lot[];
 	openOrderCount: number;
 	resetAt: number;
 	/** 現金と保有を今の価格で評価した資産（手数料は含めない）。保有があって価格が分からなければ null */

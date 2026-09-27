@@ -37,7 +37,12 @@ type OrderRow = {
 	decision_id: number | null;
 	strategy_id: number | null;
 	strategy_name: string;
+	lot_price?: number | null;
 };
+
+/** 売りが売るロットの買値を添えて注文を読む列 */
+const ORDER_COLUMNS = `*, (select p.fill_price from trading_orders p
+	where trading_orders.side = 'sell' and p.mode = trading_orders.mode and p.id = trading_orders.pair_id) as lot_price`;
 
 const toOrder = (r: OrderRow): StoredOrder => ({
 	mode: r.mode,
@@ -59,6 +64,7 @@ const toOrder = (r: OrderRow): StoredOrder => ({
 	decisionId: r.decision_id,
 	strategyId: r.strategy_id,
 	strategyName: r.strategy_name,
+	lotPrice: r.lot_price ?? null,
 });
 
 function orderWhere(filter: OrderFilter): {
@@ -188,7 +194,7 @@ export class TradingRepository {
 	order(mode: TradingMode, id: string): StoredOrder | null {
 		const r = this.sql
 			.query<OrderRow, [string, string]>(
-				"select * from trading_orders where mode = ? and id = ?",
+				`select ${ORDER_COLUMNS} from trading_orders where mode = ? and id = ?`,
 			)
 			.get(mode, id);
 		return r ? toOrder(r) : null;
@@ -199,7 +205,7 @@ export class TradingRepository {
 		const { where, args } = orderWhere(filter);
 		return this.sql
 			.query<OrderRow, (string | number)[]>(
-				`select * from trading_orders ${where}
+				`select ${ORDER_COLUMNS} from trading_orders ${where}
 				order by coalesce(filled_at, canceled_at, placed_at) desc, placed_at desc, id desc limit ?`,
 			)
 			.all(...args, limit)
@@ -210,7 +216,7 @@ export class TradingRepository {
 	filledSince(mode: TradingMode, from: number): StoredOrder[] {
 		return this.sql
 			.query<OrderRow, [string, number]>(
-				"select * from trading_orders where mode = ? and status = 'filled' and filled_at > ? order by filled_at, placed_at, id",
+				`select ${ORDER_COLUMNS} from trading_orders where mode = ? and status = 'filled' and filled_at > ? order by filled_at, placed_at, id`,
 			)
 			.all(mode, from)
 			.map(toOrder);

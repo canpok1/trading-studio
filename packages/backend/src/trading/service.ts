@@ -19,6 +19,7 @@ import {
 	expireOrders,
 	JUDGES,
 	newAccount,
+	publicLots,
 	realizedPnlOn,
 	settleFills,
 	TIMEFRAME_MS,
@@ -231,6 +232,7 @@ export function createTradingService({
 				initialCash: a.initialCash,
 				cash: a.account.cash,
 				position: a.account.position,
+				lots: publicLots(a.account.lots),
 				openOrderCount: a.account.openOrders.length,
 				resetAt: a.resetAt,
 				equity: equityOf(

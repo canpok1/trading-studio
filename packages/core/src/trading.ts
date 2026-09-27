@@ -40,7 +40,7 @@ export type TradeOrder = {
 	cancelReason: string | null;
 	/** 発注した判断の理由 */
 	reason: string;
-	/** 対応する買い / 売りの注文 */
+	/** 対応する買い / 売りの注文。売りは発注時から売るロット（買いの注文）を指す。買いは売りが約定したら持つ */
 	pairId: string | null;
 	/** 売りの約定で確定した往復の損益（手数料込み） */
 	pnl: number | null;
@@ -53,6 +53,8 @@ export type DecisionLog = {
 	price: number;
 	cash: number;
 	position: Position;
+	/** 判定時に持っていたロット。ロットを持つ前の記録には無い */
+	lots?: Lot[];
 	openOrderIds: string[];
 	intents: OrderIntent[];
 	nextEvalAt: number;
@@ -510,7 +512,8 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 			canceledAt: null,
 			cancelReason: null,
 			reason,
-			pairId: null,
+			// 売りは売るロット（買いの注文）と対応づける
+			pairId: order.lotId ?? null,
 			pnl: null,
 		};
 		changed.push(record);
@@ -551,6 +554,7 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 			price: input.price,
 			cash,
 			position,
+			lots: publicLots(lots),
 			openOrderIds: openOrders.map((o) => o.id),
 			intents: out.intents,
 			nextEvalAt: out.nextEvalAt,
