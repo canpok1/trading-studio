@@ -35,6 +35,8 @@ export function conditionText(c: Condition): string {
 			return `EMA${c.fast}/${c.slow}${c.direction === "up" ? "上抜け" : "下抜け"}`;
 		case "breakout":
 			return `${c.lookback}本の${c.direction === "high" ? "高値上抜け" : "安値下抜け"}`;
+		case "rsi":
+			return `RSI${c.period} ${c.threshold}${c.direction === "above" ? "以上" : "以下"}`;
 		case "entryChange":
 			return `${c.direction === "up" ? "+" : "−"}${c.percent}%`;
 		case "judgment":

@@ -146,6 +146,41 @@ test("AI 判定の条件を追加して保存でき、値を1つも選ばない�
 	await expect(saved.getByLabel("警戒")).not.toBeChecked();
 });
 
+test("RSI の条件を追加して保存でき、範囲外の値では保存できない", async ({
+	page,
+}, info) => {
+	await page.goto("/strategies");
+	await createFromTemplate(page, `RSI ${info.project.name}`, /^トレンド追随/);
+	const buy = page.getByRole("region", { name: "買い注文する条件" });
+	await buy.getByRole("button", { name: "＋ 条件を追加" }).click();
+	await page
+		.getByRole("dialog")
+		.getByRole("button", { name: "RSI", exact: true })
+		.click();
+	const row = buy
+		.getByRole("group")
+		.filter({ has: page.getByLabel("RSI の本数") });
+	await expect(row.getByLabel("RSI の本数")).toHaveValue("14");
+	await expect(row.getByLabel("RSI のしきい値")).toHaveValue("30");
+	await expect(row.getByLabel("以上・以下")).toHaveValue("below");
+
+	await row.getByLabel("RSI のしきい値").fill("100");
+	await expect(row).toContainText("1〜99 の整数で入れる");
+	await expect(
+		page.getByRole("button", { name: "入力を直すと保存できる" }),
+	).toBeDisabled();
+
+	await row.getByLabel("RSI のしきい値").fill("25");
+	await page.getByRole("button", { name: "保存", exact: true }).click();
+	await expect(page.getByRole("status")).toHaveText("保存した");
+	await page.reload();
+	const saved = page
+		.getByRole("region", { name: "買い注文する条件" })
+		.getByRole("group")
+		.filter({ has: page.getByLabel("RSI の本数") });
+	await expect(saved.getByLabel("RSI のしきい値")).toHaveValue("25");
+});
+
 test("買いの注文方法を指値に変えて値幅と本数を保存でき、成行では入力欄を出さない", async ({
 	page,
 }, info) => {

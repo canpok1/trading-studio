@@ -1,7 +1,7 @@
 // 画面で作る「条件のセット」を実行する汎用の条件戦略
 
 import { formatBtc, formatYen } from "./format";
-import { ema } from "./indicators";
+import { ema, rsi } from "./indicators";
 import { limitBuyPriceBelow, notionalYen, SATOSHI_PER_BTC } from "./money";
 import type { Judge, JudgmentValue } from "./news-judgment";
 import {
@@ -43,6 +43,13 @@ export type Condition =
 	| { type: "emaCross"; fast: number; slow: number; direction: "up" | "down" }
 	/** 終値が直近 N 本の最高値を上抜けた（high）/ 最安値を下抜けた（low） */
 	| { type: "breakout"; lookback: number; direction: "high" | "low" }
+	/** RSI(period) が threshold 以上（above）/ 以下（below）。どのグループでも使える */
+	| {
+			type: "rsi";
+			period: number;
+			threshold: number;
+			direction: "above" | "below";
+	  }
 	/** 現在値が買値から percent % 上がった（up）/ 下がった（down）。売りのグループだけで使える */
 	| { type: "entryChange"; percent: number; direction: "up" | "down" }
 	/** AI の判定が values のどれか。どのグループでも使える */
@@ -87,7 +94,7 @@ export const DEFAULT_BUY_ORDER: BuyOrder = {
 };
 
 export type ConditionSet = {
-	/** EMA の本数・直近 N 本・指値の取消までの本数は、すべてこの粒度の足で数える */
+	/** EMA・RSI の本数・直近 N 本・指値の取消までの本数は、すべてこの粒度の足で数える */
 	timeframe: Timeframe;
 	frequency: {
 		/** ポジションなしのとき */
@@ -108,6 +115,8 @@ export type ConditionSet = {
 export const LIMITS = {
 	emaPeriod: { min: 2, max: 500 },
 	lookback: { min: 2, max: 1000 },
+	rsiPeriod: { min: 2, max: 100 },
+	rsiThreshold: { min: 1, max: 99 },
 	percent: { min: 0.1, max: 100 },
 	/** 買い指値を現在値から下げる %。0 以上 100 未満、0.01 刻み */
 	buyBelowPercent: { min: 0, maxExclusive: 100 },
@@ -122,7 +131,7 @@ export const LIMITS = {
 /** 1日の損失上限の既定（仮置き）。これを持たない保存済みの戦略もこの上限で読む */
 export const DEFAULT_DAILY_LOSS_LIMIT = 30_000;
 
-/** EMA を途中から計算しても値がほぼ一致するよう、本数のこの倍の足を渡してもらう */
+/** EMA・RSI を途中から計算しても値がほぼ一致するよう、本数のこの倍の足を渡してもらう */
 const EMA_HISTORY_FACTOR = 10;
 
 type Hit = { ok: true; why: string } | { ok: false } | { insufficient: string };
@@ -135,6 +144,7 @@ type Ctx = {
 	price: number;
 	entryPrice: number | null;
 	emaCache: Map<number, number[]>;
+	rsiCache: Map<number, number[]>;
 };
 
 function emaOf(ctx: Ctx, period: number): number[] {
@@ -145,6 +155,18 @@ function emaOf(ctx: Ctx, period: number): number[] {
 	}
 	return v;
 }
+
+function rsiOf(ctx: Ctx, period: number): number[] {
+	let v = ctx.rsiCache.get(period);
+	if (!v) {
+		v = rsi(ctx.closes, period);
+		ctx.rsiCache.set(period, v);
+	}
+	return v;
+}
+
+/** RSI の見せ方。小数1桁 */
+export const formatRsi = (v: number) => v.toFixed(1);
 
 function checkCondition(c: Condition, ctx: Ctx): Hit {
 	const n = ctx.candles.length;
@@ -195,6 +217,22 @@ function checkCondition(c: Condition, ctx: Ctx): Hit {
 				? {
 						ok: true,
 						why: `終値 ${formatYen(ctx.price)} が直近 ${c.lookback} 本の最安値 ${formatYen(low)} を下抜け`,
+					}
+				: { ok: false };
+		}
+		case "rsi": {
+			const need = c.period + 1;
+			if (n < need) {
+				return {
+					insufficient: `RSI(${c.period}) に ${need} 本必要、現在 ${n} 本`,
+				};
+			}
+			const v = rsiOf(ctx, c.period)[n - 1] as number;
+			const hit = c.direction === "above" ? v >= c.threshold : v <= c.threshold;
+			return hit
+				? {
+						ok: true,
+						why: `RSI(${c.period}) ${formatRsi(v)} が ${c.threshold} ${c.direction === "above" ? "以上" : "以下"}`,
 					}
 				: { ok: false };
 		}
@@ -325,6 +363,8 @@ export function historyBars(params: ConditionSet): number {
 		for (const c of params[key].conditions) {
 			if (c.type === "emaCross") {
 				n = Math.max(n, c.slow * EMA_HISTORY_FACTOR + 1);
+			} else if (c.type === "rsi") {
+				n = Math.max(n, c.period * EMA_HISTORY_FACTOR + 1);
 			} else if (c.type === "breakout") {
 				n = Math.max(n, c.lookback + 1);
 			}
@@ -397,6 +437,17 @@ export function validateConditionSet(p: ConditionSet): ValidationError[] {
 				case "breakout":
 					if (!isIntIn(c.lookback, LIMITS.lookback)) {
 						err(`${at}.lookback`, `${range(LIMITS.lookback)} の整数で入れる`);
+					}
+					break;
+				case "rsi":
+					if (!isIntIn(c.period, LIMITS.rsiPeriod)) {
+						err(`${at}.period`, `${range(LIMITS.rsiPeriod)} の整数で入れる`);
+					}
+					if (!isIntIn(c.threshold, LIMITS.rsiThreshold)) {
+						err(
+							`${at}.threshold`,
+							`${range(LIMITS.rsiThreshold)} の整数で入れる`,
+						);
 					}
 					break;
 				case "judgment": {
@@ -512,6 +563,7 @@ export function evaluateConditionSet(
 		price: last.close,
 		entryPrice: position.entryPrice,
 		emaCache: new Map(),
+		rsiCache: new Map(),
 		judgments: latestJudgments(judgments),
 	};
 
@@ -626,6 +678,14 @@ function parseCondition(v: unknown): Condition | null {
 			return {
 				type: "breakout",
 				lookback: num(v.lookback),
+				direction: v.direction,
+			};
+		case "rsi":
+			if (v.direction !== "above" && v.direction !== "below") return null;
+			return {
+				type: "rsi",
+				period: num(v.period),
+				threshold: num(v.threshold),
 				direction: v.direction,
 			};
 		case "judgment":

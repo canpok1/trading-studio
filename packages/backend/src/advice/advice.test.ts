@@ -390,5 +390,13 @@ describe("画面の表記", () => {
 				values: ["up", "range"],
 			}),
 		).toBe("トレンド判定が 上昇・レンジ のどれか");
+		expect(
+			conditionScreenText({
+				type: "rsi",
+				period: 14,
+				threshold: 30,
+				direction: "below",
+			}),
+		).toBe("RSI 14 本が 30 以下");
 	});
 });
