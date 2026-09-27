@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { BacktestOrder } from "@trading-studio/core";
-import { orderKind } from "./OrderViews";
+import { exitBadge } from "./OrderViews";
 
 const sell = (reason: string): BacktestOrder => ({
 	id: "o2",
@@ -20,32 +20,75 @@ const sell = (reason: string): BacktestOrder => ({
 	pnl: -2184,
 });
 
-describe("売りのきっかけ", () => {
-	test("グループ名ではなく、成り立った条件の名前で出す", () => {
+describe("売りのバッジ", () => {
+	test("グループ名と、成り立った条件の名前を出す", () => {
 		expect(
-			orderKind(
+			exitBadge({
+				...sell(
+					"短期EMA(12) 12,470,000 が長期EMA(48) 12,480,000 を下抜け。保有中の 0.020 BTC を売却（利確の条件）",
+				),
+				exitKind: "takeProfit",
+			}),
+		).toEqual({ kind: "takeProfit", text: "利確: EMA12/48下抜け" });
+		expect(
+			exitBadge({
+				...sell(
+					"終値 10,300,000 が直近 24 本の最高値 10,250,000 を上抜け。現在値 10,300,000 は買値 10,000,000 から +3.0%（+2% 以上）。保有中の 0.010 BTC を売却（利確の条件）",
+				),
+				exitKind: "takeProfit",
+			})?.text,
+		).toBe("利確: 24本の高値上抜け・+2%");
+	});
+
+	test("条件の種類ごとの名前", () => {
+		const text = (why: string) =>
+			exitBadge({
+				...sell(`${why}。保有中の 0.010 BTC を売却（損切りの条件）`),
+				exitKind: "stopLoss",
+			})?.text;
+		expect(text("RSI(14) 72.3 が 70 以上")).toBe("損切り: RSI14 70以上");
+		expect(text("終値 10,000,000 が EMA(50) 10,100,000 より下")).toBe(
+			"損切り: EMA50より下",
+		);
+		expect(
+			text(
+				"終値 10,000,000 がボリンジャーバンド(20本・2σ)の下限 10,100,000 以下",
+			),
+		).toBe("損切り: BB20/2σ下限以下");
+		expect(text("トレンド判定が下降（下降・横ばいのどれか）")).toBe(
+			"損切り: トレンド下降",
+		);
+		expect(
+			text(
+				"現在値 9,700,000 は買ってからの最高値 10,000,000 から −3.0%（−3% 以上）",
+			),
+		).toBe("損切り: 最高値−3%");
+		expect(
+			text("現在値 9,800,000 は買値 10,000,000 から −2.0%（−2% 以上）"),
+		).toBe("損切り: −2%");
+		expect(text("買ってから 48 本経過（48 本以上）")).toBe("損切り: 48本保有");
+	});
+
+	test("複数のロットを売った判断では、自分のロットの条件だけを出す", () => {
+		const reason =
+			"現在値 10,300,000 は買値 10,000,000 から +3.0%（+2% 以上）。買値 10,000,000 のロット 0.010 BTC を売却（利確の条件）。現在値 10,300,000 は買値 10,600,000 から −2.8%（−2% 以上）。買値 10,600,000 のロット 0.010 BTC を売却（損切りの条件）";
+		expect(
+			exitBadge({ ...sell(reason), lotPrice: 10_600_000, exitKind: "stopLoss" })
+				?.text,
+		).toBe("損切り: −2%");
+	});
+
+	test("グループが分からない過去の売りは条件名だけ出す", () => {
+		expect(
+			exitBadge(
 				sell(
 					"短期EMA(12) 12,470,000 が長期EMA(48) 12,480,000 を下抜け。保有中の 0.020 BTC を売却（利確の条件）",
 				),
 			),
-		).toBe("EMA12/48下抜け");
-		expect(
-			orderKind(
-				sell(
-					"現在値 9,800,000 は買値 10,000,000 から −2.0%（−2% 以上）。保有中の 0.020 BTC を売却（損切りの条件）",
-				),
-			),
-		).toBe("−2%");
-		expect(
-			orderKind(
-				sell(
-					"終値 10,300,000 が直近 24 本の最高値 10,250,000 を上抜け。現在値 10,300,000 は買値 10,000,000 から +3.0%（+2% 以上）。保有中の 0.010 BTC を売却（利確の条件）",
-				),
-			),
-		).toBe("24本の高値上抜け・+2%");
+		).toEqual({ kind: null, text: "EMA12/48下抜け" });
 	});
 
 	test("買いには付けない", () => {
-		expect(orderKind({ ...sell("買い"), side: "buy" })).toBeNull();
+		expect(exitBadge({ ...sell("買い"), side: "buy" })).toBeNull();
 	});
 });

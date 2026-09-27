@@ -2,6 +2,7 @@
 
 import type {
 	DecisionLog,
+	ExitKind,
 	JsonValue,
 	Lot,
 	Position,
@@ -20,6 +21,8 @@ export type StoredOrder = TradeOrder & {
 	strategyName: string;
 	/** 売りが売るロットの買値（買いの約定価格）。買い・ロットが分からない売りは null */
 	lotPrice: number | null;
+	/** 売りを出した条件のグループ。買い・読めない過去の売りは null */
+	exitKind: ExitKind | null;
 };
 
 export type OrderFilter = {

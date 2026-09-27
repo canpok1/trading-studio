@@ -385,6 +385,7 @@ describe("売り", () => {
 				type: "market",
 				quantity: 2_000_000,
 				lotId: "b1",
+				exitKind: "takeProfit",
 			},
 		]);
 		expect(out.note).toContain("保有中の 0.020 BTC を売却（利確の条件）");
@@ -874,6 +875,7 @@ describe("複数ポジション", () => {
 				type: "market",
 				quantity: 1_000_000,
 				lotId: "b1",
+				exitKind: "stopLoss",
 			},
 		]);
 		expect(out.note).toContain(

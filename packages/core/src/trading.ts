@@ -6,6 +6,7 @@ import { feeYen, notionalYen } from "./money";
 import type { Strategy, StrategyOutput } from "./strategy";
 import type {
 	Candle,
+	ExitKind,
 	JsonValue,
 	Judgment,
 	Lot,
@@ -44,18 +45,64 @@ export type TradeOrder = {
 	pairId: string | null;
 	/** 売りの約定で確定した往復の損益（手数料込み） */
 	pnl: number | null;
+	/** 売りを出した条件のグループ。買いは null。記録を足す前の注文には無い（inferExitKind で理由から読む） */
+	exitKind?: ExitKind | null;
 };
 
-/** 売りに、売るロット（対応する買い）の約定価格を lotPrice として添える。買いと、ロットが分からない売りは null */
-export function withLotPrices<T extends TradeOrder>(
+/**
+ * 売りに、売るロット（対応する買い）の約定価格を lotPrice として、売りを出した条件のグループを exitKind として添える。
+ * 買いと、ロットが分からない売りの lotPrice は null。exitKind は inferExitKind のとおり
+ */
+export function withSellDetails<T extends TradeOrder>(
 	orders: readonly T[],
-): (T & { lotPrice: number | null })[] {
+): (T & { lotPrice: number | null; exitKind: ExitKind | null })[] {
 	const price = new Map(orders.map((o) => [o.id, o.fillPrice]));
-	return orders.map((o) => ({
-		...o,
-		lotPrice:
-			o.side === "sell" && o.pairId ? (price.get(o.pairId) ?? null) : null,
-	}));
+	return orders.map((o) => {
+		const lotPrice =
+			o.side === "sell" && o.pairId ? (price.get(o.pairId) ?? null) : null;
+		return { ...o, lotPrice, exitKind: inferExitKind(o, lotPrice) };
+	});
+}
+
+/** 判断の理由のうち、ロットの売却を述べる文（「…を売却（損切りの条件）」） */
+const SELL_SENTENCE = /を売却（(損切り|利確)の条件）$/;
+
+/**
+ * 判断の理由から、この売りの部分を文の配列で取り出す。成り立った条件の文が続き、最後が売却の文。
+ * 1回の判断で複数のロットを売った理由は、売るロットの買値（lotPrice）で自分の部分を選ぶ。1つに決まらなければ null
+ */
+export function sellReasonPart(
+	reason: string,
+	lotPrice: number | null,
+): string[] | null {
+	const parts: string[][] = [];
+	let current: string[] = [];
+	for (const s of reason.split("。")) {
+		current.push(s);
+		if (SELL_SENTENCE.test(s)) {
+			parts.push(current);
+			current = [];
+		}
+	}
+	const mine =
+		parts.length === 1 || lotPrice === null
+			? parts
+			: parts.filter((p) =>
+					p.at(-1)?.includes(`買値 ${formatYen(lotPrice)} のロット`),
+				);
+	return mine.length === 1 ? (mine[0] as string[]) : null;
+}
+
+/** 売りを出した条件のグループ。記録があればそれを、記録の無い過去の注文は判断の理由（sellReasonPart）から読む。読めなければ null */
+export function inferExitKind(
+	order: Pick<TradeOrder, "side" | "reason" | "exitKind">,
+	lotPrice: number | null,
+): ExitKind | null {
+	if (order.side !== "sell") return null;
+	if (order.exitKind != null) return order.exitKind;
+	const last = sellReasonPart(order.reason, lotPrice)?.at(-1);
+	if (last === undefined) return null;
+	return last.endsWith("（損切りの条件）") ? "stopLoss" : "takeProfit";
 }
 
 /** 判断の記録。評価のたびに1件 */
@@ -527,6 +574,7 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 			// 売りは売るロット（買いの注文）と対応づける
 			pairId: order.lotId ?? null,
 			pnl: null,
+			exitKind: intent.side === "sell" ? (intent.exitKind ?? null) : null,
 		};
 		changed.push(record);
 		open.push({ order, record });
