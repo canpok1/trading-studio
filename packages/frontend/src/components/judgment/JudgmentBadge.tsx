@@ -3,7 +3,7 @@ import type {
 	Judge,
 	JudgmentValue,
 } from "@trading-studio/core";
-import { classify, JUDGE_LABELS } from "@trading-studio/core";
+import { classify, JUDGE_LABELS, SCORE_RANGES } from "@trading-studio/core";
 import type { Shape } from "./judgment-style";
 import { valueStyle } from "./judgment-style";
 
@@ -103,7 +103,7 @@ export function ScoreChip({
 	);
 }
 
-/** 0〜100 の帯をしきい値ごとに判定の色で塗り、平均点の位置に印を付ける */
+/** 点数の範囲の帯をしきい値ごとに判定の色で塗り、平均点の位置に印を付ける */
 export function ZoneBar({
 	judge,
 	rule,
@@ -114,30 +114,32 @@ export function ZoneBar({
 	score: number | null;
 }) {
 	const t = rule.thresholds;
+	const { min, max } = SCORE_RANGES[judge];
+	const pct = (v: number) => ((v - min) / (max - min)) * 100;
 	const zones: [string, number, number][] =
 		judge === "trend"
 			? [
-					["down", 0, t.trend.down],
+					["down", min, t.trend.down],
 					["range", t.trend.down, t.trend.up],
-					["up", t.trend.up, 100],
+					["up", t.trend.up, max],
 				]
 			: judge === "risk"
 				? [
-						["normal", 0, t.risk.caution],
+						["normal", min, t.risk.caution],
 						["caution", t.risk.caution, t.risk.crisis],
-						["crisis", t.risk.crisis, 100],
+						["crisis", t.risk.crisis, max],
 					]
 				: [
-						["-2", 0, t.sentiment.minus2],
+						["-2", min, t.sentiment.minus2],
 						["-1", t.sentiment.minus2, t.sentiment.minus1],
 						["0", t.sentiment.minus1, t.sentiment.plus1],
 						["+1", t.sentiment.plus1, t.sentiment.plus2],
-						["+2", t.sentiment.plus2, 100],
+						["+2", t.sentiment.plus2, max],
 					];
 	const gradient = zones
 		.map(
 			([v, a, b]) =>
-				`var(${valueStyle(judge, v as JudgmentValue).solid}) ${a}% ${b}%`,
+				`var(${valueStyle(judge, v as JudgmentValue).solid}) ${pct(a)}% ${pct(b)}%`,
 		)
 		.join(",");
 	return (
@@ -149,7 +151,7 @@ export function ZoneBar({
 			{score !== null && (
 				<i
 					className="absolute -top-1 -ml-0.5 h-4 w-1 rounded-sm bg-text shadow-[0_0_0_2px_var(--color-surface)]"
-					style={{ left: `${score}%` }}
+					style={{ left: `${pct(score)}%` }}
 				/>
 			)}
 		</div>

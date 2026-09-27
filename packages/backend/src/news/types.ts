@@ -42,6 +42,8 @@ export type NewsScore = {
 	scoredAt: number | null;
 	criteriaVersion: number | null;
 	model: string | null;
+	/** 採点したアプリのバージョン（ビルド日時）。開発版と記録前の採点は null */
+	appBuiltAt: number | null;
 	/** 最後の失敗の理由 */
 	error: string | null;
 	/** 次に自動で再試行する時刻 */

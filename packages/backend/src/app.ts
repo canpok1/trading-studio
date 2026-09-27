@@ -19,6 +19,8 @@ import type { TradingService } from "./trading/types";
 
 export type AppDeps = {
 	isDbReachable: () => boolean;
+	/** アプリのバージョン（ビルド日時）。開発版は null */
+	appBuiltAt: number | null;
 	marketData: MarketDataService;
 	market: MarketService;
 	strategies: StrategyService;
@@ -33,6 +35,7 @@ export type AppDeps = {
 // frontend は Hono RPC でこの型を使う。Bun 固有の API はここに持ち込まない（frontend の型チェックに Bun の型を入れないため）
 export function createApp({
 	isDbReachable,
+	appBuiltAt,
 	marketData,
 	market,
 	strategies,
@@ -50,6 +53,7 @@ export function createApp({
 				db: isDbReachable() ? ("ok" as const) : ("error" as const),
 			}),
 		)
+		.get("/version", (c) => c.json({ builtAt: appBuiltAt }))
 		.route("/data", marketDataRoutes(marketData))
 		.route("/market", marketRoutes(market))
 		.route(

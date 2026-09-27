@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router";
 import { useTradingStatus } from "../lib/trading";
+import { AppVersion } from "./AppVersion";
 import {
 	AiIcon,
 	BacktestIcon,
@@ -101,6 +102,7 @@ export function Layout({ badges = {} }: { badges?: Record<string, boolean> }) {
 						</NavLink>
 					);
 				})}
+				<AppVersion className="mt-auto hidden px-2.5 lg:block" />
 			</nav>
 			<main className="min-w-0 flex-1 pb-[calc(88px+env(safe-area-inset-bottom))] lg:pb-8">
 				<TradingBand />

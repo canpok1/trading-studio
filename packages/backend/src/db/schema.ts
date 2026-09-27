@@ -171,7 +171,7 @@ export const newsScores = sqliteTable(
 			.references(() => news.id),
 		/** done: 採点済み / retry: 再試行を待っている / failed: 採点に失敗 / skipped: 古いので採点しない */
 		status: text("status").notNull(),
-		/** 観点ごとの点数（0〜100）。関係なしは null */
+		/** 観点ごとの点数（trend・sentiment は -100〜100 で 0 が中立、risk は 0〜100）。関係なしは null */
 		trend: integer("trend"),
 		risk: integer("risk"),
 		sentiment: integer("sentiment"),
@@ -180,6 +180,8 @@ export const newsScores = sqliteTable(
 		scoredAt: integer("scored_at"),
 		criteriaVersion: integer("criteria_version"),
 		model: text("model"),
+		/** 採点したアプリのバージョン（ビルド日時）。開発版と記録前の採点は null */
+		appBuiltAt: integer("app_built_at"),
 		/** 最後の失敗の理由 */
 		error: text("error"),
 		/** 失敗した回数（手動の再試行で 0 に戻す） */

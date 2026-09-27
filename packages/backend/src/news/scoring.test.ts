@@ -43,19 +43,22 @@ describe("プロンプト", () => {
 	test("応答の検証", () => {
 		expect(
 			parseScoreResponse({
-				trend: 0,
+				trend: -100,
 				risk: null,
 				sentiment: 100,
 				comment: " 理由 ",
 			}),
 		).toEqual({
-			scores: { trend: 0, risk: null, sentiment: 100 },
+			scores: { trend: -100, risk: null, sentiment: 100 },
 			comment: "理由",
 		});
 		for (const bad of [
 			null,
 			[],
 			{ trend: 101, risk: null, sentiment: 1, comment: "c" },
+			{ trend: -101, risk: null, sentiment: 1, comment: "c" },
+			{ trend: 1, risk: null, sentiment: -101, comment: "c" },
+			{ trend: 1, risk: -1, sentiment: 1, comment: "c" },
 			{ trend: 50.5, risk: null, sentiment: 1, comment: "c" },
 			{ trend: "50", risk: null, sentiment: 1, comment: "c" },
 			{ risk: null, sentiment: 1, comment: "c" },
@@ -65,6 +68,8 @@ describe("プロンプト", () => {
 		}
 	});
 });
+
+const BUILT_AT = Date.UTC(2026, 8, 27, 0, 10);
 
 function setup(opts: { key?: boolean } = {}) {
 	let clock = T0;
@@ -96,6 +101,7 @@ function setup(opts: { key?: boolean } = {}) {
 		repo,
 		model,
 		rule: () => repo.aggregationRule(),
+		appBuiltAt: BUILT_AT,
 		now: () => clock,
 		minIntervalMs: 0,
 	});
@@ -141,7 +147,7 @@ function setup(opts: { key?: boolean } = {}) {
 }
 
 describe("採点", () => {
-	test("新着を1件ずつ採点し、採点時刻・版・モデルを記録する", async () => {
+	test("新着を1件ずつ採点し、採点時刻・版・モデル・アプリのバージョンを記録する", async () => {
 		const t = setup();
 		const a = t.addNews("a");
 		const b = t.addNews("b");
@@ -153,6 +159,7 @@ describe("採点", () => {
 			scoredAt: T0 + 1000,
 			criteriaVersion: 1,
 			model: DEFAULT_SCORING_MODEL,
+			appBuiltAt: BUILT_AT,
 		});
 		expect(t.repo.getScore(b)).toBeNull();
 		await t.at(T0 + 2000);
@@ -183,7 +190,7 @@ describe("採点", () => {
 			stoppedSince: T0,
 		});
 		expect(t.service.status().error).toContain(
-			"trend が 0〜100 の整数か null でない",
+			"trend が -100〜100 の整数か null でない",
 		);
 		// 再試行の時刻の前は採点しない
 		await t.at(time + 1000);

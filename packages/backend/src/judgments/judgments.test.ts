@@ -32,7 +32,13 @@ function setup() {
 		t.scoreRepo.saveScore(
 			id,
 			{ scores: { trend, risk: null, sentiment: null }, comment: "c" },
-			{ scoredAt: at, criteriaVersion: 1, model: "m", attempts: 0 },
+			{
+				scoredAt: at,
+				criteriaVersion: 1,
+				model: "m",
+				appBuiltAt: null,
+				attempts: 0,
+			},
 		);
 		return id;
 	};
@@ -55,16 +61,16 @@ const json = (method: string, body: unknown) => ({
 
 test("今の判定と重み", async () => {
 	const t = setup();
-	const a = t.add("a", 0, 80);
-	const b = t.add("b", 6, 20);
-	t.add("old", 30, 0);
+	const a = t.add("a", 0, 60);
+	const b = t.add("b", 6, -60);
+	t.add("old", 30, -100);
 	const r = (await (
 		await t.app.request("/api/judgments/current")
 	).json()) as CurrentJudgment;
 	expect(r).toMatchObject({
 		time: 100 * H,
 		results: {
-			trend: { value: "up", average: 60, count: 2 },
+			trend: { value: "up", average: 20, count: 2 },
 			risk: { value: "normal", average: null, count: 0 },
 		},
 		firstScoredAt: 70 * H,
@@ -75,9 +81,9 @@ test("今の判定と重み", async () => {
 
 test("集計ルールの保存で判定が変わる。試算は保存しない", async () => {
 	const t = setup();
-	t.add("a", 0, 60);
+	t.add("a", 0, 20);
 	const rule = structuredClone(DEFAULT_AGGREGATION_RULE);
-	rule.thresholds.trend.up = 70;
+	rule.thresholds.trend.up = 30;
 	const preview = await t.app.request(
 		"/api/judgments/preview",
 		json("POST", { rule }),
@@ -107,8 +113,8 @@ test("集計ルールの保存で判定が変わる。試算は保存しない",
 
 test("足ごとの判定は足の終わりの時刻で出し、採点の記録が始まる前は null", async () => {
 	const t = setup();
-	t.add("a", 10, 80);
-	t.add("b", 2, 0);
+	t.add("a", 10, 60);
+	t.add("b", 2, -100);
 	const r = (await (
 		await t.app.request(
 			`/api/judgments/series?from=${88 * H}&to=${102 * H}&timeframe=1h`,

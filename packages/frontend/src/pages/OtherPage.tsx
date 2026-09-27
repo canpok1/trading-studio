@@ -1,4 +1,5 @@
 import { Link } from "react-router";
+import { AppVersion } from "../components/AppVersion";
 import { Page } from "../components/Page";
 
 export function OtherPage() {
@@ -54,6 +55,7 @@ export function OtherPage() {
 					›
 				</Link>
 			</div>
+			<AppVersion className="block text-center" />
 		</Page>
 	);
 }

@@ -3,6 +3,7 @@ import {
 	formatDate,
 	formatDateTime,
 	formatDateWeekday,
+	formatVersion,
 	fromDateInputValue,
 	toDateInputValue,
 } from "./format";
@@ -13,6 +14,11 @@ describe("日時の表示", () => {
 
 	test("JST の 2026/09/26 13:14:15 の形", () => {
 		expect(formatDateTime(t)).toBe("2026/09/26 13:14:15");
+	});
+
+	test("バージョンは Ver 2026-09-26 13:14 の形。無ければ指定の文言", () => {
+		expect(formatVersion(t, "開発版")).toBe("Ver 2026-09-26 13:14");
+		expect(formatVersion(null, "記録なし")).toBe("Ver 記録なし");
 	});
 
 	test("日付だけなら 2026/09/26", () => {

@@ -35,6 +35,7 @@ export function createScorer({
 	repo,
 	model,
 	rule,
+	appBuiltAt = null,
 	now = Date.now,
 	minIntervalMs = MIN_INTERVAL_MS,
 	retryDelaysMs = RETRY_DELAYS_MS,
@@ -43,6 +44,8 @@ export function createScorer({
 	model: ScoreModel;
 	/** 集計の期間より古い記事は採点しない（集計に入らないため） */
 	rule: () => AggregationRule;
+	/** 動いているアプリのバージョン（ビルド日時）。採点ごとに記録する。開発版は null */
+	appBuiltAt?: number | null;
 	now?: () => number;
 	/** 採点の問い合わせの最短の間隔 */
 	minIntervalMs?: number;
@@ -78,6 +81,7 @@ export function createScorer({
 				scoredAt: now(),
 				criteriaVersion: criteria.version,
 				model: modelId,
+				appBuiltAt,
 				attempts: next.attempts,
 			});
 			failing = null;
