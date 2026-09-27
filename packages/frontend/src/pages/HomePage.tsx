@@ -29,6 +29,7 @@ import type { RsiLine } from "../components/chart/PriceChart";
 import { PriceChart } from "../components/chart/PriceChart";
 import { AutoTradingCard } from "../components/home/AutoTradingCard";
 import { JudgmentBadge } from "../components/judgment/JudgmentBadge";
+import { Modal } from "../components/Modal";
 import { EmptyState, ErrorState, Skeleton } from "../components/States";
 import {
 	MODE_LABELS,
@@ -36,6 +37,7 @@ import {
 	TradeOrderSheet,
 } from "../components/trading/TradeViews";
 import { Button, Segmented } from "../components/ui";
+import { formatDateTime } from "../format";
 import { useChartBg } from "../lib/chart-bg";
 import {
 	changePercent,
@@ -193,6 +195,13 @@ function HomeBody({
 }) {
 	const api = useApi();
 	const { status: trading, refresh: refreshTrading } = useTradingStatus();
+	// 状態は定期的に取り直すので、買値が変わったときだけ線を引き直す
+	const entryKey =
+		trading?.account.lots.map((l) => l.entryPrice).join(",") ?? "";
+	const entryPrices = useMemo(
+		() => (entryKey ? entryKey.split(",").map(Number) : []),
+		[entryKey],
+	);
 	const mode = trading?.mode ?? "paper";
 	const { orders } = useTradingOrders(
 		{ mode, limit: MARKER_ORDERS },
@@ -417,6 +426,7 @@ function HomeBody({
 					initialSpanMs={HOME_INITIAL_SPAN_MS}
 					viewKey={bars?.key ?? ""}
 					currentPrice={latest?.price ?? null}
+					entryPrices={entryPrices}
 					judgments={barJudgments}
 					markers={markers}
 					selectedId={selectedOrder}
@@ -503,7 +513,7 @@ function toMarkers(
 	});
 }
 
-/** 保有・平均取得・評価損益。評価損益は手数料を含めず、今の価格で評価する */
+/** 保有・平均取得・評価損益。評価損益は手数料を含めず、今の価格で評価する。押すとロットごとの一覧を出す */
 function PositionCard({
 	account,
 	price,
@@ -511,27 +521,73 @@ function PositionCard({
 	account: AutoTradingStatus["account"];
 	price: number | null;
 }) {
+	const [open, setOpen] = useState(false);
 	const { quantity, entryPrice } = account.position;
-	const pnl =
-		quantity > 0 && entryPrice !== null && price !== null
-			? Math.round(((price - entryPrice) * quantity) / 100_000_000)
+	const lots = account.lots;
+	const unrealized = (q: number, entry: number | null) =>
+		q > 0 && entry !== null && price !== null
+			? Math.round(((price - entry) * q) / 100_000_000)
 			: null;
+	const pnl = unrealized(quantity, entryPrice);
+	const tone = (v: number | null) =>
+		v === null ? "" : v >= 0 ? "text-profit" : "text-loss";
 	return (
-		<section
-			aria-label={`${MODE_LABELS[account.mode]}の保有`}
-			className="grid grid-cols-3 gap-2 rounded-xl border border-line bg-surface px-4 py-3.5"
-		>
-			<Stat label="保有" value={`${formatBtc(quantity)}`} />
-			<Stat
-				label="平均取得"
-				value={entryPrice === null ? "—" : formatInt(entryPrice)}
-			/>
-			<Stat
-				label="評価損益"
-				value={pnl === null ? "—" : `${formatSignedInt(pnl)}円`}
-				tone={pnl === null ? "" : pnl >= 0 ? "text-profit" : "text-loss"}
-			/>
-		</section>
+		<>
+			<section
+				aria-label={`${MODE_LABELS[account.mode]}の保有`}
+				className="overflow-hidden rounded-xl border border-line bg-surface"
+			>
+				<button
+					type="button"
+					disabled={lots.length === 0}
+					onClick={() => setOpen(true)}
+					className="grid w-full grid-cols-3 gap-2 px-4 py-3.5 text-left enabled:hover:bg-surface-2"
+				>
+					<Stat
+						label="保有"
+						value={`${formatBtc(quantity)}`}
+						sub={lots.length > 0 ? `${lots.length} ロット ›` : undefined}
+					/>
+					<Stat
+						label="平均取得"
+						value={entryPrice === null ? "—" : formatInt(entryPrice)}
+					/>
+					<Stat
+						label="評価損益"
+						value={pnl === null ? "—" : `${formatSignedInt(pnl)}円`}
+						tone={tone(pnl)}
+					/>
+				</button>
+			</section>
+			{open && (
+				<Modal title="保有中のロット" onClose={() => setOpen(false)}>
+					<div className="overflow-hidden rounded-xl border border-line">
+						{lots.map((l) => {
+							const v = unrealized(l.quantity, l.entryPrice);
+							return (
+								<div
+									key={l.id}
+									className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-line bg-surface px-3.5 py-3 last:border-b-0"
+								>
+									<span className="flex min-w-0 flex-col gap-0.5">
+										<span className="num text-sm font-semibold">
+											買値 {formatInt(l.entryPrice)} · {formatBtc(l.quantity)}
+										</span>
+										<span className="num text-xs text-text-2">
+											{formatDateTime(l.openedAt)}
+										</span>
+									</span>
+									<span className={`num text-[13px] font-semibold ${tone(v)}`}>
+										{v === null ? "—" : `${formatSignedInt(v)}円`}
+									</span>
+								</div>
+							);
+						})}
+					</div>
+					<Button onClick={() => setOpen(false)}>閉じる</Button>
+				</Modal>
+			)}
+		</>
 	);
 }
 

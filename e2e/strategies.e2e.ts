@@ -214,6 +214,36 @@ test("買いの注文方法を指値に変えて値幅と本数を保存でき�
 	).toBeDisabled();
 });
 
+test("最大ポジション数と指値の行を足して保存でき、逆順の % は保存できない", async ({
+	page,
+}, info) => {
+	await page.goto("/strategies");
+	await createFromTemplate(
+		page,
+		`複数ポジション ${info.project.name}`,
+		/^レンジ逆張り/,
+	);
+	await page.getByLabel("最大ポジション数").fill("3");
+	const buy = page.getByRole("region", { name: "買い注文する条件" });
+	await buy.getByRole("button", { name: "＋ 指値を追加" }).click();
+	const second = buy.getByLabel("2件目の指値を現在値から下げる %");
+	await expect(second).toHaveValue("0.6");
+	await second.fill("1");
+	await page.getByRole("button", { name: "保存", exact: true }).click();
+	await expect(page.getByRole("status")).toHaveText("保存した");
+
+	await page.reload();
+	await expect(page.getByLabel("最大ポジション数")).toHaveValue("3");
+	await expect(second).toHaveValue("1");
+
+	await second.fill("0.05");
+	await expect(second).toHaveAttribute("aria-invalid", "true");
+	await expect(buy).toContainText("上の行（0.1%）より大きくする");
+	await expect(
+		page.getByRole("button", { name: "入力を直すと保存できる" }),
+	).toBeDisabled();
+});
+
 test("1日の損失上限を変えて保存でき、0 円は保存できない", async ({
 	page,
 }, info) => {

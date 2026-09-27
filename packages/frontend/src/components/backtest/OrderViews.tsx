@@ -91,13 +91,22 @@ function SideText({ order, long }: { order: BacktestOrder; long?: boolean }) {
 	);
 }
 
+/** 一覧に出す注文。売りには売るロットの買値（lotPrice）が添えられていることがある */
+type ListedOrder = BacktestOrder & { lotPrice?: number | null };
+
+/** 売りが売るロットの説明。ロットの買値が分からなければ空 */
+const lotText = (o: ListedOrder) =>
+	o.side === "sell" && o.lotPrice != null
+		? ` · 買値 ${formatInt(o.lotPrice)} のロット`
+		: "";
+
 export function OrderRow({
 	order: o,
 	selected,
 	onClick,
 	tag,
 }: {
-	order: BacktestOrder;
+	order: ListedOrder;
 	selected: boolean;
 	onClick: () => void;
 	/** 損益が無い行の右端に、状態の代わりに出すもの */
@@ -123,6 +132,7 @@ export function OrderRow({
 				<span className="num text-xs text-text-2">
 					{formatDateTime(orderTime(o))}
 					{price !== null ? ` · @${formatInt(price)}` : ""}
+					{lotText(o)}
 				</span>
 			</span>
 			<span className="num text-right text-[13px] font-semibold">
@@ -148,7 +158,7 @@ export function OrderSheet({
 	onPair,
 	children,
 }: {
-	order: BacktestOrder;
+	order: ListedOrder;
 	onClose: () => void;
 	onPair: (id: string) => void;
 	/** 戦略の理由の後に足す欄 */
@@ -168,6 +178,7 @@ export function OrderSheet({
 					<span className="num text-xs text-text-2">
 						{formatDateTime(orderTime(o))} ·{" "}
 						{o.type === "limit" ? "指値" : "成行"}
+						{lotText(o)}
 					</span>
 				</div>
 			</div>

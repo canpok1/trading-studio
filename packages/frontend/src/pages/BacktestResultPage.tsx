@@ -171,6 +171,7 @@ function RunHeader({ run }: { run: BacktestRun }) {
 		`利確: ${groupText(p.takeProfit)}`,
 		`損切り: ${groupText(p.stopLoss)}`,
 		`${formatBtc(p.orderSize)} BTC`,
+		`最大ポジション数 ${p.maxPositions}`,
 		...(run.dailyLossLimitApplied
 			? [`1日の損失上限 ${formatInt(p.dailyLossLimit)}円`]
 			: []),
