@@ -182,6 +182,10 @@ test("仮想注文が出て約定すると、ホームの保有・直近の注�
 	await expect(page.getByRole("region", { name: "口座情報" })).toContainText(
 		"評価損益—",
 	);
+	// 5秒ごとの読み直しを待たずに、総資産と成績がリセット後の値になる
+	await expect(page.getByTestId("account-equity")).toHaveText("500,000円", {
+		timeout: 2_000,
+	});
 	// 過去の記録は残る
 	await expect(
 		page.getByRole("region", { name: "注文・約定" }).getByRole("button"),
