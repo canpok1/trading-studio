@@ -46,6 +46,29 @@ test("各画面へ移動できる", async ({ page, isMobile }) => {
 	}
 });
 
+test("PC のサイドメニューを畳め、再読み込み後も保たれる", async ({
+	page,
+	isMobile,
+}) => {
+	test.skip(isMobile, "スマホは下部タブで、畳む操作は無い");
+	await page.goto("/home");
+	const nav = page.getByRole("navigation", { name: "メイン" });
+	const wide = (await nav.boundingBox())?.width ?? 0;
+	await nav.getByRole("button", { name: "サイドメニューを畳む" }).click();
+	await expect
+		.poll(async () => (await nav.boundingBox())?.width ?? 0)
+		.toBeLessThan(wide / 2);
+	await page.reload();
+	await expect(
+		nav.getByRole("button", { name: "サイドメニューを広げる" }),
+	).toBeVisible();
+	// 畳んだままでも移動できる
+	await nav.getByRole("link", { name: "設定", exact: true }).click();
+	await expect(
+		page.getByRole("heading", { level: 1, name: "設定" }),
+	).toBeVisible();
+});
+
 test("旧名「AI判定」の URL はニュース画面へ移る", async ({ page }) => {
 	await page.goto("/ai");
 	await expect(page).toHaveURL(/\/news$/);
