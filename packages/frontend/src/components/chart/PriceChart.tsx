@@ -3,9 +3,11 @@
 import type { Judge } from "@trading-studio/core";
 import {
 	ema,
+	formatRsi,
 	JUDGE_LABELS,
 	JUDGES,
 	JUDGMENT_VALUES,
+	rsi,
 } from "@trading-studio/core";
 import type {
 	IChartApi,
@@ -54,6 +56,8 @@ type Props = {
 	markers?: readonly ChartMarker[];
 	/** 戦略の条件にある EMA の本数。空なら EMA の表示切り替えを出さない */
 	emaPeriods?: readonly number[];
+	/** 戦略の条件にある RSI の本数と、しきい値。空なら RSI の小窓と表示切り替えを出さない */
+	rsiLines?: readonly RsiLine[];
 	selectedId?: string | null;
 	onMarker?: (m: ChartMarker) => void;
 	/** 最初に見せる長さ（最新から遡るミリ秒）。null なら全体を収める */
@@ -87,6 +91,14 @@ type Props = {
 
 const EMA_VARS = ["--color-ema1", "--color-ema2"] as const;
 const emaVar = (j: number) => EMA_VARS[j % 2] as string;
+const RSI_VARS = ["--color-rsi1", "--color-rsi2"] as const;
+const rsiVar = (j: number) => RSI_VARS[j % 2] as string;
+
+export type RsiLine = { period: number; thresholds: readonly number[] };
+
+/** RSI の小窓の高さの割合。価格 : RSI = 3 : 1 */
+const PRICE_STRETCH = 3;
+const RSI_STRETCH = 1;
 
 // Tailwind のクラスはキャンバスに効かないので、テーマの CSS 変数を読んで渡す
 function cssVar(name: string): string {
@@ -146,6 +158,7 @@ const ICON_BTN =
 
 const NO_MARKERS: readonly ChartMarker[] = [];
 const NO_PERIODS: readonly number[] = [];
+const NO_RSI: readonly RsiLine[] = [];
 
 /** チャートの高さの最小値（px）。下の className の h-[260px] と揃える */
 const MIN_CHART_PX = 260;
@@ -157,6 +170,7 @@ export function PriceChart({
 	bars,
 	markers = NO_MARKERS,
 	emaPeriods = NO_PERIODS,
+	rsiLines = NO_RSI,
 	selectedId = null,
 	onMarker,
 	initialSpanMs = null,
@@ -178,6 +192,7 @@ export function PriceChart({
 		price: ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
 		marks: ISeriesMarkersPluginApi<Time>;
 		emas: ISeriesApi<"Line">[];
+		rsis: ISeriesApi<"Line">[];
 		layer: JudgeLayer;
 		/** 「現在」の線と、それを付けた系列 */
 		now: {
@@ -188,6 +203,7 @@ export function PriceChart({
 	// 最新の足が画面に入っているか。入っていれば「最新へ」のボタンを押せなくする
 	const [atLatest, setAtLatest] = useState(true);
 	const [emaOn, setEmaOn] = useState(true);
+	const [rsiOn, setRsiOn] = useState(true);
 	const [style, setStyle] = useChartStyle();
 	const [cursor, setCursor] = useState<number | null>(null);
 	const [themeTick, setThemeTick] = useState(0);
@@ -204,6 +220,16 @@ export function PriceChart({
 		return emaPeriods.map((n) => ema(closes, n));
 	}, [bars, emaKey]);
 	const showEma = emaOn && emaPeriods.length > 0;
+	// 本数としきい値の組が同じなら計算し直さない
+	const rsiKey = rsiLines
+		.map((l) => `${l.period}:${l.thresholds.join("/")}`)
+		.join(",");
+	// biome-ignore lint/correctness/useExhaustiveDependencies: rsiLines の中身は rsiKey で見る
+	const rsiValues = useMemo(() => {
+		const closes = bars.map((b) => b.close);
+		return rsiLines.map((l) => rsi(closes, l.period));
+	}, [bars, rsiKey]);
+	const showRsi = rsiOn && rsiLines.length > 0;
 	// 4本値を保存する前のバックテスト結果は終値しか無いので、線でしか描けない
 	const canCandle = useMemo(() => hasOhlc(bars), [bars]);
 	const candle = style === "candle" && canCandle;
@@ -268,6 +294,7 @@ export function PriceChart({
 			price: line,
 			marks,
 			emas: [],
+			rsis: [],
 			layer,
 			now: null,
 		};
@@ -401,6 +428,61 @@ export function PriceChart({
 			c.emas.push(s);
 		});
 	}, [slots, emaValues, showEma]);
+
+	// RSI の小窓。価格の下の別の区画に 0〜100 で描き、条件のしきい値を点線で引く
+	// biome-ignore lint/correctness/useExhaustiveDependencies: rsiLines の中身は rsiKey で見る
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		for (const s of c.rsis) c.chart.removeSeries(s);
+		c.rsis = [];
+		if (!showRsi) return;
+		const thresholds = [...new Set(rsiLines.flatMap((l) => l.thresholds))];
+		rsiValues.forEach((values, j) => {
+			const s = c.chart.addSeries(
+				LineSeries,
+				{
+					color: cssVar(rsiVar(j)),
+					lineWidth: 1,
+					priceLineVisible: false,
+					lastValueVisible: false,
+					crosshairMarkerVisible: false,
+					autoscaleInfoProvider: () => ({
+						priceRange: { minValue: 0, maxValue: 100 },
+					}),
+				},
+				1,
+			);
+			s.setData(
+				slots.map((slot) => {
+					const time = toChartTime(slot.time) as UTCTimestamp;
+					const v =
+						slot.bar === null ? Number.NaN : (values[slot.bar] as number);
+					return Number.isNaN(v) ? { time } : { time, value: v };
+				}),
+			);
+			c.rsis.push(s);
+		});
+		const first = c.rsis[0];
+		if (first) {
+			// 0〜100 の外に目盛りが出ないよう、余白を小さくする
+			first
+				.priceScale()
+				.applyOptions({ scaleMargins: { top: 0.05, bottom: 0.05 } });
+			for (const t of thresholds) {
+				first.createPriceLine({
+					price: t,
+					color: cssVar("--color-text-2"),
+					lineWidth: 1,
+					lineStyle: LineStyle.Dashed,
+					axisLabelVisible: true,
+				});
+			}
+		}
+		const panes = c.chart.panes();
+		panes[0]?.setStretchFactor(PRICE_STRETCH);
+		panes[1]?.setStretchFactor(RSI_STRETCH);
+	}, [slots, rsiValues, showRsi, rsiKey, themeTick]);
 
 	// 注文のアイコン。themeTick は色を読み直すため
 	// biome-ignore lint/correctness/useExhaustiveDependencies: themeTick の変化で色を読み直し、marksTick の変化で置き直す
@@ -569,6 +651,16 @@ export function PriceChart({
 						EMA
 					</button>
 				)}
+				{rsiLines.length > 0 && (
+					<button
+						type="button"
+						aria-pressed={rsiOn}
+						onClick={() => setRsiOn((v) => !v)}
+						className={CHIP}
+					>
+						RSI
+					</button>
+				)}
 			</div>
 		</>
 	);
@@ -628,6 +720,24 @@ export function PriceChart({
 										</span>
 									);
 								})}
+							{showRsi &&
+								rsiLines.map((l, j) => {
+									const v = rsiValues[j]?.[shown as number];
+									return (
+										<span
+											key={l.period}
+											data-testid={`chart-rsi-${l.period}`}
+											className="flex items-center gap-1"
+										>
+											<i
+												className="inline-block h-[3px] w-2.5"
+												style={{ background: `var(${rsiVar(j)})` }}
+											/>
+											RSI{l.period}{" "}
+											{v === undefined || Number.isNaN(v) ? "—" : formatRsi(v)}
+										</span>
+									);
+								})}
 						</>
 					)}
 				</div>
@@ -665,9 +775,13 @@ export function PriceChart({
 				ref={box}
 				role="img"
 				aria-label="価格チャート"
-				className={`h-[260px] w-full ${split ? "lg:h-[480px]" : "lg:h-[360px]"}`}
+				className={`w-full ${
+					showRsi
+						? `h-[347px] ${split ? "lg:h-[640px]" : "lg:h-[480px]"}`
+						: `h-[260px] ${split ? "lg:h-[480px]" : "lg:h-[360px]"}`
+				}`}
 			/>
-			{(onMarker || showEma || judgments) && (
+			{(onMarker || showEma || showRsi || judgments) && (
 				<details className="rounded-[10px] border border-line px-3 py-2 text-xs">
 					<summary className="cursor-pointer font-semibold">凡例</summary>
 					<div className="mt-2 flex flex-col gap-2">
@@ -704,6 +818,22 @@ export function PriceChart({
 											style={{ background: `var(${emaVar(j)})` }}
 										/>
 										EMA {n}
+									</span>
+								))}
+							</LegendRow>
+						)}
+						{showRsi && (
+							<LegendRow
+								title="RSI"
+								note="戦略の条件で使う RSI。下の小窓に 0〜100 で描き、点線は条件のしきい値"
+							>
+								{rsiLines.map((l, j) => (
+									<span key={l.period} className="flex items-center gap-1">
+										<i
+											className="inline-block h-[3px] w-3"
+											style={{ background: `var(${rsiVar(j)})` }}
+										/>
+										RSI {l.period}
 									</span>
 								))}
 							</LegendRow>

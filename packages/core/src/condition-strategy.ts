@@ -345,6 +345,28 @@ export function emaPeriods(params: ConditionSet): number[] {
 	return [...set].sort((a, b) => a - b);
 }
 
+/** 戦略が使う RSI の本数ごとの、条件のしきい値（本数・しきい値とも小さい順、重複なし）。チャートの RSI に使う */
+export function rsiLines(
+	params: ConditionSet,
+): { period: number; thresholds: number[] }[] {
+	const map = new Map<number, Set<number>>();
+	for (const key of CONDITION_GROUPS) {
+		for (const c of params[key].conditions) {
+			if (c.type === "rsi") {
+				const set = map.get(c.period) ?? new Set<number>();
+				set.add(c.threshold);
+				map.set(c.period, set);
+			}
+		}
+	}
+	return [...map]
+		.sort(([a], [b]) => a - b)
+		.map(([period, set]) => ({
+			period,
+			thresholds: [...set].sort((a, b) => a - b),
+		}));
+}
+
 /** 戦略が使う判定器（JUDGES の並び、重複なし） */
 export function requiredJudges(params: ConditionSet): Judge[] {
 	const used = new Set<Judge>();
