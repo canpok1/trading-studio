@@ -3,8 +3,10 @@ import type { ConditionSet } from "@trading-studio/core";
 import { strategyTemplate } from "@trading-studio/core";
 import {
 	parseSaved,
+	strategyBb,
 	strategyEma,
 	strategyRsi,
+	validBb,
 	validEma,
 	validRsi,
 } from "./chart-indicators";
@@ -80,15 +82,36 @@ describe("チャートの EMA・RSI の設定", () => {
 	});
 
 	test("保存した値は壊れた項目だけ捨てる", () => {
-		expect(parseSaved(null)).toEqual({ ema: undefined, rsi: undefined });
+		expect(parseSaved(null)).toEqual({
+			ema: undefined,
+			rsi: undefined,
+			bb: undefined,
+		});
 		expect(parseSaved("{")).toEqual({});
 		expect(
 			parseSaved(
 				JSON.stringify({
 					ema: [9, 21],
 					rsi: { period: 0, lower: 1, upper: 2 },
+					bb: { period: 20, sigma: 2.5 },
 				}),
 			),
-		).toEqual({ ema: [9, 21], rsi: undefined });
+		).toEqual({ ema: [9, 21], rsi: undefined, bb: { period: 20, sigma: 2.5 } });
+	});
+
+	test("ボリンジャーバンドは戦略の本数が短い方を使い、σ は 0.1 刻み", () => {
+		expect(strategyBb(base)).toBeNull();
+		expect(
+			strategyBb(
+				withBuy([
+					{ type: "bollinger", period: 30, sigma: 2, band: "lower" },
+					{ type: "bollinger", period: 20, sigma: 2.5, band: "lower" },
+				]),
+			),
+		).toEqual({ period: 20, sigma: 2.5 });
+		expect(validBb({ period: 20, sigma: 2 })).toBe(true);
+		expect(validBb({ period: 20, sigma: 2.05 })).toBe(false);
+		expect(validBb({ period: 1, sigma: 2 })).toBe(false);
+		expect(validBb({ period: 20, sigma: 6 })).toBe(false);
 	});
 });

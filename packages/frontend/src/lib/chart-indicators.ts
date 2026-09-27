@@ -1,8 +1,13 @@
-// チャートに重ねる EMA・RSI の本数。既定は戦略の条件の値で、画面で変えた値はブラウザに保存し、
+// チャートに重ねる EMA・RSI・ボリンジャーバンドの本数。既定は戦略の条件の値で、画面で変えた値はブラウザに保存し、
 // ホームとバックテスト結果で共有する
 
 import type { ConditionSet } from "@trading-studio/core";
-import { emaPeriods, LIMITS, rsiLines } from "@trading-studio/core";
+import {
+	CONDITION_GROUPS,
+	emaPeriods,
+	LIMITS,
+	rsiLines,
+} from "@trading-studio/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 /** EMA の本数（1〜2本、小さい順） */
@@ -10,9 +15,13 @@ export type EmaSetting = number[];
 /** RSI の本数と、点線を引く下・上のしきい値 */
 export type RsiSetting = { period: number; lower: number; upper: number };
 
+/** ボリンジャーバンドの本数と σ */
+export type BbSetting = { period: number; sigma: number };
+
 /** 戦略で使っていないときの値 */
 export const DEFAULT_EMA: EmaSetting = [20, 50];
 export const DEFAULT_RSI: RsiSetting = { period: 14, lower: 30, upper: 70 };
+export const DEFAULT_BB: BbSetting = { period: 20, sigma: 2 };
 
 /** EMA の線は2色なので2本まで */
 export const MAX_EMA_LINES = 2;
@@ -43,6 +52,19 @@ export function validRsi(v: unknown): v is RsiSetting {
 	);
 }
 
+export function validBb(v: unknown): v is BbSetting {
+	if (typeof v !== "object" || v === null) return false;
+	const r = v as Record<string, unknown>;
+	const s = LIMITS.bollingerSigma;
+	return (
+		isIntIn(r.period, LIMITS.bollingerPeriod) &&
+		typeof r.sigma === "number" &&
+		r.sigma >= s.min &&
+		r.sigma <= s.max &&
+		Math.abs(r.sigma * 10 - Math.round(r.sigma * 10)) < 1e-9
+	);
+}
+
 /** 戦略の EMA の本数。使っていなければ null。3本以上あれば短い方から2本 */
 export function strategyEma(params: ConditionSet | null): EmaSetting | null {
 	const ps = params ? emaPeriods(params) : [];
@@ -65,7 +87,19 @@ export function strategyRsi(params: ConditionSet | null): RsiSetting | null {
 		: { period: first.period, lower: DEFAULT_RSI.lower, upper: lo };
 }
 
-type Saved = { ema?: EmaSetting; rsi?: RsiSetting };
+/** 戦略のボリンジャーバンド。使っていなければ null。複数あれば本数が短い方（同じ本数なら σ が小さい方） */
+export function strategyBb(params: ConditionSet | null): BbSetting | null {
+	if (!params) return null;
+	const all = CONDITION_GROUPS.flatMap((k) =>
+		params[k].conditions.flatMap((c) =>
+			c.type === "bollinger" ? [{ period: c.period, sigma: c.sigma }] : [],
+		),
+	);
+	all.sort((a, b) => a.period - b.period || a.sigma - b.sigma);
+	return all[0] ?? null;
+}
+
+type Saved = { ema?: EmaSetting; rsi?: RsiSetting; bb?: BbSetting };
 
 /** 保存した値。壊れている項目は捨てる */
 export function parseSaved(raw: string | null): Saved {
@@ -74,6 +108,7 @@ export function parseSaved(raw: string | null): Saved {
 		return {
 			ema: validEma(v.ema) ? v.ema : undefined,
 			rsi: validRsi(v.rsi) ? v.rsi : undefined,
+			bb: validBb(v.bb) ? v.bb : undefined,
 		};
 	} catch {
 		return {};
@@ -120,10 +155,11 @@ export type IndicatorControl<T> = {
 export type ChartIndicators = {
 	ema: IndicatorControl<EmaSetting>;
 	rsi: IndicatorControl<RsiSetting>;
+	bb: IndicatorControl<BbSetting>;
 };
 
 /**
- * チャートの EMA・RSI の設定。最初は、戦略で使っているか値を保存していれば表示し、そうでなければ隠す。
+ * チャートの EMA・RSI・ボリンジャーバンドの設定。最初は、戦略で使っているか値を保存していれば表示し、そうでなければ隠す。
  * 戦略が変わったら表示の有無を最初の状態へ戻す
  */
 export function useChartIndicators(
@@ -132,14 +168,17 @@ export function useChartIndicators(
 	const [saved, setSaved] = useState<Saved>(readSaved);
 	const sEma = useMemo(() => strategyEma(params), [params]);
 	const sRsi = useMemo(() => strategyRsi(params), [params]);
-	const strategyKey = JSON.stringify([sEma, sRsi]);
+	const sBb = useMemo(() => strategyBb(params), [params]);
+	const strategyKey = JSON.stringify([sEma, sRsi, sBb]);
 	// null は「最初の状態」（戦略で使っているか、値を保存していれば表示）
 	const [emaOn, setEmaOn] = useState<boolean | null>(null);
 	const [rsiOn, setRsiOn] = useState<boolean | null>(null);
+	const [bbOn, setBbOn] = useState<boolean | null>(null);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: 戦略の値が変わったときだけ戻す
 	useEffect(() => {
 		setEmaOn(null);
 		setRsiOn(null);
+		setBbOn(null);
 	}, [strategyKey]);
 
 	const update = useCallback((patch: Saved) => {
@@ -152,6 +191,7 @@ export function useChartIndicators(
 
 	const emaBase = sEma ?? DEFAULT_EMA;
 	const rsiBase = sRsi ?? DEFAULT_RSI;
+	const bbBase = sBb ?? DEFAULT_BB;
 	return {
 		ema: {
 			value: saved.ema ?? emaBase,
@@ -178,6 +218,18 @@ export function useChartIndicators(
 			save: (v) => {
 				update({ rsi: sameValue(v, rsiBase) ? undefined : (v ?? undefined) });
 				setRsiOn(true);
+			},
+		},
+		bb: {
+			value: saved.bb ?? bbBase,
+			base: bbBase,
+			fromStrategy: sBb !== null,
+			custom: saved.bb !== undefined,
+			on: bbOn ?? (sBb !== null || saved.bb !== undefined),
+			setOn: setBbOn,
+			save: (v) => {
+				update({ bb: sameValue(v, bbBase) ? undefined : (v ?? undefined) });
+				setBbOn(true);
 			},
 		},
 	};

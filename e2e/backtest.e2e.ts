@@ -330,3 +330,27 @@ test("RSI の条件を持つ戦略の結果では、チャートの下に RSI �
 	await page.getByText("凡例").click();
 	await expect(page.getByText(/点線はしきい値/)).toBeVisible();
 });
+
+test("ボリンジャーバンドの条件を持つ戦略の結果では、チャートにバンドと値が出る", async ({
+	page,
+	request,
+}, info) => {
+	const name = `BT BB ${info.project.name}`;
+	await prepare(request, name, {
+		...PARAMS,
+		buy: {
+			match: "all",
+			conditions: [{ type: "bollinger", period: 20, sigma: 2, band: "lower" }],
+		},
+	});
+	await choose(page, name, "2026-05-03", "2026-05-10");
+	await page.getByRole("button", { name: "バックテストを実行" }).click();
+	await expect(page).toHaveURL(/\/backtest\/runs\/\d+$/);
+	const toggle = page.getByRole("button", { name: "BB", exact: true });
+	await expect(toggle).toHaveAttribute("aria-pressed", "true");
+	await expect(page.getByTestId("chart-bb")).toHaveText(
+		/^BB20 [\d,]+\/[\d,]+\/[\d,]+$/,
+	);
+	await page.getByText("凡例").click();
+	await expect(page.getByText(/本数と σ は戦略の条件の値/)).toBeVisible();
+});
