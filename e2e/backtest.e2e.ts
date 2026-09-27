@@ -85,7 +85,10 @@ async function prepare(
 
 async function choose(page: Page, strategy: string, from: string, to: string) {
 	await page.goto("/backtest");
-	await page.getByLabel("テンプレート").selectOption({ label: strategy });
+	await page.getByRole("button", { name: "テンプレート読み込み" }).click();
+	const dialog = page.getByRole("dialog", { name: "テンプレート読み込み" });
+	await dialog.getByRole("button", { name: strategy }).click();
+	await expect(dialog).toBeHidden();
 	await page.getByLabel("開始").fill(from);
 	await page.getByLabel("終了").fill(to);
 }
@@ -111,9 +114,7 @@ test("テンプレートから名前を付けて実行すると結果が出て�
 	await expect(page.getByText("1時間足 · 552 本")).toBeVisible();
 	// テンプレートから変えて試す
 	await page.getByRole("button", { name: "0.001 増やす" }).click();
-	await expect(
-		page.getByText("テンプレートから変えて試している"),
-	).toBeVisible();
+	await expect(page.getByText(`元: ${name}（変更あり）`)).toBeVisible();
 	await page.getByRole("button", { name: "バックテストを実行" }).click();
 
 	await expect(page).toHaveURL(/\/backtest\/runs\/\d+$/);
