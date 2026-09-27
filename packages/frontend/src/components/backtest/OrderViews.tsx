@@ -1,7 +1,7 @@
 // 注文の一覧の行と詳細
 
-import type { BacktestOrder } from "@trading-studio/core";
-import { formatBtc } from "@trading-studio/core";
+import type { BacktestOrder, ExitKind } from "@trading-studio/core";
+import { formatBtc, sellReasonPart } from "@trading-studio/core";
 import type { ReactNode } from "react";
 import { formatDateTime } from "../../format";
 import { formatInt, formatSignedInt } from "../../lib/number";
@@ -14,30 +14,86 @@ const STATUS_LABEL: Record<BacktestOrder["status"], string> = {
 	canceled: "取消",
 };
 
-/**
- * 売りのきっかけになった条件（例: EMA12/48下抜け、−2%）。戦略の理由から読む。
- * 「利確」「損切り」のグループ名で出すと、利確のグループの条件で損失が出た売りも「利確」と読めてしまうため、条件名で出す
- */
-export function orderKind(o: BacktestOrder): string | null {
-	if (o.side !== "sell") return null;
-	const hits: string[] = [];
-	for (const m of o.reason.matchAll(
-		/短期EMA\((\d+)\)[^。]*?長期EMA\((\d+)\)[^。]*?を(上抜け|下抜け)/g,
-	)) {
-		hits.push(`EMA${m[1]}/${m[2]}${m[3]}`);
+/** 成り立った条件の文を、バッジに出す短い名前にする。名前は結果の条件の要約（conditionText）と揃える。知らない形の文は null */
+function conditionName(why: string): string | null {
+	const patterns: [RegExp, (m: RegExpMatchArray) => string][] = [
+		[
+			/短期EMA\((\d+)\).*長期EMA\((\d+)\).*を(上抜け|下抜け)$/,
+			(m) => `EMA${m[1]}/${m[2]}${m[3]}`,
+		],
+		[
+			/直近 (\d+) 本の(最高値|最安値)/,
+			(m) => `${m[1]}本の${m[2] === "最高値" ? "高値上抜け" : "安値下抜け"}`,
+		],
+		[/^RSI\((\d+)\) .* (\S+) (以上|以下)$/, (m) => `RSI${m[1]} ${m[2]}${m[3]}`],
+		[/EMA\((\d+)\) \S+ より(上|下)$/, (m) => `EMA${m[1]}より${m[2]}`],
+		[
+			/ボリンジャーバンド\((\d+)本・([\d.]+)σ\)の(上限|下限)/,
+			(m) => `BB${m[1]}/${m[2]}σ${m[3] === "上限" ? "上限以上" : "下限以下"}`,
+		],
+		[
+			/^(.+)判定が(.+?)（/,
+			(m) => `${m[1] === "センチメント" ? "感情" : m[1]}${m[2]}`,
+		],
+		[/買ってからの最高値 .*（(−[\d.]+%) 以上）$/, (m) => `最高値${m[1]}`],
+		[/買値 .*（([+−][\d.]+%) 以上）$/, (m) => m[1] as string],
+		[/買ってから \d+ 本経過（(\d+) 本以上）$/, (m) => `${m[1]}本保有`],
+	];
+	for (const [re, name] of patterns) {
+		const m = why.match(re);
+		if (m) return name(m);
 	}
-	for (const m of o.reason.matchAll(
-		/直近 (\d+) 本の(最高値|最安値)[^。]*?を(上抜け|下抜け)/g,
-	)) {
-		hits.push(`${m[1]}本の${m[2] === "最高値" ? "高値上抜け" : "安値下抜け"}`);
-	}
-	for (const m of o.reason.matchAll(/（([+−][\d.]+%) 以上）/g)) {
-		hits.push(m[1] as string);
-	}
-	if (hits.length > 0) return hits.join("・");
-	if (o.reason.includes("損切り")) return "損切り";
-	if (o.reason.includes("利確")) return "利確";
 	return null;
+}
+
+const EXIT_LABEL: Record<ExitKind, string> = {
+	takeProfit: "利確",
+	stopLoss: "損切り",
+};
+
+/**
+ * 売りのバッジの中身。どちらのグループ（利確・損切り）で売ったかと、成り立った条件の名前（例: EMA12/48下抜け、−2%）。
+ * 利確のグループの条件で損失が出た売りもあるため、グループ名だけでなく条件名も出す。どちらも分からなければ null
+ */
+export function exitBadge(
+	o: ListedOrder,
+): { kind: ExitKind | null; text: string } | null {
+	if (o.side !== "sell") return null;
+	const kind = o.exitKind ?? null;
+	const part = sellReasonPart(o.reason, o.lotPrice ?? null);
+	const names = (part?.slice(0, -1) ?? [])
+		.map(conditionName)
+		.filter((n) => n !== null);
+	const text = [kind ? EXIT_LABEL[kind] : null, names.join("・") || null]
+		.filter((x) => x !== null)
+		.join(": ");
+	return text ? { kind, text } : null;
+}
+
+/** 売りのバッジ。一覧の行では1行に収めて省略し、詳細（wrap）では折り返して全部出す */
+export function ExitBadge({
+	order,
+	wrap = false,
+}: {
+	order: ListedOrder;
+	wrap?: boolean;
+}) {
+	const b = exitBadge(order);
+	if (!b) return null;
+	const tone =
+		b.kind === "takeProfit"
+			? "bg-take-profit-bg text-take-profit"
+			: b.kind === "stopLoss"
+				? "bg-stop-loss-bg text-stop-loss"
+				: "bg-surface-2 text-text-2";
+	return (
+		<span
+			data-testid="exit-badge"
+			className={`inline-block max-w-full rounded-full px-2 py-0.5 align-middle text-xs font-semibold ${wrap ? "" : "truncate"} ${tone}`}
+		>
+			{b.text}
+		</span>
+	);
 }
 
 /** 一覧に出す時刻。約定・取消・発注のうち最後の状態のもの */
@@ -112,7 +168,6 @@ export function OrderRow({
 	/** 損益が無い行の右端に、状態の代わりに出すもの */
 	tag?: ReactNode;
 }) {
-	const kind = orderKind(o);
 	const price = o.fillPrice ?? o.price;
 	return (
 		<button
@@ -123,11 +178,13 @@ export function OrderRow({
 		>
 			<OrderIcon order={o} />
 			<span className="flex min-w-0 flex-col gap-0.5">
-				<span className="text-sm font-semibold">
-					<SideText order={o} />{" "}
-					{o.type === "limit" && o.status !== "filled" ? "指値 " : ""}
-					{formatBtc(o.quantity)} · {STATUS_LABEL[o.status]}
-					{kind ? ` · ${kind}` : ""}
+				<span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold">
+					<span className="shrink-0">
+						<SideText order={o} />{" "}
+						{o.type === "limit" && o.status !== "filled" ? "指値 " : ""}
+						{formatBtc(o.quantity)} · {STATUS_LABEL[o.status]}
+					</span>
+					<ExitBadge order={o} />
 				</span>
 				<span className="num text-xs text-text-2">
 					{formatDateTime(orderTime(o))}
@@ -164,7 +221,6 @@ export function OrderSheet({
 	/** 戦略の理由の後に足す欄 */
 	children?: ReactNode;
 }) {
-	const kind = orderKind(o);
 	const price = o.fillPrice ?? o.price;
 	return (
 		<Modal title="注文の詳細" onClose={onClose}>
@@ -173,8 +229,10 @@ export function OrderSheet({
 				<div className="flex flex-1 flex-col">
 					<strong className="text-[17px]">
 						<SideText order={o} long /> · {STATUS_LABEL[o.status]}
-						{kind ? ` · ${kind}` : ""}
 					</strong>
+					<span className="flex min-w-0 py-0.5">
+						<ExitBadge order={o} wrap />
+					</span>
 					<span className="num text-xs text-text-2">
 						{formatDateTime(orderTime(o))} ·{" "}
 						{o.type === "limit" ? "指値" : "成行"}

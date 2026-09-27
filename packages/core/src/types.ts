@@ -15,6 +15,9 @@ export type Candle = {
 export type Side = "buy" | "sell";
 export type OrderType = "limit" | "market";
 
+/** 売りを出した条件のグループ。利確（takeProfit）か損切り（stopLoss）か */
+export type ExitKind = "takeProfit" | "stopLoss";
+
 /** 戦略が出す注文の意図。発注・取消は呼び出し側（エンジン・取引所への橋渡し）が行う */
 export type OrderIntent =
 	| {
@@ -28,6 +31,8 @@ export type OrderIntent =
 			expireAfterBars?: number;
 			/** 売りで、どのロットを売るか（ロットの id）。売りでは必須 */
 			lotId?: string;
+			/** 売りで、どちらの条件のグループで売るか */
+			exitKind?: ExitKind;
 	  }
 	| { kind: "cancel"; orderId: string; reason?: string };
 

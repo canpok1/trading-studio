@@ -35,6 +35,11 @@
 	--color-warn-strong: #d89a12;
 	--color-paper: #e3a21a;
 	--color-paper-ink: #2a1e00;
+	/* 売りのバッジ。買い（青）・売り（橙）・損益（緑・赤）と被らない色にする */
+	--color-take-profit: #6b3fc0;
+	--color-take-profit-bg: rgba(122, 79, 196, 0.14);
+	--color-stop-loss: #7d5a00;
+	--color-stop-loss-bg: rgba(214, 150, 20, 0.22);
 	--color-scrim: rgba(15, 17, 19, 0.45);
 
 	/* AI 判定。-bg は背景の塗り、名前だけのものは記号・帯の色 */
@@ -87,6 +92,10 @@
 	--color-warn: rgba(240, 180, 40, 0.17);
 	--color-warn-strong: #e8b02f;
 	--color-paper-ink: #1f1600;
+	--color-take-profit: #c0a6f5;
+	--color-take-profit-bg: rgba(181, 149, 240, 0.18);
+	--color-stop-loss: #e8c060;
+	--color-stop-loss-bg: rgba(214, 150, 20, 0.22);
 	--color-scrim: rgba(0, 0, 0, 0.6);
 
 	--color-up-bg: rgba(60, 200, 120, 0.15);
