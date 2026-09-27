@@ -22,3 +22,33 @@ export function ema(values: readonly number[], period: number): number[] {
 	}
 	return out;
 }
+
+/**
+ * RSI（Wilder 方式）。最初の period 本の値動きの単純平均を起点にし、以降は 1/period で平滑化する。
+ * period 本目（0 始まり）より前は NaN。上げも下げも無ければ 50
+ */
+export function rsi(values: readonly number[], period: number): number[] {
+	const out = new Array<number>(values.length).fill(Number.NaN);
+	if (values.length <= period) {
+		return out;
+	}
+	let gain = 0;
+	let loss = 0;
+	for (let i = 1; i <= period; i++) {
+		const d = (values[i] as number) - (values[i - 1] as number);
+		if (d > 0) gain += d;
+		else loss -= d;
+	}
+	gain /= period;
+	loss /= period;
+	const value = () =>
+		loss === 0 ? (gain === 0 ? 50 : 100) : 100 - 100 / (1 + gain / loss);
+	out[period] = value();
+	for (let i = period + 1; i < values.length; i++) {
+		const d = (values[i] as number) - (values[i - 1] as number);
+		gain = (gain * (period - 1) + Math.max(d, 0)) / period;
+		loss = (loss * (period - 1) + Math.max(-d, 0)) / period;
+		out[i] = value();
+	}
+	return out;
+}

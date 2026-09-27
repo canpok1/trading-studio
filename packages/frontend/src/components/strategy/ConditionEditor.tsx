@@ -258,6 +258,7 @@ type ConditionKind =
 const CONDITION_NAMES: Record<ConditionKind, string> = {
 	emaCross: "EMA のクロス",
 	breakout: "直近の高値・安値の突破",
+	rsi: "RSI",
 	entryChange: "買値からの %",
 	"judgment:trend": "トレンド判定が指定のどれか",
 	"judgment:risk": "リスク判定が指定のどれか",
@@ -265,9 +266,9 @@ const CONDITION_NAMES: Record<ConditionKind, string> = {
 };
 
 const PRICE_KINDS: Record<ConditionGroupKey, ConditionKind[]> = {
-	buy: ["emaCross", "breakout"],
-	takeProfit: ["emaCross", "breakout", "entryChange"],
-	stopLoss: ["emaCross", "breakout", "entryChange"],
+	buy: ["emaCross", "breakout", "rsi"],
+	takeProfit: ["emaCross", "breakout", "rsi", "entryChange"],
+	stopLoss: ["emaCross", "breakout", "rsi", "entryChange"],
 };
 
 const JUDGMENT_KINDS = JUDGES.map((j) => `judgment:${j}` as const);
@@ -296,6 +297,10 @@ function defaultCondition(
 			};
 		case "breakout":
 			return { type: kind, lookback: 24, direction: sell ? "low" : "high" };
+		case "rsi":
+			return sell
+				? { type: kind, period: 14, threshold: 70, direction: "above" }
+				: { type: kind, period: 14, threshold: 30, direction: "below" };
 		case "entryChange":
 			return group === "stopLoss"
 				? { type: kind, percent: 2, direction: "down" }
@@ -387,6 +392,44 @@ function ConditionRow({
 					>
 						<option value="high">最高値を上抜けた</option>
 						<option value="low">最安値を下抜けた</option>
+					</select>
+				</>
+			);
+			break;
+		case "rsi":
+			body = (
+				<>
+					<span>RSI</span>
+					<NumberInput
+						value={c.period}
+						onChange={(period) => onChange({ ...c, period })}
+						invalid={bad("period")}
+						inputMode="numeric"
+						aria-label="RSI の本数"
+						className="w-16"
+					/>
+					<span>本が</span>
+					<NumberInput
+						value={c.threshold}
+						onChange={(threshold) => onChange({ ...c, threshold })}
+						invalid={bad("threshold")}
+						inputMode="numeric"
+						aria-label="RSI のしきい値"
+						className="w-16"
+					/>
+					<select
+						aria-label="以上・以下"
+						value={c.direction}
+						onChange={(e) =>
+							onChange({
+								...c,
+								direction: e.target.value as "above" | "below",
+							})
+						}
+						className={selectClass}
+					>
+						<option value="above">以上</option>
+						<option value="below">以下</option>
 					</select>
 				</>
 			);
