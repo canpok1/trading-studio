@@ -238,7 +238,10 @@ test("最大ポジション数と指値の行を足して保存でき、逆順�
 
 	await second.fill("0.05");
 	await expect(second).toHaveAttribute("aria-invalid", "true");
-	await expect(buy).toContainText("上の行（0.1%）より大きくする");
+	// 行の下に1回だけ出す
+	await expect(
+		buy.getByText("上の行（0.1%）より大きくする", { exact: true }),
+	).toHaveCount(1);
 	await expect(
 		page.getByRole("button", { name: "入力を直すと保存できる" }),
 	).toBeDisabled();

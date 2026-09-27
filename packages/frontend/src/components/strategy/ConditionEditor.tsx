@@ -587,7 +587,7 @@ function BuyOrderLines({
 			</span>
 			{lines.map((line, i) => {
 				const below = errorsAt(errors, `buyOrder.lines.${i}.belowPercent`);
-				const lineErrs = errorsAt(errors, `buyOrder.lines.${i}`);
+				const lineErrs = errorsAt(errors, `buyOrder.lines.${i}`, true);
 				return (
 					// 行は並びで識別する（同じ内容の行を一時的に置けるため）
 					// biome-ignore lint/suspicious/noArrayIndexKey: 同上
@@ -669,7 +669,7 @@ function BuyOrderLines({
 					</div>
 				);
 			})}
-			<ErrorText messages={errorsAt(errors, "buyOrder.lines")} />
+			<ErrorText messages={errorsAt(errors, "buyOrder.lines", true)} />
 			{lines.length < LIMITS.buyOrderLines.max && (
 				<Button
 					size="sm"
