@@ -64,7 +64,7 @@ function importBars(t: T, rows: Candle[], tf: "15m" | "1h" | "1d" = "1h") {
 }
 
 const body = (over: Record<string, unknown> = {}) => ({
-	strategyId: null,
+	name: "試し",
 	params: PARAMS,
 	from: START + 2 * 24 * H,
 	to: START + DAYS * 24 * H,
@@ -284,24 +284,28 @@ describe("バックテストの実行", () => {
 		expect(period.json.field).toBe("period");
 		const fee = await post(t, body({ fees: { limitPpm: -1, marketPpm: 0 } }));
 		expect(fee.json.field).toBe("fees.limitPpm");
+		const name = await post(t, body({ name: " " }));
+		expect(name.json.field).toBe("name");
 		const shape = await post(t, { params: { foo: 1 } });
 		expect(shape.status).toBe(400);
 	});
 
-	test("結果の条件は実行時の写しで、戦略へ上書き・新しい戦略として保存できる", async () => {
+	test("結果の条件は実行時の写しで、新しい戦略として保存できる", async () => {
 		const t = setup();
 		const s = t.strategies.create({ name: "元", from: { params: PARAMS } });
 		if (!s.ok) throw new Error("setup");
-		const r = await post(t, body({ strategyId: s.strategy.id }));
+		const r = await post(t, body({ name: " 名前付き " }));
 		const id = (r.json.run as BacktestRun).id;
 		await t.backtests.running();
 
 		// 実行後に戦略を変えても、結果の条件は変わらない
-		const changed = { ...PARAMS, orderSize: 2_000_000 };
-		t.strategies.updateParams(s.strategy.id, changed);
+		t.strategies.updateParams(s.strategy.id, {
+			...PARAMS,
+			orderSize: 2_000_000,
+		});
 		const run = t.backtests.get(id) as BacktestRun;
 		expect(run.params.orderSize).toBe(1_000_000);
-		expect(run.strategyName).toBe("元");
+		expect(run.name).toBe("名前付き");
 
 		const save = (b: unknown) =>
 			t.app.request(`/api/backtests/${id}/save`, {
@@ -309,24 +313,15 @@ describe("バックテストの実行", () => {
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify(b),
 			});
-		expect((await save({ overwrite: true })).status).toBe(200);
-		expect(t.strategies.get(s.strategy.id)?.params.orderSize).toBe(1_000_000);
-
+		expect((await save({ overwrite: true })).status).toBe(400);
 		expect((await save({ name: "元" })).status).toBe(409);
 		const res = await save({ name: "結果から" });
 		expect(res.status).toBe(200);
 		const created = ((await res.json()) as { strategy: { id: number } })
 			.strategy;
-		const after = t.backtests.get(id) as BacktestRun;
-		expect(after.strategyId).toBe(created.id);
-		expect(after.strategyName).toBe("結果から");
-
-		// 元の戦略を消しても実行は残り、上書きはできない
-		t.strategies.remove(created.id);
-		const orphan = t.backtests.get(id) as BacktestRun;
-		expect(orphan.strategyExists).toBe(false);
-		expect(orphan.strategyName).toBe("元");
-		expect((await save({ overwrite: true })).status).toBe(409);
+		expect(t.strategies.get(created.id)?.params.orderSize).toBe(1_000_000);
+		// 保存しても実行の名前は変わらない
+		expect((t.backtests.get(id) as BacktestRun).name).toBe("名前付き");
 	});
 
 	test("サーバーが途中で止まった実行は失敗として残す", async () => {

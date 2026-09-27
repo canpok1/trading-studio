@@ -88,8 +88,7 @@ function addNews(t: T, at: number, title: string) {
 
 function addBacktest(t: T, startedAt: number): number {
 	const id = t.backtestRepo.create({
-		strategyId: null,
-		strategyName: "テスト",
+		name: "テスト",
 		params: strategyTemplate("trend").params,
 		timeframe: "1h",
 		from: DAY,

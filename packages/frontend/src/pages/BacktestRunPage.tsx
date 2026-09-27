@@ -11,6 +11,8 @@ import {
 	parseConditionSet,
 	percentToPpm,
 	ppmToPercent,
+	strategyTemplate,
+	TEMPLATE_IDS,
 	TIMEFRAME_LABELS,
 	TIMEFRAME_MS,
 	validateConditionSet,
@@ -51,10 +53,22 @@ const DAY = 86_400_000;
 const DEFAULT_CASH = 2_000_000;
 const DEFAULT_FEE_PPM = 1000;
 const STORAGE_KEY = "backtest-draft";
+const NAME_MAX = 40;
+const BLANK_NAME = "新しいバックテスト";
+
+/** 条件をコピーしてきたテンプレート（ひな形か保存済みの戦略）。コピーした後は元と切り離す */
+type Template = {
+	/** ひな形は `t:<id>`、保存済みの戦略は `s:<id>` */
+	key: string;
+	label: string;
+	params: ConditionSet;
+};
 
 /** 実行条件の下書き。試しに変えた条件は画面を離れてもブラウザに残す */
 export type BacktestDraft = {
-	strategyId: number | null;
+	name: string;
+	/** 「テンプレートに戻す」の戻り先。結果から再実行したときは無い */
+	template: Template | null;
 	params: ConditionSet;
 	/** JST の日付（終了日を含む）。null はデータの最後から1か月 */
 	fromDate: string | null;
@@ -63,17 +77,64 @@ export type BacktestDraft = {
 	fees: { limitPpm: number; marketPpm: number };
 };
 
-function loadDraft(): BacktestDraft | null {
+/** 戦略と結び付いていた頃の下書き（名前もテンプレートも無く、strategyId を持つ）も読む */
+function loadDraft(strategies: StoredStrategy[]): BacktestDraft | null {
 	try {
 		const v = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as
-			| (BacktestDraft & { params: unknown })
+			| (Omit<BacktestDraft, "params" | "template"> & {
+					params: unknown;
+					template?: (Template & { params: unknown }) | null;
+					strategyId?: number | null;
+			  })
 			| null;
 		const params = v && parseConditionSet(v.params);
 		if (!v || !params) return null;
-		return { ...v, params };
+		const tParams = v.template && parseConditionSet(v.template.params);
+		const legacy = strategies.find((s) => s.id === v.strategyId);
+		const template =
+			v.template && tParams
+				? { ...v.template, params: tParams }
+				: legacy
+					? strategyAsTemplate(legacy)
+					: null;
+		return {
+			name: v.name ?? template?.label ?? BLANK_NAME,
+			template,
+			params,
+			fromDate: v.fromDate,
+			toDate: v.toDate,
+			initialCash: v.initialCash,
+			fees: v.fees,
+		};
 	} catch {
 		return null;
 	}
+}
+
+const strategyAsTemplate = (s: StoredStrategy): Template => ({
+	key: `s:${s.id}`,
+	label: s.name,
+	params: s.params,
+});
+
+function templates(strategies: StoredStrategy[]): Template[] {
+	return [
+		...TEMPLATE_IDS.map((id) => {
+			const t = strategyTemplate(id);
+			return { key: `t:${id}`, label: t.name, params: t.params };
+		}),
+		...strategies.map(strategyAsTemplate),
+	];
+}
+
+/** テンプレートを選んだときのバックテスト名の初期値 */
+const nameFor = (t: Template) => (t.key === "t:blank" ? BLANK_NAME : t.label);
+
+function checkName(name: string): string | null {
+	const n = name.trim();
+	if (!n) return "名前を入れる";
+	if (n.length > NAME_MAX) return `${NAME_MAX} 文字以内にする`;
+	return null;
 }
 
 function saveDraft(d: BacktestDraft): void {
@@ -152,18 +213,25 @@ export function BacktestRunPage() {
 		saveDraft(d);
 	}, []);
 
-	// 下書きの初期値: 他の画面から渡された条件 > ブラウザに残した下書き > 最初の戦略
+	// 下書きの初期値: 他の画面から渡された条件 > ブラウザに残した下書き > 最初の戦略かトレンド追随のひな形
 	const strategies = state.kind === "ok" ? state.data.strategies : null;
 	useEffect(() => {
 		if (!strategies || draft) return;
 		const passed = location.state as Partial<BacktestDraft> | null;
 		const passedParams = passed?.params && parseConditionSet(passed.params);
-		const sid = Number(search.get("strategy"));
-		const base = loadDraft();
-		const first = strategies[0];
+		// 「戦略」の画面から、その戦略をテンプレートにして来た
+		const from = strategies.find(
+			(s) => s.id === Number(search.get("strategy")),
+		);
+		const template = from ? strategyAsTemplate(from) : null;
+		const base = loadDraft(strategies);
+		const first = strategies[0]
+			? strategyAsTemplate(strategies[0])
+			: (templates([]).find((t) => t.key === "t:trend") as Template);
 		if (passedParams) {
 			setDraft({
-				strategyId: strategies.some((s) => s.id === sid) ? sid : null,
+				name: passed?.name ?? template?.label ?? BLANK_NAME,
+				template,
 				params: passedParams,
 				fromDate: passed?.fromDate ?? base?.fromDate ?? null,
 				toDate: passed?.toDate ?? base?.toDate ?? null,
@@ -177,11 +245,11 @@ export function BacktestRunPage() {
 			// 再読み込みで同じ条件に戻さないよう、渡された条件を消す
 			navigate(location.pathname, { replace: true, state: null });
 		} else if (base) {
-			const exists = strategies.some((s) => s.id === base.strategyId);
-			setDraft({ ...base, strategyId: exists ? base.strategyId : null });
-		} else if (first) {
+			setDraft(base);
+		} else {
 			setDraft({
-				strategyId: first.id,
+				name: nameFor(first),
+				template: first,
 				params: first.params,
 				fromDate: null,
 				toDate: null,
@@ -191,16 +259,6 @@ export function BacktestRunPage() {
 		}
 	}, [strategies, draft, location, search, navigate, setDraft]);
 
-	if (
-		state.kind === "loading" ||
-		(state.kind === "ok" && !draft && strategies?.length)
-	) {
-		return (
-			<Page title="バックテスト">
-				<LoadingCard />
-			</Page>
-		);
-	}
 	if (state.kind === "error") {
 		return (
 			<Page title="バックテスト">
@@ -211,6 +269,13 @@ export function BacktestRunPage() {
 						action={<Button onClick={reload}>もう一度読み込む</Button>}
 					/>
 				</Card>
+			</Page>
+		);
+	}
+	if (state.kind === "loading" || !draft) {
+		return (
+			<Page title="バックテスト">
+				<LoadingCard />
 			</Page>
 		);
 	}
@@ -225,23 +290,6 @@ export function BacktestRunPage() {
 						action={
 							<Link to="/data" className={buttonClass("primary")}>
 								過去データを取り込む
-							</Link>
-						}
-					/>
-				</Card>
-			</Page>
-		);
-	}
-	if (!draft) {
-		return (
-			<Page title="バックテスト">
-				<Card>
-					<EmptyState
-						title="戦略がまだない"
-						description="「戦略」の画面で戦略を作ってから実行する。"
-						action={
-							<Link to="/strategies" className={buttonClass("primary")}>
-								戦略を作る
 							</Link>
 						}
 					/>
@@ -283,14 +331,25 @@ function RunForm({
 	const job = useBacktestJob();
 	const [problem, setProblem] = useState<Problem | null>(null);
 	const [busy, setBusy] = useState(false);
-	const ids = { strategy: useId(), from: useId(), to: useId(), cash: useId() };
+	const ids = {
+		name: useId(),
+		template: useId(),
+		from: useId(),
+		to: useId(),
+		cash: useId(),
+	};
 
 	const p = draft.params;
 	const tf = p.timeframe;
 	const tfMs = TIMEFRAME_MS[tf];
-	const saved = strategies.find((s) => s.id === draft.strategyId) ?? null;
+	const choices = templates(strategies);
+	// 保存済みの戦略は、選んだ後に編集されていれば今の条件へ戻す
+	const template =
+		draft.template &&
+		(choices.find((t) => t.key === draft.template?.key) ?? draft.template);
 	const edited =
-		saved !== null && JSON.stringify(saved.params) !== JSON.stringify(p);
+		template !== null && JSON.stringify(template.params) !== JSON.stringify(p);
+	const nameError = checkName(draft.name);
 	const errors = useMemo(() => validateConditionSet(p), [p]);
 
 	// 期間。未指定ならこの粒度のデータの最後から1か月
@@ -367,6 +426,7 @@ function RunForm({
 			: "0〜10% の範囲で入れる";
 	const hasErr =
 		errors.length > 0 ||
+		nameError !== null ||
 		periodError !== null ||
 		cashError !== null ||
 		feeError(draft.fees.limitPpm) !== null ||
@@ -384,7 +444,7 @@ function RunForm({
 		try {
 			const res = await api.api.backtests.$post({
 				json: {
-					strategyId: draft.strategyId,
+					name: draft.name,
 					params: p,
 					from: fromMs,
 					to: toMs,
@@ -448,49 +508,98 @@ function RunForm({
 	return (
 		<Page
 			title="バックテスト"
-			description="戦略と条件を選んで、取り込んだ CSV の過去データで模擬売買する"
+			description="テンプレートから条件を作って、取り込んだ CSV の過去データで模擬売買する"
 		>
 			<div className="flex flex-col gap-3.5 lg:grid lg:grid-cols-2 lg:items-start">
 				<div className="contents lg:flex lg:flex-col lg:gap-3.5">
-					<Card className="flex flex-col gap-2">
-						<label htmlFor={ids.strategy} className="text-[13px] font-semibold">
-							戦略
-						</label>
-						<select
-							id={ids.strategy}
-							value={draft.strategyId ?? ""}
-							onChange={(e) => {
-								const s = strategies.find(
-									(x) => x.id === Number(e.target.value),
-								);
-								if (s) update({ strategyId: s.id, params: s.params });
-							}}
-							className="h-12 rounded-[10px] border border-line bg-surface px-3 text-[15px] font-semibold"
-						>
-							{draft.strategyId === null && (
-								<option value="">（保存していない条件）</option>
+					<Card className="flex flex-col gap-3.5">
+						<div className="flex flex-col gap-1.5">
+							<label htmlFor={ids.name} className="text-[13px] font-semibold">
+								バックテスト名
+							</label>
+							<input
+								id={ids.name}
+								value={draft.name}
+								onChange={(e) => update({ name: e.target.value })}
+								aria-invalid={nameError ? true : undefined}
+								className="h-12 rounded-[10px] border border-line bg-surface px-3 text-[15px] font-semibold aria-invalid:border-2 aria-invalid:border-loss"
+							/>
+							{nameError && (
+								<span className="text-xs font-semibold text-loss">
+									{nameError}
+								</span>
 							)}
-							{strategies.map((s) => (
-								<option key={s.id} value={s.id}>
-									{s.name}
-								</option>
-							))}
-						</select>
-						<div className="flex items-start justify-between gap-2">
-							<p className="text-xs text-text-2">
-								{edited
-									? "保存済みの条件から変えて試している。戦略には保存されない。"
-									: "保存済みの条件で試す。ここで変えても戦略には保存されない。"}
-							</p>
-							{edited && saved && (
-								<Button
-									variant="link"
-									className="shrink-0"
-									onClick={() => update({ params: saved.params })}
-								>
-									保存済みに戻す
-								</Button>
-							)}
+						</div>
+						<div className="flex flex-col gap-1.5">
+							<label
+								htmlFor={ids.template}
+								className="text-[13px] font-semibold"
+							>
+								テンプレート
+							</label>
+							<select
+								id={ids.template}
+								value={template?.key ?? ""}
+								onChange={(e) => {
+									const t = choices.find((x) => x.key === e.target.value);
+									if (!t) return;
+									// 名前を自分で変えていなければ、テンプレートに合わせて変える
+									const followed =
+										draft.name === (template ? nameFor(template) : BLANK_NAME);
+									update({
+										template: t,
+										params: t.params,
+										...(followed ? { name: nameFor(t) } : {}),
+									});
+								}}
+								className="h-12 rounded-[10px] border border-line bg-surface px-3 text-[15px]"
+							>
+								{template === null && (
+									<option value="">（選んでいない）</option>
+								)}
+								{template && !choices.some((t) => t.key === template.key) && (
+									<option value={template.key}>
+										{template.label}（削除済み）
+									</option>
+								)}
+								<optgroup label="ひな形">
+									{choices
+										.filter((t) => t.key.startsWith("t:"))
+										.map((t) => (
+											<option key={t.key} value={t.key}>
+												{t.label}
+											</option>
+										))}
+								</optgroup>
+								{strategies.length > 0 && (
+									<optgroup label="保存済みの戦略">
+										{choices
+											.filter((t) => t.key.startsWith("s:"))
+											.map((t) => (
+												<option key={t.key} value={t.key}>
+													{t.label}
+												</option>
+											))}
+									</optgroup>
+								)}
+							</select>
+							<div className="flex items-start justify-between gap-2">
+								<p className="text-xs text-text-2">
+									{edited
+										? "テンプレートから変えて試している。"
+										: "テンプレートの条件をコピーして試す。"}
+									ここで変えても戦略には保存されない。
+								</p>
+								{edited && template && (
+									<Button
+										variant="link"
+										className="shrink-0"
+										onClick={() => update({ params: template.params })}
+									>
+										テンプレートに戻す
+									</Button>
+								)}
+							</div>
 						</div>
 					</Card>
 					<Card className="flex flex-col gap-3.5">
@@ -563,7 +672,7 @@ function RunForm({
 						<div className="flex flex-col gap-1">
 							<span className="text-[13px] font-semibold">足の粒度</span>
 							<span className="num text-sm">
-								{TIMEFRAME_LABELS[tf]}（戦略の粒度） · {formatInt(bars)} 本
+								{TIMEFRAME_LABELS[tf]} · {formatInt(bars)} 本
 								{step && step.timeframe !== tf
 									? ` · ${TIMEFRAME_LABELS[step.timeframe]}で判定`
 									: ""}
@@ -638,7 +747,7 @@ function RunForm({
 							)}
 						</fieldset>
 					</Card>
-					<FrequencyCard {...editor} timeframeEditable={false} />
+					<FrequencyCard {...editor} />
 					<div className="order-1 flex flex-col gap-3.5 lg:order-none">
 						<OrderSizeCard {...editor} latestPrice={latest} />
 						<RiskLimitCard {...editor} />
@@ -857,7 +966,7 @@ function PastRuns({ runs }: { runs: BacktestRun[] }) {
 						>
 							<span className="flex min-w-0 flex-1 flex-col gap-0.5">
 								<strong className="truncate text-sm">
-									{r.strategyName} · {TIMEFRAME_LABELS[r.timeframe]}
+									{r.name} · {TIMEFRAME_LABELS[r.timeframe]}
 								</strong>
 								<span className="num text-xs text-text-2">
 									{formatDate(r.from)}〜{formatDate(r.to - 1)} ·{" "}

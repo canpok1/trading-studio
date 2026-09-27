@@ -202,7 +202,7 @@ function AnalysisCard() {
 							/>
 							<span className="flex min-w-0 flex-1 flex-col gap-0.5">
 								<strong className="truncate text-sm">
-									{r.strategyName} · {TIMEFRAME_LABELS[r.timeframe]}
+									{r.name} · {TIMEFRAME_LABELS[r.timeframe]}
 								</strong>
 								<span className="num text-xs text-text-2">
 									{formatDate(r.from)}〜{formatDate(r.to - 1)} ·{" "}

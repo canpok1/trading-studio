@@ -30,7 +30,7 @@ export function backtestRoutes(service: BacktestService) {
 						return c.json({ message: "実行条件の形が違う" }, 400);
 					}
 					const input: BacktestInput = {
-						strategyId: typeof v.strategyId === "number" ? v.strategyId : null,
+						name: typeof v.name === "string" ? v.name : "",
 						params,
 						from: num(v.from),
 						to: num(v.to),
@@ -145,27 +145,16 @@ export function backtestRoutes(service: BacktestService) {
 			.post(
 				"/:id/save",
 				validator("json", (v, c) => {
-					if (isObj(v) && v.overwrite === true)
-						return { overwrite: true as const };
 					if (isObj(v) && typeof v.name === "string") return { name: v.name };
-					return c.json({ message: "overwrite か name が必要" }, 400);
+					return c.json({ message: "name が必要" }, 400);
 				}),
 				(c) => {
 					const r = service.saveToStrategy(
 						Number(c.req.param("id")),
-						c.req.valid("json"),
+						c.req.valid("json").name,
 					);
 					if (r.ok) return c.json({ strategy: r.strategy }, 200);
 					if (r.kind === "not_found") return c.json(NOT_FOUND, 404);
-					if (r.kind === "no_strategy") {
-						return c.json(
-							{
-								message:
-									"元の戦略が無いため上書きできない。新しい戦略として保存する",
-							},
-							409,
-						);
-					}
 					return c.json({ message: r.message }, r.status);
 				},
 			)

@@ -1,8 +1,4 @@
-import type {
-	BacktestChart,
-	BacktestRun,
-	StoredStrategy,
-} from "@trading-studio/backend";
+import type { BacktestChart, BacktestRun } from "@trading-studio/backend";
 import type { BacktestOrder } from "@trading-studio/core";
 import {
 	emaPeriods,
@@ -32,7 +28,6 @@ import { useBacktestJob } from "../lib/backtest-job";
 import { useChartBg } from "../lib/chart-bg";
 import {
 	buyOrderText,
-	conditionDiff,
 	frequencyText,
 	groupText,
 	ruleText,
@@ -47,7 +42,6 @@ const PAGE = 20;
 type Data = {
 	run: BacktestRun;
 	chart: BacktestChart | null;
-	saved: StoredStrategy | null;
 };
 
 export function BacktestResultPage() {
@@ -59,21 +53,13 @@ export function BacktestResultPage() {
 		const { run } = await api.api.backtests[":id"]
 			.$get({ param: { id } })
 			.then((r) => readJson<{ run: BacktestRun }>(r));
-		const [chart, saved] = await Promise.all([
+		const chart =
 			run.status === "done"
-				? api.api.backtests[":id"].chart
+				? await api.api.backtests[":id"].chart
 						.$get({ param: { id } })
 						.then((r) => readJson<BacktestChart>(r))
-				: null,
-			run.strategyId !== null && run.strategyExists
-				? api.api.strategies[":id"]
-						.$get({ param: { id: String(run.strategyId) } })
-						.then((r) => readJson<{ strategy: StoredStrategy }>(r))
-						.then((r) => r.strategy)
-						.catch(() => null)
-				: null,
-		]);
-		return { run, chart, saved };
+				: null;
+		return { run, chart };
 	}, [api, id]);
 	const { state, reload } = useAsync(load);
 
@@ -106,10 +92,10 @@ export function BacktestResultPage() {
 			</Page>
 		);
 	}
-	const { run, chart, saved } = state.data;
+	const { run, chart } = state.data;
 	return (
 		<Page title={title} actions={<RerunButton run={run} />}>
-			<RunHeader run={run} saved={saved} onSaved={reload} />
+			<RunHeader run={run} />
 			{run.status === "running" && (
 				<Card className="flex flex-col gap-2.5">
 					<strong>バックテストを実行中</strong>
@@ -143,6 +129,8 @@ export function BacktestResultPage() {
 
 function rerunState(run: BacktestRun): Partial<BacktestDraft> {
 	return {
+		name: run.name,
+		template: null,
 		params: run.params,
 		fromDate: toDateInputValue(run.from),
 		toDate: toDateInputValue(run.to - 1),
@@ -156,12 +144,7 @@ function RerunButton({ run }: { run: BacktestRun }) {
 	return (
 		<Button
 			size="sm"
-			onClick={() =>
-				navigate(
-					`/backtest${run.strategyExists && run.strategyId !== null ? `?strategy=${run.strategyId}` : ""}`,
-					{ state: rerunState(run) },
-				)
-			}
+			onClick={() => navigate("/backtest", { state: rerunState(run) })}
 		>
 			条件を変えて再実行
 		</Button>
@@ -170,19 +153,10 @@ function RerunButton({ run }: { run: BacktestRun }) {
 
 const pct = (ppm: number) => `${ppmToPercent(ppm)}%`;
 
-function RunHeader({
-	run,
-	saved,
-	onSaved,
-}: {
-	run: BacktestRun;
-	saved: StoredStrategy | null;
-	onSaved: () => void;
-}) {
+function RunHeader({ run }: { run: BacktestRun }) {
 	const [saving, setSaving] = useState(false);
+	const [savedAs, setSavedAs] = useState<string | null>(null);
 	const p = run.params;
-	const same =
-		saved !== null && JSON.stringify(saved.params) === JSON.stringify(p);
 	const chips = [
 		frequencyText(p),
 		`買: ${groupText(p.buy)}`,
@@ -200,7 +174,7 @@ function RunHeader({
 	return (
 		<div className="flex flex-col gap-1.5">
 			<strong className="text-[15px]">
-				{run.strategyName} · {TIMEFRAME_LABELS[run.timeframe]}
+				{run.name} · {TIMEFRAME_LABELS[run.timeframe]}
 			</strong>
 			<span className="num text-xs text-text-2">
 				{formatDate(run.from)}〜{formatDate(run.to - 1)} · 初期資金{" "}
@@ -223,13 +197,13 @@ function RunHeader({
 			{run.stepLimited && <Note>{stepLimitedText(run.stepTimeframe)}</Note>}
 			{run.status === "done" && (
 				<div className="mt-1">
-					{same ? (
-						<span className="text-xs text-text-2">
-							「{saved.name}」の保存済みの条件と同じ
+					{savedAs ? (
+						<span role="status" className="text-xs text-text-2">
+							「{savedAs}」として戦略に保存した
 						</span>
 					) : (
 						<Button size="sm" onClick={() => setSaving(true)}>
-							この条件を戦略に保存
+							新しい戦略として保存
 						</Button>
 					)}
 				</div>
@@ -237,11 +211,10 @@ function RunHeader({
 			{saving && (
 				<SaveDialog
 					run={run}
-					saved={saved}
 					onClose={() => setSaving(false)}
-					onDone={() => {
+					onDone={(name) => {
 						setSaving(false);
-						onSaved();
+						setSavedAs(name);
 					}}
 				/>
 			)}
@@ -251,61 +224,35 @@ function RunHeader({
 
 function SaveDialog({
 	run,
-	saved,
 	onClose,
 	onDone,
 }: {
 	run: BacktestRun;
-	saved: StoredStrategy | null;
 	onClose: () => void;
-	onDone: () => void;
+	onDone: (name: string) => void;
 }) {
 	const api = useApi();
 	const nameId = useId();
-	const [name, setName] = useState(`${run.strategyName} のコピー`);
+	const [name, setName] = useState(run.name);
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
-	const save = async (body: { overwrite: true } | { name: string }) => {
+	const save = async () => {
 		setBusy(true);
 		try {
-			await api.api.backtests[":id"].save
-				.$post({ param: { id: String(run.id) }, json: body })
-				.then((r) => readJson(r));
-			onDone();
+			const r = await api.api.backtests[":id"].save
+				.$post({ param: { id: String(run.id) }, json: { name } })
+				.then((r) => readJson<{ strategy: { name: string } }>(r));
+			onDone(r.strategy.name);
 		} catch (e) {
 			setError(errorMessage(e));
 			setBusy(false);
 		}
 	};
-	const diff = saved ? conditionDiff(saved.params, run.params) : [];
 	return (
-		<Modal title="この条件を戦略に保存する" onClose={onClose}>
-			{saved && (
-				<section className="flex flex-col gap-2">
-					<strong className="text-sm">「{saved.name}」を上書き</strong>
-					<dl className="flex flex-col gap-2 rounded-[10px] bg-bg p-3 text-xs">
-						{diff.length === 0 && <span>変更なし</span>}
-						{diff.map(([label, before, after]) => (
-							<div key={label} className="flex flex-col gap-0.5">
-								<dt className="text-text-2">{label}</dt>
-								<dd className="num text-text-2">{before}</dd>
-								<dd className="num font-semibold">→ {after}</dd>
-							</div>
-						))}
-					</dl>
-					<Button
-						variant="primary"
-						disabled={busy}
-						onClick={() => save({ overwrite: true })}
-					>
-						上書きして保存
-					</Button>
-				</section>
-			)}
-			<section className="flex flex-col gap-2">
-				<strong className="text-sm">新しい戦略として保存</strong>
+		<Modal title="新しい戦略として保存する" onClose={onClose}>
+			<div className="flex flex-col gap-2">
 				<label htmlFor={nameId} className="text-xs text-text-2">
-					名前
+					戦略の名前
 				</label>
 				<input
 					id={nameId}
@@ -320,10 +267,10 @@ function SaveDialog({
 				{error && (
 					<span className="text-xs font-semibold text-loss">{error}</span>
 				)}
-				<Button disabled={busy} onClick={() => save({ name })}>
-					新しい戦略として保存
-				</Button>
-			</section>
+			</div>
+			<Button variant="primary" disabled={busy} onClick={save}>
+				保存
+			</Button>
 			<Button onClick={onClose}>やめる</Button>
 		</Modal>
 	);

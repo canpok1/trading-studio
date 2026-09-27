@@ -446,8 +446,7 @@ const backtestRunsTable: Table<BacktestRun> = {
 	desc: "選んだバックテストの実行。実行したときの条件・集計ルールの写しと成績",
 	columns: [
 		col("run_id", "実行の ID", (r) => r.id),
-		col("strategy_id", "元の戦略の ID", (r) => r.strategyId),
-		col("strategy_name", "元の戦略の名前", (r) => r.strategyName),
+		col("name", "バックテスト名", (r) => r.name),
 		...time<BacktestRun>("started_at", "実行した時刻", (r) => r.startedAt),
 		col("timeframe", "戦略の足の粒度", (r) => r.timeframe),
 		col("step_timeframe", "判定と約定に使った足の粒度", (r) => r.stepTimeframe),

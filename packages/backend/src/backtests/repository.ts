@@ -16,9 +16,7 @@ import type { BacktestChart, BacktestRun, BacktestStatus } from "./types";
 
 type RunRow = {
 	id: number;
-	strategy_id: number | null;
 	strategy_name: string;
-	current_name: string | null;
 	params: string;
 	timeframe: Timeframe;
 	from_time: number;
@@ -43,9 +41,7 @@ type RunRow = {
 function toRun(r: RunRow): BacktestRun {
 	return {
 		id: r.id,
-		strategyId: r.strategy_id,
-		strategyName: r.current_name ?? r.strategy_name,
-		strategyExists: r.current_name !== null,
+		name: r.strategy_name,
 		// 保存するときに形を検証しているので、読み出しでは形が崩れていない前提で読む
 		params: parseConditionSet(JSON.parse(r.params)) as ConditionSet,
 		dailyLossLimitApplied: "dailyLossLimit" in JSON.parse(r.params),
@@ -72,8 +68,7 @@ function toRun(r: RunRow): BacktestRun {
 	};
 }
 
-const SELECT_RUN = `select r.*, s.name as current_name from backtest_runs r
-	left join strategies s on s.id = r.strategy_id`;
+const SELECT_RUN = "select r.* from backtest_runs r";
 
 const unpack = <T>(b: Uint8Array): T =>
 	JSON.parse(new TextDecoder().decode(gunzipSync(b))) as T;
@@ -89,8 +84,6 @@ export class BacktestRepository {
 		run: Omit<
 			BacktestRun,
 			| "id"
-			| "strategyName"
-			| "strategyExists"
 			| "status"
 			| "progress"
 			| "finishedAt"
@@ -99,17 +92,16 @@ export class BacktestRepository {
 			| "orderCount"
 			| "error"
 			| "dailyLossLimitApplied"
-		> & { strategyName: string },
+		>,
 	): number {
 		return Number(
 			this.sql.run(
-				`insert into backtest_runs (strategy_id, strategy_name, params, timeframe, from_time, to_time,
+				`insert into backtest_runs (strategy_name, params, timeframe, from_time, to_time,
 				 initial_cash, fee_limit_ppm, fee_market_ppm, skip_gaps, status, started_at, bar_count,
 				 step_timeframe, step_limited, aggregation_rule)
-				 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?)`,
+				 values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?)`,
 				[
-					run.strategyId,
-					run.strategyName,
+					run.name,
 					JSON.stringify(run.params),
 					run.timeframe,
 					run.from,
@@ -186,13 +178,6 @@ export class BacktestRepository {
 			)
 			.all(from, to)
 			.map(toRun);
-	}
-
-	setStrategy(id: number, strategyId: number): void {
-		this.sql.run("update backtest_runs set strategy_id = ? where id = ?", [
-			strategyId,
-			id,
-		]);
 	}
 
 	private blob(

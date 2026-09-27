@@ -85,29 +85,39 @@ async function prepare(
 
 async function choose(page: Page, strategy: string, from: string, to: string) {
 	await page.goto("/backtest");
-	await page
-		.getByLabel("戦略", { exact: true })
-		.selectOption({ label: strategy });
+	await page.getByLabel("テンプレート").selectOption({ label: strategy });
 	await page.getByLabel("開始").fill(from);
 	await page.getByLabel("終了").fill(to);
 }
 
-test("戦略を選んで実行すると結果が出て、注文の詳細が見られ、条件を新しい戦略に保存できる", async ({
+test("テンプレートから名前を付けて実行すると結果が出て、注文の詳細が見られ、条件を新しい戦略に保存できる", async ({
 	page,
 	request,
 }, info) => {
 	const name = `BT ${info.project.name}`;
 	await prepare(request, name);
 	await choose(page, name, "2026-05-03", "2026-05-25");
-	await expect(page.getByText("1時間足（戦略の粒度） · 552 本")).toBeVisible();
-	// 保存済みの条件から変えて試す
+	// バックテスト名はテンプレートの名前から始まり、自分で付け直せる
+	const runName = page.getByLabel("バックテスト名");
+	await expect(runName).toHaveValue(name);
+	const title = `${name} 試し`;
+	await runName.fill(title);
+	await expect(page.getByText("1時間足 · 552 本")).toBeVisible();
+	// 足の粒度も変えられる
+	const tf = page.getByLabel("足の粒度");
+	await tf.selectOption({ label: "4時間足" });
+	await expect(page.getByText("4時間足 · 138 本")).toBeVisible();
+	await page.getByRole("button", { name: "テンプレートに戻す" }).click();
+	await expect(page.getByText("1時間足 · 552 本")).toBeVisible();
+	// テンプレートから変えて試す
 	await page.getByRole("button", { name: "0.001 増やす" }).click();
 	await expect(
-		page.getByText("保存済みの条件から変えて試している"),
+		page.getByText("テンプレートから変えて試している"),
 	).toBeVisible();
 	await page.getByRole("button", { name: "バックテストを実行" }).click();
 
 	await expect(page).toHaveURL(/\/backtest\/runs\/\d+$/);
+	await expect(page.getByText(`${title} · 1時間足`)).toBeVisible();
 	const summary = page.getByRole("region", { name: "成績の要約" });
 	await expect(summary).toContainText("損益");
 	await expect(summary).toContainText("取引回数");
@@ -127,13 +137,14 @@ test("戦略を選んで実行すると結果が出て、注文の詳細が見�
 	await sheet.getByRole("button", { name: "閉じる" }).click();
 
 	// 新しい戦略として保存する
-	await page.getByRole("button", { name: "この条件を戦略に保存" }).click();
-	const save = page.getByRole("dialog", { name: "この条件を戦略に保存する" });
+	await page.getByRole("button", { name: "新しい戦略として保存" }).click();
+	const save = page.getByRole("dialog", { name: "新しい戦略として保存する" });
+	await expect(save.getByLabel("戦略の名前")).toHaveValue(title);
 	const saved = `${name} 結果`;
-	await save.getByLabel("名前").fill(saved);
-	await save.getByRole("button", { name: "新しい戦略として保存" }).click();
+	await save.getByLabel("戦略の名前").fill(saved);
+	await save.getByRole("button", { name: "保存", exact: true }).click();
 	await expect(
-		page.getByText(`「${saved}」の保存済みの条件と同じ`),
+		page.getByText(`「${saved}」として戦略に保存した`),
 	).toBeVisible();
 
 	await page.goto("/strategies");
