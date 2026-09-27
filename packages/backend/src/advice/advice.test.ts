@@ -113,6 +113,7 @@ const PARAMS: ConditionSet = {
 		holding: { value: 1, unit: "h" },
 	},
 	orderSize: 1_000_000,
+	maxPositions: 1,
 	dailyLossLimit: 30_000,
 	buy: {
 		match: "all",

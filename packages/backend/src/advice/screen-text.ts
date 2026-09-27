@@ -60,11 +60,13 @@ export function conditionSetScreenText(p: ConditionSet): string[] {
 		});
 		if (key === "buy") {
 			const o = p.buyOrder;
-			lines.push(
-				o.type === "limit"
-					? `- 注文方法: 指値。現在値から ${o.belowPercent} % 下に指値。${o.expireBars} 本のあいだ約定しなければ取消`
-					: "- 注文方法: 成行",
-			);
+			o.lines.forEach((l, i) => {
+				lines.push(
+					l.type === "limit"
+						? `- 注文${i + 1}: 指値。現在値から ${l.belowPercent} % 下に指値。${o.expireBars} 本のあいだ約定しなければ取消`
+						: `- 注文${i + 1}: 成行`,
+				);
+			});
 		}
 	}
 	return lines;

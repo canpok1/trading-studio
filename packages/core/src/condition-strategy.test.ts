@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { Condition, ConditionSet } from "./condition-strategy";
+import type {
+	BuyOrderLine,
+	Condition,
+	ConditionSet,
+} from "./condition-strategy";
 import {
 	chooseStepTimeframe,
 	conditionStrategy,
@@ -7,11 +11,13 @@ import {
 	emaPeriods,
 	evaluateConditionSet,
 	historyBars,
+	MARKET_BUY_ORDER,
 	parseConditionSet,
 	rsiLines,
 	validateConditionSet,
 } from "./condition-strategy";
 import type { StrategyInput } from "./strategy";
+import type { TemplateId } from "./templates";
 import { strategyTemplate, TEMPLATE_IDS } from "./templates";
 import { TIMEFRAME_MS } from "./timeframe";
 import type { Candle, Order, Position } from "./types";
@@ -38,6 +44,7 @@ function params(over: Partial<ConditionSet> = {}): ConditionSet {
 			holding: { value: 15, unit: "m" },
 		},
 		orderSize: 1_000_000,
+		maxPositions: 1,
 		dailyLossLimit: 30_000,
 		buy: { match: "all", conditions: [] },
 		buyOrder: DEFAULT_BUY_ORDER,
@@ -52,11 +59,24 @@ function input(
 	p: ConditionSet,
 	over: Partial<StrategyInput<ConditionSet>> = {},
 ): StrategyInput<ConditionSet> {
+	const position = over.position ?? EMPTY_POSITION;
 	return {
 		now: ((cs.at(-1)?.time ?? 0) as number) + H,
 		candles: cs,
 		judgments: {},
-		position: EMPTY_POSITION,
+		position,
+		// 保有を渡したら1ロットとして持つ
+		lots:
+			position.quantity > 0
+				? [
+						{
+							id: "b1",
+							quantity: position.quantity,
+							entryPrice: position.entryPrice ?? 0,
+							openedAt: position.openedAt ?? 0,
+						},
+					]
+				: [],
 		cash: 10_000_000,
 		openOrders: [],
 		params: p,
@@ -255,7 +275,10 @@ describe("買い", () => {
 		const out = evaluateConditionSet(
 			input(rising, {
 				...always,
-				buyOrder: { type: "limit", belowPercent: 1.25, expireBars: 10 },
+				buyOrder: {
+					lines: [{ type: "limit", belowPercent: 1.25 }],
+					expireBars: 10,
+				},
 			}),
 		);
 		// 13,500,005 × 98.75% = 13,331,254.9... → 13,331,254
@@ -275,7 +298,7 @@ describe("買い", () => {
 	test("成行なら価格と期限を持たずに出す。資金は現在値で見積もる", () => {
 		const market = {
 			...always,
-			buyOrder: { ...DEFAULT_BUY_ORDER, type: "market" as const },
+			buyOrder: MARKET_BUY_ORDER,
 		};
 		const out = evaluateConditionSet(input(rising, market));
 		expect(out.intents).toEqual([
@@ -356,7 +379,13 @@ describe("売り", () => {
 			}),
 		);
 		expect(out.intents).toEqual([
-			{ kind: "place", side: "sell", type: "market", quantity: 2_000_000 },
+			{
+				kind: "place",
+				side: "sell",
+				type: "market",
+				quantity: 2_000_000,
+				lotId: "b1",
+			},
 		]);
 		expect(out.note).toContain("保有中の 0.020 BTC を売却（利確の条件）");
 	});
@@ -461,18 +490,49 @@ describe("validateConditionSet", () => {
 				buyOrder,
 			}).map((e) => e.path);
 		const limit = (belowPercent: number, expireBars = 3) =>
-			errs({ type: "limit", belowPercent, expireBars });
+			errs({ lines: [{ type: "limit", belowPercent }], expireBars });
 		expect(limit(0)).toEqual([]);
 		expect(limit(99.99, 100)).toEqual([]);
-		expect(limit(100)).toEqual(["buyOrder.belowPercent"]);
-		expect(limit(-0.01)).toEqual(["buyOrder.belowPercent"]);
-		expect(limit(0.125)).toEqual(["buyOrder.belowPercent"]);
+		expect(limit(100)).toEqual(["buyOrder.lines.0.belowPercent"]);
+		expect(limit(-0.01)).toEqual(["buyOrder.lines.0.belowPercent"]);
+		expect(limit(0.125)).toEqual(["buyOrder.lines.0.belowPercent"]);
 		expect(limit(0.1, 0)).toEqual(["buyOrder.expireBars"]);
 		expect(limit(0.1, 101)).toEqual(["buyOrder.expireBars"]);
-		// 成行では値幅と本数を見ない
-		expect(
-			errs({ type: "market", belowPercent: Number.NaN, expireBars: 0 }),
-		).toEqual([]);
+		// 成行だけなら本数を見ない
+		expect(errs({ lines: [{ type: "market" }], expireBars: 0 })).toEqual([]);
+	});
+
+	test("買い注文の行: 成行は先頭の1行だけ、指値は下の行ほど大きい %、1〜10 行", () => {
+		const errs = (lines: BuyOrderLine[]) =>
+			validateConditionSet({
+				...strategyTemplate("range").params,
+				buyOrder: { lines, expireBars: 3 },
+			}).map((e) => e.path);
+		const lim = (belowPercent: number): BuyOrderLine => ({
+			type: "limit",
+			belowPercent,
+		});
+		expect(errs([{ type: "market" }, lim(0.5), lim(1)])).toEqual([]);
+		expect(errs([lim(0.5), { type: "market" }])).toEqual(["buyOrder.lines.1"]);
+		expect(errs([lim(1), lim(1)])).toEqual(["buyOrder.lines.1.belowPercent"]);
+		expect(errs([lim(1), lim(0.5)])).toEqual(["buyOrder.lines.1.belowPercent"]);
+		expect(errs([])).toEqual(["buyOrder.lines"]);
+		expect(errs(Array.from({ length: 11 }, (_, i) => lim(i + 1)))).toEqual([
+			"buyOrder.lines",
+		]);
+	});
+
+	test("最大ポジション数は 1〜10 の整数", () => {
+		const errs = (maxPositions: number) =>
+			validateConditionSet({
+				...strategyTemplate("range").params,
+				maxPositions,
+			}).map((e) => e.path);
+		expect(errs(1)).toEqual([]);
+		expect(errs(10)).toEqual([]);
+		expect(errs(0)).toEqual(["maxPositions"]);
+		expect(errs(11)).toEqual(["maxPositions"]);
+		expect(errs(1.5)).toEqual(["maxPositions"]);
 	});
 
 	test("ひな形は空以外は検証を通る", () => {
@@ -512,10 +572,31 @@ describe("parseConditionSet", () => {
 		).toBeNull();
 	});
 
+	test("行を持つ前の注文方法は1行として読み、最大ポジション数が無ければ 1 で読む", () => {
+		const { maxPositions: _, ...old } = strategyTemplate("range").params;
+		const limit = parseConditionSet({
+			...old,
+			buyOrder: { type: "limit", belowPercent: 0.5, expireBars: 7 },
+		});
+		expect(limit?.buyOrder).toEqual({
+			lines: [{ type: "limit", belowPercent: 0.5 }],
+			expireBars: 7,
+		});
+		expect(limit?.maxPositions).toBe(1);
+		expect(
+			parseConditionSet({
+				...old,
+				buyOrder: { type: "market", belowPercent: 0.1, expireBars: 3 },
+			})?.buyOrder,
+		).toEqual(MARKET_BUY_ORDER);
+	});
+
 	test("トレンド追随のひな形だけ成行で買う", () => {
-		expect(strategyTemplate("trend").params.buyOrder.type).toBe("market");
-		expect(strategyTemplate("range").params.buyOrder.type).toBe("limit");
-		expect(strategyTemplate("blank").params.buyOrder.type).toBe("limit");
+		const first = (id: TemplateId) =>
+			strategyTemplate(id).params.buyOrder.lines[0]?.type;
+		expect(first("trend")).toBe("market");
+		expect(first("range")).toBe("limit");
+		expect(first("blank")).toBe("limit");
 	});
 
 	test("形が違えば null", () => {
@@ -650,5 +731,182 @@ describe("AI 判定の条件", () => {
 			"stopLoss.conditions.0.values",
 		]);
 		expect(parseConditionSet(JSON.parse(JSON.stringify(p)))).toEqual(p);
+	});
+});
+
+describe("複数ポジション", () => {
+	const buyAlways: Condition = {
+		type: "breakout",
+		lookback: 1,
+		direction: "high",
+	};
+	const loss: Condition = {
+		type: "entryChange",
+		percent: 1,
+		direction: "down",
+	};
+	const multi = (over: Partial<ConditionSet> = {}) =>
+		params({
+			maxPositions: 3,
+			buy: { match: "all", conditions: [buyAlways] },
+			buyOrder: {
+				lines: [
+					{ type: "market" },
+					{ type: "limit", belowPercent: 0.5 },
+					{ type: "limit", belowPercent: 1 },
+				],
+				expireBars: 5,
+			},
+			stopLoss: { match: "any", conditions: [loss] },
+			...over,
+		});
+	const rising = candles([10_000_000, 10_000_000]).map((c, i) =>
+		i === 1 ? { ...c, close: 10_000_100 } : c,
+	);
+	const lot = (id: string, entryPrice: number) => ({
+		id,
+		quantity: 1_000_000,
+		entryPrice,
+		openedAt: 0,
+	});
+
+	test("1回の条件成立で行の数だけ同時に出す。指値は行ごとの %、期限は同じ本数", () => {
+		const out = evaluateConditionSet(input(rising, multi()));
+		expect(out.intents).toEqual([
+			{ kind: "place", side: "buy", type: "market", quantity: 1_000_000 },
+			{
+				kind: "place",
+				side: "buy",
+				type: "limit",
+				price: 9_950_099,
+				quantity: 1_000_000,
+				expireAfterBars: 5,
+			},
+			{
+				kind: "place",
+				side: "buy",
+				type: "limit",
+				price: 9_900_099,
+				quantity: 1_000_000,
+				expireAfterBars: 5,
+			},
+		]);
+		expect(out.state).toEqual({ buyHit: true });
+	});
+
+	test("空き枠が行の数より少なければ、空きの数だけ先頭から出す。保有中でも買う", () => {
+		const out = evaluateConditionSet(
+			input(rising, multi(), { lots: [lot("b1", 10_000_000)] }),
+		);
+		expect(out.intents.map((i) => i.kind === "place" && i.type)).toEqual([
+			"market",
+			"limit",
+		]);
+	});
+
+	test("最大ポジション数に達していれば買わない", () => {
+		const out = evaluateConditionSet(
+			input(rising, multi({ maxPositions: 2 }), {
+				lots: [lot("b1", 10_000_000), lot("b2", 10_000_000)],
+			}),
+		);
+		expect(out.intents).toEqual([]);
+		expect(out.note).toContain("最大ポジション数 2 に達しているため買わない");
+	});
+
+	test("未約定の買いがあれば新しい買いを出さない", () => {
+		const open: Order = {
+			id: "o1",
+			side: "buy",
+			type: "limit",
+			price: 1,
+			quantity: 1,
+			placedAt: 0,
+			expiresAt: null,
+			status: "open",
+		};
+		const out = evaluateConditionSet(
+			input(rising, multi(), { openOrders: [open] }),
+		);
+		expect(out.intents).toEqual([]);
+		expect(out.note).toBe("買い注文の約定待ち");
+	});
+
+	test("最大ポジション数が 2 以上なら、前回も条件が成立していたときは買わない（一度外れてから買う）", () => {
+		const kept = evaluateConditionSet(
+			input(rising, multi(), { state: { buyHit: true } }),
+		);
+		expect(kept.intents).toEqual([]);
+		expect(kept.note).toContain("一度外れてから買う");
+		const flat = candles([10_000_000, 10_000_000]);
+		expect(
+			evaluateConditionSet(input(flat, multi(), { state: { buyHit: true } }))
+				.state,
+		).toEqual({ buyHit: false });
+		expect(
+			evaluateConditionSet(input(rising, multi(), { state: { buyHit: false } }))
+				.intents,
+		).toHaveLength(3);
+	});
+
+	test("最大ポジション数が 1 なら前回の成立を見ず、state も変えない（今までどおり）", () => {
+		const one = multi({ maxPositions: 1 });
+		const out = evaluateConditionSet(
+			input(rising, one, { state: { buyHit: true } }),
+		);
+		expect(out.intents).toHaveLength(1);
+		expect(out.state).toEqual({ buyHit: true });
+	});
+
+	test("売りはロットごとに、そのロットの買値からの % で判定し、ロットを指定して売る", () => {
+		const out = evaluateConditionSet(
+			input(candles([9_950_000]), multi(), {
+				lots: [lot("b1", 10_100_000), lot("b2", 9_960_000)],
+			}),
+		);
+		const sells = out.intents.filter(
+			(i) => i.kind === "place" && i.side === "sell",
+		);
+		expect(sells).toEqual([
+			{
+				kind: "place",
+				side: "sell",
+				type: "market",
+				quantity: 1_000_000,
+				lotId: "b1",
+			},
+		]);
+		expect(out.note).toContain(
+			"買値 10,100,000 のロット 0.010 BTC を売却（損切りの条件）",
+		);
+	});
+
+	test("売りが約定待ちのロットは判定しない", () => {
+		const selling: Order = {
+			id: "o9",
+			side: "sell",
+			type: "market",
+			price: null,
+			quantity: 1_000_000,
+			placedAt: 0,
+			expiresAt: null,
+			status: "open",
+			lotId: "b1",
+		};
+		const out = evaluateConditionSet(
+			input(candles([9_000_000]), multi({ maxPositions: 2 }), {
+				lots: [lot("b1", 10_000_000), lot("b2", 10_000_000)],
+				openOrders: [selling],
+			}),
+		);
+		expect(out.intents.map((i) => i.kind === "place" && i.lotId)).toEqual([
+			"b2",
+		]);
+	});
+
+	test("資金が足りなくなった行から先は出さない", () => {
+		const out = evaluateConditionSet(input(rising, multi(), { cash: 150_000 }));
+		expect(out.intents).toHaveLength(1);
+		expect(out.note).toContain("残り 2 件は");
 	});
 });

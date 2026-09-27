@@ -2,6 +2,7 @@
 
 import type {
 	BuyOrder,
+	BuyOrderLine,
 	Condition,
 	ConditionGroupKey,
 	ConditionSet,
@@ -15,6 +16,7 @@ import type {
 import {
 	CONDITION_GROUP_LABELS,
 	CONDITION_GROUPS,
+	DEFAULT_BUY_BELOW_PERCENT,
 	FREQUENCY_UNIT_LABELS,
 	FREQUENCY_UNITS,
 	formatBtc,
@@ -527,7 +529,7 @@ function ConditionRow({
 	);
 }
 
-/** 買い注文の出し方。指値のときだけ値幅と取消までの本数を出す */
+/** 買い注文の出し方（先頭の1行）。指値のときだけ値幅と取消までの本数を出す */
 function BuyOrderRow({
 	order,
 	onChange,
@@ -537,8 +539,11 @@ function BuyOrderRow({
 	onChange: (o: BuyOrder) => void;
 	errors: ValidationError[];
 }) {
-	const below = errorsAt(errors, "buyOrder.belowPercent");
+	const below = errorsAt(errors, "buyOrder.lines.0.belowPercent");
 	const expire = errorsAt(errors, "buyOrder.expireBars");
+	const line = order.lines[0];
+	const setLine = (next: BuyOrderLine) =>
+		onChange({ ...order, lines: [next, ...order.lines.slice(1)] });
 	return (
 		<div className="flex flex-col gap-1.5 border-t border-line pt-2.5">
 			<div className="flex flex-wrap items-center gap-2">
@@ -550,17 +555,29 @@ function BuyOrderRow({
 					options={(["limit", "market"] as const).map(
 						(t) => [t, ORDER_TYPE_LABELS[t]] as const,
 					)}
-					value={order.type}
-					onChange={(type) => onChange({ ...order, type })}
+					value={line?.type ?? "limit"}
+					onChange={(type) =>
+						setLine(
+							type === "market"
+								? { type }
+								: {
+										type,
+										belowPercent:
+											line?.type === "limit"
+												? line.belowPercent
+												: DEFAULT_BUY_BELOW_PERCENT,
+									},
+						)
+					}
 				/>
 			</div>
-			{order.type === "limit" ? (
+			{line?.type === "limit" ? (
 				<div className="flex flex-col gap-1 rounded-[10px] bg-bg px-3 py-2">
 					<div className="flex flex-wrap items-center gap-1.5 text-sm">
 						<span>現在値から</span>
 						<NumberInput
-							value={order.belowPercent}
-							onChange={(belowPercent) => onChange({ ...order, belowPercent })}
+							value={line.belowPercent}
+							onChange={(belowPercent) => setLine({ ...line, belowPercent })}
 							invalid={below.length > 0}
 							inputMode="decimal"
 							aria-label="指値を現在値から下げる %"

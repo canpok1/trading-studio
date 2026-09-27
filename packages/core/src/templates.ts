@@ -4,6 +4,8 @@ import type { ConditionSet } from "./condition-strategy";
 import {
 	DEFAULT_BUY_ORDER,
 	DEFAULT_DAILY_LOSS_LIMIT,
+	DEFAULT_MAX_POSITIONS,
+	MARKET_BUY_ORDER,
 } from "./condition-strategy";
 
 export const TEMPLATE_IDS = ["blank", "trend", "range"] as const;
@@ -26,6 +28,7 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 				holding: { value: 15, unit: "m" },
 			},
 			orderSize: 1_000_000,
+			maxPositions: DEFAULT_MAX_POSITIONS,
 			dailyLossLimit: DEFAULT_DAILY_LOSS_LIMIT,
 			buy: { match: "all", conditions: [] },
 			buyOrder: DEFAULT_BUY_ORDER,
@@ -46,13 +49,14 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 				holding: { value: 15, unit: "m" },
 			},
 			orderSize: 2_000_000,
+			maxPositions: DEFAULT_MAX_POSITIONS,
 			dailyLossLimit: DEFAULT_DAILY_LOSS_LIMIT,
 			buy: {
 				match: "all",
 				conditions: [{ type: "emaCross", fast: 12, slow: 48, direction: "up" }],
 			},
 			// 上抜けで買うので、指値だと約定せず取り逃がしやすい
-			buyOrder: { ...DEFAULT_BUY_ORDER, type: "market" },
+			buyOrder: MARKET_BUY_ORDER,
 			takeProfit: {
 				match: "any",
 				conditions: [
@@ -76,6 +80,7 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 				holding: { value: 30, unit: "m" },
 			},
 			orderSize: 1_000_000,
+			maxPositions: DEFAULT_MAX_POSITIONS,
 			dailyLossLimit: DEFAULT_DAILY_LOSS_LIMIT,
 			buy: {
 				match: "all",

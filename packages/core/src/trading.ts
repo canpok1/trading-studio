@@ -8,6 +8,7 @@ import type {
 	Candle,
 	JsonValue,
 	Judgment,
+	Lot,
 	Order,
 	OrderIntent,
 	OrderType,
@@ -73,12 +74,21 @@ export type Trade = {
 /** 未約定の注文。戦略へ渡す注文（期限つき）と記録の組 */
 export type OpenOrder = { order: Order; record: TradeOrder };
 
-/** 口座。現金・保有・未約定の注文と、往復の損益を出すための買いの支払い */
+/** 口座のロット。往復の損益を出すため、買いの記録と支払い（手数料込み）も持つ */
+export type AccountLot = Lot & {
+	/** 買いの支払い（手数料込み） */
+	cost: number;
+	/** 買いの記録。売りで往復が閉じたら売りの注文と対応づける */
+	record: TradeOrder;
+};
+
+/** 口座。現金・保有（ロット）・未約定の注文 */
 export type Account = {
 	cash: number;
+	/** 全ロットの合計。lots から作る */
 	position: Position;
-	/** 保有中のポジションの買いの記録と、その支払い（手数料込み）。売りで往復が閉じたら買いの記録にも対応づける */
-	entry: { record: TradeOrder; time: number; cost: number } | null;
+	/** 保有中のロット（買いの約定順） */
+	lots: AccountLot[];
 	openOrders: OpenOrder[];
 	/** 注文の通し番号。注文の id に使う */
 	seq: number;
@@ -90,10 +100,75 @@ export function newAccount(cash: number, seq = 0): Account {
 	return {
 		cash,
 		position: EMPTY_POSITION,
-		entry: null,
+		lots: [],
 		openOrders: [],
 		seq,
 		today: { dayStart: 0, pnl: 0 },
+	};
+}
+
+/** ロットの合計。平均の買値は数量で重み付けする */
+export function positionOfLots(lots: readonly Lot[]): Position {
+	if (lots.length === 0) return EMPTY_POSITION;
+	const quantity = lots.reduce((a, l) => a + l.quantity, 0);
+	return {
+		quantity,
+		entryPrice:
+			lots.reduce((a, l) => a + l.entryPrice * l.quantity, 0) / quantity,
+		openedAt: Math.min(...lots.map((l) => l.openedAt)),
+	};
+}
+
+/** 戦略へ渡すロット（支払いと記録を除く） */
+export const publicLots = (lots: readonly AccountLot[]): Lot[] =>
+	lots.map(({ id, quantity, entryPrice, openedAt }) => ({
+		id,
+		quantity,
+		entryPrice,
+		openedAt,
+	}));
+
+type LegacyAccount = Partial<Account> & {
+	/** ロットを持つ前の口座の保有（1ポジション） */
+	entry?: { record: TradeOrder; time: number; cost: number } | null;
+};
+
+/**
+ * 保存済みの口座を今の形で読む。ロットを持つ前の口座は、保有を1ロットとして読み、
+ * 売るロットを持たない売りの注文はそのロットの売りとする。1日の確定損益を持つ前の口座も読める
+ */
+export function normalizeAccount(raw: LegacyAccount): Account {
+	const { entry, ...rest } = raw;
+	const position = raw.position ?? EMPTY_POSITION;
+	let lots = raw.lots;
+	if (!lots) {
+		lots =
+			entry && position.quantity > 0
+				? [
+						{
+							id: entry.record.id,
+							quantity: position.quantity,
+							entryPrice: position.entryPrice ?? entry.record.fillPrice ?? 0,
+							openedAt: position.openedAt ?? entry.time,
+							cost: entry.cost,
+							record: entry.record,
+						},
+					]
+				: [];
+	}
+	const only = lots.length === 1 ? (lots[0] as AccountLot).id : null;
+	return {
+		cash: 0,
+		seq: 0,
+		today: { dayStart: 0, pnl: 0 },
+		...rest,
+		position: positionOfLots(lots),
+		lots,
+		openOrders: (raw.openOrders ?? []).map((x) =>
+			x.order.side === "sell" && !x.order.lotId && only
+				? { ...x, order: { ...x.order, lotId: only } }
+				: x,
+		),
 	};
 }
 
@@ -161,7 +236,7 @@ export function settleFills(
 	time: number,
 	fees: FeeRates,
 ): StepChanges & { account: Account; filled: boolean } {
-	let { cash, position, entry, today } = account;
+	let { cash, lots, today } = account;
 	const changed: TradeOrder[] = [];
 	const trades: Trade[] = [];
 	const remaining: OpenOrder[] = [];
@@ -176,7 +251,8 @@ export function settleFills(
 		const fee = feeYen(price, order.quantity, feeRate(fees, order.type));
 		if (order.side === "buy") {
 			const cost = notionalYen(price, order.quantity, "ceil");
-			if (order.type === "market" && cash < cost + fee) {
+			// 指値は発注時に資金を確かめているが、同時に出した注文が先に約定して足りなくなることがあるため、約定時にも確かめる
+			if (cash < cost + fee) {
 				withChanged(
 					changed,
 					cancelRecord(
@@ -188,18 +264,6 @@ export function settleFills(
 				continue;
 			}
 			cash -= cost + fee;
-			// ポジションは1つだけ持つが、買い増しが起きても平均の買値を保つ
-			const qty = position.quantity + order.quantity;
-			const entryPrice =
-				position.entryPrice === null
-					? price
-					: (position.entryPrice * position.quantity + price * order.quantity) /
-						qty;
-			position = {
-				quantity: qty,
-				entryPrice,
-				openedAt: position.openedAt ?? time,
-			};
 			const record: TradeOrder = {
 				...item.record,
 				status: "filled",
@@ -207,43 +271,55 @@ export function settleFills(
 				fillPrice: price,
 				fee,
 			};
-			entry = entry
-				? { ...entry, cost: entry.cost + cost + fee }
-				: { record, time, cost: cost + fee };
+			lots = [
+				...lots,
+				{
+					id: order.id,
+					quantity: order.quantity,
+					entryPrice: price,
+					openedAt: time,
+					cost: cost + fee,
+					record,
+				},
+			];
 			withChanged(changed, record);
 		} else {
+			const lot = lots.find((l) => l.id === order.lotId);
+			if (!lot || lot.quantity !== order.quantity) {
+				withChanged(
+					changed,
+					cancelRecord(item.record, time, "売るロットが無いため取消"),
+				);
+				continue;
+			}
 			const proceeds = notionalYen(price, order.quantity, "floor");
 			cash += proceeds - fee;
-			const qty = position.quantity - order.quantity;
-			position = qty > 0 ? { ...position, quantity: qty } : EMPTY_POSITION;
-			let record: TradeOrder = {
+			lots = lots.filter((l) => l !== lot);
+			// 往復の損益は、売りの受け取り − 買いの支払い（どちらも手数料込み）
+			const pnl = proceeds - fee - lot.cost;
+			trades.push({
+				buyOrderId: lot.id,
+				sellOrderId: order.id,
+				entryTime: lot.openedAt,
+				exitTime: time,
+				quantity: order.quantity,
+				pnl,
+			});
+			const day = jstDayStart(time);
+			today = {
+				dayStart: day,
+				pnl: (today.dayStart === day ? today.pnl : 0) + pnl,
+			};
+			withChanged(changed, { ...lot.record, pairId: order.id });
+			withChanged(changed, {
 				...item.record,
 				status: "filled",
 				filledAt: time,
 				fillPrice: price,
 				fee,
-			};
-			if (qty === 0 && entry) {
-				// 往復の損益は、売りの受け取り − 買いの支払い（どちらも手数料込み）
-				const pnl = proceeds - fee - entry.cost;
-				trades.push({
-					buyOrderId: entry.record.id,
-					sellOrderId: order.id,
-					entryTime: entry.time,
-					exitTime: time,
-					quantity: order.quantity,
-					pnl,
-				});
-				const day = jstDayStart(time);
-				today = {
-					dayStart: day,
-					pnl: (today.dayStart === day ? today.pnl : 0) + pnl,
-				};
-				record = { ...record, pnl, pairId: entry.record.id };
-				withChanged(changed, { ...entry.record, pairId: order.id });
-				entry = null;
-			}
-			withChanged(changed, record);
+				pnl,
+				pairId: lot.id,
+			});
 		}
 		filled = true;
 	}
@@ -251,8 +327,8 @@ export function settleFills(
 		account: {
 			...account,
 			cash,
-			position,
-			entry,
+			position: positionOfLots(lots),
+			lots,
 			today,
 			openOrders: remaining,
 		},
@@ -333,7 +409,8 @@ export type DecideOutput = StepChanges & {
 export function decide<P>(input: DecideInput<P>): DecideOutput {
 	const { strategy, params, now, fees, timeframeMs } = input;
 	const prefix = input.idPrefix ?? "o";
-	let { cash, position, seq } = input.account;
+	const { cash, position, lots } = input.account;
+	let { seq } = input.account;
 	let open = [...input.account.openOrders];
 	const changed: TradeOrder[] = [];
 	const openOrders = open.map((x) => ({ ...x.order }));
@@ -349,11 +426,26 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 		candles: input.candles,
 		judgments: input.judgments,
 		position,
+		lots: publicLots(lots),
 		cash,
 		openOrders,
 		params,
 		state: input.state,
 	});
+
+	// 未約定の買いが約定したときに払う額（手数料込み）。同時に出した買いが全部約定しても現金が足りるようにする。
+	// 成行は判定時の現在値で見積もる
+	const buyNeed = (o: {
+		type: OrderType;
+		price?: number | null;
+		quantity: number;
+	}) => {
+		const p = o.type === "limit" ? (o.price as number) : input.price;
+		return (
+			notionalYen(p, o.quantity, "ceil") +
+			feeYen(p, o.quantity, feeRate(fees, o.type))
+		);
+	};
 
 	const place = (
 		intent: Extract<OrderIntent, { kind: "place" }>,
@@ -365,17 +457,29 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 		if (intent.side === "buy" && blockBuy) {
 			return blockBuy;
 		}
-		if (intent.side === "buy" && intent.type === "limit") {
-			const price = intent.price as number;
-			const need =
-				notionalYen(price, intent.quantity, "ceil") +
-				feeYen(price, intent.quantity, fees.limitPpm);
-			if (cash < need) {
-				return `資金 ${formatYen(cash)} 円が手数料込みの注文額 ${formatYen(need)} 円に足りないため発注しない`;
+		if (intent.side === "buy") {
+			const reserved = open
+				.filter((x) => x.order.side === "buy")
+				.reduce((a, x) => a + buyNeed(x.order), 0);
+			const need = buyNeed(intent);
+			// 成行は約定時に確かめる（1件だけなら今までどおり発注する）
+			if ((intent.type === "limit" || reserved > 0) && cash - reserved < need) {
+				return reserved > 0
+					? `資金 ${formatYen(cash)} 円から未約定の買い ${formatYen(reserved)} 円を除くと、手数料込みの注文額 ${formatYen(need)} 円に足りないため発注しない`
+					: `資金 ${formatYen(cash)} 円が手数料込みの注文額 ${formatYen(need)} 円に足りないため発注しない`;
 			}
 		}
-		if (intent.side === "sell" && intent.quantity > position.quantity) {
-			return `保有 ${formatBtc(position.quantity)} BTC より多くは売れないため発注しない`;
+		if (intent.side === "sell") {
+			const lot = lots.find((l) => l.id === intent.lotId);
+			if (!lot) {
+				return "売るロットが無いため発注しない";
+			}
+			if (intent.quantity !== lot.quantity) {
+				return `ロットの ${formatBtc(lot.quantity)} BTC と違う数量は売れないため発注しない`;
+			}
+			if (open.some((x) => x.order.lotId === lot.id)) {
+				return "このロットの売りが約定待ちのため発注しない";
+			}
 		}
 		seq++;
 		const order: Order = {
@@ -390,6 +494,7 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 					? null
 					: now + intent.expireAfterBars * timeframeMs,
 			status: "open",
+			lotId: intent.side === "sell" ? (intent.lotId ?? null) : null,
 		};
 		const record: TradeOrder = {
 			id: order.id,
@@ -436,7 +541,7 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 	}));
 
 	return {
-		account: { ...input.account, cash, position, seq, openOrders: open },
+		account: { ...input.account, seq, openOrders: open },
 		changed,
 		trades: [],
 		state: out.state,

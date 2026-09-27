@@ -26,6 +26,8 @@ export type OrderIntent =
 			quantity: number;
 			/** この本数（戦略の粒度の足）のあいだ約定しなければ取り消す。未指定なら取り消さない */
 			expireAfterBars?: number;
+			/** 売りで、どのロットを売るか（ロットの id）。売りでは必須 */
+			lotId?: string;
 	  }
 	| { kind: "cancel"; orderId: string; reason?: string };
 
@@ -42,6 +44,8 @@ export type Order = {
 	/** この時刻までに約定しなければ取り消す。null は期限なし */
 	expiresAt: number | null;
 	status: OrderStatus;
+	/** 売りが売るロットの id。買いでは持たない */
+	lotId?: string | null;
 };
 
 /** 約定。手数料は円 */
@@ -54,13 +58,24 @@ export type Fill = {
 	fee: number;
 };
 
-/** 保有。ポジションは1つだけ持つ。quantity が 0 ならポジションなし */
+/** 保有の合計（全ロット）。quantity が 0 ならポジションなし */
 export type Position = {
 	quantity: number;
 	/** 約定価格の平均（手数料を含めない）。ポジションなしなら null */
 	entryPrice: number | null;
-	/** 買いが約定した時刻。ポジションなしなら null */
+	/** 最初のロットの買いが約定した時刻。ポジションなしなら null */
 	openedAt: number | null;
+};
+
+/** ロット。約定した買い注文1件ぶんの保有。売りはロットごとに判定し、ロット全量を売る */
+export type Lot = {
+	/** 買い注文の id */
+	id: string;
+	quantity: number;
+	/** 買いの約定価格（手数料を含めない） */
+	entryPrice: number;
+	/** 買いが約定した時刻 */
+	openedAt: number;
 };
 
 export const EMPTY_POSITION: Position = {

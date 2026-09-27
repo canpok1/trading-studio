@@ -6,6 +6,7 @@ import type {
 	Candle,
 	JsonValue,
 	Judgment,
+	Lot,
 	Order,
 	OrderIntent,
 	Position,
@@ -18,7 +19,10 @@ export type StrategyInput<P> = {
 	candles: readonly Candle[];
 	/** 判定器ごとの、その時点で得られていた AI 判定 */
 	judgments: Readonly<Record<string, readonly Judgment[]>>;
+	/** 保有の合計 */
 	position: Position;
+	/** 保有中のロット（買いの約定順） */
+	lots: readonly Lot[];
 	/** 使える現金（円） */
 	cash: number;
 	/** 未約定の注文 */

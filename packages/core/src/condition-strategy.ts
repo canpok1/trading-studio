@@ -18,7 +18,7 @@ import type {
 } from "./strategy";
 import type { Timeframe } from "./timeframe";
 import { isCoarser, isTimeframe, TIMEFRAME_MS, TIMEFRAMES } from "./timeframe";
-import type { Candle, OrderIntent, OrderType } from "./types";
+import type { Candle, JsonValue, OrderIntent, OrderType } from "./types";
 
 export const FREQUENCY_UNITS = ["s", "m", "h"] as const;
 export type FrequencyUnit = (typeof FREQUENCY_UNITS)[number];
@@ -72,12 +72,20 @@ export const CONDITION_GROUP_LABELS: Record<ConditionGroupKey, string> = {
 	stopLoss: "売り注文（損切り）する条件",
 };
 
-/** 買い注文の出し方。売りは常に成行 */
+/** 買い注文の1行。成行か、現在値から何 % 下の指値か */
+export type BuyOrderLine =
+	| { type: "market" }
+	| {
+			type: "limit";
+			/** 指値を現在値から何 % 下に出すか */
+			belowPercent: number;
+	  };
+
+/** 買い注文の出し方。1回の条件成立で行の数だけ同時に出す。売りは常に成行 */
 export type BuyOrder = {
-	type: OrderType;
-	/** 指値を現在値から何 % 下に出すか。成行では使わない */
-	belowPercent: number;
-	/** 指値をこの本数のあいだ約定しなければ取り消す。成行では使わない */
+	/** 成行は先頭の1行だけ。指値は下の行ほど大きい % */
+	lines: BuyOrderLine[];
+	/** 指値をこの本数のあいだ約定しなければ取り消す。成行には効かない */
 	expireBars: number;
 };
 
@@ -86,12 +94,23 @@ export const ORDER_TYPE_LABELS: Record<OrderType, string> = {
 	market: "成行",
 };
 
+/** 指値を現在値から下げる % の既定 */
+export const DEFAULT_BUY_BELOW_PERCENT = 0.1;
+
 /** 買い注文の出し方の既定。これを持たない保存済みの戦略もこの出し方で読む */
 export const DEFAULT_BUY_ORDER: BuyOrder = {
-	type: "limit",
-	belowPercent: 0.1,
+	lines: [{ type: "limit", belowPercent: DEFAULT_BUY_BELOW_PERCENT }],
 	expireBars: 3,
 };
+
+/** 成行1件で買う出し方 */
+export const MARKET_BUY_ORDER: BuyOrder = {
+	lines: [{ type: "market" }],
+	expireBars: DEFAULT_BUY_ORDER.expireBars,
+};
+
+/** 最大ポジション数の既定。これを持たない保存済みの戦略もこの数で読む */
+export const DEFAULT_MAX_POSITIONS = 1;
 
 export type ConditionSet = {
 	/** EMA・RSI の本数・直近 N 本・指値の取消までの本数は、すべてこの粒度の足で数える */
@@ -102,8 +121,10 @@ export type ConditionSet = {
 		/** ポジションありのとき */
 		holding: Frequency;
 	};
-	/** 1回の注文量（satoshi） */
+	/** 1回の注文量（satoshi）。1ロットの量 */
 	orderSize: number;
+	/** 同時に持てるロットの数（未約定の買い注文を含む） */
+	maxPositions: number;
 	/** 1日の損失上限（円）。その日の確定損失がこれに達したら新しい買いを止める */
 	dailyLossLimit: number;
 	buy: ConditionGroup;
@@ -121,6 +142,9 @@ export const LIMITS = {
 	/** 買い指値を現在値から下げる %。0 以上 100 未満、0.01 刻み */
 	buyBelowPercent: { min: 0, maxExclusive: 100 },
 	buyExpireBars: { min: 1, max: 100 },
+	/** 買い注文の行の数 */
+	buyOrderLines: { min: 1, max: 10 },
+	maxPositions: { min: 1, max: 10 },
 	frequency: { min: 1, max: 999 },
 	/** 注文量（satoshi）。0.001〜1 BTC */
 	orderSize: { min: 100_000, max: SATOSHI_PER_BTC },
@@ -501,8 +525,23 @@ export function validateConditionSet(p: ConditionSet): ValidationError[] {
 	if (p.buy.conditions.length === 0) {
 		err("buy", "買い注文の条件を1つ以上追加する");
 	}
-	if (p.buyOrder.type === "limit") {
-		const below = p.buyOrder.belowPercent;
+	if (!isIntIn(p.maxPositions, LIMITS.maxPositions)) {
+		const r = LIMITS.maxPositions;
+		err("maxPositions", `${r.min}〜${r.max} の整数で入れる`);
+	}
+	const lines = p.buyOrder.lines;
+	const nLines = LIMITS.buyOrderLines;
+	if (lines.length < nLines.min || lines.length > nLines.max) {
+		err("buyOrder.lines", `注文は ${nLines.min}〜${nLines.max} 件にする`);
+	}
+	let prevBelow: number | null = null;
+	lines.forEach((line, i) => {
+		const at = `buyOrder.lines.${i}`;
+		if (line.type === "market") {
+			if (i > 0) err(at, "成行は1件だけ、先頭に置く");
+			return;
+		}
+		const below = line.belowPercent;
 		const r = LIMITS.buyBelowPercent;
 		if (
 			!Number.isFinite(below) ||
@@ -512,14 +551,22 @@ export function validateConditionSet(p: ConditionSet): ValidationError[] {
 			Math.abs(below * 100 - Math.round(below * 100)) > 1e-9
 		) {
 			err(
-				"buyOrder.belowPercent",
+				`${at}.belowPercent`,
 				`${r.min} 以上 ${r.maxExclusive} 未満、0.01 刻みで入れる`,
 			);
+		} else {
+			if (prevBelow !== null && below <= prevBelow) {
+				err(`${at}.belowPercent`, `上の行（${prevBelow}%）より大きくする`);
+			}
+			prevBelow = below;
 		}
-		if (!isIntIn(p.buyOrder.expireBars, LIMITS.buyExpireBars)) {
-			const e = LIMITS.buyExpireBars;
-			err("buyOrder.expireBars", `${e.min}〜${e.max} の整数で入れる`);
-		}
+	});
+	if (
+		lines.some((l) => l.type === "limit") &&
+		!isIntIn(p.buyOrder.expireBars, LIMITS.buyExpireBars)
+	) {
+		const e = LIMITS.buyExpireBars;
+		err("buyOrder.expireBars", `${e.min}〜${e.max} の整数で入れる`);
 	}
 	if (p.stopLoss.conditions.length === 0) {
 		err(
@@ -551,6 +598,13 @@ function latestJudgments(
 	return out;
 }
 
+/** 前回の判定で買いの条件が成立していたか。まだ判定していなければ null */
+function prevBuyHit(state: JsonValue): boolean | null {
+	return isObj(state) && typeof state.buyHit === "boolean"
+		? state.buyHit
+		: null;
+}
+
 export function evaluateConditionSet(
 	input: StrategyInput<ConditionSet>,
 ): StrategyOutput {
@@ -558,116 +612,178 @@ export function evaluateConditionSet(
 		now,
 		candles,
 		judgments,
-		position,
+		lots,
 		cash,
 		openOrders,
 		params: p,
 		state,
 	} = input;
-	const holding = position.quantity > 0;
-	const done = (note: string, intents: OrderIntent[] = []): StrategyOutput => ({
-		intents,
-		nextEvalAt: nextEval(now, p, holding),
-		state,
-		note,
-	});
+	const holding = lots.length > 0;
+	const nextEvalAt = nextEval(now, p, holding);
 
 	const last = candles.at(-1);
 	if (!last) {
-		return done("足が無いため判定しない");
-	}
-	if (openOrders.some((o) => o.side === (holding ? "sell" : "buy"))) {
-		return done(holding ? "売り注文の約定待ち" : "買い注文の約定待ち");
+		return { intents: [], nextEvalAt, state, note: "足が無いため判定しない" };
 	}
 	const ctx: Ctx = {
 		candles,
 		closes: candles.map((c) => c.close),
 		price: last.close,
-		entryPrice: position.entryPrice,
+		entryPrice: null,
 		emaCache: new Map(),
 		rsiCache: new Map(),
 		judgments: latestJudgments(judgments),
 	};
+	const intents: OrderIntent[] = [];
+	const notes: string[] = [];
+	let nextState = state;
 
-	if (!holding) {
-		const r = evaluateGroup(p.buy, ctx);
-		if (r.kind === "insufficient") {
-			return done(`指標の本数が足りないため判定しない（${r.why}）`);
-		}
-		if (r.kind === "miss") {
-			return done("買いの条件を満たさない");
-		}
-		const order = p.buyOrder;
-		if (order.type === "market") {
-			// 約定価格は発注後に決まるので、判定時の現在値で見積もる
-			const cost = notionalYen(ctx.price, p.orderSize, "ceil");
-			if (cash < cost) {
-				return done(
-					`${r.why}資金 ${formatYen(cash)} 円が注文額の見積もり ${formatYen(cost)} 円に足りないため買わない`,
-				);
+	// 売り: ロットごとに判定する。同じ判定で利確と損切りの両方が成立したら損切りを優先する（損失を小さく見積もらないため）
+	if (holding) {
+		const selling = new Set(
+			openOrders.filter((o) => o.side === "sell").map((o) => o.lotId),
+		);
+		const targets = lots.filter((l) => !selling.has(l.id));
+		const sells: string[] = [];
+		let lacking: string | null = null;
+		for (const lot of targets) {
+			const lotCtx = { ...ctx, entryPrice: lot.entryPrice };
+			const sl = evaluateGroup(p.stopLoss, lotCtx);
+			const tp = evaluateGroup(p.takeProfit, lotCtx);
+			const short = [sl, tp].find((r) => r.kind === "insufficient");
+			if (short?.kind === "insufficient") {
+				lacking = short.why;
+				break;
 			}
-			return done(`${r.why}成行で ${formatBtc(p.orderSize)} BTC を買い`, [
-				{
-					kind: "place",
-					side: "buy",
-					type: "market",
-					quantity: p.orderSize,
-				},
-			]);
-		}
-		const price = limitBuyPriceBelow(
-			ctx.price,
-			Math.round(order.belowPercent * 10_000),
-		);
-		const cost = notionalYen(price, p.orderSize, "ceil");
-		if (cash < cost) {
-			return done(
-				`${r.why}資金 ${formatYen(cash)} 円が注文額 ${formatYen(cost)} 円に足りないため買わない`,
-			);
-		}
-		return done(
-			`${r.why}現在値 ${formatYen(ctx.price)} より ${order.belowPercent}% 下の ${formatYen(price)} に指値で ${formatBtc(p.orderSize)} BTC を買い（${order.expireBars} 本のあいだ約定しなければ取消）`,
-			[
-				{
-					kind: "place",
-					side: "buy",
-					type: "limit",
-					price,
-					quantity: p.orderSize,
-					expireAfterBars: order.expireBars,
-				},
-			],
-		);
-	}
-
-	// 同じ判定で両方成立したら損切りを優先する（損失を小さく見積もらないため）
-	const sl = evaluateGroup(p.stopLoss, ctx);
-	const tp = evaluateGroup(p.takeProfit, ctx);
-	for (const r of [sl, tp]) {
-		if (r.kind === "insufficient") {
-			return done(`指標の本数が足りないため判定しない（${r.why}）`);
-		}
-	}
-	const hit =
-		sl.kind === "hit"
-			? { why: sl.why, label: "損切り" }
-			: tp.kind === "hit"
-				? { why: tp.why, label: "利確" }
-				: null;
-	if (!hit) {
-		return done("売りの条件を満たさない");
-	}
-	return done(
-		`${hit.why}保有中の ${formatBtc(position.quantity)} BTC を売却（${hit.label}の条件）`,
-		[
-			{
+			const hit =
+				sl.kind === "hit"
+					? { why: sl.why, label: "損切り" }
+					: tp.kind === "hit"
+						? { why: tp.why, label: "利確" }
+						: null;
+			if (!hit) continue;
+			const what =
+				lots.length === 1
+					? `保有中の ${formatBtc(lot.quantity)} BTC`
+					: `買値 ${formatYen(lot.entryPrice)} のロット ${formatBtc(lot.quantity)} BTC`;
+			sells.push(`${hit.why}${what} を売却（${hit.label}の条件）`);
+			intents.push({
 				kind: "place",
 				side: "sell",
 				type: "market",
-				quantity: position.quantity,
-			},
-		],
-	);
+				quantity: lot.quantity,
+				lotId: lot.id,
+			});
+		}
+		if (lacking !== null) {
+			intents.length = 0;
+			notes.push(`指標の本数が足りないため判定しない（${lacking}）`);
+		} else if (targets.length === 0) {
+			notes.push("売り注文の約定待ち");
+		} else if (sells.length === 0) {
+			notes.push("売りの条件を満たさない");
+		} else {
+			notes.push(...sells);
+		}
+	}
+
+	// 買い: 空き枠（最大ポジション数 − 保有ロット − 未約定の買い）があり、未約定の買いが無いときだけ出す。
+	// 空き枠は売る前の保有数で数える（売りで空く枠は次の判定から使う）
+	const openBuys = openOrders.filter((o) => o.side === "buy").length;
+	const free = p.maxPositions - lots.length - openBuys;
+	// 最大ポジション数が 2 以上なら、条件が続く間の連続買いを防ぐため、前回外れていたときだけ買う（1 は今までどおり）
+	const edge = p.maxPositions >= 2;
+	const buyCheck = () => {
+		const r = evaluateGroup(p.buy, ctx);
+		if (edge && r.kind !== "insufficient") {
+			nextState = { buyHit: r.kind === "hit" };
+		}
+		return r;
+	};
+	if (openBuys > 0) {
+		if (edge) buyCheck();
+		notes.push("買い注文の約定待ち");
+	} else if (free <= 0) {
+		if (edge) {
+			buyCheck();
+			notes.push(`最大ポジション数 ${p.maxPositions} に達しているため買わない`);
+		}
+	} else {
+		const wasHit = prevBuyHit(state);
+		const r = buyCheck();
+		if (r.kind === "insufficient") {
+			notes.push(`指標の本数が足りないため判定しない（${r.why}）`);
+		} else if (r.kind === "miss") {
+			notes.push("買いの条件を満たさない");
+		} else if (edge && wasHit === true) {
+			notes.push("買いの条件が続いているため買わない（一度外れてから買う）");
+		} else {
+			const placed = buyIntents(p, ctx.price, cash, free);
+			intents.push(...placed.intents);
+			notes.push(`${r.why}${placed.note}`);
+		}
+	}
+
+	return { intents, nextEvalAt, state: nextState, note: notes.join("。") };
+}
+
+/** 買い注文の行を、空き枠の数だけ先頭から注文にする。資金が足りなくなった行から先は出さない */
+function buyIntents(
+	p: ConditionSet,
+	price: number,
+	cash: number,
+	free: number,
+): { intents: OrderIntent[]; note: string } {
+	const { lines, expireBars } = p.buyOrder;
+	const size = p.orderSize;
+	const intents: OrderIntent[] = [];
+	const texts: string[] = [];
+	let total = 0;
+	let short: string | null = null;
+	for (const line of lines.slice(0, free)) {
+		// 成行の約定価格は発注後に決まるので、判定時の現在値で見積もる
+		const at =
+			line.type === "market"
+				? price
+				: limitBuyPriceBelow(price, Math.round(line.belowPercent * 10_000));
+		const cost = notionalYen(at, size, "ceil");
+		if (cash < total + cost) {
+			short =
+				line.type === "market"
+					? `資金 ${formatYen(cash - total)} 円が注文額の見積もり ${formatYen(cost)} 円に足りないため買わない`
+					: `資金 ${formatYen(cash - total)} 円が注文額 ${formatYen(cost)} 円に足りないため買わない`;
+			break;
+		}
+		total += cost;
+		if (line.type === "market") {
+			texts.push(`成行で ${formatBtc(size)} BTC を買い`);
+			intents.push({
+				kind: "place",
+				side: "buy",
+				type: "market",
+				quantity: size,
+			});
+		} else {
+			texts.push(
+				`現在値 ${formatYen(price)} より ${line.belowPercent}% 下の ${formatYen(at)} に指値で ${formatBtc(size)} BTC を買い（${expireBars} 本のあいだ約定しなければ取消）`,
+			);
+			intents.push({
+				kind: "place",
+				side: "buy",
+				type: "limit",
+				price: at,
+				quantity: size,
+				expireAfterBars: expireBars,
+			});
+		}
+	}
+	if (intents.length === 0) {
+		return { intents, note: short ?? "" };
+	}
+	const rest = short
+		? `。残り ${Math.min(lines.length, free) - intents.length} 件は${short.replace(/ため買わない$/, "ため出さない")}`
+		: "";
+	return { intents, note: `${texts.join("、")}${rest}` };
 }
 
 export const conditionStrategy: Strategy<ConditionSet> = {
@@ -749,16 +865,40 @@ function parseGroup(v: unknown): ConditionGroup | null {
 		: null;
 }
 
-/** 無ければ既定の出し方（保存済みの戦略が持っていない） */
-function parseBuyOrder(v: unknown): BuyOrder | null {
-	if (v === undefined) return { ...DEFAULT_BUY_ORDER };
-	if (!isObj(v) || (v.type !== "limit" && v.type !== "market")) return null;
-	const num = (x: unknown) => (typeof x === "number" ? x : Number.NaN);
+function parseBuyOrderLine(v: unknown): BuyOrderLine | null {
+	if (!isObj(v)) return null;
+	if (v.type === "market") return { type: "market" };
+	if (v.type !== "limit") return null;
 	return {
-		type: v.type,
-		belowPercent: num(v.belowPercent),
-		expireBars: num(v.expireBars),
+		type: "limit",
+		belowPercent:
+			typeof v.belowPercent === "number" ? v.belowPercent : Number.NaN,
 	};
+}
+
+/**
+ * 無ければ既定の出し方（保存済みの戦略が持っていない）。
+ * 行を持つ前の形（type・belowPercent・expireBars）は、その注文方法の1行として読む
+ */
+function parseBuyOrder(v: unknown): BuyOrder | null {
+	if (v === undefined) {
+		return {
+			...DEFAULT_BUY_ORDER,
+			lines: DEFAULT_BUY_ORDER.lines.map((l) => ({ ...l })),
+		};
+	}
+	if (!isObj(v)) return null;
+	const expireBars =
+		typeof v.expireBars === "number" ? v.expireBars : Number.NaN;
+	if (v.lines === undefined) {
+		const line = parseBuyOrderLine(v);
+		return line ? { lines: [line], expireBars } : null;
+	}
+	if (!Array.isArray(v.lines)) return null;
+	const lines = v.lines.map(parseBuyOrderLine);
+	return lines.every((l) => l !== null)
+		? { lines: lines as BuyOrderLine[], expireBars }
+		: null;
 }
 
 function parseFrequency(v: unknown): Frequency | null {
@@ -789,6 +929,12 @@ export function parseConditionSet(v: unknown): ConditionSet | null {
 		timeframe: v.timeframe,
 		frequency: { flat, holding },
 		orderSize: typeof v.orderSize === "number" ? v.orderSize : Number.NaN,
+		maxPositions:
+			v.maxPositions === undefined
+				? DEFAULT_MAX_POSITIONS
+				: typeof v.maxPositions === "number"
+					? v.maxPositions
+					: Number.NaN,
 		dailyLossLimit:
 			v.dailyLossLimit === undefined
 				? DEFAULT_DAILY_LOSS_LIMIT

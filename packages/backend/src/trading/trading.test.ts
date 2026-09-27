@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ConditionSet, MarketTrade } from "@trading-studio/core";
-import { DEFAULT_BUY_ORDER, strategyTemplate } from "@trading-studio/core";
+import { MARKET_BUY_ORDER, strategyTemplate } from "@trading-studio/core";
 import { createTestApp } from "../test-app";
 import { TradingRepository } from "./repository";
 import { createTradingService } from "./service";
@@ -21,13 +21,14 @@ const always = (over: Partial<ConditionSet> = {}): ConditionSet => ({
 		holding: { value: 1, unit: "m" },
 	},
 	orderSize: 1_000_000,
+	maxPositions: 1,
 	buy: {
 		match: "all",
 		conditions: [
 			{ type: "judgment", judge: "trend", values: ["up", "range", "down"] },
 		],
 	},
-	buyOrder: { ...DEFAULT_BUY_ORDER, type: "market" },
+	buyOrder: MARKET_BUY_ORDER,
 	takeProfit: {
 		match: "any",
 		conditions: [{ type: "entryChange", percent: 1, direction: "up" }],
@@ -161,8 +162,7 @@ describe("自動取引のオンオフ", () => {
 		const t = setup(
 			always({
 				buyOrder: {
-					type: "limit",
-					belowPercent: 1,
+					lines: [{ type: "limit", belowPercent: 1 }],
 					expireBars: 10,
 				},
 			}),
@@ -231,7 +231,12 @@ describe("仮想の約定", () => {
 
 	test("指値は指値以下の約定が来たら指値で約定し、跨がなければ約定しない", async () => {
 		const t = setup(
-			always({ buyOrder: { type: "limit", belowPercent: 1, expireBars: 3 } }),
+			always({
+				buyOrder: {
+					lines: [{ type: "limit", belowPercent: 1 }],
+					expireBars: 3,
+				},
+			}),
 		);
 		await t.call("POST", "/start", { mode: "paper" });
 		t.at(T0 + M);
@@ -248,7 +253,12 @@ describe("仮想の約定", () => {
 
 	test("指値は戦略の粒度の足 M 本ぶんの時間が過ぎたら取り消す", async () => {
 		const t = setup(
-			always({ buyOrder: { type: "limit", belowPercent: 1, expireBars: 3 } }),
+			always({
+				buyOrder: {
+					lines: [{ type: "limit", belowPercent: 1 }],
+					expireBars: 3,
+				},
+			}),
 		);
 		await t.call("POST", "/start", { mode: "paper" });
 		t.at(T0 + M);
@@ -280,7 +290,12 @@ describe("仮想の約定", () => {
 describe("止まっていた間と再起動", () => {
 	test("収集が止まっている間は判定せず、復帰したら過ぎた判定を1回だけ行う", async () => {
 		const t = setup(
-			always({ buyOrder: { type: "limit", belowPercent: 1, expireBars: 100 } }),
+			always({
+				buyOrder: {
+					lines: [{ type: "limit", belowPercent: 1 }],
+					expireBars: 100,
+				},
+			}),
 		);
 		await t.call("POST", "/start", { mode: "paper" });
 		const running = t.live.current.status;
@@ -301,7 +316,12 @@ describe("止まっていた間と再起動", () => {
 
 	test("再起動しても state・未約定の注文・次の判定時刻を DB から戻して続きから動く", async () => {
 		const t = setup(
-			always({ buyOrder: { type: "limit", belowPercent: 1, expireBars: 100 } }),
+			always({
+				buyOrder: {
+					lines: [{ type: "limit", belowPercent: 1 }],
+					expireBars: 100,
+				},
+			}),
 		);
 		await t.call("POST", "/start", { mode: "paper" });
 		t.at(T0 + M);
@@ -337,7 +357,12 @@ describe("止まっていた間と再起動", () => {
 describe("口座のリセット", () => {
 	test("オフのときだけ、開始時の資金に戻し未約定の注文を取り消す。過去の記録は残る", async () => {
 		const t = setup(
-			always({ buyOrder: { type: "limit", belowPercent: 1, expireBars: 100 } }),
+			always({
+				buyOrder: {
+					lines: [{ type: "limit", belowPercent: 1 }],
+					expireBars: 100,
+				},
+			}),
 		);
 		await t.call("POST", "/start", { mode: "paper" });
 		t.at(T0 + M);
