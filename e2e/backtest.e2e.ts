@@ -246,6 +246,28 @@ test("AI 判定の条件がある戦略は、採点の記録が始まる前の�
 	).toBeDisabled();
 });
 
+test("判定の条件で「データなし」を選ぶと、採点の記録が始まる前の期間でも実行できる", async ({
+	page,
+	request,
+}, info) => {
+	const name = `BT データなし ${info.project.name}`;
+	await prepare(request, name, {
+		...PARAMS,
+		buy: {
+			match: "all",
+			conditions: [
+				{ type: "judgment", judge: "trend", values: ["up", "none"] },
+			],
+		},
+	});
+	await choose(page, name, "2026-05-03", "2026-05-25");
+	await expect(page.getByText(/判定履歴を使う/)).toBeVisible();
+	await expect(page.getByRole("alert")).toHaveCount(0);
+	await expect(
+		page.getByRole("button", { name: "バックテストを実行" }),
+	).toBeEnabled();
+});
+
 test("結果画面でボタンを押すと AI アドバイスができ、作り直せる", async ({
 	page,
 	request,
