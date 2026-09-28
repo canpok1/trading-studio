@@ -61,9 +61,14 @@ export type BacktestConfig<P> = {
 	shouldAbort?: () => boolean;
 	/**
 	 * AI 判定の材料。評価のたびに、その時刻までに採点済みの点数からこのルールで判定を作って戦略へ渡す。
-	 * 戦略が判定器を使わなければ省いてよい
+	 * 戦略が判定器を使わなければ省いてよい。
+	 * since は採点の記録が始まった時刻で、これより前（null なら全体）は判定を渡さない（データなし）
 	 */
-	judgments?: { news: readonly ScoredNews[]; rule: AggregationRule };
+	judgments?: {
+		news: readonly ScoredNews[];
+		rule: AggregationRule;
+		since?: number | null;
+	};
 };
 
 export class BacktestError extends Error {
@@ -155,8 +160,10 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 		judges.length > 0 && config.judgments
 			? judgmentCursor(config.judgments.news, config.judgments.rule)
 			: null;
+	const since = config.judgments?.since;
 	const judgmentsAt = (time: number) => {
 		if (!judgeAtTime) return {};
+		if (since === null || (since !== undefined && time < since)) return {};
 		const v = judgeAtTime(time);
 		return Object.fromEntries(
 			judges.map((j) => [

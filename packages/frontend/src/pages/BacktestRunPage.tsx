@@ -10,6 +10,7 @@ import type {
 	Timeframe,
 } from "@trading-studio/core";
 import {
+	acceptsNoJudgment,
 	chooseStepTimeframe,
 	conditionStrategy,
 	isCoarser,
@@ -407,15 +408,17 @@ function RunForm({
 	const step =
 		finest && !isCoarser(finest, tf) ? chooseStepTimeframe(p, finest) : null;
 
-	// AI 判定の条件があれば、評価のたびに記録済みの採点から判定を作る。記録が始まる前は実行できない
+	// AI 判定の条件があれば、評価のたびに記録済みの採点から判定を作る。
+	// 記録が始まる前はデータなしで、判定の条件のどれかで「データなし」を選んでいなければ実行できない
 	const usesJudgments = conditionStrategy.requiredJudges(p).length > 0;
-	const judgmentError = !usesJudgments
-		? null
-		: firstScoredAt === null
-			? "AI 判定の条件があるが、ニュースの採点の記録がまだ無いため実行できない"
-			: fromMs < firstScoredAt
-				? `AI 判定の記録は ${formatDateTime(firstScoredAt)} から。開始を ${formatDate(firstAllowedFrom(firstScoredAt))} 以降にすると実行できる`
-				: null;
+	const judgmentError =
+		!usesJudgments || acceptsNoJudgment(p)
+			? null
+			: firstScoredAt === null
+				? "AI 判定の条件があるが、ニュースの採点の記録がまだ無いため実行できない。判定の条件で「データなし」を選ぶと実行できる"
+				: fromMs < firstScoredAt
+					? `AI 判定の記録は ${formatDateTime(firstScoredAt)} から。開始を ${formatDate(firstAllowedFrom(firstScoredAt))} 以降にするか、判定の条件で「データなし」を選ぶと実行できる`
+					: null;
 
 	const bars = useMemo(() => {
 		if (!cov || cov.firstTime === null || cov.lastTime === null) return 0;
@@ -685,8 +688,18 @@ function RunForm({
 						{usesJudgments && firstScoredAt !== null && (
 							<span className="num text-xs text-text-2">
 								AI 判定の記録の開始: {formatDateTime(firstScoredAt)}
+								{judgmentError === null &&
+									fromMs < firstScoredAt &&
+									"（それより前はデータなし）"}
 							</span>
 						)}
+						{usesJudgments &&
+							firstScoredAt === null &&
+							judgmentError === null && (
+								<span className="text-xs text-text-2">
+									AI 判定の記録がまだ無いため、全期間がデータなし
+								</span>
+							)}
 					</div>
 					{step?.limited && <Note>{stepLimitedText(step.timeframe)}</Note>}
 					{judgmentError && (

@@ -21,6 +21,19 @@ export const JUDGMENT_VALUES = {
 export type JudgmentValue<J extends Judge = Judge> =
 	(typeof JUDGMENT_VALUES)[J][number];
 
+/** 判定の条件だけで選べる値。採点の記録が始まる前で、判定がまだ無いこと */
+export const NO_JUDGMENT = "none";
+
+/** 判定の条件で選べる値。並びは画面の複数選択の並び */
+export const JUDGMENT_CONDITION_VALUES = {
+	trend: [...JUDGMENT_VALUES.trend, NO_JUDGMENT],
+	risk: [...JUDGMENT_VALUES.risk, NO_JUDGMENT],
+	sentiment: [...JUDGMENT_VALUES.sentiment, NO_JUDGMENT],
+} as const satisfies Record<Judge, readonly string[]>;
+
+export type JudgmentConditionValue<J extends Judge = Judge> =
+	(typeof JUDGMENT_CONDITION_VALUES)[J][number];
+
 export const JUDGMENT_VALUE_LABELS: Record<string, string> = {
 	up: "上昇",
 	range: "レンジ",
@@ -33,6 +46,7 @@ export const JUDGMENT_VALUE_LABELS: Record<string, string> = {
 	"0": "0",
 	"-1": "−1",
 	"-2": "−2",
+	none: "データなし",
 };
 
 /** 期間内に対象が無いときの判定 */

@@ -489,6 +489,32 @@ describe("AI 判定の条件", () => {
 		expect((await post(t, body())).status).toBe(202);
 	});
 
+	test("判定の条件で「データなし」を選んでいれば、記録が始まる前はデータなしとして実行する", async () => {
+		const t = setup();
+		const recorded = START + 5 * 24 * H;
+		score(t, recorded, 0);
+		const params: ConditionSet = {
+			...PARAMS,
+			buy: {
+				match: "all",
+				conditions: [
+					{ type: "judgment", judge: "trend", values: ["up", "none"] },
+				],
+			},
+		};
+		const r = await post(t, body({ params }));
+		expect(r.status).toBe(202);
+		const run = r.json.run as BacktestRun;
+		await t.backtests.running();
+		const orders = await getJson<{
+			orders: { side: string; placedAt: number }[];
+		}>(t, `/api/backtests/${run.id}/orders?filter=all&limit=200`);
+		const buys = orders.orders.filter((o) => o.side === "buy");
+		expect(buys.length).toBeGreaterThan(0);
+		// 記録の開始後は中立（レンジ）なので買わない
+		for (const o of buys) expect(o.placedAt).toBeLessThan(recorded);
+	});
+
 	test("評価の時点までに採点済みの点数で判定し、条件どおりに注文を出す", async () => {
 		const t = setup();
 		// 記録の開始。中立の点数

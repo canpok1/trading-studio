@@ -22,8 +22,12 @@ export type RunnerJob = {
 	to: number;
 	initialCash: number;
 	fees: FeeRates;
-	/** AI 判定の材料。条件に判定が無ければ null */
-	judgments: { news: ScoredNews[]; rule: AggregationRule } | null;
+	/** AI 判定の材料。条件に判定が無ければ null。since は採点の記録が始まった時刻（それより前はデータなし） */
+	judgments: {
+		news: ScoredNews[];
+		rule: AggregationRule;
+		since: number | null;
+	} | null;
 };
 
 /** 保存する結果。中身は gzip した JSON */
