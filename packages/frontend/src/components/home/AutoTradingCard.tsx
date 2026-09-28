@@ -11,6 +11,7 @@ import { formatClock } from "../../format";
 import { useTradingStatus } from "../../lib/trading";
 import { errorMessage, readJson } from "../../lib/useAsync";
 import { Modal } from "../Modal";
+import { LIVE_AVAILABLE } from "../trading/TradeViews";
 import { Button, Segmented } from "../ui";
 import { PANEL } from "./Panel";
 
@@ -149,7 +150,7 @@ export function AutoTradingCard({
 				value={status?.mode ?? "paper"}
 				onChange={() => {}}
 				disabled={on}
-				disabledValues={["live"]}
+				disabledValues={LIVE_AVAILABLE ? [] : ["live"]}
 			/>
 			{status?.waitingForMarket && (
 				<p className="text-xs font-semibold">

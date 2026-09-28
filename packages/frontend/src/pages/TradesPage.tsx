@@ -1,27 +1,36 @@
-// 取引画面。上部にペーパーの口座の成績を出し、その下で自動取引の注文・約定・取消を絞り込み、日ごとにまとめて出す
+// 取引画面。ペーパーとライブをタブで切り替え、そのモードの成績と、自動取引の注文・約定・取消を絞り込んで日ごとにまとめて出す
 
 import type { StoredOrder, TradingMode } from "@trading-studio/backend";
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router";
 import { OrderRow, orderTime } from "../components/backtest/OrderViews";
 import { Page } from "../components/Page";
 import { EmptyState, ErrorState, LoadingCard } from "../components/States";
 import { PerformanceCard } from "../components/trading/PerformanceCard";
-import { ModeTag, TradeOrderSheet } from "../components/trading/TradeViews";
-import { Button, Card, Segmented } from "../components/ui";
+import {
+	LIVE_AVAILABLE,
+	MODE_LABELS,
+	TradeOrderSheet,
+} from "../components/trading/TradeViews";
+import { Button, Card, Tabs } from "../components/ui";
 import { formatDate, formatDateWeekday } from "../format";
 import { formatSignedInt } from "../lib/number";
-import { useTradingOrders, useTradingPerformance } from "../lib/trading";
+import {
+	useTradingOrders,
+	useTradingPerformance,
+	useTradingStatus,
+} from "../lib/trading";
 import { usePageVisible } from "../lib/useAsync";
 
-type ModeFilter = "all" | TradingMode;
 type KindFilter = "all" | StoredOrder["status"];
 type SideFilter = "all" | StoredOrder["side"];
 
-const MODE_OPTIONS = [
-	["all", "すべて"],
-	["paper", "ペーパー"],
-	["live", "ライブ"],
-] as const;
+const MODE_TABS: readonly (readonly [TradingMode, string])[] = [
+	["paper", MODE_LABELS.paper],
+	["live", MODE_LABELS.live],
+];
+const isMode = (v: string | null): v is TradingMode =>
+	v === "paper" || v === "live";
 const KIND_OPTIONS: readonly (readonly [KindFilter, string])[] = [
 	["all", "すべて"],
 	["filled", "約定"],
@@ -34,24 +43,57 @@ const SIDE_OPTIONS: readonly (readonly [SideFilter, string])[] = [
 	["sell", "売"],
 ];
 
+/** タブはクエリの mode で持つ。無ければ運用中のモード（ホームで選んでいるモード）で開く */
 export function TradesPage() {
+	const [params, setParams] = useSearchParams();
+	const param = params.get("mode");
+	const { status } = useTradingStatus();
+	const mode: TradingMode | null = isMode(param)
+		? param
+		: (status?.mode ?? null);
+	return (
+		<Page title="取引">
+			{mode === null ? (
+				<LoadingCard />
+			) : (
+				<>
+					<Tabs
+						label="モード"
+						items={MODE_TABS}
+						current={mode}
+						onSelect={(m) => setParams({ mode: m }, { replace: true })}
+					/>
+					{mode === "live" && !LIVE_AVAILABLE ? (
+						<Card>
+							<EmptyState
+								title="ライブ取引はまだ使えない"
+								description="使えるようになると、ライブの成績と注文・約定がここに並ぶ"
+							/>
+						</Card>
+					) : (
+						// モードを切り替えたら絞り込みと選んだ注文を戻す
+						<ModeTrades key={mode} mode={mode} />
+					)}
+				</>
+			)}
+		</Page>
+	);
+}
+
+function ModeTrades({ mode }: { mode: TradingMode }) {
 	const visible = usePageVisible();
-	const [mode, setMode] = useState<ModeFilter>("all");
 	const [kind, setKind] = useState<KindFilter>("all");
 	const [side, setSide] = useState<SideFilter>("all");
-	const [selected, setSelected] = useState<{
-		mode: TradingMode;
-		id: string;
-	} | null>(null);
+	const [selected, setSelected] = useState<string | null>(null);
 	const { orders, summary, error, reload } = useTradingOrders(
 		{
-			...(mode !== "all" && { mode }),
+			mode,
 			...(kind !== "all" && { status: kind }),
 			...(side !== "all" && { side }),
 		},
 		visible,
 	);
-	const paper = useTradingPerformance("paper", visible);
+	const performance = useTradingPerformance(mode, visible);
 
 	const groups = useMemo(() => {
 		const map = new Map<string, { time: number; orders: StoredOrder[] }>();
@@ -65,21 +107,14 @@ export function TradesPage() {
 		return [...map.values()];
 	}, [orders]);
 	const realized = summary?.realizedPnl ?? 0;
-	const filtered = mode !== "all" || kind !== "all" || side !== "all";
+	const filtered = kind !== "all" || side !== "all";
 
 	return (
-		<Page title="取引">
+		<>
 			<PerformanceCard
-				title="ペーパーの成績"
-				performance={paper.performance}
-				error={paper.error}
-			/>
-			<Segmented
-				name="trades-mode"
-				label="モード"
-				options={MODE_OPTIONS}
-				value={mode}
-				onChange={setMode}
+				title={`${MODE_LABELS[mode]}の成績`}
+				performance={performance.performance}
+				error={performance.error}
 			/>
 			<div className="flex flex-wrap items-center gap-1.5">
 				<FilterChips
@@ -126,7 +161,6 @@ export function TradesPage() {
 									action={
 										<Button
 											onClick={() => {
-												setMode("all");
 												setKind("all");
 												setSide("all");
 											}}
@@ -137,7 +171,7 @@ export function TradesPage() {
 								/>
 							) : (
 								<EmptyState
-									title="取引はまだない"
+									title={`${MODE_LABELS[mode]}の取引はまだない`}
 									description="ホームで自動取引をオンにすると、注文と約定がここに並ぶ"
 								/>
 							)}
@@ -155,13 +189,10 @@ export function TradesPage() {
 								<div className="overflow-hidden rounded-xl border border-line">
 									{g.orders.map((o) => (
 										<OrderRow
-											key={`${o.mode}:${o.id}`}
+											key={o.id}
 											order={o}
-											selected={
-												selected?.mode === o.mode && selected.id === o.id
-											}
-											onClick={() => setSelected({ mode: o.mode, id: o.id })}
-											tag={<ModeTag mode={o.mode} />}
+											selected={selected === o.id}
+											onClick={() => setSelected(o.id)}
 										/>
 									))}
 								</div>
@@ -183,18 +214,14 @@ export function TradesPage() {
 			)}
 			{selected && (
 				<TradeOrderSheet
-					mode={selected.mode}
-					id={selected.id}
-					initial={
-						orders?.find(
-							(o) => o.mode === selected.mode && o.id === selected.id,
-						) ?? null
-					}
-					onSelect={(id) => setSelected({ mode: selected.mode, id })}
+					mode={mode}
+					id={selected}
+					initial={orders?.find((o) => o.id === selected) ?? null}
+					onSelect={setSelected}
 					onClose={() => setSelected(null)}
 				/>
 			)}
-		</Page>
+		</>
 	);
 }
 

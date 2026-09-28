@@ -154,15 +154,22 @@ test("仮想注文が出て約定すると、ホームの保有・直近の注�
 		await expect(page.getByTestId("trades-summary")).toContainText(
 			/^\d+ 件 · 実現損益/,
 		);
-		await expect(page.getByTestId("mode-tag").first()).toHaveText("ペーパー");
-		await page.getByText("ライブ", { exact: true }).click();
-		await expect(page.getByText("条件に合う取引はない")).toBeVisible();
-		await page.getByRole("button", { name: "絞り込みを解除" }).click();
+		// 運用中のモード（ペーパー）のタブで開く
+		await expect(page.getByRole("tab", { name: "ペーパー" })).toHaveAttribute(
+			"aria-selected",
+			"true",
+		);
 		await page.getByRole("button", { name: "売", exact: true }).click();
 		await expect(page.getByTestId("trades-summary")).toContainText("0 件");
+		await expect(page.getByText("条件に合う取引はない")).toBeVisible();
+		await page.getByRole("button", { name: "絞り込みを解除" }).click();
 		await page.getByRole("button", { name: "買", exact: true }).click();
 		await page.getByRole("button", { name: "約定", exact: true }).click();
-		await expect(page.getByTestId("mode-tag").first()).toBeVisible();
+		await expect(page.getByTestId("trades-summary")).not.toContainText(/^0 件/);
+		await page.getByRole("tab", { name: "ライブ" }).click();
+		await expect(page).toHaveURL(/\/trades\?mode=live$/);
+		await expect(page.getByText("ライブ取引はまだ使えない")).toBeVisible();
+		await expect(page.getByTestId("trades-summary")).toHaveCount(0);
 	} finally {
 		await page.request.post("/api/trading/stop");
 	}
