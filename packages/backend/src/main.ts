@@ -224,8 +224,10 @@ const http = Bun.serve({
 	hostname,
 	port,
 	fetch: (req, srv) => {
-		// run_backtest は終わりを待つ間なにも送らないので、既定の10秒で切られないようにする
-		if (new URL(req.url).pathname === "/mcp") {
+		// run_backtest と試し採点は終わりを待つ間なにも送らないので、既定の10秒で切られないようにする。
+		// 試し採点は記事ごとに問い合わせの間を5秒空けるので、5件で数十秒かかる
+		const path = new URL(req.url).pathname;
+		if (path === "/mcp" || path === "/api/scoring/trial") {
 			srv.timeout(req, BACKTEST_WAIT_MS / 1_000 + 30);
 		}
 		return server.fetch(req);
