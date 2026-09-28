@@ -52,6 +52,9 @@ type Data = {
 	chart: BacktestChart | null;
 };
 
+/** 「履歴」のタブへ戻る */
+const BACK = { to: "/backtest?tab=history", label: "履歴" };
+
 export function BacktestResultPage() {
 	const api = useApi();
 	const { id = "" } = useParams();
@@ -82,14 +85,14 @@ export function BacktestResultPage() {
 	const title = "バックテスト結果";
 	if (state.kind === "loading") {
 		return (
-			<Page title={title}>
+			<Page title={title} back={BACK}>
 				<LoadingCard />
 			</Page>
 		);
 	}
 	if (state.kind === "error") {
 		return (
-			<Page title={title}>
+			<Page title={title} back={BACK}>
 				<Card>
 					<ErrorState
 						what={`結果を読み込めなかった（${state.message}）`}
@@ -103,7 +106,7 @@ export function BacktestResultPage() {
 	const { run, chart } = state.data;
 	const done = run.status === "done" && run.summary !== null && chart !== null;
 	return (
-		<Page title={title} actions={<RerunButton run={run} />}>
+		<Page title={title} back={BACK} actions={<RerunButton run={run} />}>
 			{/* 結果があれば、条件は成績と並べて結果の中に出す */}
 			{!done && <RunHeader run={run} />}
 			{run.status === "running" && (
