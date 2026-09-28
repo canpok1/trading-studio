@@ -121,14 +121,6 @@ export function OtherIcon({ size = 22 }: IconProps) {
 	);
 }
 
-export function TradesIcon({ size = 22 }: IconProps) {
-	return (
-		<Svg size={size} strokeLinecap="round">
-			<path d="M4 6h16M4 12h16M4 18h10" />
-		</Svg>
-	);
-}
-
 /** ペーパー（模擬売買）の印 */
 export function PaperIcon({ size = 16 }: IconProps) {
 	return (

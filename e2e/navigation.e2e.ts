@@ -5,11 +5,10 @@ test("各画面へ移動できる", async ({ page, isMobile }) => {
 	await expect(page).toHaveURL(/\/home$/);
 	const nav = page.getByRole("navigation", { name: "メイン" });
 	const items = isMobile
-		? ["戦略", "取引", "その他", "バックテスト"]
+		? ["戦略", "ニュース", "その他", "バックテスト"]
 		: [
 				"ニュース",
 				"戦略",
-				"取引",
 				"過去データ",
 				"エクスポート",
 				"設定",
@@ -22,12 +21,7 @@ test("各画面へ移動できる", async ({ page, isMobile }) => {
 		).toBeVisible();
 	}
 	if (isMobile) {
-		// スマホのニュース・過去データ・エクスポート・設定は「その他」の中にある
-		await nav.getByRole("link", { name: "その他" }).click();
-		await page.getByRole("link", { name: /^ニュース/ }).click();
-		await expect(
-			page.getByRole("heading", { level: 1, name: "ニュース" }),
-		).toBeVisible();
+		// スマホの過去データ・エクスポート・設定は「その他」の中にある
 		await nav.getByRole("link", { name: "その他" }).click();
 		await page.getByRole("link", { name: /過去データ/ }).click();
 		await expect(
@@ -75,6 +69,15 @@ test("旧名「AI判定」の URL はニュース画面へ移る", async ({ page
 	await expect(
 		page.getByRole("heading", { level: 1, name: "ニュース" }),
 	).toBeVisible();
+});
+
+test("取引画面の URL はホームの同じモードのタブへ移る", async ({ page }) => {
+	await page.goto("/trades?mode=live");
+	await expect(page).toHaveURL(/\/home\?mode=live$/);
+	await expect(page.getByRole("tab", { name: "ライブ" })).toHaveAttribute(
+		"aria-selected",
+		"true",
+	);
 });
 
 test("ライト / ダークを切り替えられ、再読み込み後も保たれる", async ({

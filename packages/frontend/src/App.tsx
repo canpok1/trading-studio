@@ -19,7 +19,6 @@ import { NewsPage } from "./pages/NewsPage";
 import { OtherPage } from "./pages/OtherPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { StrategiesPage } from "./pages/StrategiesPage";
-import { TradesPage } from "./pages/TradesPage";
 
 export function App() {
 	return (
@@ -45,7 +44,8 @@ function Shell() {
 					{/* 旧名「AI判定」の URL */}
 					<Route path="/ai" element={<Navigate to="/news" replace />} />
 					<Route path="/strategies/:id?" element={<StrategiesPage />} />
-					<Route path="/trades" element={<TradesPage />} />
+					{/* 取引画面はホームへ統合した。モードの指定はそのまま渡す */}
+					<Route path="/trades" element={<TradesRedirect />} />
 					<Route path="/data" element={<DataPage />} />
 					<Route path="/export" element={<ExportPage />} />
 					<Route path="/other" element={<OtherPage />} />
@@ -56,6 +56,11 @@ function Shell() {
 			<FinishedNotice />
 		</>
 	);
+}
+
+function TradesRedirect() {
+	const { search } = useLocation();
+	return <Navigate to={`/home${search}`} replace />;
 }
 
 /** バックテストが終わったら、バックテストの画面にいれば結果へ移り、他の画面にいれば知らせる */

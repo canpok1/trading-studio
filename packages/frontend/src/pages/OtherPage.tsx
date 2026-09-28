@@ -7,18 +7,6 @@ export function OtherPage() {
 		<Page title="その他">
 			<div className="overflow-hidden rounded-xl border border-line bg-surface">
 				<Link
-					to="/news"
-					className="flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-[15px] hover:bg-surface-2"
-				>
-					<span className="flex-1">
-						ニュース
-						<span className="block text-xs text-text-2">
-							ニュースから判定した相場の状態と、その根拠
-						</span>
-					</span>
-					›
-				</Link>
-				<Link
 					to="/data"
 					className="flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-[15px] hover:bg-surface-2"
 				>

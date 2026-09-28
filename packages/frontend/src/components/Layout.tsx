@@ -15,7 +15,6 @@ import {
 	PaperIcon,
 	SettingsIcon,
 	StrategyIcon,
-	TradesIcon,
 } from "./icons";
 
 type NavItem = {
@@ -42,8 +41,7 @@ const NAV: NavItem[] = [
 		icon: <StrategyIcon />,
 		show: "both",
 	},
-	{ to: "/trades", label: "取引", icon: <TradesIcon />, show: "both" },
-	{ to: "/news", label: "ニュース", icon: <AiIcon />, show: "side" },
+	{ to: "/news", label: "ニュース", icon: <AiIcon />, show: "both" },
 	{ to: "/data", label: "過去データ", icon: <DataIcon />, show: "side" },
 	{
 		to: "/export",
@@ -57,7 +55,7 @@ const NAV: NavItem[] = [
 		label: "その他",
 		icon: <OtherIcon />,
 		show: "tab",
-		also: ["/settings", "/data", "/export", "/news"],
+		also: ["/settings", "/data", "/export"],
 	},
 ];
 
@@ -176,7 +174,7 @@ export function Layout({ badges = {} }: { badges?: Record<string, boolean> }) {
 	);
 }
 
-/** 自動取引がオンの間だけ、全画面の上部に出す帯。開始からの損益を出し、押すと取引画面の成績へ */
+/** 自動取引がオンの間だけ、全画面の上部に出す帯。開始からの損益を出し、押すとホームのそのモードのタブへ */
 function TradingBand() {
 	const { status } = useTradingStatus();
 	if (!status?.enabled) return null;
@@ -187,7 +185,10 @@ function TradingBand() {
 			aria-label="稼働中の自動取引"
 			className="sticky top-0 z-30 border-b-[3px] border-dashed border-paper-ink bg-paper text-xs text-paper-ink"
 		>
-			<Link to="/trades" className="flex min-h-10 items-center gap-2 px-4">
+			<Link
+				to={`/home?mode=${status.mode}`}
+				className="flex min-h-10 items-center gap-2 px-4"
+			>
 				<PaperIcon />
 				<strong className="text-[13px] whitespace-nowrap">
 					ペーパー稼働中

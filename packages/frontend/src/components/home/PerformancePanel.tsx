@@ -1,8 +1,12 @@
-// ホームの成績。口座のリセット以降の損益と、勝率などの主な数字。全部は取引画面の成績で見る
+// ホームの成績。口座のリセット以降の損益と勝率などの数字
 
 import type { TradingPerformance } from "@trading-studio/backend";
-import { formatDateTime } from "../../format";
-import { formatSignedInt, formatSignedPercent } from "../../lib/number";
+import { formatDate, formatDateTime } from "../../format";
+import {
+	formatSignedInt,
+	formatSignedPercent,
+	holdingText,
+} from "../../lib/number";
 import { Stat } from "../backtest/OrderViews";
 import { Skeleton } from "../States";
 import { PANEL, PanelHeader } from "./Panel";
@@ -19,7 +23,7 @@ export function PerformancePanel({
 }) {
 	return (
 		<section aria-label="成績" className={PANEL}>
-			<PanelHeader title="成績" link={{ to: "/trades", label: "取引画面 ›" }} />
+			<PanelHeader title="成績" />
 			{p === null ? (
 				error ? (
 					<p role="alert" className="text-xs font-semibold text-loss">
@@ -49,7 +53,7 @@ export function PerformancePanel({
 							{formatDateTime(p.resetAt)} から（口座のリセット以降）
 						</span>
 					</div>
-					<div className="grid grid-cols-3 gap-x-2 gap-y-3 min-[400px]:grid-cols-5">
+					<div className="grid grid-cols-3 gap-x-2 gap-y-3">
 						<Stat
 							label="確定損益"
 							value={formatSignedInt(p.realizedPnl)}
@@ -68,6 +72,11 @@ export function PerformancePanel({
 									: "0.0%"
 							}
 							tone="text-loss"
+							sub={
+								p.maxDrawdownFrom !== null && p.maxDrawdownTo !== null
+									? `${formatDate(p.maxDrawdownFrom).slice(5)}〜${formatDate(p.maxDrawdownTo).slice(5)}`
+									: undefined
+							}
 						/>
 						<Stat
 							label="PF"
@@ -79,7 +88,11 @@ export function PerformancePanel({
 										: p.profitFactor.toFixed(2)
 							}
 						/>
-						<Stat label="取引回数" value={String(p.trades)} />
+						<Stat
+							label="取引回数"
+							value={String(p.trades)}
+							sub={`平均保有 ${p.averageHoldingMs !== null ? holdingText(p.averageHoldingMs) : "—"}`}
+						/>
 					</div>
 				</>
 			)}
