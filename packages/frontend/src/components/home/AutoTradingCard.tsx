@@ -1,8 +1,9 @@
-// ホームの自動取引のカード。オンオフ・運用する戦略・モード。止まっている理由があるときだけ添える
+// ホームの自動取引のカード。選んでいるタブのモードのオンオフと運用する戦略。止まっている理由があるときだけ添える
 
 import type {
 	AutoTradingStatus,
 	StoredStrategy,
+	TradingMode,
 } from "@trading-studio/backend";
 import { TIMEFRAME_LABELS, validateConditionSet } from "@trading-studio/core";
 import { useState } from "react";
@@ -11,22 +12,20 @@ import { formatClock } from "../../format";
 import { useTradingStatus } from "../../lib/trading";
 import { errorMessage, readJson } from "../../lib/useAsync";
 import { Modal } from "../Modal";
-import { LIVE_AVAILABLE } from "../trading/TradeViews";
-import { Button, Segmented } from "../ui";
+import { LIVE_AVAILABLE, MODE_LABELS } from "../trading/TradeViews";
+import { Button } from "../ui";
 import { PANEL } from "./Panel";
 
-const MODE_OPTIONS = [
-	["paper", "ペーパー"],
-	["live", "ライブ"],
-] as const;
-
+/** 自動取引の状態は1つだけなので、別のモードで稼働している間はこのモードを開始できない */
 export function AutoTradingCard({
+	mode,
 	strategies,
 	active,
 	saving,
 	onChoose,
 	onToast,
 }: {
+	mode: TradingMode;
 	strategies: StoredStrategy[];
 	active: StoredStrategy | null;
 	saving: boolean;
@@ -37,7 +36,11 @@ export function AutoTradingCard({
 	const { status, set } = useTradingStatus();
 	const [confirm, setConfirm] = useState(false);
 	const [busy, setBusy] = useState(false);
-	const on = status?.enabled ?? false;
+	const enabled = status?.enabled ?? false;
+	const on = enabled && status?.mode === mode;
+	const otherRunning = enabled && !on;
+	const unavailable = mode === "live" && !LIVE_AVAILABLE;
+	const label = MODE_LABELS[mode];
 	const now = Date.now();
 
 	const send = async (
@@ -81,10 +84,10 @@ export function AutoTradingCard({
 		send(
 			() =>
 				api.api.trading.start
-					.$post({ json: { mode: "paper" } })
+					.$post({ json: { mode } })
 					.then((res) => readJson<{ status: AutoTradingStatus }>(res)),
 			(s) =>
-				`ペーパーで開始した。次の判定 ${s.nextEvalAt === null ? "—" : formatClock(s.nextEvalAt, Date.now())} から模擬売買する`,
+				`${label}で開始した。次の判定 ${s.nextEvalAt === null ? "—" : formatClock(s.nextEvalAt, Date.now())} から模擬売買する`,
 		);
 	};
 
@@ -105,7 +108,13 @@ export function AutoTradingCard({
 				<div className="flex flex-col">
 					<h2 className="text-[15px] font-bold">自動取引</h2>
 					<span data-testid="auto-state" className="text-xs text-text-2">
-						{on ? "稼働中" : "停止中"}
+						{unavailable
+							? "ライブ取引はまだ使えない"
+							: on
+								? "稼働中"
+								: otherRunning && status
+									? `${MODE_LABELS[status.mode]}で稼働中`
+									: "停止中"}
 					</span>
 				</div>
 				<button
@@ -113,7 +122,7 @@ export function AutoTradingCard({
 					role="switch"
 					aria-checked={on}
 					aria-label="自動取引"
-					disabled={!status || busy}
+					disabled={!status || busy || unavailable || otherRunning}
 					onClick={toggle}
 					className="flex h-8 w-14 shrink-0 items-center rounded-full bg-surface-2 p-[3px] transition-colors disabled:opacity-45 aria-checked:bg-accent"
 				>
@@ -126,7 +135,7 @@ export function AutoTradingCard({
 				aria-label="運用する戦略"
 				className="h-11 w-full rounded-lg border border-line bg-surface px-3 text-[15px] font-semibold disabled:opacity-60"
 				value={active?.id ?? ""}
-				disabled={saving || on}
+				disabled={saving || enabled}
 				onChange={(e) =>
 					choose(e.target.value === "" ? null : Number(e.target.value))
 				}
@@ -143,28 +152,19 @@ export function AutoTradingCard({
 					戦略がまだ無い。「戦略」の画面で作ると選べる
 				</p>
 			)}
-			<Segmented
-				name="auto-mode"
-				label="モード"
-				options={MODE_OPTIONS}
-				value={status?.mode ?? "paper"}
-				onChange={() => {}}
-				disabled={on}
-				disabledValues={LIVE_AVAILABLE ? [] : ["live"]}
-			/>
-			{status?.waitingForMarket && (
+			{on && status?.waitingForMarket && (
 				<p className="text-xs font-semibold">
 					価格の収集が止まっているため、判定を待っている
 				</p>
 			)}
-			{loss?.blocked && (
+			{on && loss?.blocked && (
 				<p className="text-xs font-semibold text-loss">
 					1日の損失上限に達したため、翌 0 時まで新しい買いを止めている
 				</p>
 			)}
 			{confirm && active && status && (
 				<Modal
-					title="ペーパーで自動取引を開始する"
+					title={`${label}で自動取引を開始する`}
 					onClose={() => setConfirm(false)}
 				>
 					<p className="leading-relaxed">
@@ -172,7 +172,10 @@ export function AutoTradingCard({
 						{status.nextEvalAt === null
 							? "—"
 							: formatClock(status.nextEvalAt, now)}
-						）から最新の実データで模擬売買を始める。実資金は動かない。
+						）から
+						{mode === "paper"
+							? "最新の実データで模擬売買を始める。実資金は動かない。"
+							: "実資金で売買を始める。"}
 					</p>
 					<Button variant="primary" onClick={start}>
 						開始する

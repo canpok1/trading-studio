@@ -1,11 +1,11 @@
 import type {
-	AutoTradingStatus,
 	CurrentJudgment,
 	JudgmentSeries,
 	LatestMarket,
 	StoredOrder,
 	StoredStrategy,
 	TimeframeCoverage,
+	TradingMode,
 } from "@trading-studio/backend";
 import type { Timeframe } from "@trading-studio/core";
 import {
@@ -17,24 +17,25 @@ import {
 } from "@trading-studio/core";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useApi } from "../api";
-import { OrderRow, orderTime } from "../components/backtest/OrderViews";
+import { orderTime } from "../components/backtest/OrderViews";
 import type { ChartBar, ChartMarker } from "../components/chart/chart-data";
 import { alignJudgments } from "../components/chart/judgment-data";
 import { PriceChart } from "../components/chart/PriceChart";
 import { AccountPanel } from "../components/home/AccountPanel";
 import { AutoTradingCard } from "../components/home/AutoTradingCard";
+import { OrdersPanel } from "../components/home/OrdersPanel";
 import { PANEL, PanelHeader } from "../components/home/Panel";
 import { PerformancePanel } from "../components/home/PerformancePanel";
 import { JudgmentBadge } from "../components/judgment/JudgmentBadge";
 import { EmptyState, ErrorState, Skeleton } from "../components/States";
 import {
+	LIVE_AVAILABLE,
 	MODE_LABELS,
-	ModeTag,
 	TradeOrderSheet,
 } from "../components/trading/TradeViews";
-import { Button } from "../components/ui";
+import { Button, Tabs } from "../components/ui";
 import { useChartBg } from "../lib/chart-bg";
 import { useChartIndicators } from "../lib/chart-indicators";
 import {
@@ -67,9 +68,15 @@ const BARS_MS = 60_000;
 /** EMA・RSI の計算のために期間の前に足す本数（最も長い本数の何倍か） */
 const EMA_HISTORY_FACTOR = 3;
 const MAX_HISTORY = 1_000;
-/** チャートの印に読む注文の数。直近の一覧もここから取る */
+/** チャートの印に読む注文の数 */
 const MARKER_ORDERS = 300;
-const RECENT_ORDERS = 3;
+
+const MODE_TABS: readonly (readonly [TradingMode, string])[] = [
+	["paper", MODE_LABELS.paper],
+	["live", MODE_LABELS.live],
+];
+const isMode = (v: string | null): v is TradingMode =>
+	v === "paper" || v === "live";
 
 type Strategies = { list: StoredStrategy[]; active: StoredStrategy | null };
 
@@ -182,19 +189,25 @@ function HomeBody({
 }) {
 	const api = useApi();
 	const { status: trading, refresh: refreshTrading } = useTradingStatus();
+	// タブはクエリの mode で持つ。無ければ運用中のモード（止まっていれば最後に運用したモード）
+	const [params, setParams] = useSearchParams();
+	const param = params.get("mode");
+	const mode: TradingMode = isMode(param) ? param : (trading?.mode ?? "paper");
+	// ライブが使えない間、ライブのタブは口座・成績・注文を出さない
+	const hasAccount = !(mode === "live" && !LIVE_AVAILABLE);
+	// 状態が持つ口座は運用中のモードのものだけ
+	const account = trading?.mode === mode ? trading.account : null;
 	// 状態は定期的に取り直すので、買値が変わったときだけ線を引き直す
-	const entryKey =
-		trading?.account.lots.map((l) => l.entryPrice).join(",") ?? "";
+	const entryKey = account?.lots.map((l) => l.entryPrice).join(",") ?? "";
 	const entryPrices = useMemo(
 		() => (entryKey ? entryKey.split(",").map(Number) : []),
 		[entryKey],
 	);
-	const mode = trading?.mode ?? "paper";
 	const { orders, reload: reloadOrders } = useTradingOrders(
 		{ mode, limit: MARKER_ORDERS },
-		visible && trading !== null,
+		visible && hasAccount,
 	);
-	const perf = useTradingPerformance(mode, visible);
+	const perf = useTradingPerformance(mode, visible && hasAccount);
 	const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
 	const [toast, setToast] = useState<string | null>(null);
 	const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -336,8 +349,11 @@ function HomeBody({
 	);
 
 	const markers = useMemo(
-		() => toMarkers(orders ?? [], shownBars, latest?.price ?? null),
-		[orders, shownBars, latest],
+		() =>
+			hasAccount
+				? toMarkers(orders ?? [], shownBars, latest?.price ?? null)
+				: [],
+		[hasAccount, orders, shownBars, latest],
 	);
 
 	const noData =
@@ -345,6 +361,17 @@ function HomeBody({
 
 	return (
 		<HomeFrame>
+			<div className="lg:col-span-2">
+				<Tabs
+					label="モード"
+					items={MODE_TABS}
+					current={mode}
+					onSelect={(m) => {
+						setSelectedOrder(null);
+						setParams({ mode: m }, { replace: true });
+					}}
+				/>
+			</div>
 			<CollectorAlert latest={latest} />
 			{latestError && (
 				<div
@@ -362,6 +389,7 @@ function HomeBody({
 			)}
 			<div className="flex min-w-0 flex-col gap-2">
 				<AutoTradingCard
+					mode={mode}
 					strategies={strategies.list}
 					active={active}
 					saving={saving}
@@ -374,7 +402,7 @@ function HomeBody({
 					</p>
 				)}
 			</div>
-			{trading ? (
+			{!hasAccount ? null : trading?.mode === mode ? (
 				<AccountPanel
 					status={trading}
 					performance={perf.performance}
@@ -388,7 +416,9 @@ function HomeBody({
 			) : (
 				<Skeleton className="h-32 rounded-xl" />
 			)}
-			<PerformancePanel performance={perf.performance} error={perf.error} />
+			{hasAccount && (
+				<PerformancePanel performance={perf.performance} error={perf.error} />
+			)}
 			<JudgmentPanel current={current} />
 			{barsError && !bars ? (
 				<section aria-label="価格チャート" className={`${PANEL} lg:col-span-2`}>
@@ -438,12 +468,15 @@ function HomeBody({
 					}
 				/>
 			)}
-			<RecentOrders
-				mode={mode}
-				orders={orders}
-				selectedId={selectedOrder}
-				onSelect={setSelectedOrder}
-			/>
+			{hasAccount && (
+				<OrdersPanel
+					key={mode}
+					mode={mode}
+					active={visible}
+					selectedId={selectedOrder}
+					onSelect={setSelectedOrder}
+				/>
+			)}
 			{selectedOrder && (
 				<TradeOrderSheet
 					mode={mode}
@@ -494,49 +527,6 @@ function toMarkers(
 					},
 				];
 	});
-}
-
-/** 直近の注文・約定。「すべて」で取引画面へ */
-function RecentOrders({
-	mode,
-	orders,
-	selectedId,
-	onSelect,
-}: {
-	mode: AutoTradingStatus["mode"];
-	orders: StoredOrder[] | null;
-	selectedId: string | null;
-	onSelect: (id: string) => void;
-}) {
-	return (
-		<section aria-label="注文・約定" className={`${PANEL} lg:col-span-2`}>
-			<PanelHeader
-				title="注文・約定"
-				link={{ to: "/trades", label: "すべて" }}
-			/>
-			<div className="overflow-hidden rounded-xl border border-line">
-				{orders === null ? (
-					<Skeleton className="m-3 h-10" />
-				) : orders.length === 0 ? (
-					<p className="bg-surface px-4 py-6 text-center text-sm text-text-2">
-						{MODE_LABELS[mode]}の注文はまだない
-					</p>
-				) : (
-					orders
-						.slice(0, RECENT_ORDERS)
-						.map((o) => (
-							<OrderRow
-								key={o.id}
-								order={o}
-								selected={o.id === selectedId}
-								onClick={() => onSelect(o.id)}
-								tag={<ModeTag mode={o.mode} />}
-							/>
-						))
-				)}
-			</div>
-		</section>
-	);
 }
 
 /** AI の今の判定3つ。押すとニュース画面へ */
