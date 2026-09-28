@@ -44,7 +44,14 @@ import {
 	OrderSizeCard,
 	RiskLimitCard,
 } from "../components/strategy/ConditionEditor";
-import { Button, buttonClass, Card, Note, ProgressBar } from "../components/ui";
+import {
+	Button,
+	buttonClass,
+	Card,
+	Note,
+	ProgressBar,
+	Tabs,
+} from "../components/ui";
 import {
 	formatDate,
 	formatDateTime,
@@ -162,6 +169,13 @@ function saveDraft(d: BacktestDraft): void {
 		// 保存できない環境では、この画面を開いている間だけ効く
 	}
 }
+
+/** 既定は「実行」。結果から再実行するときも「実行」に来る */
+const TABS = [
+	["run", "実行"],
+	["history", "履歴"],
+] as const;
+type BacktestTab = (typeof TABS)[number][0];
 
 const PRESETS = [
 	["2w", "直近2週", 14],
@@ -348,6 +362,8 @@ function RunForm({
 }) {
 	const api = useApi();
 	const job = useBacktestJob();
+	const [search, setSearch] = useSearchParams();
+	const tab: BacktestTab = search.get("tab") === "history" ? "history" : "run";
 	const [problem, setProblem] = useState<Problem | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [picking, setPicking] = useState(false);
@@ -531,326 +547,344 @@ function RunForm({
 			title="バックテスト"
 			description="テンプレートから条件を作って、取り込んだ CSV の過去データで模擬売買する"
 		>
-			{/* 上段はバックテストの環境（PC は左に名前・口座、右に期間）、見出しの下は「戦略」の画面と同じ並び。スマホは 名前→口座→期間→頻度→条件→注文量・リスク上限→実行 の順 */}
-			<div className="flex flex-col gap-3.5 lg:grid lg:grid-cols-2 lg:items-start">
-				<div className="flex flex-col gap-3.5">
-					<Card className="flex flex-col gap-3.5">
-						<div className="flex flex-col gap-1.5">
-							<label htmlFor={ids.name} className="text-[13px] font-semibold">
-								バックテスト名
-							</label>
-							<input
-								id={ids.name}
-								value={draft.name}
-								onChange={(e) => update({ name: e.target.value })}
-								aria-invalid={nameError ? true : undefined}
-								className="h-12 rounded-[10px] border border-line bg-surface px-3 text-[15px] font-semibold aria-invalid:border-2 aria-invalid:border-loss"
-							/>
-							{nameError && (
-								<span className="text-xs font-semibold text-loss">
-									{nameError}
-								</span>
-							)}
-						</div>
-					</Card>
-					<Card className="flex flex-col gap-3.5">
-						<h2 className="text-[15px] font-bold">口座</h2>
-						<div className="flex flex-col gap-1.5">
-							<label htmlFor={ids.cash} className="text-[13px] font-semibold">
-								初期資金（円）
-							</label>
-							<NumberInput
-								id={ids.cash}
-								value={draft.initialCash}
-								onChange={(initialCash) => update({ initialCash })}
-								format={formatInt}
-								inputMode="numeric"
-								invalid={cashError !== null}
-								className="h-11 text-left text-[15px]"
-							/>
-							{cashError && (
-								<span className="text-xs font-semibold text-loss">
-									{cashError}
-								</span>
-							)}
-						</div>
-						<fieldset className="flex flex-col gap-1.5">
-							<legend className="mb-1.5 text-[13px] font-semibold">
-								手数料率
-							</legend>
-							<div className="grid grid-cols-2 gap-2">
-								{(
-									[
-										["limitPpm", "指値"],
-										["marketPpm", "成行"],
-									] as const
-								).map(([k, label]) => (
-									<div key={k} className="flex items-center gap-1.5 text-sm">
-										<span aria-hidden="true" className="shrink-0">
-											{label}
-										</span>
-										<NumberInput
-											value={draft.fees[k]}
-											onChange={(v) =>
-												update({ fees: { ...draft.fees, [k]: v } })
-											}
-											format={formatPercent}
-											parse={parsePercent}
-											invalid={feeError(draft.fees[k]) !== null}
-											aria-label={`${label}の手数料率（%）`}
-											className="min-w-0 flex-1"
-										/>
-										<span>%</span>
-									</div>
-								))}
-							</div>
-							{(feeError(draft.fees.limitPpm) ??
-								feeError(draft.fees.marketPpm)) && (
-								<span className="text-xs font-semibold text-loss">
-									0〜10% の範囲で入れる
-								</span>
-							)}
-						</fieldset>
-					</Card>
-				</div>
-				<Card className="flex flex-col gap-3.5">
-					<h2 className="text-[15px] font-bold">期間</h2>
-					<div className="flex flex-wrap gap-2">
-						{PRESETS.map(([k, label, days]) => {
-							return (
-								<button
-									key={k}
-									type="button"
-									aria-pressed={
-										toDate === defaultTo && fromMs === toMs - days * DAY
-									}
-									onClick={() =>
-										update({
-											toDate: defaultTo,
-											fromDate: toDateInputValue(
-												(fromDateInputValue(defaultTo) ?? 0) + DAY - days * DAY,
-											),
-										})
-									}
-									className="h-8 rounded-full border border-line px-3 text-xs font-semibold text-text-2 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-white dark:aria-pressed:text-accent-ink"
-								>
-									{label}
-								</button>
-							);
-						})}
-					</div>
-					<div className="grid grid-cols-[minmax(0,1fr)_20px_minmax(0,1fr)] items-end gap-1.5">
-						<div className="flex flex-col gap-1">
-							<label htmlFor={ids.from} className="text-xs text-text-2">
-								開始
-							</label>
-							<input
-								id={ids.from}
-								type="date"
-								value={fromDate}
-								onChange={(e) =>
-									e.target.value && update({ fromDate: e.target.value, toDate })
-								}
-								className="num h-11 min-w-0 rounded-[10px] border border-line bg-surface px-2 text-sm"
-							/>
-						</div>
-						<span className="pb-3 text-center text-text-2">〜</span>
-						<div className="flex flex-col gap-1">
-							<label htmlFor={ids.to} className="text-xs text-text-2">
-								終了
-							</label>
-							<input
-								id={ids.to}
-								type="date"
-								value={toDate}
-								onChange={(e) =>
-									e.target.value && update({ toDate: e.target.value, fromDate })
-								}
-								className="num h-11 min-w-0 rounded-[10px] border border-line bg-surface px-2 text-sm"
-							/>
-						</div>
-					</div>
-					{periodError && (
-						<span className="text-xs font-semibold text-loss">
-							{periodError}
-						</span>
-					)}
-					<CoverageBar cov={cov} from={fromMs} to={toMs} />
-					<div className="flex flex-col gap-1">
-						<span className="text-[13px] font-semibold">足の粒度</span>
-						<span className="num text-sm">
-							{TIMEFRAME_LABELS[tf]} · {formatInt(bars)} 本
-							{step && step.timeframe !== tf
-								? ` · ${TIMEFRAME_LABELS[step.timeframe]}で判定`
-								: ""}
-							{usesJudgments && " · 判定履歴を使う"}
-						</span>
-						{usesJudgments && firstScoredAt !== null && (
-							<span className="num text-xs text-text-2">
-								AI 判定の記録の開始: {formatDateTime(firstScoredAt)}
-								{judgmentError === null &&
-									fromMs < firstScoredAt &&
-									"（それより前はデータなし）"}
-							</span>
-						)}
-						{usesJudgments &&
-							firstScoredAt === null &&
-							judgmentError === null && (
-								<span className="text-xs text-text-2">
-									AI 判定の記録がまだ無いため、全期間がデータなし
-								</span>
-							)}
-					</div>
-					{step?.limited && <Note>{stepLimitedText(step.timeframe)}</Note>}
-					{judgmentError && (
-						<span role="alert" className="text-xs font-semibold text-loss">
-							{judgmentError}
-						</span>
-					)}
-				</Card>
-				<div className="mt-2 flex flex-col gap-0.5 lg:col-span-2">
-					<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-						<h2 className="shrink-0 text-[17px] font-bold">戦略設定</h2>
-						{/* スマホは見出しとボタンの下の行に出す。長い名前は省略し、「変更あり」は残す */}
-						{draft.improvement && !template && (
-							<span className="order-last flex min-w-0 basis-full text-xs text-text-2 lg:order-none lg:basis-auto">
-								AI の改善版
-							</span>
-						)}
-						{template && (
-							<span className="order-last flex min-w-0 basis-full text-xs text-text-2 lg:order-none lg:basis-auto">
-								<span className="truncate">{template.label}</span>
-								{edited && <span className="shrink-0">（変更あり）</span>}
-							</span>
-						)}
-						<Button
-							size="sm"
-							className="ml-auto shrink-0"
-							onClick={() => setPicking(true)}
-						>
-							テンプレート読み込み
-						</Button>
-					</div>
-					<p className="text-xs text-text-2">
-						テンプレートの条件をコピーして試す。ここで変えても戦略には保存されない。
-					</p>
-					{draft.improvement && (
-						<ImprovementChanges
-							changes={draft.improvement.changes}
-							onClose={() => update({ improvement: null })}
-						/>
-					)}
-				</div>
-				<div className="contents lg:flex lg:flex-col lg:gap-3.5">
-					<FrequencyCard {...editor} />
-					<div className="order-1 flex flex-col gap-3.5 lg:order-none">
-						<OrderSizeCard {...editor} latestPrice={latest} />
-						<RiskLimitCard {...editor} />
-					</div>
-				</div>
-				<div className="contents lg:flex lg:flex-col lg:gap-3.5">
-					<ConditionGroups {...editor} />
-				</div>
-				<div className="order-2 flex flex-col gap-3.5 lg:col-span-2 lg:order-none">
-					{running && (
-						<Card className="flex flex-col gap-2.5">
-							<div className="flex items-center justify-between">
-								<strong>バックテストを実行中</strong>
-								<span className="num font-semibold">
-									{Math.round(running.progress * 100)}%
-								</span>
-							</div>
-							<ProgressBar
-								value={running.progress * 100}
-								label="バックテストの進み具合"
-							/>
-							<p className="text-xs text-text-2">
-								他の画面へ移っても処理は続く。終わると結果へ移動する。
-							</p>
-							<Button size="sm" className="self-start" onClick={cancel}>
-								実行を中止
-							</Button>
-						</Card>
-					)}
-					{last && (
-						<Note>
-							<div className="flex items-start gap-2">
-								<span className="flex-1">
-									{last.status === "canceled"
-										? "実行を中止した"
-										: `バックテストが失敗した: ${last.error ?? "原因不明"}`}
-								</span>
-								<Button variant="link" onClick={job.clearFinished}>
-									閉じる
-								</Button>
-							</div>
-						</Note>
-					)}
-					{problem?.kind === "gaps" && (
-						<div
-							role="alert"
-							className="flex flex-col gap-2 rounded-[10px] bg-warn px-3.5 py-3 text-xs"
-						>
-							<strong className="text-[13px]">
-								期間内にデータの欠損がある
-							</strong>
-							<span className="num">
-								{problem.gaps
-									.slice(0, 3)
-									.map(
-										(g) =>
-											`${formatDateTime(g.from)}〜${formatDateTime(g.to)}（${formatInt(g.missing)} 本）`,
-									)
-									.join("、")}
-								{problem.gapCount > 3 && ` ほか ${problem.gapCount - 3} か所`}
-								（合計 {formatInt(problem.missingBars)} 本）
-							</span>
-							<div className="flex flex-wrap items-center gap-2">
-								<Button size="sm" disabled={busy} onClick={() => run(true)}>
-									欠損を飛ばして実行
-								</Button>
-								<Button
-									variant="link"
-									onClick={() => {
-										setProblem(null);
-										document.getElementById(ids.from)?.focus();
-									}}
-								>
-									期間を変える
-								</Button>
-							</div>
-						</div>
-					)}
-					{problem?.kind === "message" && (
-						<p role="alert" className="text-[13px] font-semibold text-loss">
-							{problem.text}
-						</p>
-					)}
-					<div className="sticky bottom-[calc(76px+env(safe-area-inset-bottom))] z-10 lg:bottom-4">
-						<Button
-							variant="primary"
-							className="w-full shadow-lg"
-							disabled={
-								busy ||
-								running !== null ||
-								hasErr ||
-								bars === 0 ||
-								judgmentError !== null
-							}
-							onClick={() => run(false)}
-						>
-							{running
-								? "実行中…"
-								: hasErr
-									? "入力を直すと実行できる"
-									: bars === 0
-										? "期間にデータが無い"
-										: "バックテストを実行"}
-						</Button>
-					</div>
+			<Tabs
+				label="バックテストの画面"
+				items={TABS}
+				current={tab}
+				onSelect={(t) =>
+					setSearch(t === "run" ? {} : { tab: t }, { replace: true })
+				}
+			/>
+			{tab === "history" && (
+				<div role="tabpanel">
 					<PastRuns runs={runs} />
 				</div>
-			</div>
+			)}
+			{/* 上段はバックテストの環境（PC は左に名前・口座、右に期間）、見出しの下は「戦略」の画面と同じ並び。スマホは 名前→口座→期間→頻度→条件→注文量・リスク上限→実行 の順 */}
+			{tab === "run" && (
+				<div className="flex flex-col gap-3.5 lg:grid lg:grid-cols-2 lg:items-start">
+					<div className="flex flex-col gap-3.5">
+						<Card className="flex flex-col gap-3.5">
+							<div className="flex flex-col gap-1.5">
+								<label htmlFor={ids.name} className="text-[13px] font-semibold">
+									バックテスト名
+								</label>
+								<input
+									id={ids.name}
+									value={draft.name}
+									onChange={(e) => update({ name: e.target.value })}
+									aria-invalid={nameError ? true : undefined}
+									className="h-12 rounded-[10px] border border-line bg-surface px-3 text-[15px] font-semibold aria-invalid:border-2 aria-invalid:border-loss"
+								/>
+								{nameError && (
+									<span className="text-xs font-semibold text-loss">
+										{nameError}
+									</span>
+								)}
+							</div>
+						</Card>
+						<Card className="flex flex-col gap-3.5">
+							<h2 className="text-[15px] font-bold">口座</h2>
+							<div className="flex flex-col gap-1.5">
+								<label htmlFor={ids.cash} className="text-[13px] font-semibold">
+									初期資金（円）
+								</label>
+								<NumberInput
+									id={ids.cash}
+									value={draft.initialCash}
+									onChange={(initialCash) => update({ initialCash })}
+									format={formatInt}
+									inputMode="numeric"
+									invalid={cashError !== null}
+									className="h-11 text-left text-[15px]"
+								/>
+								{cashError && (
+									<span className="text-xs font-semibold text-loss">
+										{cashError}
+									</span>
+								)}
+							</div>
+							<fieldset className="flex flex-col gap-1.5">
+								<legend className="mb-1.5 text-[13px] font-semibold">
+									手数料率
+								</legend>
+								<div className="grid grid-cols-2 gap-2">
+									{(
+										[
+											["limitPpm", "指値"],
+											["marketPpm", "成行"],
+										] as const
+									).map(([k, label]) => (
+										<div key={k} className="flex items-center gap-1.5 text-sm">
+											<span aria-hidden="true" className="shrink-0">
+												{label}
+											</span>
+											<NumberInput
+												value={draft.fees[k]}
+												onChange={(v) =>
+													update({ fees: { ...draft.fees, [k]: v } })
+												}
+												format={formatPercent}
+												parse={parsePercent}
+												invalid={feeError(draft.fees[k]) !== null}
+												aria-label={`${label}の手数料率（%）`}
+												className="min-w-0 flex-1"
+											/>
+											<span>%</span>
+										</div>
+									))}
+								</div>
+								{(feeError(draft.fees.limitPpm) ??
+									feeError(draft.fees.marketPpm)) && (
+									<span className="text-xs font-semibold text-loss">
+										0〜10% の範囲で入れる
+									</span>
+								)}
+							</fieldset>
+						</Card>
+					</div>
+					<Card className="flex flex-col gap-3.5">
+						<h2 className="text-[15px] font-bold">期間</h2>
+						<div className="flex flex-wrap gap-2">
+							{PRESETS.map(([k, label, days]) => {
+								return (
+									<button
+										key={k}
+										type="button"
+										aria-pressed={
+											toDate === defaultTo && fromMs === toMs - days * DAY
+										}
+										onClick={() =>
+											update({
+												toDate: defaultTo,
+												fromDate: toDateInputValue(
+													(fromDateInputValue(defaultTo) ?? 0) +
+														DAY -
+														days * DAY,
+												),
+											})
+										}
+										className="h-8 rounded-full border border-line px-3 text-xs font-semibold text-text-2 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-white dark:aria-pressed:text-accent-ink"
+									>
+										{label}
+									</button>
+								);
+							})}
+						</div>
+						<div className="grid grid-cols-[minmax(0,1fr)_20px_minmax(0,1fr)] items-end gap-1.5">
+							<div className="flex flex-col gap-1">
+								<label htmlFor={ids.from} className="text-xs text-text-2">
+									開始
+								</label>
+								<input
+									id={ids.from}
+									type="date"
+									value={fromDate}
+									onChange={(e) =>
+										e.target.value &&
+										update({ fromDate: e.target.value, toDate })
+									}
+									className="num h-11 min-w-0 rounded-[10px] border border-line bg-surface px-2 text-sm"
+								/>
+							</div>
+							<span className="pb-3 text-center text-text-2">〜</span>
+							<div className="flex flex-col gap-1">
+								<label htmlFor={ids.to} className="text-xs text-text-2">
+									終了
+								</label>
+								<input
+									id={ids.to}
+									type="date"
+									value={toDate}
+									onChange={(e) =>
+										e.target.value &&
+										update({ toDate: e.target.value, fromDate })
+									}
+									className="num h-11 min-w-0 rounded-[10px] border border-line bg-surface px-2 text-sm"
+								/>
+							</div>
+						</div>
+						{periodError && (
+							<span className="text-xs font-semibold text-loss">
+								{periodError}
+							</span>
+						)}
+						<CoverageBar cov={cov} from={fromMs} to={toMs} />
+						<div className="flex flex-col gap-1">
+							<span className="text-[13px] font-semibold">足の粒度</span>
+							<span className="num text-sm">
+								{TIMEFRAME_LABELS[tf]} · {formatInt(bars)} 本
+								{step && step.timeframe !== tf
+									? ` · ${TIMEFRAME_LABELS[step.timeframe]}で判定`
+									: ""}
+								{usesJudgments && " · 判定履歴を使う"}
+							</span>
+							{usesJudgments && firstScoredAt !== null && (
+								<span className="num text-xs text-text-2">
+									AI 判定の記録の開始: {formatDateTime(firstScoredAt)}
+									{judgmentError === null &&
+										fromMs < firstScoredAt &&
+										"（それより前はデータなし）"}
+								</span>
+							)}
+							{usesJudgments &&
+								firstScoredAt === null &&
+								judgmentError === null && (
+									<span className="text-xs text-text-2">
+										AI 判定の記録がまだ無いため、全期間がデータなし
+									</span>
+								)}
+						</div>
+						{step?.limited && <Note>{stepLimitedText(step.timeframe)}</Note>}
+						{judgmentError && (
+							<span role="alert" className="text-xs font-semibold text-loss">
+								{judgmentError}
+							</span>
+						)}
+					</Card>
+					<div className="mt-2 flex flex-col gap-0.5 lg:col-span-2">
+						<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+							<h2 className="shrink-0 text-[17px] font-bold">戦略設定</h2>
+							{/* スマホは見出しとボタンの下の行に出す。長い名前は省略し、「変更あり」は残す */}
+							{draft.improvement && !template && (
+								<span className="order-last flex min-w-0 basis-full text-xs text-text-2 lg:order-none lg:basis-auto">
+									AI の改善版
+								</span>
+							)}
+							{template && (
+								<span className="order-last flex min-w-0 basis-full text-xs text-text-2 lg:order-none lg:basis-auto">
+									<span className="truncate">{template.label}</span>
+									{edited && <span className="shrink-0">（変更あり）</span>}
+								</span>
+							)}
+							<Button
+								size="sm"
+								className="ml-auto shrink-0"
+								onClick={() => setPicking(true)}
+							>
+								テンプレート読み込み
+							</Button>
+						</div>
+						<p className="text-xs text-text-2">
+							テンプレートの条件をコピーして試す。ここで変えても戦略には保存されない。
+						</p>
+						{draft.improvement && (
+							<ImprovementChanges
+								changes={draft.improvement.changes}
+								onClose={() => update({ improvement: null })}
+							/>
+						)}
+					</div>
+					<div className="contents lg:flex lg:flex-col lg:gap-3.5">
+						<FrequencyCard {...editor} />
+						<div className="order-1 flex flex-col gap-3.5 lg:order-none">
+							<OrderSizeCard {...editor} latestPrice={latest} />
+							<RiskLimitCard {...editor} />
+						</div>
+					</div>
+					<div className="contents lg:flex lg:flex-col lg:gap-3.5">
+						<ConditionGroups {...editor} />
+					</div>
+					<div className="order-2 flex flex-col gap-3.5 lg:col-span-2 lg:order-none">
+						{running && (
+							<Card className="flex flex-col gap-2.5">
+								<div className="flex items-center justify-between">
+									<strong>バックテストを実行中</strong>
+									<span className="num font-semibold">
+										{Math.round(running.progress * 100)}%
+									</span>
+								</div>
+								<ProgressBar
+									value={running.progress * 100}
+									label="バックテストの進み具合"
+								/>
+								<p className="text-xs text-text-2">
+									他の画面へ移っても処理は続く。終わると結果へ移動する。
+								</p>
+								<Button size="sm" className="self-start" onClick={cancel}>
+									実行を中止
+								</Button>
+							</Card>
+						)}
+						{last && (
+							<Note>
+								<div className="flex items-start gap-2">
+									<span className="flex-1">
+										{last.status === "canceled"
+											? "実行を中止した"
+											: `バックテストが失敗した: ${last.error ?? "原因不明"}`}
+									</span>
+									<Button variant="link" onClick={job.clearFinished}>
+										閉じる
+									</Button>
+								</div>
+							</Note>
+						)}
+						{problem?.kind === "gaps" && (
+							<div
+								role="alert"
+								className="flex flex-col gap-2 rounded-[10px] bg-warn px-3.5 py-3 text-xs"
+							>
+								<strong className="text-[13px]">
+									期間内にデータの欠損がある
+								</strong>
+								<span className="num">
+									{problem.gaps
+										.slice(0, 3)
+										.map(
+											(g) =>
+												`${formatDateTime(g.from)}〜${formatDateTime(g.to)}（${formatInt(g.missing)} 本）`,
+										)
+										.join("、")}
+									{problem.gapCount > 3 && ` ほか ${problem.gapCount - 3} か所`}
+									（合計 {formatInt(problem.missingBars)} 本）
+								</span>
+								<div className="flex flex-wrap items-center gap-2">
+									<Button size="sm" disabled={busy} onClick={() => run(true)}>
+										欠損を飛ばして実行
+									</Button>
+									<Button
+										variant="link"
+										onClick={() => {
+											setProblem(null);
+											document.getElementById(ids.from)?.focus();
+										}}
+									>
+										期間を変える
+									</Button>
+								</div>
+							</div>
+						)}
+						{problem?.kind === "message" && (
+							<p role="alert" className="text-[13px] font-semibold text-loss">
+								{problem.text}
+							</p>
+						)}
+						<div className="sticky bottom-[calc(76px+env(safe-area-inset-bottom))] z-10 lg:bottom-4">
+							<Button
+								variant="primary"
+								className="w-full shadow-lg"
+								disabled={
+									busy ||
+									running !== null ||
+									hasErr ||
+									bars === 0 ||
+									judgmentError !== null
+								}
+								onClick={() => run(false)}
+							>
+								{running
+									? "実行中…"
+									: hasErr
+										? "入力を直すと実行できる"
+										: bars === 0
+											? "期間にデータが無い"
+											: "バックテストを実行"}
+							</Button>
+						</div>
+					</div>
+				</div>
+			)}
 			{picking && (
 				<TemplateDialog
 					choices={choices}
@@ -1055,12 +1089,11 @@ function LegendItem({
 
 function PastRuns({ runs }: { runs: BacktestRun[] }) {
 	return (
-		<section aria-label="過去の実行" className="mt-3 flex flex-col gap-2">
-			<h2 className="text-[15px] font-bold">過去の実行</h2>
+		<section aria-label="過去の実行">
 			<div className="overflow-hidden rounded-xl border border-line bg-surface">
 				{runs.length === 0 && (
 					<p className="px-4 py-3.5 text-xs text-text-2">
-						まだ実行していない。条件を選んで実行すると、ここに並ぶ。
+						まだ実行していない。「実行」のタブで条件を選んで実行すると、ここに並ぶ。
 					</p>
 				)}
 				{runs.map((r) => {

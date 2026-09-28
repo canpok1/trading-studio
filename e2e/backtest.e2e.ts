@@ -191,11 +191,24 @@ test("期間に欠損があると確認が出て、飛ばして実行できる",
 	await expect(page).toHaveURL(/\/backtest\/runs\/\d+$/);
 	await expect(page.getByText(/欠損を飛ばして実行/)).toBeVisible();
 
-	// 過去の実行に並ぶ
-	await page.goto("/backtest");
+	// 結果から「← 履歴」で履歴のタブへ戻り、過去の実行に並ぶ
+	await page.getByRole("link", { name: "← 履歴" }).click();
+	await expect(page).toHaveURL(/\/backtest\?tab=history$/);
 	await expect(
-		page.getByRole("region", { name: "過去の実行" }).getByRole("link").first(),
-	).toContainText(name);
+		page.getByRole("tab", { name: "履歴", selected: true }),
+	).toBeVisible();
+	const history = page.getByRole("region", { name: "過去の実行" });
+	await expect(history.getByRole("link").first()).toContainText(name);
+	// 履歴のタブに実行の画面は出さず、「実行」のタブへ戻せる
+	await expect(
+		page.getByRole("button", { name: "バックテストを実行" }),
+	).toHaveCount(0);
+	await page.getByRole("tab", { name: "実行" }).click();
+	await expect(page).toHaveURL(/\/backtest$/);
+	await expect(history).toHaveCount(0);
+	await expect(
+		page.getByRole("button", { name: "バックテストを実行" }),
+	).toBeVisible();
 
 	const overflow = await page.evaluate(
 		() => document.documentElement.scrollWidth - window.innerWidth,
