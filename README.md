@@ -30,6 +30,6 @@ mkdir -p data && sudo chown 1000:1000 data
 docker compose up -d
 ```
 
-コンテナはホストの `3000` 番ポートで自宅 LAN 内へ公開し、スマホからは `http://<mini-pc の LAN 内アドレス>:3000/` で開く。ルーターで外へ転送しないこと。実取引（フェーズ5）の前に Tailscale 経由へ切り替える（ADR 0004）。
+コンテナはホストの `127.0.0.1:3000` にだけ公開し、Tailscale Serve で tailnet 内へ HTTPS で中継する（ADR 0003・0004）。Tailscale に接続した端末から `https://<mini-pc のマシン名>.<tailnet 名>.ts.net/` で開く。自宅 LAN 内でも、Tailscale に接続していない端末からは開けない。Tailscale の導入と Serve の設定は mini-pc-setup が行う。
 
 **cloudflared（Cloudflare Tunnel）経由では公開しない。** インターネットに公開され、ログイン機能の無いこのアプリを誰でも操作できてしまうため。
