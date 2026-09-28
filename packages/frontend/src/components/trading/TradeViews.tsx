@@ -16,7 +16,10 @@ export const MODE_LABELS: Record<TradingMode, string> = {
 	live: "ライブ",
 };
 
-/** 行の右端に出すモードの印。「すべて」で見てもライブを見分けられるように色を変える */
+/** ライブ取引を動かせるか。フェーズ5で有効にするまでは、ホームで選べず取引画面は空の表示にする */
+export const LIVE_AVAILABLE = false;
+
+/** モードの印。ライブを見分けられるように色を変える */
 export function ModeTag({ mode }: { mode: TradingMode }) {
 	return (
 		<span

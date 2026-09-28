@@ -14,7 +14,7 @@ import { AdviceSettings } from "../components/backtest/AdviceSettings";
 import { Page } from "../components/Page";
 import { RetentionSetting } from "../components/RetentionSetting";
 import { ErrorState, LoadingCard } from "../components/States";
-import { Button } from "../components/ui";
+import { Button, Tabs } from "../components/ui";
 import {
 	errorMessage,
 	readJson,
@@ -96,41 +96,6 @@ export function SettingsPage() {
 				</div>
 			)}
 		</Page>
-	);
-}
-
-function Tabs<T extends string>({
-	label,
-	items,
-	current,
-	onSelect,
-	small = false,
-}: {
-	label: string;
-	items: readonly (readonly [T, string])[];
-	current: T;
-	onSelect: (value: T) => void;
-	small?: boolean;
-}) {
-	return (
-		<div
-			role="tablist"
-			aria-label={label}
-			className={`grid auto-cols-fr grid-flow-col gap-0.5 rounded-[10px] p-[3px] ${small ? "border border-line" : "bg-surface-2"}`}
-		>
-			{items.map(([value, text]) => (
-				<button
-					key={value}
-					type="button"
-					role="tab"
-					aria-selected={current === value}
-					onClick={() => onSelect(value)}
-					className={`rounded-lg px-0.5 text-xs whitespace-nowrap sm:text-[13px] ${small ? "h-8" : "h-9"} ${current === value ? (small ? "bg-surface-2 font-bold text-text" : "bg-surface font-bold text-text shadow-sm") : "text-text-2"}`}
-				>
-					{text}
-				</button>
-			))}
-		</div>
 	);
 }
 
