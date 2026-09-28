@@ -269,6 +269,26 @@ test("結果画面でボタンを押すと AI アドバイスができ、作り�
 	await advice.getByRole("button", { name: "作り直す" }).click();
 	await expect(advice.getByRole("button", { name: "作り直す" })).toBeEnabled();
 	await expect(content).toContainText("デモの分析");
+
+	// 改善版でバックテストすると、期間はそのまま、改善版の戦略と変更点が入った実行画面へ移る
+	await advice
+		.getByRole("button", { name: "改善版でバックテストする" })
+		.click();
+	await expect(page).toHaveURL(/\/backtest$/);
+	await expect(page.getByLabel("バックテスト名")).toHaveValue(
+		`${name}（改善版）`,
+	);
+	await expect(page.getByLabel("開始")).toHaveValue("2026-05-03");
+	await expect(page.getByLabel("終了")).toHaveValue("2026-05-10");
+	const changes = page.getByRole("region", { name: "AI の改善版の変更点" });
+	await expect(changes).toContainText(
+		"変更前: 終値が直近 5 本の最高値を上抜けた",
+	);
+	await expect(changes).toContainText(
+		"変更後: 短期EMA 12 本が 長期EMA 48 本を上抜けた",
+	);
+	await changes.getByRole("button", { name: "閉じる" }).click();
+	await expect(changes).toBeHidden();
 });
 
 test("設定の「バックテスト」でアドバイスのモデルと指示の版を変えられる", async ({

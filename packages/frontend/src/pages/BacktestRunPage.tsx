@@ -3,7 +3,12 @@ import type {
 	StoredStrategy,
 	TimeframeCoverage,
 } from "@trading-studio/backend";
-import type { ConditionSet, Gap, Timeframe } from "@trading-studio/core";
+import type {
+	ConditionSet,
+	ConditionSetChange,
+	Gap,
+	Timeframe,
+} from "@trading-studio/core";
 import {
 	chooseStepTimeframe,
 	conditionStrategy,
@@ -55,6 +60,7 @@ const DEFAULT_CASH = 2_000_000;
 const DEFAULT_FEE_PPM = 1000;
 const STORAGE_KEY = "backtest-draft";
 const NAME_MAX = 40;
+export const BACKTEST_NAME_MAX = NAME_MAX;
 const BLANK_NAME = "新しいバックテスト";
 
 /** 条件をコピーしてきたテンプレート（ひな形か保存済みの戦略）。コピーした後は元と切り離す */
@@ -73,6 +79,8 @@ export type BacktestDraft = {
 	/** 適用したテンプレート。「戦略設定」の見出しの横に出す。結果から再実行したときは無い */
 	template: Template | null;
 	params: ConditionSet;
+	/** AI アドバイスの改善版から来たとき、元の実行からの変更点。「戦略設定」の下に出す。閉じるかテンプレートを読み込むと消す */
+	improvement?: { changes: ConditionSetChange[] } | null;
 	/** JST の日付（終了日を含む）。null はデータの最後から1か月 */
 	fromDate: string | null;
 	toDate: string | null;
@@ -104,6 +112,7 @@ function loadDraft(strategies: StoredStrategy[]): BacktestDraft | null {
 			name: v.name ?? template?.label ?? BLANK_NAME,
 			template,
 			params,
+			improvement: v.improvement ?? null,
 			fromDate: v.fromDate,
 			toDate: v.toDate,
 			initialCash: v.initialCash,
@@ -241,6 +250,7 @@ export function BacktestRunPage() {
 				name: passed?.name ?? template?.label ?? BLANK_NAME,
 				template,
 				params: passedParams,
+				improvement: passed?.improvement ?? null,
 				fromDate: passed?.fromDate ?? base?.fromDate ?? null,
 				toDate: passed?.toDate ?? base?.toDate ?? null,
 				initialCash: passed?.initialCash ?? base?.initialCash ?? DEFAULT_CASH,
@@ -689,6 +699,11 @@ function RunForm({
 					<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
 						<h2 className="shrink-0 text-[17px] font-bold">戦略設定</h2>
 						{/* スマホは見出しとボタンの下の行に出す。長い名前は省略し、「変更あり」は残す */}
+						{draft.improvement && !template && (
+							<span className="order-last flex min-w-0 basis-full text-xs text-text-2 lg:order-none lg:basis-auto">
+								AI の改善版
+							</span>
+						)}
 						{template && (
 							<span className="order-last flex min-w-0 basis-full text-xs text-text-2 lg:order-none lg:basis-auto">
 								<span className="truncate">{template.label}</span>
@@ -706,6 +721,12 @@ function RunForm({
 					<p className="text-xs text-text-2">
 						テンプレートの条件をコピーして試す。ここで変えても戦略には保存されない。
 					</p>
+					{draft.improvement && (
+						<ImprovementChanges
+							changes={draft.improvement.changes}
+							onClose={() => update({ improvement: null })}
+						/>
+					)}
 				</div>
 				<div className="contents lg:flex lg:flex-col lg:gap-3.5">
 					<FrequencyCard {...editor} />
@@ -825,7 +846,7 @@ function RunForm({
 					onPick={(t) => {
 						setPicking(false);
 						// バックテスト名は変えない
-						update({ template: t, params: t.params });
+						update({ template: t, params: t.params, improvement: null });
 					}}
 				/>
 			)}
@@ -834,6 +855,52 @@ function RunForm({
 }
 
 /** テンプレートを選ぶモーダル。選ぶとその条件で今の条件を置き換える */
+/** AI の改善版で変わった項目。見出しごとに、変える前の行と変えた後の行を出す */
+function ImprovementChanges({
+	changes,
+	onClose,
+}: {
+	changes: ConditionSetChange[];
+	onClose: () => void;
+}) {
+	return (
+		<section
+			aria-label="AI の改善版の変更点"
+			className="mt-1.5 flex flex-col gap-2 rounded-[10px] border border-line bg-surface px-3.5 py-3 text-xs"
+		>
+			<div className="flex items-center justify-between gap-2">
+				<h3 className="font-bold">AI の改善版で変えた項目（元の実行から）</h3>
+				<Button size="sm" onClick={onClose}>
+					閉じる
+				</Button>
+			</div>
+			{changes.map((c) => {
+				// 片方だけなら条件の削除か追加。両方あれば値を変えた
+				const both = c.removed.length > 0 && c.added.length > 0;
+				return (
+					<div key={c.section} className="flex flex-col gap-0.5">
+						<span className="font-semibold">{c.section}</span>
+						{c.removed.length > 0 && (
+							<span className="whitespace-pre-line text-text-2">
+								{c.removed
+									.map((l) => `${both ? "変更前" : "削除"}: ${l}`)
+									.join("\n")}
+							</span>
+						)}
+						{c.added.length > 0 && (
+							<span className="whitespace-pre-line">
+								{c.added
+									.map((l) => `${both ? "変更後" : "追加"}: ${l}`)
+									.join("\n")}
+							</span>
+						)}
+					</div>
+				);
+			})}
+		</section>
+	);
+}
+
 function TemplateDialog({
 	choices,
 	replacing,
