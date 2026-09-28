@@ -1,4 +1,9 @@
-import type { AdviceContent, BacktestAdvice } from "@trading-studio/backend";
+import type {
+	AdviceContent,
+	BacktestAdvice,
+	ImprovedStrategy,
+} from "@trading-studio/backend";
+import type { ConditionSet } from "@trading-studio/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useApi } from "../../api";
@@ -15,15 +20,24 @@ import { Button } from "../ui";
 /** 生成中に状態を問い合わせる間隔 */
 const POLL_MS = 3_000;
 
-const HEADINGS: [keyof AdviceContent, string][] = [
+const HEADINGS: [Exclude<keyof AdviceContent, "improved">, string][] = [
 	["analysis", "結果の分析"],
 	["good", "うまくいった点"],
 	["bad", "悪かった点"],
 	["improvements", "改善案"],
 ];
 
-/** バックテスト結果の AI アドバイス。ボタンで生成を始め、結果は実行ごとに最新の1件を残す */
-export function AdviceSection({ runId }: { runId: number }) {
+/**
+ * バックテスト結果の AI アドバイス。ボタンで生成を始め、結果は実行ごとに最新の1件を残す。
+ * 改善案を反映した戦略があれば、onImprove でそれを使ってバックテストし直せる
+ */
+export function AdviceSection({
+	runId,
+	onImprove,
+}: {
+	runId: number;
+	onImprove: (params: ConditionSet) => void;
+}) {
 	const api = useApi();
 	const visible = usePageVisible();
 	const [advice, setAdvice] = useState<BacktestAdvice | null | undefined>(
@@ -140,6 +154,11 @@ export function AdviceSection({ runId }: { runId: number }) {
 							</p>
 						</div>
 					))}
+					<ImproveButton
+						improved={content.improved}
+						disabled={running}
+						onImprove={onImprove}
+					/>
 					<span className="num text-xs text-text-2">
 						作成 {formatDateTime(advice.finishedAt ?? 0)} · {advice.model} ·
 						指示 v{advice.instructionsVersion} ·{" "}
@@ -148,5 +167,35 @@ export function AdviceSection({ runId }: { runId: number }) {
 				</div>
 			)}
 		</section>
+	);
+}
+
+/** 改善案を反映した戦略でバックテストし直すボタン。使えなければ押せなくして理由を出す */
+function ImproveButton({
+	improved,
+	disabled,
+	onImprove,
+}: {
+	improved: ImprovedStrategy | undefined;
+	disabled: boolean;
+	onImprove: (params: ConditionSet) => void;
+}) {
+	const reason = !improved
+		? "改善版の戦略を持たないアドバイス。作り直すと使える"
+		: improved.ok
+			? null
+			: improved.reason;
+	return (
+		<div className="flex flex-col items-start gap-1">
+			<Button
+				size="sm"
+				variant="primary"
+				disabled={disabled || !improved?.ok}
+				onClick={() => improved?.ok && onImprove(improved.params)}
+			>
+				改善版でバックテストする
+			</Button>
+			{reason && <span className="text-xs text-text-2">{reason}</span>}
+		</div>
 	);
 }

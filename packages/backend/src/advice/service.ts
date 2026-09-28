@@ -3,6 +3,7 @@ import type { BacktestRepository } from "../backtests/repository";
 import type { BacktestService } from "../backtests/types";
 import type { GeminiModel } from "../news/gemini";
 import { SCORING_MODELS } from "../news/gemini";
+import { readImprovedStrategy } from "./improved";
 import { buildAdviceSource } from "./input";
 import {
 	ADVICE_RESPONSE_SCHEMA,
@@ -58,7 +59,12 @@ export function createAdviceService({
 				buildAdvicePrompt(source, text),
 				ADVICE_RESPONSE_SCHEMA,
 			);
-			repo.finishDone(runId, parseAdviceResponse(raw), g, now());
+			const body = parseAdviceResponse(raw);
+			const improved = readImprovedStrategy(
+				(raw as Record<string, unknown>).improvedStrategy,
+				run.params,
+			);
+			repo.finishDone(runId, { ...body, improved }, g, now());
 		} catch (e) {
 			const message = e instanceof Error ? e.message : String(e);
 			console.error("advice failed", e);

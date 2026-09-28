@@ -1,11 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import type { BacktestOrder, Candle, ConditionSet } from "@trading-studio/core";
-import { DEFAULT_BUY_ORDER, TIMEFRAME_MS } from "@trading-studio/core";
+import {
+	conditionScreenText,
+	DEFAULT_BUY_ORDER,
+	TIMEFRAME_MS,
+} from "@trading-studio/core";
 import type { BacktestRun } from "../backtests/types";
 import { createTestApp } from "../test-app";
+import { DEMO_IMPROVED_STRATEGY } from "./fake-model";
+import { readImprovedStrategy } from "./improved";
 import { aggregateBars, buildAdviceSource, selectBars } from "./input";
 import { buildAdvicePrompt, parseAdviceResponse } from "./prompt";
-import { conditionScreenText } from "./screen-text";
 import type { BacktestAdvice } from "./types";
 
 const M = TIMEFRAME_MS["1m"];
@@ -218,7 +223,13 @@ describe("アドバイスの生成", () => {
 			"### 買い注文する条件（組み合わせ方: すべて満たす）\n1. 終値が直近 5 本の最高値を上抜けた",
 		);
 		expect(prompts[0]).toContain("- 1日の損失上限（円）: 30,000");
+		expect(prompts[0]).toContain("- 最大ポジション数: 1");
 		expect(prompts[0]).not.toContain("orderSize");
+		// 改善案を反映した戦略も一緒に持つ
+		expect(a?.content?.improved).toMatchObject({
+			ok: true,
+			params: { orderSize: 100_000, dailyLossLimit: 100_000 },
+		});
 	});
 
 	test("失敗しても前のアドバイスは残し、理由を出す", async () => {
@@ -262,6 +273,69 @@ describe("アドバイスの生成", () => {
 		expect(await noKey.json()).toEqual({ message: "キーが無い" });
 
 		expect((await start(t, 999)).status).toBe(404);
+	});
+});
+
+describe("改善版の戦略", () => {
+	// PARAMS を AI の出す形にしたもの。使わない項目は null で埋めてくる
+	const ai = (patch: Record<string, unknown> = {}) => ({
+		timeframe: "1h",
+		frequency: PARAMS.frequency,
+		orderSizeBtc: 0.01,
+		maxPositions: 1,
+		dailyLossLimitYen: 30_000,
+		buy: {
+			match: "all",
+			conditions: [
+				{
+					type: "breakout",
+					lookback: 5,
+					direction: "high",
+					fast: null,
+					values: null,
+				},
+			],
+		},
+		buyOrder: {
+			lines: [{ type: "limit", belowPercent: 0.1 }],
+			expireBars: 3,
+		},
+		takeProfit: PARAMS.takeProfit,
+		stopLoss: PARAMS.stopLoss,
+		...patch,
+	});
+
+	test("null の項目を落とし、注文量は BTC から satoshi に直して読む", () => {
+		const r = readImprovedStrategy(ai({ orderSizeBtc: 0.02 }), PARAMS);
+		expect(r).toEqual({
+			ok: true,
+			params: { ...PARAMS, orderSize: 2_000_000 },
+		});
+	});
+
+	test("設定として正しくなければ、アドバイスは残して理由を返す", () => {
+		const r = readImprovedStrategy(ai({ maxPositions: 0 }), PARAMS);
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.reason).toContain("設定として正しくない");
+		expect(readImprovedStrategy(ai({ buy: { match: "x" } }), PARAMS)).toEqual({
+			ok: false,
+			reason: "AI の出した改善版の戦略の形が正しくない",
+		});
+		expect(readImprovedStrategy(undefined, PARAMS)).toEqual({
+			ok: false,
+			reason: "AI の応答に改善版の戦略が無い",
+		});
+	});
+
+	test("元の戦略と変わらなければ使えない", () => {
+		expect(readImprovedStrategy(ai(), PARAMS)).toEqual({
+			ok: false,
+			reason: "改善案に戦略設定の変更が無い",
+		});
+	});
+
+	test("偽物の AI の出す戦略は設定として正しい", () => {
+		expect(readImprovedStrategy(DEMO_IMPROVED_STRATEGY, PARAMS).ok).toBe(true);
 	});
 });
 

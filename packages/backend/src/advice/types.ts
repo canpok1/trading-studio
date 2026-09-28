@@ -1,5 +1,12 @@
 // バックテストの AI アドバイスの API が使う型。app.ts から参照されるため、Bun 固有の型を持ち込まない
 
+import type { ConditionSet } from "@trading-studio/core";
+
+/** 改善案を反映した戦略設定。検証に通らないか変更が無ければ、その理由 */
+export type ImprovedStrategy =
+	| { ok: true; params: ConditionSet }
+	| { ok: false; reason: string };
+
 /** アドバイスの本文。見出しは固定 */
 export type AdviceContent = {
 	/** 結果の分析 */
@@ -10,6 +17,8 @@ export type AdviceContent = {
 	bad: string;
 	/** 改善案（具体的なパラメータの値） */
 	improvements: string;
+	/** 改善案を反映した戦略設定。これを出す前に作ったアドバイスには無い */
+	improved?: ImprovedStrategy;
 };
 
 export type BacktestAdvice = {

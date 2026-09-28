@@ -1,22 +1,16 @@
 // AI に渡す設定を、画面の項目名・グループ名で書く。改善案を画面でそのまま設定し直せる言葉で出してもらうため
 
-import type {
-	AggregationRule,
-	Condition,
-	ConditionSet,
-	FeeRates,
-	Frequency,
-} from "@trading-studio/core";
+import type { Condition, ConditionSet, Frequency } from "./condition-strategy";
 import {
 	CONDITION_GROUP_LABELS,
 	CONDITION_GROUPS,
 	FREQUENCY_UNIT_LABELS,
-	formatBtc,
-	formatYen,
-	JUDGE_LABELS,
-	JUDGMENT_VALUE_LABELS,
-	TIMEFRAME_LABELS,
-} from "@trading-studio/core";
+} from "./condition-strategy";
+import { formatBtc, formatYen } from "./format";
+import type { AggregationRule } from "./news-judgment";
+import { JUDGE_LABELS, JUDGMENT_VALUE_LABELS } from "./news-judgment";
+import { TIMEFRAME_LABELS } from "./timeframe";
+import type { FeeRates } from "./trading";
 
 const freq = (f: Frequency) => `${f.value}${FREQUENCY_UNIT_LABELS[f.unit]}`;
 const pct = (ppm: number) => `${ppm / 10_000}%`;
@@ -54,6 +48,7 @@ export function conditionSetScreenText(p: ConditionSet): string[] {
 		`- ポジションありのとき: ${freq(p.frequency.holding)}ごとに売りの条件を判定`,
 		"### 1回の注文量",
 		`- ${formatBtc(p.orderSize)} BTC`,
+		`- 最大ポジション数: ${p.maxPositions}`,
 		"### リスク上限",
 		`- 1日の損失上限（円）: ${formatYen(p.dailyLossLimit)}`,
 	];
@@ -97,4 +92,59 @@ export function ruleScreenText(r: AggregationRule): string[] {
 		`- リスク: 警戒 ${t.risk.caution} 点以上・危機 ${t.risk.crisis} 点以上（未満は平常）`,
 		`- センチメント: +2 ${t.sentiment.plus2} 点以上・+1 ${t.sentiment.plus1} 点以上・−1 ${t.sentiment.minus1} 点未満・−2 ${t.sentiment.minus2} 点未満（間は 0）`,
 	];
+}
+
+/** 戦略設定の変更点。見出しごとに、変える前にしかない行と変えた後にしかない行 */
+export type ConditionSetChange = {
+	section: string;
+	removed: string[];
+	added: string[];
+};
+
+/**
+ * 2つの戦略設定の違いを、画面の見出しと項目の文言で返す。
+ * 条件の番号は比べない（先頭に足すと以降の番号がずれ、すべて変わったように見えるため）
+ */
+export function conditionSetChanges(
+	before: ConditionSet,
+	after: ConditionSet,
+): ConditionSetChange[] {
+	const a = sections(conditionSetScreenText(before));
+	const b = sections(conditionSetScreenText(after));
+	const out: ConditionSetChange[] = [];
+	for (const [section, lines] of b) {
+		const prev = a.get(section) ?? [];
+		const removed = subtract(prev, lines);
+		const added = subtract(lines, prev);
+		if (removed.length > 0 || added.length > 0)
+			out.push({ section, removed, added });
+	}
+	return out;
+}
+
+/** 見出しごとの行。見出しの「（組み合わせ方: …）」は行として扱い、番号は外す */
+function sections(lines: string[]): Map<string, string[]> {
+	const out = new Map<string, string[]>();
+	let cur: string[] = [];
+	for (const line of lines) {
+		const h = /^### (.+?)(?:（(組み合わせ方: .+)）)?$/.exec(line);
+		if (h) {
+			cur = h[2] ? [h[2]] : [];
+			out.set(h[1] as string, cur);
+		} else {
+			cur.push(line.replace(/^(\d+\.|-) /, ""));
+		}
+	}
+	return out;
+}
+
+/** xs から ys にある行を1つずつ除く（同じ条件が2つあるときも数を合わせる） */
+function subtract(xs: string[], ys: string[]): string[] {
+	const rest = [...ys];
+	return xs.filter((x) => {
+		const i = rest.indexOf(x);
+		if (i < 0) return true;
+		rest.splice(i, 1);
+		return false;
+	});
 }

@@ -1,6 +1,7 @@
 import type { BacktestChart, BacktestRun } from "@trading-studio/backend";
-import type { BacktestOrder } from "@trading-studio/core";
+import type { BacktestOrder, ConditionSet } from "@trading-studio/core";
 import {
+	conditionSetChanges,
 	formatBtc,
 	ppmToPercent,
 	TIMEFRAME_LABELS,
@@ -42,6 +43,7 @@ import {
 } from "../lib/number";
 import { errorMessage, readJson, useAsync } from "../lib/useAsync";
 import type { BacktestDraft } from "./BacktestRunPage";
+import { BACKTEST_NAME_MAX } from "./BacktestRunPage";
 
 const PAGE = 20;
 
@@ -142,6 +144,26 @@ function rerunState(run: BacktestRun): Partial<BacktestDraft> {
 		toDate: toDateInputValue(run.to - 1),
 		initialCash: run.initialCash,
 		fees: run.fees,
+	};
+}
+
+/**
+ * 改善版でバックテストするときの下書き。期間・口座は元のまま、名前に「（改善版）」を付ける。
+ * 改善版をさらに改善したときに重ねないよう、元の名前の末尾の「（改善版）」は外す
+ */
+function improvedState(
+	run: BacktestRun,
+	params: ConditionSet,
+): Partial<BacktestDraft> {
+	const suffix = "（改善版）";
+	const base = run.name.endsWith(suffix)
+		? run.name.slice(0, -suffix.length)
+		: run.name;
+	return {
+		...rerunState(run),
+		name: base.slice(0, BACKTEST_NAME_MAX - suffix.length) + suffix,
+		params,
+		improvement: { changes: conditionSetChanges(run.params, params) },
 	};
 }
 
@@ -288,6 +310,7 @@ function SaveDialog({
 
 function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 	const api = useApi();
+	const navigate = useNavigate();
 	const s = run.summary as NonNullable<BacktestRun["summary"]>;
 	const [filter, setFilter] = useState<"filled" | "all">("filled");
 	const [orders, setOrders] = useState<BacktestOrder[]>([]);
@@ -427,7 +450,12 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 				/>
 			</div>
 			<div className="lg:col-span-2">
-				<AdviceSection runId={run.id} />
+				<AdviceSection
+					runId={run.id}
+					onImprove={(params) =>
+						navigate("/backtest", { state: improvedState(run, params) })
+					}
+				/>
 			</div>
 			<section
 				aria-label="注文と約定"

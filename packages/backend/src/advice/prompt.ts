@@ -1,6 +1,7 @@
 // アドバイスのプロンプトと、AI の応答の検証。ひな形と出力形式は画面の見出しの前提なので固定する
 
 import type { ResponseSchema } from "../news/gemini";
+import { IMPROVED_STRATEGY_SCHEMA } from "./improved";
 import type { AdviceContent } from "./types";
 
 /** ひな形。{backtest} と {instructions} を差し込む。長い資料を先頭に、指示を最後に置く */
@@ -21,10 +22,11 @@ export const ADVICE_TEMPLATE = `<backtest>
 - good: うまくいった点
 - bad: 悪かった点
 - improvements: 改善案。変える項目と具体的な値を書く
+- improvedStrategy: improvements の戦略設定の変更をすべて反映した後の戦略設定。improvements で変えない項目は <backtest> の戦略設定の値をそのまま写す。期間・口座・集計ルールは含めない
 
-設定の変更は、利用者が画面でそのまま設定し直せるよう、<backtest> に書いた画面の見出しと項目名で書く。例: 「買い注文する条件」の「短期EMA」を 12 本から 20 本にする。プログラムの項目名・JSON・添字（conditions[0] など）は使わない
+improvements の文章では、設定の変更を利用者が画面でそのまま設定し直せるよう、<backtest> に書いた画面の見出しと項目名で書く。例: 「買い注文する条件」の「短期EMA」を 12 本から 20 本にする。プログラムの項目名・JSON・添字（conditions[0] など）は使わない
 
-JSON のみを出力: {"analysis": 文字列, "good": 文字列, "bad": 文字列, "improvements": 文字列}`;
+JSON のみを出力: {"analysis": 文字列, "good": 文字列, "bad": 文字列, "improvements": 文字列, "improvedStrategy": 戦略設定}`;
 
 /** 指示の初版 */
 export const DEFAULT_INSTRUCTIONS = `- 損益だけでなく、最大ドローダウン・取引回数も踏まえて評価する
@@ -41,22 +43,28 @@ export function buildAdvicePrompt(backtest: string, instructions: string) {
 }
 
 const KEYS = ["analysis", "good", "bad", "improvements"] as const;
+type TextKey = (typeof KEYS)[number];
 
 /** 構造化出力で強制する形（Gemini の responseSchema の書き方） */
 export const ADVICE_RESPONSE_SCHEMA: ResponseSchema = {
 	type: "OBJECT",
-	properties: Object.fromEntries(KEYS.map((k) => [k, { type: "STRING" }])),
-	required: [...KEYS],
-	propertyOrdering: [...KEYS],
+	properties: {
+		...Object.fromEntries(KEYS.map((k) => [k, { type: "STRING" }])),
+		improvedStrategy: IMPROVED_STRATEGY_SCHEMA,
+	},
+	required: [...KEYS, "improvedStrategy"],
+	propertyOrdering: [...KEYS, "improvedStrategy"],
 };
 
-/** 応答を検証する。形が違えば理由を投げる */
-export function parseAdviceResponse(raw: unknown): AdviceContent {
+/** 見出しの文章を検証する。形が違えば理由を投げる。改善版の戦略は readImprovedStrategy で読む */
+export function parseAdviceResponse(
+	raw: unknown,
+): Pick<AdviceContent, TextKey> {
 	if (typeof raw !== "object" || raw === null) {
 		throw new Error("AI の応答がオブジェクトでない");
 	}
 	const r = raw as Record<string, unknown>;
-	const out: Partial<AdviceContent> = {};
+	const out: Partial<Pick<AdviceContent, TextKey>> = {};
 	for (const k of KEYS) {
 		const v = r[k];
 		if (typeof v !== "string" || v.trim() === "") {
@@ -64,5 +72,5 @@ export function parseAdviceResponse(raw: unknown): AdviceContent {
 		}
 		out[k] = v.trim();
 	}
-	return out as AdviceContent;
+	return out as Pick<AdviceContent, TextKey>;
 }

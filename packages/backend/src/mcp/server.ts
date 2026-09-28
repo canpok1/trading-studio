@@ -4,10 +4,13 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { ConditionSet } from "@trading-studio/core";
-import { DEFAULT_FEE_RATES, parseConditionSet } from "@trading-studio/core";
+import {
+	conditionSetScreenText,
+	DEFAULT_FEE_RATES,
+	parseConditionSet,
+} from "@trading-studio/core";
 import { Hono } from "hono";
 import * as z from "zod";
-import { conditionSetScreenText } from "../advice/screen-text";
 import type {
 	BacktestRun,
 	BacktestService,

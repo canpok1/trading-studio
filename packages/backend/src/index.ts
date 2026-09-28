@@ -2,6 +2,7 @@ export type {
 	AdviceContent,
 	AdviceModelOption,
 	BacktestAdvice,
+	ImprovedStrategy,
 	InstructionsVersion,
 } from "./advice/types";
 export type { AppType } from "./app";
