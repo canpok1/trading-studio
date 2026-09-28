@@ -659,51 +659,49 @@ describe("判定に使う足の粒度", () => {
 });
 
 describe("AI 判定の条件", () => {
-	const trendUp: Condition = {
+	const bullish: Condition = {
 		type: "judgment",
-		judge: "trend",
-		values: ["up", "range"],
+		judge: "sentiment",
+		values: ["+1", "0"],
 	};
 	const judged = (label: string) => ({
-		trend: [{ judge: "trend", time: 0, label }],
+		sentiment: [{ judge: "sentiment", time: 0, label }],
 	});
 
 	test("最新の判定が選んだ値のどれかなら成立し、理由に判定を書く", () => {
 		const cs = candles([100, 100]);
 		const hit = evaluateConditionSet(
-			input(cs, buyWith(trendUp), { judgments: judged("range") }),
+			input(cs, buyWith(bullish), { judgments: judged("0") }),
 		);
 		expect(hit.intents).toHaveLength(1);
-		expect(hit.note).toContain("トレンド判定がレンジ（上昇・レンジのどれか）");
+		expect(hit.note).toContain("センチメント判定が0（+1・0のどれか）");
 		const miss = evaluateConditionSet(
-			input(cs, buyWith(trendUp), { judgments: judged("down") }),
+			input(cs, buyWith(bullish), { judgments: judged("-1") }),
 		);
 		expect(miss.intents).toHaveLength(0);
 	});
 
 	test("判定がまだ無ければ、データなしを選んだ条件だけ成立する", () => {
-		const out = evaluateConditionSet(input(candles([100]), buyWith(trendUp)));
+		const out = evaluateConditionSet(input(candles([100]), buyWith(bullish)));
 		expect(out.intents).toHaveLength(0);
 		expect(out.note).toContain("買いの条件を満たさない");
 		const withNone: Condition = {
 			type: "judgment",
-			judge: "trend",
-			values: ["up", "none"],
+			judge: "sentiment",
+			values: ["+1", "none"],
 		};
 		const hit = evaluateConditionSet(input(candles([100]), buyWith(withNone)));
 		expect(hit.intents[0]).toMatchObject({ side: "buy" });
 		expect(hit.note).toContain(
-			"トレンド判定がデータなし（上昇・データなしのどれか）",
+			"センチメント判定がデータなし（+1・データなしのどれか）",
 		);
 		// 判定があればデータなしは成立しない
-		const range = evaluateConditionSet(
-			input(candles([100]), buyWith(withNone), {
-				judgments: { trend: [{ judge: "trend", time: 0, label: "range" }] },
-			}),
+		const neutral = evaluateConditionSet(
+			input(candles([100]), buyWith(withNone), { judgments: judged("0") }),
 		);
-		expect(range.intents).toHaveLength(0);
+		expect(neutral.intents).toHaveLength(0);
 		expect(acceptsNoJudgment(buyWith(withNone))).toBe(true);
-		expect(acceptsNoJudgment(buyWith(trendUp))).toBe(false);
+		expect(acceptsNoJudgment(buyWith(bullish))).toBe(false);
 		expect(
 			validateConditionSet(buyWith(withNone)).filter((e) =>
 				e.path.startsWith("buy."),
@@ -733,7 +731,7 @@ describe("AI 判定の条件", () => {
 				match: "all",
 				conditions: [
 					{ type: "judgment", judge: "sentiment", values: [] },
-					trendUp,
+					{ type: "judgment", judge: "trend" as never, values: ["+1"] },
 				],
 			},
 			stopLoss: {
@@ -747,16 +745,13 @@ describe("AI 判定の条件", () => {
 				],
 			},
 		});
-		expect(conditionStrategy.requiredJudges(p)).toEqual([
-			"trend",
-			"risk",
-			"sentiment",
-		]);
+		expect(conditionStrategy.requiredJudges(p)).toEqual(["sentiment", "risk"]);
+		// 統合で無くなったトレンドの判定器は受け付けない
 		expect(validateConditionSet(p).map((e) => e.path)).toEqual([
 			"buy.conditions.0.values",
+			"buy.conditions.1.judge",
 			"stopLoss.conditions.0.values",
 		]);
-		expect(parseConditionSet(JSON.parse(JSON.stringify(p)))).toEqual(p);
 	});
 });
 

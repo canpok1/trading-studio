@@ -171,8 +171,7 @@ export const newsScores = sqliteTable(
 			.references(() => news.id),
 		/** done: 採点済み / retry: 再試行を待っている / failed: 採点に失敗 / skipped: 古いので採点しない */
 		status: text("status").notNull(),
-		/** 観点ごとの点数（trend・sentiment は -100〜100 で 0 が中立、risk は 0〜100）。関係なしは null */
-		trend: integer("trend"),
+		/** 観点ごとの点数（sentiment は -100〜100 で 0 が中立、risk は 0〜100）。関係なしは null */
 		risk: integer("risk"),
 		sentiment: integer("sentiment"),
 		comment: text("comment"),

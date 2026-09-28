@@ -412,7 +412,7 @@ describe("AI に渡す資料", () => {
 	test("粗い足にまとめたとき、期間の終わりが足の途中なら期間の最後の判定を使う", () => {
 		// 1分足88本を5分足18本にまとめる。最後の5分足は3本しか無い
 		const bars = Array.from({ length: 88 }, (_, i) => bar(START + i * M, i));
-		const trend = bars.map((_, i) => (i === 87 ? "up" : "down") as "up");
+		const sentiment = bars.map((_, i) => (i === 87 ? "+2" : "-1") as "+2");
 		const text = buildAdviceSource(
 			{
 				run: {
@@ -434,9 +434,8 @@ describe("AI に渡す資料", () => {
 					step: M,
 					firstScoredAt: 0,
 					values: {
-						trend,
+						sentiment,
 						risk: bars.map(() => "normal" as const),
-						sentiment: bars.map(() => "0" as const),
 					},
 				},
 			},
@@ -444,7 +443,7 @@ describe("AI に渡す資料", () => {
 		);
 		const overview = text.split("## 値動きの全体")[1]?.split("\n\n")[0] ?? "";
 		expect(overview).toContain("5分足、18 本");
-		expect(overview.trim().split("\n").at(-1)).toMatch(/,上昇,平常,0$/);
+		expect(overview.trim().split("\n").at(-1)).toMatch(/,\+2,平常$/);
 	});
 });
 
@@ -461,10 +460,10 @@ describe("画面の表記", () => {
 		expect(
 			conditionScreenText({
 				type: "judgment",
-				judge: "trend",
-				values: ["up", "range"],
+				judge: "sentiment",
+				values: ["+2", "+1"],
 			}),
-		).toBe("トレンド判定が 上昇・レンジ のどれか");
+		).toBe("センチメント判定が +2・+1 のどれか");
 		expect(
 			conditionScreenText({
 				type: "rsi",

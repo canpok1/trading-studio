@@ -88,9 +88,8 @@ export function ruleScreenText(r: AggregationRule): string[] {
 	const t = r.thresholds;
 	return [
 		`- 平均のとり方: 期間 ${r.windowHours} 時間・半減期 ${r.halfLifeHours} 時間`,
-		`- トレンド: 上昇 ${t.trend.up} 点以上・下落 ${t.trend.down} 点以下（間はレンジ）`,
-		`- リスク: 警戒 ${t.risk.caution} 点以上・危機 ${t.risk.crisis} 点以上（未満は平常）`,
 		`- センチメント: +2 ${t.sentiment.plus2} 点以上・+1 ${t.sentiment.plus1} 点以上・−1 ${t.sentiment.minus1} 点未満・−2 ${t.sentiment.minus2} 点未満（間は 0）`,
+		`- リスク: 警戒 ${t.risk.caution} 点以上・危機 ${t.risk.crisis} 点以上（未満は平常）`,
 	];
 }
 

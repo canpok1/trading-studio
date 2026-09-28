@@ -13,7 +13,6 @@ export type AnalysisNewsRow = {
 	publishedAt: number;
 	fetchedAt: number;
 	status: string | null;
-	trend: number | null;
 	risk: number | null;
 	sentiment: number | null;
 	comment: string | null;
@@ -33,7 +32,7 @@ export type NewsFilter = {
 };
 
 const COLUMNS = `n.id, n.source_name as sourceName, n.language, n.url, n.title, n.summary,
-  n.published_at as publishedAt, n.fetched_at as fetchedAt, s.status, s.trend, s.risk, s.sentiment,
+  n.published_at as publishedAt, n.fetched_at as fetchedAt, s.status, s.risk, s.sentiment,
   s.comment, s.scored_at as scoredAt, s.criteria_version as criteriaVersion, s.model,
   s.app_built_at as appBuiltAt, s.error`;
 

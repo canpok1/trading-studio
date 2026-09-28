@@ -9,9 +9,9 @@ const STORAGE_KEY = "chart-bg";
 function read(): Judge {
 	try {
 		const v = localStorage.getItem(STORAGE_KEY);
-		return isJudge(v) ? v : "trend";
+		return isJudge(v) ? v : "sentiment";
 	} catch {
-		return "trend";
+		return "sentiment";
 	}
 }
 

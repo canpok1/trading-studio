@@ -12,7 +12,7 @@ function setup() {
 		{ name: "A", url: "https://a.example/feed", language: "ja" },
 		0,
 	);
-	const add = (title: string, hoursAgo: number, trend: number) => {
+	const add = (title: string, hoursAgo: number, sentiment: number) => {
 		const at = t.clock.now - hoursAgo * H;
 		t.newsRepo.saveFetched(
 			source,
@@ -31,7 +31,7 @@ function setup() {
 		).id;
 		t.scoreRepo.saveScore(
 			id,
-			{ scores: { trend, risk: null, sentiment: null }, comment: "c" },
+			{ scores: { sentiment, risk: null }, comment: "c" },
 			{
 				scoredAt: at,
 				criteriaVersion: 1,
@@ -45,12 +45,12 @@ function setup() {
 	return { ...t, add };
 }
 
-async function trendNow(app: ReturnType<typeof createTestApp>["app"]) {
+async function sentimentNow(app: ReturnType<typeof createTestApp>["app"]) {
 	return (
 		(await (
 			await app.request("/api/judgments/current")
 		).json()) as CurrentJudgment
-	).results.trend.value;
+	).results.sentiment.value;
 }
 
 const json = (method: string, body: unknown) => ({
@@ -70,7 +70,7 @@ test("今の判定と重み", async () => {
 	expect(r).toMatchObject({
 		time: 100 * H,
 		results: {
-			trend: { value: "up", average: 20, count: 2 },
+			sentiment: { value: "+1", average: 20, count: 2 },
 			risk: { value: "normal", average: null, count: 0 },
 		},
 		firstScoredAt: 70 * H,
@@ -83,27 +83,27 @@ test("集計ルールの保存で判定が変わる。試算は保存しない",
 	const t = setup();
 	t.add("a", 0, 20);
 	const rule = structuredClone(DEFAULT_AGGREGATION_RULE);
-	rule.thresholds.trend.up = 30;
+	rule.thresholds.sentiment.plus1 = 30;
 	const preview = await t.app.request(
 		"/api/judgments/preview",
 		json("POST", { rule }),
 	);
 	expect(await preview.json()).toMatchObject({
-		results: { trend: { value: "range" } },
+		results: { sentiment: { value: "0" } },
 	});
-	expect(await trendNow(t.app)).toBe("up");
+	expect(await sentimentNow(t.app)).toBe("+1");
 	const saved = await t.app.request(
 		"/api/judgments/rule",
 		json("PUT", { rule }),
 	);
 	expect(saved.status).toBe(200);
-	expect(await trendNow(t.app)).toBe("range");
+	expect(await sentimentNow(t.app)).toBe("0");
 
-	rule.thresholds.trend.down = 80;
+	rule.thresholds.sentiment.minus1 = 80;
 	const bad = await t.app.request("/api/judgments/rule", json("PUT", { rule }));
 	expect(bad.status).toBe(400);
 	expect(await bad.json()).toMatchObject({
-		errors: [{ path: "thresholds.trend.down" }],
+		errors: [{ path: "thresholds.sentiment.minus1" }],
 	});
 	expect(
 		(await t.app.request("/api/judgments/rule", json("PUT", { rule: 1 })))
@@ -121,22 +121,22 @@ test("足ごとの判定は足の終わりの時刻で出し、採点の記録�
 		)
 	).json()) as JudgmentSeries;
 	expect(r.firstScoredAt).toBe(90 * H);
-	expect(r.values.trend).toEqual([
+	expect(r.values.sentiment).toEqual([
 		null,
-		"up",
-		"up",
-		"up",
-		"up",
-		"up",
-		"up",
-		"up",
-		"up",
-		"down",
-		"down",
-		"down",
+		"+2",
+		"+2",
+		"+2",
+		"+2",
+		"+2",
+		"+2",
+		"+2",
+		"+2",
+		"-1",
+		"-1",
+		"-1",
 		// 今より後に終わる足は今の判定
-		"down",
-		"down",
+		"-1",
+		"-1",
 	]);
 	expect(r.values.risk[0]).toBeNull();
 	expect(r.values.risk[1]).toBe("normal");

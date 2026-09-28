@@ -171,7 +171,7 @@ describe("分析用エクスポート", () => {
 		t.scoreRepo.saveScore(
 			done,
 			{
-				scores: { trend: 80, risk: 10, sentiment: null },
+				scores: { sentiment: 80, risk: 10 },
 				comment: "上がりそう",
 			},
 			{
@@ -249,13 +249,13 @@ describe("分析用エクスポート", () => {
 		]);
 		expect(news[0]).toMatchObject({
 			summary: '概要, "引用"',
-			trend: "80",
+			sentiment: "80",
 			risk: "10",
-			sentiment: "",
 			published_at: String(DAY + 10 * M),
 			published_at_jst: "2026-09-26T00:10:00.000+09:00",
 			criteria_version: "1",
 		});
+		expect(news[0]).not.toHaveProperty("trend");
 		expect(news[1]).toMatchObject({ error: "壊れた応答", attempts: "3" });
 
 		// 1時間足の終わりごと。書き出した時刻より後は入れない
@@ -266,14 +266,14 @@ describe("分析用エクスポート", () => {
 			"2026-09-26T03:00:00.000+09:00",
 		]);
 		expect(judgments[0]).toMatchObject({
-			trend: "up",
-			trend_average: "80",
-			trend_count: "1",
+			sentiment: "+2",
+			sentiment_average: "80",
+			sentiment_count: "1",
 			risk: "normal",
-			sentiment: "0",
-			sentiment_average: "",
-			sentiment_count: "0",
+			risk_average: "10",
+			risk_count: "1",
 		});
+		expect(judgments[0]).not.toHaveProperty("trend");
 
 		expect(files.get("candles_1m.csv")).toBe(
 			[
@@ -323,7 +323,7 @@ describe("分析用エクスポート", () => {
 				note: "様子見",
 				state: null,
 			},
-			{ trend: "up", risk: "normal", sentiment: "+1" },
+			{ sentiment: "+1", risk: "normal" },
 		);
 		const res = await download(t, `from=${DAY}&to=${DAY + 24 * H}`);
 		const files = unzip(new Uint8Array(await res.arrayBuffer()));
@@ -332,8 +332,8 @@ describe("分析用エクスポート", () => {
 				decision_id: String(decisionId),
 				strategy_name: "戦略A",
 				note: "様子見",
-				judgment_trend: "up",
 				judgment_sentiment: "+1",
+				judgment_risk: "normal",
 			}),
 		]);
 		// 選ばなければバックテストの表は列名だけ

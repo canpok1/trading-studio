@@ -12,7 +12,7 @@ import { Button, Card } from "../ui";
 type Path =
 	| "windowHours"
 	| "halfLifeHours"
-	| `thresholds.${"trend" | "risk" | "sentiment"}.${string}`;
+	| `thresholds.${"sentiment" | "risk"}.${string}`;
 
 function get(r: AggregationRule, path: Path): number {
 	const [a, b, c] = path.split(".") as [string, string?, string?];
@@ -131,20 +131,18 @@ export function RuleTab({
 			</Card>
 			<Card className="flex flex-col gap-2.5">
 				<h2 className="text-[15px] font-bold">判定に変えるしきい値</h2>
-				<strong className="text-xs">トレンド（-100〜100、0 が中立）</strong>
-				{field("上昇", "thresholds.trend.up", "点以上", true)}
-				{field("下落", "thresholds.trend.down", "点以下", true)}
-				<span className="text-xs text-text-2">間はレンジ</span>
-				<strong className="text-xs">リスク（0〜100、高いほど危険）</strong>
-				{field("警戒", "thresholds.risk.caution", "点以上")}
-				{field("危機", "thresholds.risk.crisis", "点以上")}
-				<span className="text-xs text-text-2">未満は平常</span>
-				<strong className="text-xs">センチメント（-100〜100、0 が中立）</strong>
+				<strong className="text-xs">
+					センチメント（-100〜100、0 が中立、高いほど強気材料）
+				</strong>
 				{field("+2", "thresholds.sentiment.plus2", "点以上", true)}
 				{field("+1", "thresholds.sentiment.plus1", "点以上", true)}
 				{field("−1", "thresholds.sentiment.minus1", "点未満", true)}
 				{field("−2", "thresholds.sentiment.minus2", "点未満", true)}
 				<span className="text-xs text-text-2">間は 0</span>
+				<strong className="text-xs">リスク（0〜100、高いほど危険）</strong>
+				{field("警戒", "thresholds.risk.caution", "点以上")}
+				{field("危機", "thresholds.risk.crisis", "点以上")}
+				<span className="text-xs text-text-2">未満は平常</span>
 			</Card>
 			{valid && preview && (
 				<Card className="flex flex-col gap-2">

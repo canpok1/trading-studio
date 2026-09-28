@@ -464,7 +464,7 @@ describe("AI 判定", () => {
 		},
 		buy: {
 			match: "all",
-			conditions: [{ type: "judgment", judge: "trend", values: ["up"] }],
+			conditions: [{ type: "judgment", judge: "sentiment", values: ["+2"] }],
 		},
 	};
 	const run = (judgments?: BacktestConfig<ConditionSet>["judgments"]) =>
@@ -489,7 +489,7 @@ describe("AI 判定", () => {
 					publishedAt: 2 * H,
 					fetchedAt: 2 * H,
 					scoredAt: 5.5 * H,
-					scores: { trend: 90, risk: null, sentiment: null },
+					scores: { sentiment: 90, risk: null },
 				},
 			],
 			rule: DEFAULT_AGGREGATION_RULE,

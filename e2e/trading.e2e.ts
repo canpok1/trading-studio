@@ -107,7 +107,11 @@ test("仮想注文が出て約定すると、ホームの保有・注文に出�
 		buy: {
 			match: "all",
 			conditions: [
-				{ type: "judgment", judge: "trend", values: ["up", "range", "down"] },
+				{
+					type: "judgment",
+					judge: "sentiment",
+					values: ["+2", "+1", "0", "-1", "-2"],
+				},
 			],
 		},
 		takeProfit: {
@@ -156,7 +160,7 @@ test("仮想注文が出て約定すると、ホームの保有・注文に出�
 		await rows.first().click();
 		const sheet = page.getByRole("dialog", { name: "注文の詳細" });
 		await expect(sheet).toContainText("このときの判定");
-		await expect(sheet.getByTestId("badge-trend")).toBeVisible();
+		await expect(sheet.getByTestId("badge-sentiment")).toBeVisible();
 		await sheet.getByRole("button", { name: "閉じる" }).click();
 
 		await expect(page.getByTestId("trades-summary")).toContainText(

@@ -14,17 +14,15 @@ describe("alignJudgments", () => {
 				step: 10,
 				firstScoredAt: 0,
 				values: {
-					trend: ["up", null, "down"],
+					sentiment: ["0", null, "-2"],
 					risk: ["normal", "normal", "crisis"],
-					sentiment: ["0", "+1", "-2"],
 				},
 			},
 			// 110 の足は欠けている。90 と 130 は並びの範囲外
 			[90, 100, 120, 130],
 		);
-		expect(r?.trend).toEqual([null, "up", "down", null]);
-		expect(r?.risk).toEqual([null, "normal", "crisis", null]);
 		expect(r?.sentiment).toEqual([null, "0", "-2", null]);
+		expect(r?.risk).toEqual([null, "normal", "crisis", null]);
 	});
 });
 
@@ -34,7 +32,7 @@ test("どの足にも判定が無ければ null", () => {
 			from: 100,
 			step: 10,
 			firstScoredAt: null,
-			values: { trend: [null], risk: [null], sentiment: [null] },
+			values: { sentiment: [null], risk: [null] },
 		},
 		[100],
 	);
@@ -53,21 +51,21 @@ describe("judgmentRuns", () => {
 });
 
 test("帯は背景以外の判定", () => {
-	expect(stripJudges("risk")).toEqual(["trend", "sentiment"]);
+	expect(stripJudges("risk")).toEqual(["sentiment"]);
+	expect(stripJudges("sentiment")).toEqual(["risk"]);
 });
 
 describe("slotAligned", () => {
 	test("欠損の空白の枠は null にし、区間がまたがらない", () => {
 		const out = slotAligned(
 			{
-				trend: ["up", "up"],
-				risk: [null, "crisis"],
 				sentiment: ["+1", "+1"],
+				risk: [null, "crisis"],
 			},
 			[{ bar: 0 }, { bar: null }, { bar: 1 }],
 		);
-		expect(out.trend).toEqual(["up", null, "up"]);
+		expect(out.sentiment).toEqual(["+1", null, "+1"]);
 		expect(out.risk).toEqual([null, null, "crisis"]);
-		expect(judgmentRuns(out.trend)).toHaveLength(2);
+		expect(judgmentRuns(out.sentiment)).toHaveLength(2);
 	});
 });

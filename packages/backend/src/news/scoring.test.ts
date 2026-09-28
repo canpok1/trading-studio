@@ -43,26 +43,26 @@ describe("プロンプト", () => {
 	test("応答の検証", () => {
 		expect(
 			parseScoreResponse({
-				trend: -100,
-				risk: null,
 				sentiment: 100,
+				risk: null,
 				comment: " 理由 ",
 			}),
 		).toEqual({
-			scores: { trend: -100, risk: null, sentiment: 100 },
+			scores: { sentiment: 100, risk: null },
 			comment: "理由",
 		});
 		for (const bad of [
 			null,
 			[],
-			{ trend: 101, risk: null, sentiment: 1, comment: "c" },
-			{ trend: -101, risk: null, sentiment: 1, comment: "c" },
-			{ trend: 1, risk: null, sentiment: -101, comment: "c" },
-			{ trend: 1, risk: -1, sentiment: 1, comment: "c" },
-			{ trend: 50.5, risk: null, sentiment: 1, comment: "c" },
-			{ trend: "50", risk: null, sentiment: 1, comment: "c" },
-			{ risk: null, sentiment: 1, comment: "c" },
-			{ trend: 1, risk: null, sentiment: 1, comment: "" },
+			{ sentiment: 101, risk: null, comment: "c" },
+			{ sentiment: -101, risk: null, comment: "c" },
+			{ sentiment: 1, risk: -1, comment: "c" },
+			{ sentiment: 1, risk: 101, comment: "c" },
+			{ sentiment: 50.5, risk: null, comment: "c" },
+			{ sentiment: "50", risk: null, comment: "c" },
+			{ risk: null, comment: "c" },
+			{ sentiment: 1, comment: "c" },
+			{ sentiment: 1, risk: null, comment: "" },
 		]) {
 			expect(typeof parseScoreResponse(bad)).toBe("string");
 		}
@@ -88,9 +88,8 @@ function setup(opts: { key?: boolean } = {}) {
 		async generate(m, prompt) {
 			calls.push({ model: m, prompt });
 			const r = replies.shift() ?? {
-				trend: 60,
+				sentiment: 60,
 				risk: 30,
-				sentiment: null,
 				comment: "理由",
 			};
 			if (r instanceof Error) throw r;
@@ -154,7 +153,7 @@ describe("採点", () => {
 		await t.at(T0 + 1000);
 		expect(t.repo.getScore(a)).toMatchObject({
 			status: "done",
-			scores: { trend: 60, risk: 30, sentiment: null },
+			scores: { sentiment: 60, risk: 30 },
 			comment: "理由",
 			scoredAt: T0 + 1000,
 			criteriaVersion: 1,
@@ -174,10 +173,10 @@ describe("採点", () => {
 		const t = setup();
 		const a = t.addNews("a");
 		t.replies.push(
-			{ trend: 101, risk: null, sentiment: 1, comment: "c" },
+			{ sentiment: 101, risk: null, comment: "c" },
 			new Error("Gemini API 503: overloaded"),
 			"not json",
-			{ trend: 1, risk: null, sentiment: 1, comment: "" },
+			{ sentiment: 1, risk: null, comment: "" },
 		);
 		let time = T0;
 		await t.at(time);
@@ -190,7 +189,7 @@ describe("採点", () => {
 			stoppedSince: T0,
 		});
 		expect(t.service.status().error).toContain(
-			"trend が -100〜100 の整数か null でない",
+			"sentiment が -100〜100 の整数か null でない",
 		);
 		// 再試行の時刻の前は採点しない
 		await t.at(time + 1000);
@@ -293,7 +292,7 @@ describe("採点", () => {
 			items: [
 				{
 					news: { id: latest, title: "latest", stored: null },
-					result: { ok: true, scores: { trend: 60 } },
+					result: { ok: true, scores: { sentiment: 60 } },
 				},
 			],
 		});
@@ -308,7 +307,7 @@ describe("採点", () => {
 		const b = t.addNews("b", T0);
 		await t.at(T0);
 		await t.at(T0);
-		t.replies.push({ trend: -10, risk: 5, sentiment: 0, comment: "案" });
+		t.replies.push({ sentiment: -10, risk: 5, comment: "案" });
 		const r = await t.service.trial("案の基準", [a, 999]);
 		expect(r).toMatchObject({
 			ok: true,
@@ -316,13 +315,13 @@ describe("採点", () => {
 				{
 					news: {
 						id: a,
-						stored: { scores: { trend: 60 }, criteriaVersion: 1 },
+						stored: { scores: { sentiment: 60 }, criteriaVersion: 1 },
 					},
-					result: { ok: true, scores: { trend: -10 }, comment: "案" },
+					result: { ok: true, scores: { sentiment: -10 }, comment: "案" },
 				},
 			],
 		});
-		expect(t.repo.getScore(a)?.scores?.trend).toBe(60);
+		expect(t.repo.getScore(a)?.scores?.sentiment).toBe(60);
 		expect(await t.service.trial("x", [999])).toEqual({
 			ok: false,
 			message: "ニュースが見つからない",
@@ -352,9 +351,8 @@ describe("採点", () => {
 			model: {
 				unavailable: () => null,
 				generate: async () => ({
-					trend: 0,
+					sentiment: 0,
 					risk: null,
-					sentiment: null,
 					comment: "c",
 				}),
 			},
@@ -588,7 +586,7 @@ test("問い合わせの間を最短の間隔だけ空ける", async () => {
 			unavailable: () => null,
 			async generate() {
 				calls++;
-				return { trend: 1, risk: 1, sentiment: 1, comment: "c" };
+				return { sentiment: 1, risk: 1, comment: "c" };
 			},
 		},
 		rule: () => repo.aggregationRule(),

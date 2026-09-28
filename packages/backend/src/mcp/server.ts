@@ -167,9 +167,7 @@ function newsView(r: AnalysisNewsRow | ScoredNewsView) {
 		fetchedAt: jst(r.fetchedAt),
 		status: r.status ?? "unscored",
 		scores:
-			r.status === "done"
-				? { trend: r.trend, risk: r.risk, sentiment: r.sentiment }
-				: null,
+			r.status === "done" ? { sentiment: r.sentiment, risk: r.risk } : null,
 		comment: r.comment,
 		scoredAt: r.scoredAt === null ? null : jst(r.scoredAt),
 		criteriaVersion: r.criteriaVersion,
@@ -478,7 +476,7 @@ function createServer({
 				model: scoring.models(),
 				aggregationRule: judgments.rule(),
 				aggregationRuleNote:
-					"判定は、新しさの時刻（公開時刻と取得時刻の早いほう）が windowHours 以内で採点済みのニュースの点数を、halfLifeHours で重みが半分になる加重平均にし、thresholds と比べて出す。trend: up 以上=上昇・down 以下=下落。risk: caution 以上=警戒・crisis 以上=危機。sentiment: plus2 以上=+2・plus1 以上=+1・minus2 未満=-2・minus1 未満=-1",
+					"判定は、新しさの時刻（公開時刻と取得時刻の早いほう）が windowHours 以内で採点済みのニュースの点数を、halfLifeHours で重みが半分になる加重平均にし、thresholds と比べて出す。sentiment: plus2 以上=+2・plus1 以上=+1・minus2 未満=-2・minus1 未満=-1。risk: caution 以上=警戒・crisis 以上=危機",
 				status: {
 					state: st.state,
 					error: st.error,
@@ -553,7 +551,7 @@ function createServer({
 	server.registerTool(
 		"evaluate_judgments",
 		{
-			description: `期間内の1時間ごとの判定（トレンド・リスク・センチメント）と、その時刻からの値動きを、判定の値ごとに集計する。rule を渡すとその集計ルールで計算し直す（保存しない。集計ルールの変更は画面で行う）。baseline は全時間の騰落率。${RETURNS_NOTE}`,
+			description: `期間内の1時間ごとの判定（センチメント・リスク）と、その時刻からの値動きを、判定の値ごとに集計する。rule を渡すとその集計ルールで計算し直す（保存しない。集計ルールの変更は画面で行う）。baseline は全時間の騰落率。${RETURNS_NOTE}`,
 			inputSchema: {
 				...periodSchema,
 				rule: z
