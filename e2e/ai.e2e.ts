@@ -93,6 +93,18 @@ test("基準を版として保存して使用すると、次に採点するニ�
 	await page.getByRole("button", { name: "最新のニュースで試す" }).click();
 	await expect(page.getByTestId("trial-result")).toContainText("デモの採点。");
 
+	await page.getByRole("button", { name: "試す記事を選ぶ" }).click();
+	const dialog = page.getByRole("dialog", { name: "試す記事を選ぶ" });
+	await dialog.getByRole("checkbox").nth(0).check();
+	await dialog.getByRole("checkbox").nth(1).check();
+	await dialog.getByRole("button", { name: "2 件で決定" }).click();
+	await expect(page.getByTestId("trial-targets")).toContainText("選んだ 2 件");
+	await page.getByRole("button", { name: "選んだ記事で試す" }).click();
+	await expect(page.getByTestId("trial-result")).toHaveCount(2);
+	await expect(page.getByTestId("trial-result").first()).toContainText(
+		"保存済みの採点",
+	);
+
 	await page.getByRole("button", { name: /として保存/ }).click();
 	const saved = page.getByRole("status").filter({ hasText: /v\d+ を保存した/ });
 	await expect(saved).toBeVisible();

@@ -3,7 +3,8 @@ import { PROMPT_TEMPLATE } from "./prompt";
 import type { NewsRepository } from "./repository";
 import type { ScoreRepository } from "./score-repository";
 import type { Scorer } from "./scorer";
-import type { ScoringService } from "./types";
+import type { ScoringService, TrialItem } from "./types";
+import { TRIAL_MAX_NEWS } from "./types";
 
 export const CRITERIA_MAX = 4000;
 const NOTE_MAX = 100;
@@ -91,23 +92,46 @@ export function createScoringService({
 
 		retry: (newsId) => repo.requestRetry(newsId, now()),
 
-		async trial(criteria) {
+		async trial(criteria, newsIds) {
 			const t = criteria.trim();
 			if (!t) return { ok: false, message: "採点の基準を入れる" };
-			const latest = newsRepo.listNews(1)[0];
-			if (!latest) return { ok: false, message: "ニュースがまだ無い" };
-			const r = await scorer.trial(latest, t);
-			if (!r.ok) return { ok: false, message: r.error };
-			return {
-				ok: true,
-				news: {
-					id: latest.id,
-					title: latest.title,
-					sourceName: latest.sourceName,
-				},
-				scores: r.result.scores,
-				comment: r.result.comment,
-			};
+			if (newsIds && newsIds.length > TRIAL_MAX_NEWS)
+				return { ok: false, message: `記事は ${TRIAL_MAX_NEWS} 件までにする` };
+			const targets =
+				newsIds && newsIds.length > 0
+					? newsRepo.newsByIds([...new Set(newsIds)])
+					: newsRepo.listNews(1);
+			if (targets.length === 0)
+				return {
+					ok: false,
+					message: newsIds?.length
+						? "ニュースが見つからない"
+						: "ニュースがまだ無い",
+				};
+			const items: TrialItem[] = [];
+			for (const n of targets) {
+				const r = await scorer.trial(n, t);
+				items.push({
+					news: {
+						id: n.id,
+						title: n.title,
+						sourceName: n.sourceName,
+						publishedAt: n.publishedAt,
+						stored:
+							n.score?.status === "done" && n.score.scores
+								? {
+										scores: n.score.scores,
+										comment: n.score.comment,
+										criteriaVersion: n.score.criteriaVersion,
+									}
+								: null,
+					},
+					result: r.ok
+						? { ok: true, ...r.result }
+						: { ok: false, message: r.error },
+				});
+			}
+			return { ok: true, items };
 		},
 	};
 }

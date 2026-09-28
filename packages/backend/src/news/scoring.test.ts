@@ -290,20 +290,54 @@ describe("採点", () => {
 		const r = await t.service.trial("試す基準");
 		expect(r).toMatchObject({
 			ok: true,
-			news: { id: latest, title: "latest" },
-			scores: { trend: 60 },
+			items: [
+				{
+					news: { id: latest, title: "latest", stored: null },
+					result: { ok: true, scores: { trend: 60 } },
+				},
+			],
 		});
 		expect(t.calls[0]?.prompt).toContain("試す基準");
 		expect(t.repo.getScore(latest)).toBeNull();
 		expect(await t.service.trial(" ")).toMatchObject({ ok: false });
 	});
 
+	test("試し採点は選んだ記事を採点し、保存済みの採点と並べる", async () => {
+		const t = setup();
+		const a = t.addNews("a", T0 - H);
+		const b = t.addNews("b", T0);
+		await t.at(T0);
+		await t.at(T0);
+		t.replies.push({ trend: -10, risk: 5, sentiment: 0, comment: "案" });
+		const r = await t.service.trial("案の基準", [a, 999]);
+		expect(r).toMatchObject({
+			ok: true,
+			items: [
+				{
+					news: {
+						id: a,
+						stored: { scores: { trend: 60 }, criteriaVersion: 1 },
+					},
+					result: { ok: true, scores: { trend: -10 }, comment: "案" },
+				},
+			],
+		});
+		expect(t.repo.getScore(a)?.scores?.trend).toBe(60);
+		expect(await t.service.trial("x", [999])).toEqual({
+			ok: false,
+			message: "ニュースが見つからない",
+		});
+		expect(await t.service.trial("x", [a, b, a, b, a, b])).toMatchObject({
+			ok: false,
+		});
+	});
+
 	test("試し採点はキーが無ければ理由を返す", async () => {
 		const t = setup({ key: false });
 		t.addNews("a");
-		expect(await t.service.trial("基準")).toEqual({
-			ok: false,
-			message: "キーが無い",
+		expect(await t.service.trial("基準")).toMatchObject({
+			ok: true,
+			items: [{ result: { ok: false, message: "キーが無い" } }],
 		});
 	});
 

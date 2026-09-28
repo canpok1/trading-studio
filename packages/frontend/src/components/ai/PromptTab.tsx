@@ -1,5 +1,10 @@
-import type { CriteriaVersion, TrialResult } from "@trading-studio/backend";
-import type { AggregationRule } from "@trading-studio/core";
+import type {
+	CriteriaVersion,
+	NewsItem,
+	TrialItem,
+	TrialResult,
+} from "@trading-studio/backend";
+import type { AggregationRule, Scores } from "@trading-studio/core";
 import { JUDGES } from "@trading-studio/core";
 import { useCallback, useState } from "react";
 import { useApi } from "../../api";
@@ -7,8 +12,14 @@ import { formatDateTime } from "../../format";
 import { lineDiff } from "../../lib/line-diff";
 import { errorMessage, readJson, useAsync } from "../../lib/useAsync";
 import { ScoreChip } from "../judgment/JudgmentBadge";
+import { Modal } from "../Modal";
 import { ErrorState, LoadingCard, Skeleton } from "../States";
 import { Button, Card } from "../ui";
+
+/** 一度に試せる記事の数。サーバーの上限と合わせる */
+const TRIAL_MAX = 5;
+/** 選ぶ候補の記事の数。ニュース画面と同じ */
+const PICK_LIMIT = 100;
 
 type Criteria = {
 	versions: CriteriaVersion[];
@@ -110,6 +121,9 @@ function PromptBody({
 	const [trial, setTrial] = useState<
 		{ kind: "running" } | { kind: "done"; result: TrialResult } | null
 	>(null);
+	// 空なら最新の1件で試す
+	const [picked, setPicked] = useState<NewsItem[]>([]);
+	const [picking, setPicking] = useState(false);
 	// 差分は「選んだ版 → 使用中の版」。未選択なら使用中の1つ前の版と比べる
 	const [diffFrom, setDiffFrom] = useState<number | null>(null);
 	// 保存済みのどの版とも違うときだけ保存できる。同じ内容の版を増やさないため
@@ -152,7 +166,10 @@ function PromptBody({
 		setTrial({ kind: "running" });
 		try {
 			const res = await api.api.scoring.trial.$post({
-				json: { criteria: draft },
+				json: {
+					criteria: draft,
+					newsIds: picked.length > 0 ? picked.map((n) => n.id) : undefined,
+				},
 			});
 			const body = (await res.json()) as TrialResult | { message: string };
 			setTrial({
@@ -220,12 +237,21 @@ function PromptBody({
 				AI
 				の応答がこの形式に合わない（範囲外の点数など）ときは採点に失敗として扱い、集計に入れない。
 			</p>
+			<div className="flex items-center justify-between gap-2 text-xs">
+				<span data-testid="trial-targets" className="text-text-2">
+					試す記事:{" "}
+					{picked.length === 0 ? "最新の1件" : `選んだ ${picked.length} 件`}
+				</span>
+				<Button size="sm" onClick={() => setPicking(true)}>
+					試す記事を選ぶ
+				</Button>
+			</div>
 			<div className="grid grid-cols-2 gap-3">
 				<Button
 					onClick={tryIt}
 					disabled={trial?.kind === "running" || !draft.trim()}
 				>
-					最新のニュースで試す
+					{picked.length === 0 ? "最新のニュースで試す" : "選んだ記事で試す"}
 				</Button>
 				<Button
 					variant="primary"
@@ -247,6 +273,16 @@ function PromptBody({
 				</p>
 			)}
 			{trial && <TrialCard trial={trial} rule={rule} />}
+			{picking && (
+				<PickNewsModal
+					initial={picked}
+					onDone={(news) => {
+						setPicked(news);
+						setPicking(false);
+					}}
+					onClose={() => setPicking(false)}
+				/>
+			)}
 			<h2 className="text-[15px] font-bold">版の履歴</h2>
 			<div className="overflow-hidden rounded-xl border border-line bg-surface">
 				{[...versions].reverse().map((v) => (
@@ -319,6 +355,65 @@ function PromptBody({
 	);
 }
 
+function ScoreChips({
+	scores,
+	rule,
+}: {
+	scores: Scores;
+	rule: AggregationRule;
+}) {
+	return (
+		<div className="flex flex-wrap gap-1.5">
+			{JUDGES.map((j) => (
+				<ScoreChip key={j} judge={j} score={scores[j]} rule={rule} />
+			))}
+		</div>
+	);
+}
+
+function TrialRow({ item, rule }: { item: TrialItem; rule: AggregationRule }) {
+	const { news, result } = item;
+	return (
+		<div
+			data-testid="trial-result"
+			className="flex flex-col gap-2 border-b border-line pb-3 last:border-b-0 last:pb-0"
+		>
+			<strong className="text-sm">{news.title}</strong>
+			<span className="num text-xs text-text-2">
+				{news.sourceName} · {formatDateTime(news.publishedAt)}
+			</span>
+			<span className="text-xs font-semibold">試した採点</span>
+			{result.ok ? (
+				<>
+					<ScoreChips scores={result.scores} rule={rule} />
+					<p className="text-xs leading-relaxed">{result.comment}</p>
+				</>
+			) : (
+				<p role="alert" className="text-xs font-semibold text-loss">
+					試せなかった: {result.message}
+				</p>
+			)}
+			<span className="text-xs font-semibold text-text-2">
+				保存済みの採点
+				{news.stored?.criteriaVersion != null &&
+					`（v${news.stored.criteriaVersion}）`}
+			</span>
+			{news.stored ? (
+				<>
+					<ScoreChips scores={news.stored.scores} rule={rule} />
+					{news.stored.comment && (
+						<p className="text-xs leading-relaxed text-text-2">
+							{news.stored.comment}
+						</p>
+					)}
+				</>
+			) : (
+				<p className="text-xs text-text-2">採点済みでない</p>
+			)}
+		</div>
+	);
+}
+
 function TrialCard({
 	trial,
 	rule,
@@ -327,7 +422,7 @@ function TrialCard({
 	trial: { kind: "running" } | { kind: "done"; result: TrialResult };
 }) {
 	return (
-		<Card className="flex flex-col gap-2">
+		<Card className="flex flex-col gap-3">
 			<span className="text-xs text-text-2">
 				試し採点（保存・反映はしない）
 			</span>
@@ -337,25 +432,97 @@ function TrialCard({
 					<Skeleton className="h-10 w-full" />
 				</>
 			) : trial.result.ok ? (
-				<div data-testid="trial-result" className="flex flex-col gap-2">
-					<strong className="text-sm">{trial.result.news.title}</strong>
-					<div className="flex flex-wrap gap-1.5">
-						{JUDGES.map((j) => (
-							<ScoreChip
-								key={j}
-								judge={j}
-								score={trial.result.ok ? trial.result.scores[j] : null}
-								rule={rule}
-							/>
-						))}
-					</div>
-					<p className="text-xs leading-relaxed">{trial.result.comment}</p>
-				</div>
+				trial.result.items.map((item) => (
+					<TrialRow key={item.news.id} item={item} rule={rule} />
+				))
 			) : (
 				<p role="alert" className="text-xs font-semibold text-loss">
 					試せなかった: {trial.result.message}
 				</p>
 			)}
 		</Card>
+	);
+}
+
+function PickNewsModal({
+	initial,
+	onDone,
+	onClose,
+}: {
+	initial: NewsItem[];
+	onDone: (news: NewsItem[]) => void;
+	onClose: () => void;
+}) {
+	const api = useApi();
+	const load = useCallback(
+		() =>
+			api.api.news
+				.$get({ query: { limit: String(PICK_LIMIT) } })
+				.then((r) => readJson<{ news: NewsItem[] }>(r)),
+		[api],
+	);
+	const { state, reload } = useAsync(load);
+	const [selected, setSelected] = useState<NewsItem[]>(initial);
+	const has = (id: number) => selected.some((n) => n.id === id);
+	const toggle = (n: NewsItem) =>
+		setSelected((s) =>
+			s.some((x) => x.id === n.id) ? s.filter((x) => x.id !== n.id) : [...s, n],
+		);
+	return (
+		<Modal title="試す記事を選ぶ" onClose={onClose}>
+			<p className="text-xs text-text-2">
+				{TRIAL_MAX} 件まで。1件につき数秒かかる。選ばなければ最新の1件で試す。
+			</p>
+			{state.kind === "loading" ? (
+				<Skeleton className="h-40 w-full" />
+			) : state.kind === "error" ? (
+				<ErrorState
+					what="ニュースを読み込めなかった"
+					next={state.message}
+					action={<Button onClick={reload}>もう一度読み込む</Button>}
+				/>
+			) : state.data.news.length === 0 ? (
+				<p className="text-xs text-text-2">ニュースがまだ無い</p>
+			) : (
+				<div className="flex flex-col overflow-hidden rounded-xl border border-line">
+					{state.data.news.map((n) => {
+						const on = has(n.id);
+						return (
+							<label
+								key={n.id}
+								className="flex items-start gap-2.5 border-b border-line px-3 py-2.5 last:border-b-0"
+							>
+								<input
+									type="checkbox"
+									checked={on}
+									disabled={!on && selected.length >= TRIAL_MAX}
+									onChange={() => toggle(n)}
+									className="mt-1"
+								/>
+								<span className="flex flex-col gap-0.5">
+									<span className="text-[13px]">{n.title}</span>
+									<span className="num text-xs text-text-2">
+										{n.sourceName} · {formatDateTime(n.publishedAt)}
+										{n.score?.status === "done" && n.score.scores
+											? ` · 採点済み v${n.score.criteriaVersion ?? "?"}`
+											: " · 未採点"}
+									</span>
+								</span>
+							</label>
+						);
+					})}
+				</div>
+			)}
+			<div className="grid grid-cols-2 gap-3">
+				<Button onClick={() => onDone([])}>最新の1件に戻す</Button>
+				<Button
+					variant="primary"
+					disabled={selected.length === 0}
+					onClick={() => onDone(selected)}
+				>
+					{selected.length} 件で決定
+				</Button>
+			</div>
+		</Modal>
 	);
 }

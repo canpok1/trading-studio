@@ -24,6 +24,7 @@ export type {
 	NewsSource,
 	ScorerStatus,
 	ScoringModelOption,
+	TrialItem,
 	TrialResult,
 } from "./news/types";
 export type {
