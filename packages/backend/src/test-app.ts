@@ -29,6 +29,8 @@ import { createScoringService } from "./news/scoring-service";
 import { createNewsService } from "./news/service";
 import { RetentionRepository } from "./retention/repository";
 import { createRetentionService } from "./retention/service";
+import { ScoringAnalysisRepository } from "./scoring-analysis/repository";
+import { createScoringAnalysis } from "./scoring-analysis/service";
 import { createStrategyService } from "./strategies/service";
 import { TradingRepository } from "./trading/repository";
 import { createTradingService } from "./trading/service";
@@ -145,6 +147,13 @@ export function createTestApp(
 		repo: new RetentionRepository(db),
 		now: () => clock.now,
 	});
+	const scoringAnalysis = createScoringAnalysis({
+		repo: new ScoringAnalysisRepository(db),
+		marketData,
+		judgments,
+		scorer,
+		now: () => clock.now,
+	});
 	const app = createApp({
 		isDbReachable: () => true,
 		appBuiltAt: null,
@@ -179,6 +188,9 @@ export function createTestApp(
 		newsRun,
 		scoreRepo,
 		scorer,
+		scoring,
+		judgments,
+		scoringAnalysis,
 		trading,
 		tradingRepo,
 		retention,

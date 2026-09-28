@@ -60,6 +60,9 @@ async function setup() {
 			strategies: t.strategies,
 			backtests: t.backtests,
 			marketData: t.marketData,
+			scoring: t.scoring,
+			judgments: t.judgments,
+			scoringAnalysis: t.scoringAnalysis,
 			sleep: async () => {},
 		}),
 	);
@@ -101,15 +104,22 @@ describe("MCP", () => {
 		const { client } = await setup();
 		const names = (await client.listTools()).tools.map((t) => t.name).sort();
 		expect(names).toEqual([
+			"add_scoring_criteria",
 			"create_strategy",
+			"evaluate_judgments",
+			"evaluate_news_scores",
 			"get_backtest",
 			"get_backtest_orders",
 			"get_data_coverage",
 			"get_guide",
+			"get_scoring_setup",
 			"get_strategy",
 			"list_backtests",
+			"list_news_scores",
 			"list_strategies",
 			"run_backtest",
+			"set_active_scoring_criteria",
+			"trial_scoring",
 			"update_strategy",
 		]);
 	});
@@ -246,5 +256,168 @@ describe("MCP", () => {
 			to: "2026-08-20",
 		});
 		expect(date.isError).toBe(true);
+	});
+
+	describe("ニュースの採点", () => {
+		/** 1時間足で上がり続ける値動きと、採点済みのニュース3件を用意する */
+		async function scored() {
+			const s = await setup();
+			const { t } = s;
+			const rows = Array.from({ length: 5 * 24 }, (_, i) => {
+				const close = 10_000_000 + i * 10_000;
+				return {
+					time: START + i * H,
+					open: close,
+					high: close,
+					low: close,
+					close,
+					volume: 1_000_000,
+				};
+			});
+			const importId = t.marketDataRepo.createImport("1h", "a.csv", 0);
+			t.marketDataRepo.insertImported("1h", rows, importId);
+			const source = t.newsRepo.insertSource(
+				{ name: "A", url: "https://a.example/feed", language: "ja" },
+				0,
+			);
+			t.clock.now = START + 24 * H;
+			t.newsRepo.saveFetched(
+				source,
+				["一", "二", "三"].map((title, i) => ({
+					title,
+					url: `https://a.example/${i}`,
+					summary: null,
+					publishedAt: START + (20 + i) * H,
+				})),
+				t.clock.now,
+			);
+			for (let i = 0; i < 3; i++) {
+				t.scorer.tick();
+				await t.scorer.idle();
+			}
+			t.clock.now = START + 4 * 24 * H;
+			return s;
+		}
+
+		test("仕組みと今の基準を読める", async () => {
+			const { call } = await setup();
+			const r = await call("get_scoring_setup");
+			expect(r.json).toMatchObject({
+				criteria: [{ version: 1, active: true }],
+				aggregationRule: { windowHours: 24 },
+			});
+			expect(r.text).toContain("{criteria}");
+		});
+
+		test("採点とその後の値動きを並べて読める", async () => {
+			const { call } = await scored();
+			const r = await call("list_news_scores", {
+				from: "2026-08-01",
+				to: "2026-08-03",
+			});
+			const body = r.json as {
+				total: number;
+				priceTimeframe: string;
+				items: {
+					title: string;
+					status: string;
+					criteriaVersion: number;
+					returnsAfterScoredPct: Record<string, number | null>;
+				}[];
+			};
+			expect(body.total).toBe(3);
+			expect(body.priceTimeframe).toBe("1h");
+			expect(body.items[0]).toMatchObject({
+				title: "三",
+				status: "done",
+				criteriaVersion: 1,
+			});
+			expect(body.items[0]?.returnsAfterScoredPct["1h"]).toBeGreaterThan(0);
+
+			const none = await call("list_news_scores", {
+				from: "2026-08-01",
+				to: "2026-08-03",
+				status: "failed",
+			});
+			expect(none.json).toMatchObject({ total: 0, items: [] });
+		});
+
+		test("点数と判定を値動きと突き合わせて集計できる", async () => {
+			const { call } = await scored();
+			const scores = await call("evaluate_news_scores", {
+				from: "2026-08-01",
+				to: "2026-08-03",
+			});
+			expect(scores.json).toMatchObject({
+				newsCount: 3,
+				baseline: { "1h": { n: 3, upRatio: 1 } },
+				versions: [{ criteriaVersion: 1, count: 3 }],
+			});
+
+			const judged = await call("evaluate_judgments", {
+				from: "2026-08-02",
+				to: "2026-08-03",
+			});
+			const j = judged.json as {
+				hours: number;
+				judgedHours: number;
+				byJudge: { trend: { hours: number }[] };
+			};
+			expect(j.hours).toBe(24);
+			expect(j.judgedHours).toBe(24);
+			expect(j.byJudge.trend.reduce((a, x) => a + x.hours, 0)).toBe(24);
+
+			const bad = await call("evaluate_judgments", {
+				from: "2026-08-02",
+				to: "2026-08-03",
+				rule: { windowHours: 0, halfLifeHours: 6, thresholds: {} },
+			});
+			expect(bad.isError).toBe(true);
+			const long = await call("evaluate_news_scores", {
+				from: "2026-01-01",
+				to: "2026-08-03",
+			});
+			expect(long.isError).toBe(true);
+		});
+
+		test("基準の案で試し採点し、版を足して切り替えられる", async () => {
+			const { t, call } = await scored();
+			const list = await call("list_news_scores", {
+				from: "2026-08-01",
+				to: "2026-08-03",
+			});
+			const ids = (list.json as { items: { id: number }[] }).items.map(
+				(x) => x.id,
+			);
+			const trial = await call("trial_scoring", {
+				criteria: "案",
+				newsIds: ids.slice(0, 2),
+			});
+			expect(trial.isError).toBe(false);
+			expect(trial.json).toMatchObject([
+				{
+					news: { id: ids[0], status: "done" },
+					trial: { comment: "デモの採点。" },
+				},
+				{ news: { id: ids[1] } },
+			]);
+			// 試し採点は保存しない
+			expect(t.scoreRepo.listCriteria()).toHaveLength(1);
+
+			const added = await call("add_scoring_criteria", {
+				text: "新しい基準",
+				note: "リスクを厳しく",
+			});
+			expect(added.json).toMatchObject({ version: 2, note: "リスクを厳しく" });
+			expect(t.scoreRepo.activeCriteriaVersion()).toBe(1);
+
+			const set = await call("set_active_scoring_criteria", { version: 2 });
+			expect(set.json).toMatchObject({ activeVersion: 2 });
+			expect(t.scoreRepo.activeCriteriaVersion()).toBe(2);
+			const missing = await call("set_active_scoring_criteria", {
+				version: 9,
+			});
+			expect(missing.isError).toBe(true);
+		});
 	});
 });

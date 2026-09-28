@@ -115,13 +115,29 @@ export interface NewsService {
 
 export type ScoringModelOption = { id: string; label: string };
 
-export type TrialResult =
-	| {
-			ok: true;
-			news: { id: number; title: string; sourceName: string };
+/** 試し採点で一度に採点できる記事の数 */
+export const TRIAL_MAX_NEWS = 5;
+
+export type TrialItem = {
+	news: {
+		id: number;
+		title: string;
+		sourceName: string;
+		publishedAt: number;
+		/** 保存済みの採点。採点済みでなければ null */
+		stored: {
 			scores: Scores;
-			comment: string;
-	  }
+			comment: string | null;
+			criteriaVersion: number | null;
+		} | null;
+	};
+	result:
+		| { ok: true; scores: Scores; comment: string }
+		| { ok: false; message: string };
+};
+
+export type TrialResult =
+	| { ok: true; items: TrialItem[] }
 	| { ok: false; message: string };
 
 export type ApiKeyStatus = { configured: boolean; savedAt: number | null };
@@ -150,6 +166,6 @@ export interface ScoringService {
 	deleteApiKey(): void;
 	/** 採点に失敗したニュースを採点し直す対象へ戻す。失敗していなければ false */
 	retry(newsId: number): boolean;
-	/** 最新のニュースを、渡した採点の基準で採点する。保存も集計への反映もしない */
-	trial(criteria: string): Promise<TrialResult>;
+	/** 指定したニュース（省けば最新の1件）を、渡した採点の基準で採点する。保存も集計への反映もしない */
+	trial(criteria: string, newsIds?: readonly number[]): Promise<TrialResult>;
 }

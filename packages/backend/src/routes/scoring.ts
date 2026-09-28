@@ -86,10 +86,23 @@ export function scoringRoutes(service: ScoringService) {
 				if (!isObj(v) || typeof v.criteria !== "string") {
 					return c.json({ message: "criteria が必要" }, 400);
 				}
-				return { criteria: v.criteria };
+				if (
+					v.newsIds !== undefined &&
+					!(
+						Array.isArray(v.newsIds) &&
+						v.newsIds.every((x) => Number.isSafeInteger(x))
+					)
+				) {
+					return c.json({ message: "newsIds は整数の配列にする" }, 400);
+				}
+				return {
+					criteria: v.criteria,
+					newsIds: v.newsIds as number[] | undefined,
+				};
 			}),
 			async (c) => {
-				const r = await service.trial(c.req.valid("json").criteria);
+				const { criteria, newsIds } = c.req.valid("json");
+				const r = await service.trial(criteria, newsIds);
 				return r.ok ? c.json(r, 200) : c.json({ message: r.message }, 400);
 			},
 		);

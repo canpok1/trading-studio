@@ -34,6 +34,8 @@ import { createScoringService } from "./news/scoring-service";
 import { createNewsService, DEFAULT_NEWS_SOURCES } from "./news/service";
 import { RetentionRepository } from "./retention/repository";
 import { createRetentionService } from "./retention/service";
+import { ScoringAnalysisRepository } from "./scoring-analysis/repository";
+import { createScoringAnalysis } from "./scoring-analysis/service";
 import { serveFrontend } from "./static";
 import { createStrategyService } from "./strategies/service";
 import { TradingRepository } from "./trading/repository";
@@ -169,9 +171,30 @@ const advice = createAdviceService({
 				geminiModel(() => scoreRepo.apiKey(), { timeoutMs: 180_000 }),
 	appBuiltAt,
 });
+const scoring = createScoringService({
+	repo: scoreRepo,
+	newsRepo,
+	scorer,
+});
+const scoringAnalysis = createScoringAnalysis({
+	repo: new ScoringAnalysisRepository(db),
+	marketData,
+	judgments,
+	scorer,
+});
 const server = new Hono()
 	// 画面の配信（GET *）より前に置く
-	.route("/mcp", mcpRoutes({ strategies, backtests, marketData }))
+	.route(
+		"/mcp",
+		mcpRoutes({
+			strategies,
+			backtests,
+			marketData,
+			scoring,
+			judgments,
+			scoringAnalysis,
+		}),
+	)
 	.route(
 		"/",
 		createApp({
@@ -183,11 +206,7 @@ const server = new Hono()
 			backtests,
 			advice,
 			news: createNewsService({ repo: newsRepo, collector: newsCollector }),
-			scoring: createScoringService({
-				repo: scoreRepo,
-				newsRepo,
-				scorer,
-			}),
+			scoring,
 			judgments,
 			trading: tradingEngine,
 			analysisExport: createAnalysisExportService({
@@ -205,8 +224,10 @@ const http = Bun.serve({
 	hostname,
 	port,
 	fetch: (req, srv) => {
-		// run_backtest は終わりを待つ間なにも送らないので、既定の10秒で切られないようにする
-		if (new URL(req.url).pathname === "/mcp") {
+		// run_backtest と試し採点は終わりを待つ間なにも送らないので、既定の10秒で切られないようにする。
+		// 試し採点は記事ごとに問い合わせの間を5秒空けるので、5件で数十秒かかる
+		const path = new URL(req.url).pathname;
+		if (path === "/mcp" || path === "/api/scoring/trial") {
 			srv.timeout(req, BACKTEST_WAIT_MS / 1_000 + 30);
 		}
 		return server.fetch(req);

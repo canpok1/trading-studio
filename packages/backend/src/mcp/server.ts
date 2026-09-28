@@ -1,13 +1,16 @@
-// ローカルの Claude Code から戦略の相談をするための MCP（Streamable HTTP）。docs/mcp.md
-// 自動取引のオンオフ・運用する戦略の切替と変更・削除・設定は道具にしない（画面から人が行う）
+// ローカルの Claude Code から戦略とニュースの採点を相談するための MCP（Streamable HTTP）。docs/mcp.md
+// 自動取引のオンオフ・運用する戦略の切替と変更・削除・設定は道具にしない（画面から人が行う）。
+// 例外は採点の基準の版の保存と切替（docs/adr/0013）
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import type { ConditionSet } from "@trading-studio/core";
+import type { AggregationRule, ConditionSet } from "@trading-studio/core";
 import {
 	conditionSetScreenText,
 	DEFAULT_FEE_RATES,
+	parseAggregationRule,
 	parseConditionSet,
+	validateAggregationRule,
 } from "@trading-studio/core";
 import { Hono } from "hono";
 import * as z from "zod";
@@ -16,7 +19,15 @@ import type {
 	BacktestService,
 	StartBacktestFailure,
 } from "../backtests/types";
+import type { JudgmentService } from "../judgments/types";
 import type { MarketDataService } from "../market-data/types";
+import type { ScoringService } from "../news/types";
+import type { AnalysisNewsRow } from "../scoring-analysis/repository";
+import type {
+	ScoredNewsView,
+	ScoringAnalysisService,
+} from "../scoring-analysis/service";
+import { MAX_ANALYSIS_DAYS } from "../scoring-analysis/service";
 import type { StoredStrategy, StrategyService } from "../strategies/types";
 import { conditionSetGuide } from "./guide";
 
@@ -24,6 +35,9 @@ export type McpDeps = {
 	strategies: StrategyService;
 	backtests: BacktestService;
 	marketData: MarketDataService;
+	scoring: ScoringService;
+	judgments: Pick<JudgmentService, "rule">;
+	scoringAnalysis: ScoringAnalysisService;
 	/** run_backtest が終わりを待つ時間。過ぎたら実行中のまま返し、get_backtest で続きを見てもらう */
 	backtestWaitMs?: number;
 	sleep?: (ms: number) => Promise<void>;
@@ -141,10 +155,62 @@ function startFailure(e: StartBacktestFailure) {
 	}
 }
 
+function newsView(r: AnalysisNewsRow | ScoredNewsView) {
+	return {
+		id: r.id,
+		source: r.sourceName,
+		language: r.language,
+		title: r.title,
+		summary: r.summary,
+		url: r.url,
+		publishedAt: jst(r.publishedAt),
+		fetchedAt: jst(r.fetchedAt),
+		status: r.status ?? "unscored",
+		scores:
+			r.status === "done"
+				? { trend: r.trend, risk: r.risk, sentiment: r.sentiment }
+				: null,
+		comment: r.comment,
+		scoredAt: r.scoredAt === null ? null : jst(r.scoredAt),
+		criteriaVersion: r.criteriaVersion,
+		model: r.model,
+		appVersion: r.appBuiltAt === null ? null : jst(r.appBuiltAt),
+		error: r.error,
+		...("returns" in r ? { returnsAfterScoredPct: r.returns } : {}),
+	};
+}
+
+/** 分析の期間。読めないか長すぎればエラーの応答 */
+function period(a: { from: string; to: string }) {
+	const from = parseTime(a.from);
+	const to = parseTime(a.to);
+	if (from === null || to === null) {
+		return fail("from・to はタイムゾーン付きの ISO 8601 か YYYY-MM-DD で書く");
+	}
+	if (to <= from) return fail("to は from より後にする");
+	if (to - from > MAX_ANALYSIS_DAYS * 86_400_000) {
+		return fail(`期間は ${MAX_ANALYSIS_DAYS} 日以内にする`);
+	}
+	return { from, to };
+}
+
+const periodSchema = {
+	from: z
+		.string()
+		.describe("開始。ISO 8601（タイムゾーン付き）か YYYY-MM-DD（JST）"),
+	to: z.string().describe("終了（含まない）。書き方は from と同じ"),
+};
+
+const RETURNS_NOTE =
+	"騰落率は % で、1h・4h・24h 後の終値と比べる（価格の足が無ければ null）";
+
 function createServer({
 	strategies,
 	backtests,
 	marketData,
+	scoring,
+	judgments,
+	scoringAnalysis,
 	backtestWaitMs = BACKTEST_WAIT_MS,
 	sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
 }: McpDeps) {
@@ -152,7 +218,7 @@ function createServer({
 		{ name: "trading-studio", version: "1.0.0" },
 		{
 			instructions:
-				"BTC/JPY の自動売買アプリ trading-studio。戦略の条件を相談して改良するための道具。まず get_guide で条件セットの書き方を読む。戦略の新規作成・運用中でない戦略の条件変更・バックテストの実行ができる。自動取引のオンオフや運用する戦略の切替・変更はできない（画面で人が行う）。",
+				"BTC/JPY の自動売買アプリ trading-studio。戦略の条件と、ニュースの AI 採点の基準を相談して改良するための道具。戦略: まず get_guide で条件セットの書き方を読む。戦略の新規作成・運用中でない戦略の条件変更・バックテストの実行ができる。自動取引のオンオフや運用する戦略の切替・変更はできない（画面で人が行う）。採点: get_scoring_setup で仕組みと今の基準を読み、list_news_scores・evaluate_news_scores・evaluate_judgments で採点と判定がその後の値動きと合っていたかを調べ、trial_scoring で基準の案を過去のニュースに試し、add_scoring_criteria で版として保存し、set_active_scoring_criteria で使い始める。切り替えると次に採点するニュースから効き、自動取引の判定にも効くので、切り替える前に利用者に確認を取る。",
 		},
 	);
 	const activeId = () => strategies.active()?.id ?? null;
@@ -387,6 +453,201 @@ function createServer({
 				run = backtests.get(id) ?? run;
 			}
 			return text(runView(run));
+		},
+	);
+
+	server.registerTool(
+		"get_scoring_setup",
+		{
+			description:
+				"ニュースの AI 採点の仕組み: プロンプトの固定のひな形（{news} と {criteria} を差し込む）、採点の基準（編集できる部分）の全版と使用中の版、モデル、点数から判定を出す集計ルール、採点の状態",
+			annotations: readOnly,
+		},
+		() => {
+			const c = scoring.criteria();
+			const st = scoring.status();
+			return text({
+				template: c.template,
+				criteria: c.versions.map((v) => ({
+					version: v.version,
+					active: v.version === c.activeVersion,
+					note: v.note,
+					createdAt: jst(v.createdAt),
+					text: v.text,
+				})),
+				model: scoring.models(),
+				aggregationRule: judgments.rule(),
+				aggregationRuleNote:
+					"判定は、新しさの時刻（公開時刻と取得時刻の早いほう）が windowHours 以内で採点済みのニュースの点数を、halfLifeHours で重みが半分になる加重平均にし、thresholds と比べて出す。trend: up 以上=上昇・down 以下=下落。risk: caution 以上=警戒・crisis 以上=危機。sentiment: plus2 以上=+2・plus1 以上=+1・minus2 未満=-2・minus1 未満=-1",
+				status: {
+					state: st.state,
+					error: st.error,
+					pending: st.pending,
+				},
+				rules:
+					"採点は1記事1回で、採点済みは基準や版を変えても採点し直さない。使用する版を切り替えると次に採点するニュースから使う。採点時刻より前の判定には使わない",
+			});
+		},
+	);
+
+	server.registerTool(
+		"list_news_scores",
+		{
+			description: `ニュースと AI の採点（点数・理由・基準の版・モデル）を新しい順に返す。採点済みのものには採点時刻からの値動きを付ける。${RETURNS_NOTE}`,
+			inputSchema: {
+				...periodSchema,
+				criteriaVersion: z.number().int().optional(),
+				status: z
+					.enum(["all", "done", "retry", "failed", "skipped", "unscored"])
+					.default("all")
+					.describe(
+						"done: 採点済み / retry: 再試行待ち / failed: 採点に失敗 / skipped: 古いので採点しない / unscored: 未採点",
+					),
+				offset: z.number().int().min(0).default(0),
+				limit: z.number().int().min(1).max(200).default(50),
+			},
+			annotations: readOnly,
+		},
+		(a) => {
+			const p = period(a);
+			if ("isError" in p) return p;
+			const r = scoringAnalysis.listNews(
+				{
+					...p,
+					criteriaVersion: a.criteriaVersion,
+					status: a.status === "all" ? undefined : a.status,
+				},
+				a.offset,
+				a.limit,
+			);
+			return text({
+				total: r.total,
+				priceTimeframe: r.priceTimeframe,
+				items: r.items.map(newsView),
+			});
+		},
+	);
+
+	server.registerTool(
+		"evaluate_news_scores",
+		{
+			description: `期間内の採点済みニュースの点数と、採点時刻からの値動きの関係を、基準の版ごと・観点ごとに集計する。correlation は点数と騰落率の相関係数（risk は騰落率の絶対値と）。directionHit は |点数| が 20 以上のものの向きの当たり率。bands は点数の帯ごとの騰落率。baseline は全ニュースの騰落率。${RETURNS_NOTE}`,
+			inputSchema: {
+				...periodSchema,
+				criteriaVersion: z.number().int().optional(),
+			},
+			annotations: readOnly,
+		},
+		(a) => {
+			const p = period(a);
+			if ("isError" in p) return p;
+			return text(
+				scoringAnalysis.evaluateScores({
+					...p,
+					criteriaVersion: a.criteriaVersion,
+				}),
+			);
+		},
+	);
+
+	server.registerTool(
+		"evaluate_judgments",
+		{
+			description: `期間内の1時間ごとの判定（トレンド・リスク・センチメント）と、その時刻からの値動きを、判定の値ごとに集計する。rule を渡すとその集計ルールで計算し直す（保存しない。集計ルールの変更は画面で行う）。baseline は全時間の騰落率。${RETURNS_NOTE}`,
+			inputSchema: {
+				...periodSchema,
+				rule: z
+					.record(z.string(), z.unknown())
+					.optional()
+					.describe(
+						"集計ルールの案。形は get_scoring_setup の aggregationRule",
+					),
+			},
+			annotations: readOnly,
+		},
+		(a) => {
+			const p = period(a);
+			if ("isError" in p) return p;
+			let rule: AggregationRule | undefined;
+			if (a.rule !== undefined) {
+				const r = parseAggregationRule(a.rule);
+				if (!r) return fail("集計ルールの形が違う");
+				const errors = validateAggregationRule(r);
+				if (errors.length) return fail("集計ルールに入力の誤りがある", errors);
+				rule = r;
+			}
+			const r = scoringAnalysis.evaluateJudgments(p.from, p.to, rule);
+			return text({
+				...r,
+				firstScoredAt: r.firstScoredAt === null ? null : jst(r.firstScoredAt),
+				rule: rule ?? judgments.rule(),
+			});
+		},
+	);
+
+	server.registerTool(
+		"trial_scoring",
+		{
+			description:
+				"採点の基準の案で、指定した過去のニュースを採点し直す。保存も集計への反映もしない。保存済みの採点と値動きと並べて返す。AI の回数制限のため1件につき5秒ほどかかる",
+			inputSchema: {
+				criteria: z.string().describe("採点の基準の案（ひな形の {criteria}）"),
+				newsIds: z.array(z.number().int()).min(1).max(10),
+			},
+			annotations: { readOnlyHint: true, openWorldHint: true },
+		},
+		async ({ criteria, newsIds }) => {
+			const r = await scoringAnalysis.trial(criteria, newsIds);
+			if (!r.ok) return fail(r.message);
+			return text(
+				r.items.map((x) => ({
+					news: newsView(x.news),
+					trial: x.trial,
+				})),
+			);
+		},
+	);
+
+	server.registerTool(
+		"add_scoring_criteria",
+		{
+			description:
+				"採点の基準を新しい版として保存する。使用する版は切り替えない（set_active_scoring_criteria で切り替える）",
+			inputSchema: {
+				text: z.string().describe("採点の基準（4000 文字以内）"),
+				note: z.string().describe("版の説明（100 文字以内）。何を変えたか"),
+			},
+			annotations: { destructiveHint: false, openWorldHint: false },
+		},
+		(a) => {
+			const r = scoring.addCriteria(
+				a.text,
+				a.note.trim() || "Claude Code から",
+			);
+			if (!r.ok) return fail(r.message);
+			return text({
+				version: r.version.version,
+				note: r.version.note,
+				createdAt: jst(r.version.createdAt),
+			});
+		},
+	);
+
+	server.registerTool(
+		"set_active_scoring_criteria",
+		{
+			description:
+				"採点に使う基準の版を切り替える。次に採点するニュースから使い、自動取引の判定にも効く。採点済みのニュースは採点し直さない。切り替える前に利用者に確認を取る",
+			inputSchema: { version: z.number().int() },
+			annotations: {
+				destructiveHint: true,
+				idempotentHint: true,
+				openWorldHint: false,
+			},
+		},
+		({ version }) => {
+			if (!scoring.setActiveCriteria(version)) return fail("版が見つからない");
+			return text({ activeVersion: scoring.criteria().activeVersion });
 		},
 	);
 

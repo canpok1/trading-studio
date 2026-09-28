@@ -207,4 +207,17 @@ export class NewsRepository {
 			.all(limit)
 			.map(toNewsItem);
 	}
+
+	/** ID で引く。無い ID は飛ばす。並びは ids の順 */
+	newsByIds(ids: readonly number[]): NewsItem[] {
+		if (ids.length === 0) return [];
+		const rows = this.sql
+			.query<NewsRow, number[]>(
+				`select * from news n left join news_scores s on s.news_id = n.id where n.id in (${ids.map(() => "?").join(",")})`,
+			)
+			.all(...ids)
+			.map(toNewsItem);
+		const byId = new Map(rows.map((r) => [r.id, r]));
+		return ids.flatMap((id) => byId.get(id) ?? []);
+	}
 }
