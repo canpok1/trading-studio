@@ -17,3 +17,4 @@
 | [0011](0011-hold-positions-as-lots.md) | 保有を買い1件ごとのロットで持ち、売りはロットごとに判定する | 採用 | 2026-09-27 |
 | [0012](0012-mcp-in-backend-for-claude-code.md) | Claude Code から戦略を相談できるよう、backend に MCP を内蔵する | 採用（採点の基準は 0013 で例外） | 2026-09-27 |
 | [0013](0013-mcp-can-switch-scoring-criteria.md) | MCP からニュースの採点の基準の版を保存し、使用する版を切り替えられるようにする | 採用 | 2026-09-28 |
+| [0014](0014-merge-trend-into-sentiment.md) | AI 判定のトレンドをセンチメントへ統合し、観点をセンチメント・リスクの2つにする | 採用 | 2026-09-28 |
