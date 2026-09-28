@@ -4,13 +4,13 @@
 
 ## つなぎ方
 
-自宅 LAN 内の PC で、一度だけ次を実行する。`<サーバー>` は画面を開くときのアドレス。
+Tailscale に接続した PC で、一度だけ次を実行する。`<サーバー>` は画面を開くときのアドレス（`<mini-pc のマシン名>.<tailnet 名>.ts.net`）。
 
 ```bash
-claude mcp add --transport http trading-studio http://<サーバー>:3000/mcp
+claude mcp add --transport http trading-studio https://<サーバー>/mcp
 ```
 
-認証は付けない。画面と同じく自宅 LAN 内からだけ届く（`docs/adr/0004`）。
+認証は付けない。画面と同じく tailnet 内の端末からだけ届く（`docs/adr/0004`）。
 
 ## 道具
 
