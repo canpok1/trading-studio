@@ -3,12 +3,18 @@
 import { formatBtc, formatYen } from "./format";
 import { bollinger, ema, rsi } from "./indicators";
 import { limitBuyPriceBelow, notionalYen, SATOSHI_PER_BTC } from "./money";
-import type { Judge, JudgmentValue } from "./news-judgment";
+import type {
+	Judge,
+	JudgmentConditionValue,
+	JudgmentValue,
+} from "./news-judgment";
 import {
 	JUDGE_LABELS,
 	JUDGES,
+	JUDGMENT_CONDITION_VALUES,
 	JUDGMENT_VALUE_LABELS,
 	JUDGMENT_VALUES,
+	NO_JUDGMENT,
 } from "./news-judgment";
 import type {
 	Strategy,
@@ -65,8 +71,8 @@ export type Condition =
 	| { type: "trailingStop"; percent: number }
 	/** 買ってから戦略の粒度の足で bars 本経った。売りのグループだけで使える */
 	| { type: "holdingBars"; bars: number }
-	/** AI の判定が values のどれか。どのグループでも使える */
-	| { type: "judgment"; judge: Judge; values: JudgmentValue[] };
+	/** AI の判定が values のどれか。判定がまだ無いときは values に NO_JUDGMENT があれば成立。どのグループでも使える */
+	| { type: "judgment"; judge: Judge; values: JudgmentConditionValue[] };
 
 export type ConditionType = Condition["type"];
 
@@ -329,14 +335,12 @@ function checkCondition(c: Condition, ctx: Ctx): Hit {
 		case "judgment": {
 			const v = ctx.judgments[c.judge];
 			const name = `${JUDGE_LABELS[c.judge]}判定`;
-			if (v === undefined) {
-				return { insufficient: `${name}がまだ無い` };
-			}
-			const label = (x: JudgmentValue) => JUDGMENT_VALUE_LABELS[x] ?? x;
-			return (c.values as string[]).includes(v)
+			const label = (x: string) => JUDGMENT_VALUE_LABELS[x] ?? x;
+			const current = v ?? NO_JUDGMENT;
+			return (c.values as string[]).includes(current)
 				? {
 						ok: true,
-						why: `${name}が${label(v)}（${c.values.map(label).join("・")}のどれか）`,
+						why: `${name}が${label(current)}（${c.values.map(label).join("・")}のどれか）`,
 					}
 				: { ok: false };
 		}
@@ -493,6 +497,16 @@ export function requiredJudges(params: ConditionSet): Judge[] {
 	return JUDGES.filter((j) => used.has(j));
 }
 
+/** 判定の条件のどれかで「データなし」を選んでいるか。採点の記録が始まる前を含む期間のバックテストはこれが true のときだけ実行する */
+export function acceptsNoJudgment(params: ConditionSet): boolean {
+	return CONDITION_GROUPS.some((key) =>
+		params[key].conditions.some(
+			(c) =>
+				c.type === "judgment" && (c.values as string[]).includes(NO_JUDGMENT),
+		),
+	);
+}
+
 /** 判定に渡してほしい足の本数（現在の足を含む） */
 export function historyBars(params: ConditionSet): number {
 	let n = 1;
@@ -597,7 +611,7 @@ export function validateConditionSet(p: ConditionSet): ValidationError[] {
 					}
 					break;
 				case "judgment": {
-					const allowed = JUDGMENT_VALUES[c.judge] as
+					const allowed = JUDGMENT_CONDITION_VALUES[c.judge] as
 						| readonly string[]
 						| undefined;
 					if (!allowed) {
@@ -1032,7 +1046,7 @@ function parseCondition(v: unknown): Condition | null {
 			return {
 				type: "judgment",
 				judge: v.judge as Judge,
-				values: v.values as JudgmentValue[],
+				values: v.values as JudgmentConditionValue[],
 			};
 		case "entryChange":
 			if (v.direction !== "up" && v.direction !== "down") return null;

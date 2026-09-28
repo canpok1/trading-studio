@@ -25,7 +25,11 @@ const always = (over: Partial<ConditionSet> = {}): ConditionSet => ({
 	buy: {
 		match: "all",
 		conditions: [
-			{ type: "judgment", judge: "trend", values: ["up", "range", "down"] },
+			{
+				type: "judgment",
+				judge: "trend",
+				values: ["up", "range", "down", "none"],
+			},
 		],
 	},
 	buyOrder: MARKET_BUY_ORDER,
@@ -102,9 +106,42 @@ function setup(params: ConditionSet = always()) {
 	return { ...t, strategy: s.strategy, call, at, fill, orders, status };
 }
 
+/** 採点の記録を始める（点数はすべて関係なし＝中立の判定） */
+function startScoring(t: ReturnType<typeof setup>, at: number) {
+	const source = t.newsRepo.insertSource(
+		{ name: "S", url: "https://a.example/feed", language: "ja" },
+		0,
+	);
+	t.newsRepo.saveFetched(
+		source,
+		[
+			{
+				title: "n",
+				url: "https://a.example/n",
+				summary: null,
+				publishedAt: at,
+			},
+		],
+		at,
+	);
+	const id = (t.newsRepo.listNews(1)[0] as { id: number }).id;
+	t.scoreRepo.saveScore(
+		id,
+		{ scores: { trend: null, risk: null, sentiment: null }, comment: "c" },
+		{
+			scoredAt: at,
+			criteriaVersion: 1,
+			model: "m",
+			appBuiltAt: null,
+			attempts: 0,
+		},
+	);
+}
+
 describe("自動取引のオンオフ", () => {
 	test("オンにすると戦略の粒度の次の足の終わりに評価し、条件どおりに仮想注文を出す", async () => {
 		const t = setup();
+		startScoring(t, T0);
 		const started = await t.call("POST", "/start", { mode: "paper" });
 		expect(started.status).toBe(200);
 		const st = started.body.status as AutoTradingStatus;
@@ -137,6 +174,21 @@ describe("自動取引のオンオフ", () => {
 			judgments: { trend: "range" },
 		});
 		expect((await t.call("GET", "/orders/paper/p9")).status).toBe(404);
+	});
+
+	test("採点の記録が始まる前はデータなしとして判定し、判定を記録しない", async () => {
+		const t = setup(
+			always({
+				buy: {
+					match: "all",
+					conditions: [{ type: "judgment", judge: "trend", values: ["none"] }],
+				},
+			}),
+		);
+		await t.call("POST", "/start", { mode: "paper" });
+		t.at(T0 + M);
+		expect(t.orders()).toHaveLength(1);
+		expect(t.trading.order("paper", "p1")?.decision?.judgments).toEqual({});
 	});
 
 	test("ライブは選べず、運用する戦略が無いか条件が足りなければオンにできない", async () => {

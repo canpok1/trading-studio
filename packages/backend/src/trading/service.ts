@@ -155,9 +155,15 @@ export function createTradingService({
 			return;
 		}
 		// 戦略が使わない判定も、注文の詳細で「そのときの判定」として見せるため記録する
+		// 採点の記録が始まる前は判定を渡さない（データなし）
 		const current = judgments.current();
 		const values: Record<string, string> = {};
-		for (const j of JUDGES) values[j] = current.results[j].value;
+		if (
+			current.firstScoredAt !== null &&
+			current.time >= current.firstScoredAt
+		) {
+			for (const j of JUDGES) values[j] = current.results[j].value;
+		}
 		const tfMs = TIMEFRAME_MS[s.params.timeframe];
 		repo.transaction(() => {
 			const expired = expire(repo.account(mode, t).account, t);

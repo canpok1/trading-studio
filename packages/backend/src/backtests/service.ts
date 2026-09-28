@@ -1,6 +1,7 @@
 // バックテストの実行ジョブ。同時に動かすのは1つだけで、画面は進捗を定期的に問い合わせる
 
 import {
+	acceptsNoJudgment,
 	BacktestError,
 	checkDataResolution,
 	chooseStepTimeframe,
@@ -122,21 +123,24 @@ export function createBacktestService({
 				}
 				throw e;
 			}
-			// 記録が始まる前を中立で埋めると、判定の条件が効いていない結果を正しいものと誤読しやすいので実行しない
+			// 記録が始まる前はデータなしとして渡す。判定の条件のどれにも「データなし」が無ければ、
+			// 判定の条件が効いていない結果を正しいものと誤読しやすいので実行しない
 			const rule = judgments.rule();
 			const usesJudgments = conditionStrategy.requiredJudges(params).length > 0;
-			if (usesJudgments) {
-				const firstScoredAt = judgments.firstScoredAt();
-				if (firstScoredAt === null || from < firstScoredAt) {
-					return fail({
-						kind: "no_judgments",
-						firstScoredAt,
-						message:
-							firstScoredAt === null
-								? "AI 判定の条件があるが、ニュースの採点の記録がまだ無いため実行できない"
-								: "AI 判定の条件があるが、期間に採点の記録が始まる前が含まれるため実行できない。開始を記録が始まった日時より後の日にする",
-					});
-				}
+			const firstScoredAt = usesJudgments ? judgments.firstScoredAt() : null;
+			if (
+				usesJudgments &&
+				(firstScoredAt === null || from < firstScoredAt) &&
+				!acceptsNoJudgment(params)
+			) {
+				return fail({
+					kind: "no_judgments",
+					firstScoredAt,
+					message:
+						firstScoredAt === null
+							? "AI 判定の条件があるが、ニュースの採点の記録がまだ無いため実行できない。判定の条件で「データなし」を選ぶと実行できる"
+							: "AI 判定の条件があるが、期間に採点の記録が始まる前が含まれるため実行できない。開始を記録が始まった日時より後の日にするか、判定の条件で「データなし」を選ぶと実行できる",
+				});
 			}
 			// 判定頻度が戦略の粒度より短ければ、細かい足で判定する
 			const step = chooseStepTimeframe(params, finest);
@@ -196,6 +200,7 @@ export function createBacktestService({
 									to,
 								),
 								rule,
+								since: firstScoredAt,
 							}
 						: null,
 				});

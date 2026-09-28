@@ -6,7 +6,7 @@ import {
 	CONDITION_GROUPS,
 	conditionSetChanges,
 	JUDGES,
-	JUDGMENT_VALUES,
+	JUDGMENT_CONDITION_VALUES,
 	parseConditionSet,
 	SATOSHI_PER_BTC,
 	TIMEFRAME_LABELS,
@@ -81,10 +81,10 @@ const CONDITION: ResponseSchema = {
 		values: opt({
 			type: "ARRAY",
 			description:
-				"判定の値。trend: up=上昇・range=レンジ・down=下落 / risk: normal=平常・caution=警戒・crisis=危機 / sentiment: +2・+1・0・-1・-2",
+				"判定の値。trend: up=上昇・range=レンジ・down=下落 / risk: normal=平常・caution=警戒・crisis=危機 / sentiment: +2・+1・0・-1・-2 / どれでも none=データなし（採点の記録が始まる前）",
 			items: {
 				type: "STRING",
-				enum: [...new Set(Object.values(JUDGMENT_VALUES).flat())],
+				enum: [...new Set(Object.values(JUDGMENT_CONDITION_VALUES).flat())],
 			},
 		}),
 	},

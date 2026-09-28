@@ -8,6 +8,7 @@ import type {
 	ConditionSet,
 	FrequencyUnit,
 	Judge,
+	JudgmentConditionValue,
 	JudgmentValue,
 	OrderType,
 	Timeframe,
@@ -22,8 +23,8 @@ import {
 	formatBtc,
 	JUDGE_LABELS,
 	JUDGES,
+	JUDGMENT_CONDITION_VALUES,
 	JUDGMENT_VALUE_LABELS,
-	JUDGMENT_VALUES,
 	LIMITS,
 	ORDER_TYPE_LABELS,
 	SATOSHI_PER_BTC,
@@ -592,8 +593,10 @@ function ConditionRow({
 			);
 			break;
 		case "judgment": {
-			const all = JUDGMENT_VALUES[c.judge] as readonly JudgmentValue[];
-			const toggle = (v: JudgmentValue, on: boolean) => {
+			const all = JUDGMENT_CONDITION_VALUES[
+				c.judge
+			] as readonly JudgmentConditionValue[];
+			const toggle = (v: JudgmentConditionValue, on: boolean) => {
 				const set = new Set<string>(c.values);
 				if (on) set.add(v);
 				else set.delete(v);

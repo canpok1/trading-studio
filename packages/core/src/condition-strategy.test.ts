@@ -5,6 +5,7 @@ import type {
 	ConditionSet,
 } from "./condition-strategy";
 import {
+	acceptsNoJudgment,
 	chooseStepTimeframe,
 	conditionStrategy,
 	DEFAULT_BUY_ORDER,
@@ -680,10 +681,34 @@ describe("AI 判定の条件", () => {
 		expect(miss.intents).toHaveLength(0);
 	});
 
-	test("判定がまだ無ければ判定しない", () => {
+	test("判定がまだ無ければ、データなしを選んだ条件だけ成立する", () => {
 		const out = evaluateConditionSet(input(candles([100]), buyWith(trendUp)));
 		expect(out.intents).toHaveLength(0);
-		expect(out.note).toContain("トレンド判定がまだ無い");
+		expect(out.note).toContain("買いの条件を満たさない");
+		const withNone: Condition = {
+			type: "judgment",
+			judge: "trend",
+			values: ["up", "none"],
+		};
+		const hit = evaluateConditionSet(input(candles([100]), buyWith(withNone)));
+		expect(hit.intents[0]).toMatchObject({ side: "buy" });
+		expect(hit.note).toContain(
+			"トレンド判定がデータなし（上昇・データなしのどれか）",
+		);
+		// 判定があればデータなしは成立しない
+		const range = evaluateConditionSet(
+			input(candles([100]), buyWith(withNone), {
+				judgments: { trend: [{ judge: "trend", time: 0, label: "range" }] },
+			}),
+		);
+		expect(range.intents).toHaveLength(0);
+		expect(acceptsNoJudgment(buyWith(withNone))).toBe(true);
+		expect(acceptsNoJudgment(buyWith(trendUp))).toBe(false);
+		expect(
+			validateConditionSet(buyWith(withNone)).filter((e) =>
+				e.path.startsWith("buy."),
+			),
+		).toEqual([]);
 	});
 
 	test("売りのグループにも入れられる", () => {
