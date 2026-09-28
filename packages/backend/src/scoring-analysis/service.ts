@@ -236,10 +236,11 @@ export function createScoringAnalysis({
 		/** 採点済みのニュースの点数と、採点時刻からの値動きの関係。基準の版ごとに出す */
 		evaluateScores(f: Omit<NewsFilter, "status">) {
 			const rows = repo.scored(f);
+			// rows は採点時刻の順
 			const p = rows.length
 				? prices(
-						Math.min(...rows.map((r) => r.scoredAt as number)),
-						Math.max(...rows.map((r) => r.scoredAt as number)) + 1,
+						rows[0]?.scoredAt as number,
+						(rows.at(-1)?.scoredAt as number) + 1,
 					)
 				: priceSeries([], null);
 			const byVersion = new Map<number | null, AnalysisNewsRow[]>();
