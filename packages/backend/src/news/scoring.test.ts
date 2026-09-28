@@ -307,6 +307,43 @@ describe("採点", () => {
 		});
 	});
 
+	test("試し採点も常駐の採点と合わせて問い合わせの間を空ける", async () => {
+		let clock = T0;
+		const db = createTestDb();
+		const repo = new ScoreRepository(db);
+		repo.seedCriteria(DEFAULT_CRITERIA, T0);
+		const waits: number[] = [];
+		const scorer = createScorer({
+			repo,
+			model: {
+				unavailable: () => null,
+				generate: async () => ({
+					trend: 0,
+					risk: null,
+					sentiment: null,
+					comment: "c",
+				}),
+			},
+			rule: () => repo.aggregationRule(),
+			now: () => clock,
+			minIntervalMs: 5_000,
+			sleep: async (ms) => {
+				waits.push(ms);
+				clock += ms;
+			},
+		});
+		const news = {
+			sourceName: "A",
+			title: "t",
+			summary: null,
+			publishedAt: T0,
+		};
+		await scorer.trial(news, "基準");
+		clock += 1_000;
+		await scorer.trial(news, "基準");
+		expect(waits).toEqual([4_000]);
+	});
+
 	test("初版は1度だけ入れる", () => {
 		const repo = new ScoreRepository(createTestDb());
 		repo.seedCriteria("a", 0);

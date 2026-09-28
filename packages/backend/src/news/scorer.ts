@@ -22,7 +22,7 @@ export type Scorer = {
 	problem(): { error: string; since: number } | null;
 	/** 続いている失敗の記録を消す。キーを替えた後に前のキーでの失敗を出し続けないため */
 	clearFailure(): void;
-	/** 保存も集計への反映もせずに採点する（試し採点） */
+	/** 保存も集計への反映もせずに採点する（試し採点）。常駐の採点と合わせて問い合わせの間を空ける */
 	trial(
 		news: PromptNews,
 		criteria: string,
@@ -39,6 +39,7 @@ export function createScorer({
 	now = Date.now,
 	minIntervalMs = MIN_INTERVAL_MS,
 	retryDelaysMs = RETRY_DELAYS_MS,
+	sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
 }: {
 	repo: ScoreRepository;
 	model: ScoreModel;
@@ -51,6 +52,7 @@ export function createScorer({
 	minIntervalMs?: number;
 	/** 自動の再試行の間隔。回数はこの長さ */
 	retryDelaysMs?: readonly number[];
+	sleep?: (ms: number) => Promise<void>;
 }): Scorer {
 	let running: Promise<void> | null = null;
 	/** 直近の採点が続けて失敗している間の、最初の失敗 */
@@ -140,6 +142,10 @@ export function createScorer({
 		async trial(news, criteria) {
 			const reason = model.unavailable();
 			if (reason) return { ok: false, error: reason };
+			// 問い合わせる時刻を先に取っておく。待っている間に常駐の採点が割り込まないため
+			const at = Math.max(now(), lastAskedAt + minIntervalMs);
+			lastAskedAt = at;
+			if (at > now()) await sleep(at - now());
 			try {
 				return {
 					ok: true,
