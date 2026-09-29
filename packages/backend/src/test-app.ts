@@ -73,15 +73,16 @@ export function createTestApp(
 		lastRunAt: null as number | null,
 		nextRunAt: null as number | null,
 	};
+	const scoreRepo = new ScoreRepository(db);
 	const news = createNewsService({
 		repo: newsRepo,
+		rule: () => scoreRepo.aggregationRule(),
 		collector: {
 			lastRunAt: () => newsRun.lastRunAt,
 			nextRunAt: () => newsRun.nextRunAt,
 		},
 		now: () => 5_000,
 	});
-	const scoreRepo = new ScoreRepository(db);
 	scoreRepo.seedCriteria(DEFAULT_CRITERIA, 0);
 	// 採点は自動では動かさず、テストから scorer.tick() を呼ぶ
 	const scorer = createScorer({

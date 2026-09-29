@@ -205,7 +205,11 @@ const server = new Hono()
 			strategies,
 			backtests,
 			advice,
-			news: createNewsService({ repo: newsRepo, collector: newsCollector }),
+			news: createNewsService({
+				repo: newsRepo,
+				collector: newsCollector,
+				rule: () => scoreRepo.aggregationRule(),
+			}),
 			scoring,
 			judgments,
 			trading: tradingEngine,

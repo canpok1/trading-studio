@@ -111,7 +111,35 @@ export interface NewsService {
 	status(): NewsCollectorStatus;
 	/** 新しい順（公開時刻） */
 	listNews(limit: number): NewsItem[];
+	/** 条件で絞ったニュース。影響の大きさは今の評価基準で測る */
+	searchNews(filter: NewsFilter): NewsSearchResult;
 }
+
+/** bull: 強気材料（やや強気以上）、bear: 弱気材料（やや弱気以下）、risk: リスク高（警戒以上） */
+export const NEWS_IMPACTS = ["bull", "bear", "risk"] as const;
+export type NewsImpact = (typeof NEWS_IMPACTS)[number];
+
+/** new: 新しい順、impact: 影響の大きい順（センチメントの絶対値とリスクの大きい方） */
+export const NEWS_SORTS = ["new", "impact"] as const;
+export type NewsSort = (typeof NEWS_SORTS)[number];
+
+export type NewsFilter = {
+	/** 公開時刻が [from, to) のもの */
+	from: number | null;
+	to: number | null;
+	/** 空白で区切った語をすべて含む（見出し・概要・採点の理由のどれかに） */
+	q: string;
+	/** どれかに当てはまるもの。空なら絞らない */
+	impacts: NewsImpact[];
+	sort: NewsSort;
+	limit: number;
+};
+
+export type NewsSearchResult = {
+	news: NewsItem[];
+	/** 条件に当てはまる件数（limit を超えた分も数える） */
+	total: number;
+};
 
 export type ScoringModelOption = { id: string; label: string };
 

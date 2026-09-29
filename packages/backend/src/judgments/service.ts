@@ -15,8 +15,9 @@ export function createJudgmentService({
 	now?: () => number;
 }): JudgmentService {
 	return {
-		current(rule = repo.aggregationRule()): CurrentJudgment {
-			const t = now();
+		current(rule = repo.aggregationRule(), at?: number): CurrentJudgment {
+			// 先の時刻は今として扱う
+			const t = at === undefined ? now() : Math.min(at, now());
 			// 期間内のニュースは採点時刻も期間内にある（採点は取得より後、取得は公開より後か同時のため）
 			const news = repo.scoredNews(t - rule.windowHours * 3_600_000, t + 1);
 			const s = judgeAt(news, t, rule);

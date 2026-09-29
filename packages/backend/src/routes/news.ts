@@ -1,13 +1,21 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { validator } from "hono/validator";
-import type { NewsService, NewsSourceResult } from "../news/types";
-import { NEWS_LANGUAGES } from "../news/types";
+import type {
+	NewsFilter,
+	NewsImpact,
+	NewsService,
+	NewsSort,
+	NewsSourceResult,
+} from "../news/types";
+import { NEWS_IMPACTS, NEWS_LANGUAGES, NEWS_SORTS } from "../news/types";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
 	typeof v === "object" && v !== null;
 
-const MAX_LIST = 500;
+const MAX_LIST = 1000;
+/** キーワードの長さの上限 */
+const MAX_Q = 200;
 
 function respond(c: Context, r: NewsSourceResult, okStatus: 200 | 201 = 200) {
 	if (r.ok) return c.json({ source: r.source }, okStatus);
@@ -21,14 +29,51 @@ function respond(c: Context, r: NewsSourceResult, okStatus: 200 | 201 = 200) {
 	}
 }
 
+/** 一覧の条件を読む。形が違えばその理由 */
+function parseFilter(
+	q: Record<string, string | undefined>,
+): NewsFilter | string {
+	const limit = Math.min(
+		MAX_LIST,
+		Math.max(1, Math.floor(Number(q.limit ?? 100)) || 100),
+	);
+	const time = (v: string | undefined) =>
+		v === undefined || v === "" ? null : Number(v);
+	const from = time(q.from);
+	const to = time(q.to);
+	if (
+		(from !== null && !Number.isSafeInteger(from)) ||
+		(to !== null && !Number.isSafeInteger(to))
+	) {
+		return "期間の形が違う";
+	}
+	const impacts = q.impact ? q.impact.split(",") : [];
+	if (!impacts.every((i) => (NEWS_IMPACTS as readonly string[]).includes(i))) {
+		return "影響の大きさの形が違う";
+	}
+	const sort = q.sort ?? "new";
+	if (!(NEWS_SORTS as readonly string[]).includes(sort)) {
+		return "並び順の形が違う";
+	}
+	const text = (q.q ?? "").trim();
+	if (text.length > MAX_Q) return `キーワードは${MAX_Q}文字まで`;
+	return {
+		limit,
+		from,
+		to,
+		q: text,
+		impacts: impacts as NewsImpact[],
+		sort: sort as NewsSort,
+	};
+}
+
 export function newsRoutes(service: NewsService) {
 	return new Hono()
 		.get("/", (c) => {
-			const limit = Math.min(
-				MAX_LIST,
-				Math.max(1, Math.floor(Number(c.req.query("limit") ?? 100)) || 100),
-			);
-			return c.json({ news: service.listNews(limit) });
+			const f = parseFilter(c.req.query());
+			return typeof f === "string"
+				? c.json({ message: f }, 400)
+				: c.json(service.searchNews(f), 200);
 		})
 		.get("/status", (c) => c.json(service.status()))
 		.get("/sources", (c) => c.json({ sources: service.listSources() }))

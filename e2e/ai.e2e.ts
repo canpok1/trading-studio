@@ -38,10 +38,13 @@ test("取得して採点したニュースが一覧に出て、市場評価が�
 	).toBeVisible();
 	const scored = page
 		.getByTestId("news-card")
-		.filter({ hasText: "プロンプト v" })
+		.filter({ hasText: "デモの採点。" })
 		.first();
 	await expect(scored).toBeVisible({ timeout: 20_000 });
-	await expect(scored).toContainText("デモの採点。");
+	// 版・モデル・重みは「詳しく」で開く
+	await expect(scored).not.toContainText("プロンプト v");
+	await scored.getByRole("button", { name: /詳しく/ }).click();
+	await expect(scored).toContainText("プロンプト v");
 	await expect(scored).toContainText(/重み \d+%/);
 	await expect(page.getByTestId("judge-sentiment")).toContainText(
 		/\d+点 · \d+件から算出/,
@@ -135,13 +138,14 @@ test("基準を版として保存して使用すると、次に採点するニ�
 
 	await addSource(page, `版 ${info.project.name}`);
 	await page.goto("/news");
-	await expect(
-		page
-			.getByTestId("news-card")
-			.filter({ hasText: `版 ${info.project.name}` })
-			.filter({ hasText: `プロンプト v${version}` })
-			.first(),
-	).toBeVisible({ timeout: 20_000 });
+	const card = page
+		.getByTestId("news-card")
+		.filter({ hasText: `版 ${info.project.name}` })
+		.filter({ hasText: "デモの採点。" })
+		.first();
+	await expect(card).toBeVisible({ timeout: 20_000 });
+	await card.getByRole("button", { name: /詳しく/ }).click();
+	await expect(card).toContainText(`プロンプト v${version}`);
 });
 
 test("取得元・取得間隔・採点のモデルの変更が保存される", async ({
@@ -251,4 +255,55 @@ test("採点に失敗したニュースを再試行できる", async ({ page }, 
 	const card = page.getByTestId("news-card").filter({ hasText: name }).first();
 	await card.getByRole("button", { name: "再試行" }).click();
 	await expect(card).toContainText("デモの採点。", { timeout: 20_000 });
+});
+
+test("ニュースをキーワード・影響の大きさ・日付で絞り込める", async ({
+	page,
+}, info) => {
+	const name = `filter-${info.project.name}`;
+	await addSource(page, name);
+	await page.goto("/news");
+	await page.getByLabel("キーワード").fill(name);
+	await expect(page).toHaveURL(new RegExp(`q=${name}`));
+	await expect(page.getByText(/条件に当てはまる [1-9]\d* 件/)).toBeVisible({
+		timeout: 20_000,
+	});
+	for (const card of await page.getByTestId("news-card").all()) {
+		await expect(card).toContainText(name);
+	}
+
+	await page.getByRole("button", { name: "強気材料" }).click();
+	await expect(page).toHaveURL(/impact=bull/);
+	await expect(page.getByRole("button", { name: "強気材料" })).toHaveAttribute(
+		"aria-pressed",
+		"true",
+	);
+
+	// 昨日までに絞ると、市場評価もその時点になる
+	await page.getByRole("button", { name: /絞り込み/ }).click();
+	const dialog = page.getByRole("dialog", { name: "絞り込み" });
+	await dialog.getByText("日付を指定").click();
+	const yesterday = new Date(Date.now() + 9 * 3_600_000 - 86_400_000)
+		.toISOString()
+		.slice(0, 10);
+	await dialog.getByLabel("終了日").fill(yesterday);
+	await dialog.getByRole("button", { name: "この条件で見る" }).click();
+	await expect(page).toHaveURL(new RegExp(`period=custom&to=${yesterday}`));
+	await expect(
+		page.getByRole("heading", { name: "過去の時点の市場評価" }),
+	).toBeVisible();
+	// 条件のチップが増えても横にはみ出さない（横にスクロールする）
+	expect(
+		await page.evaluate(
+			() => document.documentElement.scrollWidth > window.innerWidth,
+		),
+	).toBe(false);
+
+	await page.getByRole("button", { name: /絞り込み/ }).click();
+	await dialog.getByRole("button", { name: "条件をクリア" }).click();
+	await dialog.getByRole("button", { name: "この条件で見る" }).click();
+	await expect(
+		page.getByRole("heading", { name: "今の市場評価" }),
+	).toBeVisible();
+	await expect(page).toHaveURL(new RegExp(`/news\\?q=${name}$`));
 });

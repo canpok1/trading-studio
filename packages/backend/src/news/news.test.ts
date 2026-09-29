@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { DEFAULT_AGGREGATION_RULE } from "@trading-studio/core";
 import { createTestDb } from "../db/test-db";
 import { createTestApp } from "../test-app";
 import { createNewsCollector } from "./collector";
@@ -99,7 +100,12 @@ function setup() {
 			return f;
 		},
 	});
-	const service = createNewsService({ repo, collector, now: () => clock });
+	const service = createNewsService({
+		repo,
+		collector,
+		rule: () => DEFAULT_AGGREGATION_RULE,
+		now: () => clock,
+	});
 	const a = service.addSource({
 		name: "A",
 		url: "https://a.example/feed",

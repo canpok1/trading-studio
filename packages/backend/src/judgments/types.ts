@@ -31,8 +31,8 @@ export type JudgmentSeries = {
 };
 
 export interface JudgmentService {
-	/** 今の判定。rule を渡すとそのルールで計算する（保存しない） */
-	current(rule?: AggregationRule): CurrentJudgment;
+	/** 今の判定。rule を渡すとそのルールで計算する（保存しない）。at を渡すとその時点の判定（先の時刻は今） */
+	current(rule?: AggregationRule, at?: number): CurrentJudgment;
 	/** [from, to) の足ごとの判定。rule を省くと今の集計ルール */
 	series(
 		from: number,

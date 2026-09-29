@@ -29,6 +29,12 @@ export function formatVersion(builtAt: number | null, none: string): string {
 	return `Ver ${t.y}-${p2(t.mo)}-${p2(t.d)} ${p2(t.h)}:${p2(t.mi)}`;
 }
 
+/** 例: 13:14 */
+export function formatTime(ms: number): string {
+	const t = jstParts(ms);
+	return `${p2(t.h)}:${p2(t.mi)}`;
+}
+
 /** 例: 13:14。now と日（JST）が違えば 9/27 13:14 */
 export function formatClock(ms: number, now: number): string {
 	const t = jstParts(ms);
