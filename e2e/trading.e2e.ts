@@ -173,7 +173,7 @@ test("仮想注文が出て約定すると、ホームの保有・注文に出�
 		);
 		await recent.getByRole("button", { name: "売", exact: true }).click();
 		await expect(page.getByTestId("trades-summary")).toContainText("0 件");
-		await expect(recent.getByText("条件に合う注文はない")).toBeVisible();
+		await expect(recent.getByText("条件に合う注文は無い")).toBeVisible();
 		await recent.getByRole("button", { name: "絞り込みを解除" }).click();
 		await recent.getByRole("button", { name: "買", exact: true }).click();
 		await recent.getByRole("button", { name: "約定", exact: true }).click();

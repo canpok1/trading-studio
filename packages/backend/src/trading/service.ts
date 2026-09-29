@@ -319,7 +319,7 @@ export function createTradingService({
 			if (row.enabled) {
 				return {
 					ok: false,
-					error: { kind: "running", message: "自動取引は既にオン" },
+					error: { kind: "running", message: "自動取引は既に稼働中" },
 				};
 			}
 			const s = strategies.active();
@@ -359,7 +359,7 @@ export function createTradingService({
 			if (!row.enabled) {
 				return {
 					ok: false,
-					error: { kind: "not_running", message: "自動取引は既にオフ" },
+					error: { kind: "not_running", message: "自動取引は既に停止中" },
 				};
 			}
 			repo.saveAutoTrading({
@@ -387,7 +387,7 @@ export function createTradingService({
 					ok: false,
 					error: {
 						kind: "running",
-						message: "リセットは自動取引をオフにしてから行う",
+						message: "リセットは自動取引を停止してから行う",
 					},
 				};
 			}

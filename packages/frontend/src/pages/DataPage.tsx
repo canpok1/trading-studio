@@ -264,7 +264,7 @@ export function DataPage() {
 						next="サーバーが動いているか確かめてから、もう一度読み込む"
 						action={
 							<Button size="sm" onClick={reload}>
-								再読み込み
+								もう一度読み込む
 							</Button>
 						}
 					/>
@@ -420,7 +420,7 @@ function Coverage({
 		return (
 			<Card>
 				<EmptyState
-					title="取り込んだデータはまだない"
+					title="取り込んだデータはまだ無い"
 					description="CSV を選ぶと、ここに期間が並ぶ"
 				/>
 			</Card>

@@ -50,7 +50,7 @@ export function strategyRoutes(
 				(c) => {
 					if (isTradingOn()) {
 						return c.json(
-							{ message: "運用する戦略を変えるには先に自動取引をオフにする" },
+							{ message: "運用する戦略を変えるには先に自動取引を停止する" },
 							409,
 						);
 					}
