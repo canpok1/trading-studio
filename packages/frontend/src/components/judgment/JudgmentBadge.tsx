@@ -103,7 +103,7 @@ export function ScoreChip({
 	);
 }
 
-/** 点数の範囲の帯をしきい値ごとに判定の色で塗り、平均点の位置に印を付ける */
+/** 点数の範囲の帯をしきい値ごとに判定の色で塗り、平均点の位置に印を付ける。下に色の意味を1行で添える */
 export function ZoneBar({
 	judge,
 	rule,
@@ -130,24 +130,41 @@ export function ZoneBar({
 					["+1", t.sentiment.plus1, t.sentiment.plus2],
 					["+2", t.sentiment.plus2, max],
 				];
+	const styles = zones.map(([v]) => valueStyle(judge, v as JudgmentValue));
 	const gradient = zones
-		.map(
-			([v, a, b]) =>
-				`var(${valueStyle(judge, v as JudgmentValue).solid}) ${pct(a)}% ${pct(b)}%`,
-		)
+		.map(([, a, b], i) => `var(${styles[i]?.solid}) ${pct(a)}% ${pct(b)}%`)
 		.join(",");
 	return (
-		<div
-			aria-hidden="true"
-			className="relative h-2 rounded opacity-80"
-			style={{ background: `linear-gradient(to right,${gradient})` }}
-		>
-			{score !== null && (
-				<i
-					className="absolute -top-1 -ml-0.5 h-4 w-1 rounded-sm bg-text shadow-[0_0_0_2px_var(--color-surface)]"
-					style={{ left: `${pct(score)}%` }}
-				/>
-			)}
+		<div className="flex flex-col gap-1.5">
+			<div
+				aria-hidden="true"
+				className="relative h-2 rounded opacity-80"
+				style={{ background: `linear-gradient(to right,${gradient})` }}
+			>
+				{score !== null && (
+					<i
+						className="absolute -top-1 -ml-0.5 h-4 w-1 rounded-sm bg-text shadow-[0_0_0_2px_var(--color-surface)]"
+						style={{ left: `${pct(score)}%` }}
+					/>
+				)}
+			</div>
+			<ul
+				aria-label={`${JUDGE_LABELS[judge]}の色の意味`}
+				className="flex justify-between gap-1 text-[10px] text-text-2"
+			>
+				{styles.map((st) => {
+					const name = st.label.split(" ").at(-1);
+					return (
+						<li
+							key={st.label}
+							className="inline-flex items-center gap-1 whitespace-nowrap"
+						>
+							<ShapeIcon shape={st.shape} color={`var(${st.solid})`} size={8} />
+							{name}
+						</li>
+					);
+				})}
+			</ul>
 		</div>
 	);
 }
