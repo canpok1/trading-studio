@@ -40,7 +40,7 @@ describe("画面遷移", () => {
 	test("タブで各画面へ移れる", () => {
 		const view = renderAt("/backtest");
 		const nav = view.getByRole("navigation", { name: "メイン" });
-		for (const name of ["戦略", "過去データ", "設定", "その他", "ホーム"]) {
+		for (const name of ["戦略", "インポート", "設定", "その他", "ホーム"]) {
 			const link = [...nav.querySelectorAll("a")].find(
 				(a) => a.textContent === name,
 			);

@@ -287,7 +287,7 @@ function CandleCsvSection() {
 		return (
 			<Card>
 				<p className="text-xs text-text-2">
-					保存済みの足が無い。過去データの画面で CSV
+					保存済みの足が無い。インポートの画面で CSV
 					を取り込むか、収集した足が溜まると書き出せる。
 				</p>
 			</Card>
