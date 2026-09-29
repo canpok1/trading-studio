@@ -778,7 +778,7 @@ export function validateConditionSet(p: ConditionSet): ValidationError[] {
 	if (p.stopLoss.conditions.length === 0) {
 		err(
 			"stopLoss",
-			"損切りの条件がないと、下がり続けても売らない。1つ以上追加する",
+			"損切りの条件が無いと、下がり続けても売らない。1つ以上追加する",
 		);
 	}
 	return errors;

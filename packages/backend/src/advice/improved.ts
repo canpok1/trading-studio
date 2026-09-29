@@ -113,7 +113,7 @@ export const IMPROVED_STRATEGY_SCHEMA: ResponseSchema = {
 		),
 		frequency: {
 			type: "OBJECT",
-			description: "足と判定の頻度",
+			description: "足と判定の間隔",
 			properties: {
 				flat: { ...FREQUENCY, description: "ポジションなしのとき" },
 				holding: { ...FREQUENCY, description: "ポジションありのとき" },

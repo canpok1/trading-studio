@@ -319,7 +319,7 @@ export function BacktestRunPage() {
 			<Page title="バックテスト">
 				<Card>
 					<EmptyState
-						title="過去データがまだない"
+						title="過去データがまだ無い"
 						description="バックテストには取り込み済みの CSV データが必要。"
 						action={
 							<Link to="/data" className={buttonClass("primary")}>
@@ -453,7 +453,7 @@ function RunForm({
 		return Math.max(0, slots - missing);
 	}, [cov, fromMs, toMs, tfMs]);
 
-	const periodError = fromMs >= toMs ? "終了は開始以降の日にする" : null;
+	const periodError = fromMs >= toMs ? "終了日は開始日以降にする" : null;
 	const cashError =
 		Number.isSafeInteger(draft.initialCash) && draft.initialCash > 0
 			? null
@@ -1032,7 +1032,7 @@ function CoverageBar({
 	to: number;
 }) {
 	if (!cov || cov.firstTime === null || cov.lastTime === null) {
-		return <p className="text-xs text-text-2">この粒度のデータがまだない。</p>;
+		return <p className="text-xs text-text-2">この粒度のデータがまだ無い。</p>;
 	}
 	const start = Math.min(cov.firstTime, from);
 	const end = Math.max(cov.lastTime, to);

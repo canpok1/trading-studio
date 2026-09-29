@@ -24,9 +24,9 @@ export function frequencyText(p: ConditionSet): string {
 	return `判定 なし${freq(p.frequency.flat)}/あり${freq(p.frequency.holding)}ごと`;
 }
 
-/** 判定頻度より粗い間隔でしか判定できないときの説明 */
+/** 判定の間隔より粗い間隔でしか判定できないときの説明 */
 export function stepLimitedText(step: Timeframe): string {
-	return `判定頻度より細かい過去データが無いため、${TIMEFRAME_LABELS[step]}の終わりごとにしか判定しない。判定頻度どおりに試すには、より細かい足の CSV を取り込む`;
+	return `判定の間隔より細かい過去データが無いため、${TIMEFRAME_LABELS[step]}の終わりごとにしか判定しない。判定の間隔どおりに試すには、より細かい足の CSV を取り込む`;
 }
 
 export function conditionText(c: Condition): string {

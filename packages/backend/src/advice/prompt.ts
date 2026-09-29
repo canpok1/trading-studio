@@ -22,7 +22,7 @@ export const ADVICE_TEMPLATE = `<backtest>
 - good: うまくいった点
 - bad: 悪かった点
 - improvements: 改善案。変える項目と具体的な値を書く
-- improvedStrategy: improvements の戦略設定の変更をすべて反映した後の戦略設定。improvements で変えない項目は <backtest> の戦略設定の値をそのまま写す。期間・口座・集計ルールは含めない
+- improvedStrategy: improvements の戦略設定の変更をすべて反映した後の戦略設定。improvements で変えない項目は <backtest> の戦略設定の値をそのまま写す。期間・口座・評価ルールは含めない
 
 improvements の文章では、設定の変更を利用者が画面でそのまま設定し直せるよう、<backtest> に書いた画面の見出しと項目名で書く。例: 「買い注文する条件」の「短期EMA」を 12 本から 20 本にする。プログラムの項目名・JSON・添字（conditions[0] など）は使わない
 

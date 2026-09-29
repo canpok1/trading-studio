@@ -42,7 +42,7 @@ const NAV: NavItem[] = [
 		show: "both",
 	},
 	{ to: "/news", label: "ニュース", icon: <AiIcon />, show: "both" },
-	{ to: "/data", label: "過去データ", icon: <DataIcon />, show: "side" },
+	{ to: "/data", label: "インポート", icon: <DataIcon />, show: "side" },
 	{
 		to: "/export",
 		label: "エクスポート",

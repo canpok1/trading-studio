@@ -11,7 +11,7 @@ export function OtherPage() {
 					className="flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-[15px] hover:bg-surface-2"
 				>
 					<span className="flex-1">
-						過去データの取り込み
+						インポート
 						<span className="block text-xs text-text-2">
 							CSV の取り込みと取り込み済みの期間
 						</span>

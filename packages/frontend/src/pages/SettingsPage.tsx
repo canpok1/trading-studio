@@ -25,7 +25,7 @@ import {
 import type { ThemePreference } from "../theme";
 import { useTheme } from "../theme";
 
-/** 収集の状態（取得元ごとの最後の取得）を問い合わせる間隔 */
+/** 取得の状態（取得元ごとの最後の取得）を問い合わせる間隔 */
 const POLL_MS = 5_000;
 
 /** 区分はメニューに合わせる。複数のメニューで使う設定は「全般」に置く */
@@ -41,7 +41,7 @@ const isSection = (v: string | null): v is SettingsSection =>
 const NEWS_TABS = [
 	["rule", "評価ルール"],
 	["prompt", "プロンプト"],
-	["sources", "収集と採点"],
+	["sources", "取得"],
 ] as const;
 type NewsSettingsTab = (typeof NEWS_TABS)[number][0];
 const isNewsTab = (v: string | null): v is NewsSettingsTab =>
@@ -144,7 +144,7 @@ type NewsSettingsData = {
 	collector: NewsCollectorStatus;
 };
 
-/** ニュースの設定。評価ルールと収集の状態を読み、収集の状態は定期的に読み直す */
+/** ニュースの設定。評価ルールと取得の状態を読み、取得の状態は定期的に読み直す */
 function NewsSettings({ tab }: { tab: NewsSettingsTab }) {
 	const api = useApi();
 	const visible = usePageVisible();

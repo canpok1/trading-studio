@@ -452,7 +452,7 @@ const backtestRunsTable: Table<BacktestRun> = {
 		col("step_timeframe", "判定と約定に使った足の粒度", (r) => r.stepTimeframe),
 		col(
 			"step_limited",
-			"データが足りず、判定頻度より粗い間隔でしか判定できなかったなら true",
+			"データが足りず、判定の間隔より粗い間隔でしか判定できなかったなら true",
 			(r) => r.stepLimited,
 		),
 		...time<BacktestRun>("from", "期間の始まり", (r) => r.from),

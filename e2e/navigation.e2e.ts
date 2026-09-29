@@ -9,7 +9,7 @@ test("各画面へ移動できる", async ({ page, isMobile }) => {
 		: [
 				"ニュース",
 				"戦略",
-				"過去データ",
+				"インポート",
 				"エクスポート",
 				"設定",
 				"バックテスト",
@@ -21,11 +21,11 @@ test("各画面へ移動できる", async ({ page, isMobile }) => {
 		).toBeVisible();
 	}
 	if (isMobile) {
-		// スマホの過去データ・エクスポート・設定は「その他」の中にある
+		// スマホのインポート・エクスポート・設定は「その他」の中にある
 		await nav.getByRole("link", { name: "その他" }).click();
-		await page.getByRole("link", { name: /過去データ/ }).click();
+		await page.getByRole("link", { name: /^インポート/ }).click();
 		await expect(
-			page.getByRole("heading", { level: 1, name: "過去データ" }).first(),
+			page.getByRole("heading", { level: 1, name: "インポート" }).first(),
 		).toBeVisible();
 		await nav.getByRole("link", { name: "その他" }).click();
 		await page.getByRole("link", { name: /^エクスポート/ }).click();

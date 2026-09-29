@@ -216,7 +216,7 @@ test("期間に欠損があると確認が出て、飛ばして実行できる",
 	expect(overflow).toBeLessThanOrEqual(0);
 });
 
-test("判定頻度より細かいデータが無いと、実行前と結果で知らせる", async ({
+test("判定の間隔より細かいデータが無いと、実行前と結果で知らせる", async ({
 	page,
 	request,
 }, info) => {
@@ -228,7 +228,7 @@ test("判定頻度より細かいデータが無いと、実行前と結果で�
 	});
 	await choose(page, name, "2026-05-03", "2026-05-25");
 	const notice = page.getByText(
-		"判定頻度より細かい過去データが無いため、1時間足の終わりごとにしか判定しない",
+		"判定の間隔より細かい過去データが無いため、1時間足の終わりごとにしか判定しない",
 		{ exact: false },
 	);
 	await expect(notice).toBeVisible();
