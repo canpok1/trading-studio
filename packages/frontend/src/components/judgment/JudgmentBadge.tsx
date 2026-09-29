@@ -130,6 +130,40 @@ export function ZoneBar({
 					["+1", t.sentiment.plus1, t.sentiment.plus2],
 					["+2", t.sentiment.plus2, max],
 				];
+	const variant =
+		(globalThis as { __zoneVariant?: string }).__zoneVariant ?? "A";
+	const short = (v: string) =>
+		valueStyle(judge, v as JudgmentValue).label.replace(/^[+−\-]?\d /, "");
+	const marker = score !== null && (
+		<svg
+			width="12"
+			height="8"
+			viewBox="0 0 12 8"
+			className="absolute -top-2.5 -ml-1.5"
+			style={{ left: `${pct(score)}%` }}
+		>
+			<polygon points="0,0 12,0 6,8" style={{ fill: "var(--color-text)" }} />
+		</svg>
+	);
+	if (variant === "A") {
+		return (
+			<div aria-hidden="true" className="relative mt-2 flex h-5">
+				{zones.map(([v, a, b], i) => (
+					<span
+						key={v}
+						className={`flex items-center justify-center overflow-hidden text-[10px] font-semibold whitespace-nowrap text-white [text-shadow:0_0_2px_rgba(0,0,0,.55)] ${i === 0 ? "rounded-l" : ""} ${i === zones.length - 1 ? "rounded-r" : ""}`}
+						style={{
+							width: `${pct(b) - pct(a)}%`,
+							background: `var(${valueStyle(judge, v as JudgmentValue).solid})`,
+						}}
+					>
+						{pct(b) - pct(a) >= 12 ? short(v) : ""}
+					</span>
+				))}
+				{marker}
+			</div>
+		);
+	}
 	const gradient = zones
 		.map(
 			([v, a, b]) =>
@@ -137,17 +171,30 @@ export function ZoneBar({
 		)
 		.join(",");
 	return (
-		<div
-			aria-hidden="true"
-			className="relative h-2 rounded opacity-80"
-			style={{ background: `linear-gradient(to right,${gradient})` }}
-		>
-			{score !== null && (
-				<i
-					className="absolute -top-1 -ml-0.5 h-4 w-1 rounded-sm bg-text shadow-[0_0_0_2px_var(--color-surface)]"
-					style={{ left: `${pct(score)}%` }}
-				/>
-			)}
+		<div className="flex flex-col gap-1.5">
+			<div
+				aria-hidden="true"
+				className="relative h-2 rounded opacity-80"
+				style={{ background: `linear-gradient(to right,${gradient})` }}
+			>
+				{score !== null && (
+					<i
+						className="absolute -top-1 -ml-0.5 h-4 w-1 rounded-sm bg-text shadow-[0_0_0_2px_var(--color-surface)]"
+						style={{ left: `${pct(score)}%` }}
+					/>
+				)}
+			</div>
+			<div className="flex justify-between gap-1 text-[10px] text-text-2">
+				{zones.map(([v]) => {
+					const st = valueStyle(judge, v as JudgmentValue);
+					return (
+						<span key={v} className="inline-flex items-center gap-1 whitespace-nowrap">
+							<ShapeIcon shape={st.shape} color={`var(${st.solid})`} size={8} />
+							{short(v)}
+						</span>
+					);
+				})}
+			</div>
 		</div>
 	);
 }
