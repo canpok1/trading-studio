@@ -422,6 +422,7 @@ function HomeBody({
 			<JudgmentPanel current={current} />
 			{barsError && !bars ? (
 				<section aria-label="価格チャート" className={`${PANEL} lg:col-span-2`}>
+					<PanelHeader title="チャート" />
 					<ErrorState
 						what="チャートの足を読み込めなかった"
 						next={barsError}
@@ -430,6 +431,7 @@ function HomeBody({
 				</section>
 			) : noData ? (
 				<section aria-label="価格チャート" className={`${PANEL} lg:col-span-2`}>
+					<PanelHeader title="チャート" />
 					<EmptyState
 						title="収集を始めたばかりでデータがない"
 						description="価格を受け取ると、ここにチャートが出る"
