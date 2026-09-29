@@ -32,10 +32,10 @@ export function Page({
 							← {back.label}
 						</Link>
 					)}
-					<h1 className="flex items-center gap-2 text-[22px] font-bold">
-						{title}
+					<div className="flex items-center gap-2">
+						<h1 className="text-[22px] font-bold">{title}</h1>
 						{help && <Help label={title}>{help}</Help>}
-					</h1>
+					</div>
 					{description && <p className="text-xs text-text-2">{description}</p>}
 				</div>
 				{actions && <div className="flex items-start gap-2">{actions}</div>}

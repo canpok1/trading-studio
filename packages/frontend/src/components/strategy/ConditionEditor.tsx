@@ -112,8 +112,8 @@ export function FrequencyCard({ params, onChange, errors }: Props) {
 	};
 	return (
 		<Card className="flex flex-col gap-2.5">
-			<h2 className="flex items-center gap-1.5 text-[15px] font-bold">
-				足と判定の頻度
+			<div className="flex items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">足と判定の頻度</h2>
 				<Help label="足と判定の頻度">
 					<p>
 						EMA・RSI・ボリンジャーバンドの本数・直近 N
@@ -121,7 +121,7 @@ export function FrequencyCard({ params, onChange, errors }: Props) {
 					</p>
 					<p>バックテストでは、足より短い間隔は足ごとに判定する。</p>
 				</Help>
-			</h2>
+			</div>
 			<label className="flex flex-wrap items-center gap-2">
 				<span className="text-[13px] font-semibold">足の粒度</span>
 				<select
@@ -169,8 +169,8 @@ export function OrderSizeCard({
 		);
 	return (
 		<Card className="flex flex-col gap-2.5">
-			<h2 className="flex items-center gap-1.5 text-[15px] font-bold">
-				注文量とポジション数
+			<div className="flex items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">注文量とポジション数</h2>
 				<Help label="注文量とポジション数">
 					<p>
 						約定した買い1件がこの量の1ロットになる。最大ポジション数は同時に持てるロットの数で、約定待ちの買いも数える。2
@@ -180,7 +180,7 @@ export function OrderSizeCard({
 						買いの出し方は「買い注文する条件」で選ぶ。売りは成行。利確・損切りの両方が同時に成り立ったら損切りを優先する。
 					</p>
 				</Help>
-			</h2>
+			</div>
 			<div className="flex items-center gap-2">
 				<Button
 					className="w-11 px-0"
@@ -241,8 +241,8 @@ export function RiskLimitCard({ params, onChange, errors }: Props) {
 	const id = useId();
 	return (
 		<Card className="flex flex-col gap-2.5">
-			<h2 className="flex items-center gap-1.5 text-[15px] font-bold">
-				リスク上限
+			<div className="flex items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">リスク上限</h2>
 				<Help label="リスク上限">
 					<p>達したら新しい買い注文を止める（翌 0 時に再開）。</p>
 					<p>
@@ -250,7 +250,7 @@ export function RiskLimitCard({ params, onChange, errors }: Props) {
 						時区切り）に売って確定した損益（手数料込み）で数える。含み損は数えない。売り（利確・損切り）は止めない。バックテストにも効く。
 					</p>
 				</Help>
-			</h2>
+			</div>
 			<div className="flex flex-col gap-1.5">
 				<label htmlFor={id} className="text-[13px] font-semibold">
 					1日の損失上限（円）

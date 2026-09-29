@@ -750,14 +750,14 @@ function RunForm({
 					</Card>
 					<div className="mt-2 flex flex-col gap-0.5 lg:col-span-2">
 						<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-							<h2 className="flex shrink-0 items-center gap-1.5 text-[17px] font-bold">
-								戦略設定
+							<div className="flex shrink-0 items-center gap-1.5">
+								<h2 className="text-[17px] font-bold">戦略設定</h2>
 								<Help label="戦略設定">
 									<p>
 										テンプレートの条件をコピーして試す。ここで変えても戦略には保存されない。
 									</p>
 								</Help>
-							</h2>
+							</div>
 							{/* スマホは見出しとボタンの下の行に出す。長い名前は省略し、「変更あり」は残す */}
 							{draft.improvement && !template && (
 								<span className="order-last flex min-w-0 basis-full text-xs text-text-2 lg:order-none lg:basis-auto">
