@@ -26,6 +26,8 @@ export function conditionScreenText(c: Condition): string {
 			return `RSI ${c.period} 本が ${c.threshold} ${c.direction === "above" ? "以上" : "以下"}`;
 		case "emaPosition":
 			return `終値が EMA ${c.period} 本より${c.direction === "above" ? "上" : "下"}`;
+		case "emaSlope":
+			return `EMA ${c.period} 本が ${c.bars} 本前より${c.percent > 0 ? ` ${c.percent} % 以上` : ""}${c.direction === "up" ? "上がっている" : "下がっている"}`;
 		case "bollinger":
 			return `終値がボリンジャーバンド ${c.period} 本・${c.sigma}σ の${c.band === "upper" ? "上限以上" : "下限以下"}`;
 		case "entryChange":

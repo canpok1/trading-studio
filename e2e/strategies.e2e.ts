@@ -181,6 +181,42 @@ test("RSI の条件を追加して保存でき、範囲外の値では保存で�
 	await expect(saved.getByLabel("RSI のしきい値")).toHaveValue("25");
 });
 
+test("EMA の傾きの条件を追加して保存でき、% が 0.01 刻みでなければ保存できない", async ({
+	page,
+}, info) => {
+	await page.goto("/strategies");
+	await createFromTemplate(page, `傾き ${info.project.name}`, /^トレンド追随/);
+	const buy = page.getByRole("region", { name: "買い注文する条件" });
+	await buy.getByRole("button", { name: "＋ 条件を追加" }).click();
+	await page
+		.getByRole("dialog")
+		.getByRole("button", { name: "EMA の傾き", exact: true })
+		.click();
+	const row = buy
+		.getByRole("group")
+		.filter({ has: page.getByLabel("何本前と比べるか") });
+	await expect(row.getByLabel("EMA の本数")).toHaveValue("50");
+	await expect(row.getByLabel("何本前と比べるか")).toHaveValue("5");
+	await expect(row.getByLabel("傾きの %")).toHaveValue("0");
+	await expect(row.getByLabel("上下")).toHaveValue("up");
+
+	await row.getByLabel("傾きの %").fill("0.005");
+	await expect(row).toContainText("0〜100、0.01 刻みで入れる");
+	await expect(
+		page.getByRole("button", { name: "入力を直すと保存できる" }),
+	).toBeDisabled();
+
+	await row.getByLabel("傾きの %").fill("0.25");
+	await page.getByRole("button", { name: "保存", exact: true }).click();
+	await expect(page.getByRole("status")).toHaveText("保存した");
+	await page.reload();
+	const saved = page
+		.getByRole("region", { name: "買い注文する条件" })
+		.getByRole("group")
+		.filter({ has: page.getByLabel("何本前と比べるか") });
+	await expect(saved.getByLabel("傾きの %")).toHaveValue("0.25");
+});
+
 test("買いの注文方法を指値に変えて値幅と本数を保存でき、成行では入力欄を出さない", async ({
 	page,
 }, info) => {

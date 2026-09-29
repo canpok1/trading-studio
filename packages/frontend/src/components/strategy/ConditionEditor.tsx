@@ -284,6 +284,7 @@ type ConditionKind =
 const CONDITION_NAMES: Record<ConditionKind, string> = {
 	emaCross: "EMA のクロス",
 	emaPosition: "終値と EMA の位置",
+	emaSlope: "EMA の傾き",
 	breakout: "直近の高値・安値の突破",
 	rsi: "RSI",
 	bollinger: "ボリンジャーバンド",
@@ -295,10 +296,11 @@ const CONDITION_NAMES: Record<ConditionKind, string> = {
 };
 
 const PRICE_KINDS: Record<ConditionGroupKey, ConditionKind[]> = {
-	buy: ["emaCross", "emaPosition", "breakout", "rsi", "bollinger"],
+	buy: ["emaCross", "emaPosition", "emaSlope", "breakout", "rsi", "bollinger"],
 	takeProfit: [
 		"emaCross",
 		"emaPosition",
+		"emaSlope",
 		"breakout",
 		"rsi",
 		"bollinger",
@@ -309,6 +311,7 @@ const PRICE_KINDS: Record<ConditionGroupKey, ConditionKind[]> = {
 	stopLoss: [
 		"emaCross",
 		"emaPosition",
+		"emaSlope",
 		"breakout",
 		"rsi",
 		"bollinger",
@@ -349,6 +352,14 @@ function defaultCondition(
 				: { type: kind, period: 14, threshold: 30, direction: "below" };
 		case "emaPosition":
 			return { type: kind, period: 200, direction: sell ? "below" : "above" };
+		case "emaSlope":
+			return {
+				type: kind,
+				period: 50,
+				bars: 5,
+				percent: 0,
+				direction: sell ? "down" : "up",
+			};
 		case "bollinger":
 			return {
 				type: kind,
@@ -519,6 +530,51 @@ function ConditionRow({
 					>
 						<option value="above">上</option>
 						<option value="below">下</option>
+					</select>
+				</>
+			);
+			break;
+		case "emaSlope":
+			body = (
+				<>
+					<span>EMA</span>
+					<NumberInput
+						value={c.period}
+						onChange={(period) => onChange({ ...c, period })}
+						invalid={bad("period")}
+						inputMode="numeric"
+						aria-label="EMA の本数"
+						className="w-16"
+					/>
+					<span>本が</span>
+					<NumberInput
+						value={c.bars}
+						onChange={(bars) => onChange({ ...c, bars })}
+						invalid={bad("bars")}
+						inputMode="numeric"
+						aria-label="何本前と比べるか"
+						className="w-16"
+					/>
+					<span>本前より</span>
+					<NumberInput
+						value={c.percent}
+						onChange={(percent) => onChange({ ...c, percent })}
+						invalid={bad("percent")}
+						inputMode="decimal"
+						aria-label="傾きの %"
+						className="w-16"
+					/>
+					<span>% 以上</span>
+					<select
+						aria-label="上下"
+						value={c.direction}
+						onChange={(e) =>
+							onChange({ ...c, direction: e.target.value as "up" | "down" })
+						}
+						className={selectClass}
+					>
+						<option value="up">上がっている</option>
+						<option value="down">下がっている</option>
 					</select>
 				</>
 			);

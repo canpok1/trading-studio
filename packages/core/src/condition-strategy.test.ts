@@ -994,6 +994,89 @@ describe("終値と EMA の位置", () => {
 	});
 });
 
+describe("EMA の傾き", () => {
+	const up: Condition = {
+		type: "emaSlope",
+		period: 3,
+		bars: 1,
+		percent: 0,
+		direction: "up",
+	};
+
+	test("EMA が N 本前より上がっていれば成立し、値を記録に残す", () => {
+		// EMA(3) は [1,2,3] の平均 2 を起点に、次は 10*0.5 + 2*0.5 = 6。+200%
+		const out = evaluateConditionSet(
+			input(candles([1, 2, 3, 10]), buyWith(up)),
+		);
+		expect(out.intents).toHaveLength(1);
+		expect(out.note).toContain("EMA(3) 6 は 1 本前 2 から +200.00%");
+	});
+
+	test("% 以上変わっていなければ成立しない", () => {
+		const c = candles([1, 2, 3, 10]);
+		expect(
+			evaluateConditionSet(input(c, buyWith({ ...up, percent: 200 }))).intents,
+		).toHaveLength(1);
+		expect(
+			evaluateConditionSet(input(c, buyWith({ ...up, percent: 200.01 })))
+				.intents,
+		).toHaveLength(0);
+	});
+
+	test("横ばいはどちらの向きでも成立しない。下がったも判定できる", () => {
+		const down: Condition = { ...up, direction: "down" };
+		const flat = candles([5, 5, 5, 5]);
+		expect(evaluateConditionSet(input(flat, buyWith(up))).intents).toHaveLength(
+			0,
+		);
+		expect(
+			evaluateConditionSet(input(flat, buyWith(down))).intents,
+		).toHaveLength(0);
+		// EMA(3) は 5 → 3（1*0.5 + 5*0.5）で −40%
+		const out = evaluateConditionSet(
+			input(candles([5, 5, 5, 1]), buyWith({ ...down, percent: 40 })),
+		);
+		expect(out.intents).toHaveLength(1);
+		expect(out.note).toContain("から −40.00%（−40% 以上）");
+	});
+
+	test("本数が足りない間は判定しない", () => {
+		const out = evaluateConditionSet(input(candles([1, 2, 3]), buyWith(up)));
+		expect(out.note).toContain("EMA(3) の 1 本前比に 4 本必要、現在 3 本");
+	});
+
+	test("チャートの EMA と必要な足の本数に含め、JSON から読み戻せる", () => {
+		const p = buyWith({ ...up, period: 50, bars: 5, percent: 0.25 });
+		expect(emaPeriods(p)).toEqual([50]);
+		expect(historyBars(p)).toBe(506);
+		expect(parseConditionSet(JSON.parse(JSON.stringify(p)))?.buy).toEqual(
+			p.buy,
+		);
+	});
+
+	test("本数・比べる本数・% の範囲を検査する", () => {
+		const errs = validateConditionSet(
+			params({
+				buy: {
+					match: "all",
+					conditions: [{ ...up, period: 1, bars: 0, percent: 0.001 }],
+				},
+				stopLoss: {
+					match: "any",
+					conditions: [{ ...up, bars: 501, percent: -1 }],
+				},
+			}),
+		);
+		expect(errs.map((e) => e.path)).toEqual([
+			"buy.conditions.0.period",
+			"buy.conditions.0.bars",
+			"buy.conditions.0.percent",
+			"stopLoss.conditions.0.bars",
+			"stopLoss.conditions.0.percent",
+		]);
+	});
+});
+
 describe("ボリンジャーバンド", () => {
 	const lower: Condition = {
 		type: "bollinger",

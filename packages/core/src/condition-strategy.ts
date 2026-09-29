@@ -58,6 +58,14 @@ export type Condition =
 	  }
 	/** 終値が EMA(period) より上（above）/ 下（below）。どのグループでも使える */
 	| { type: "emaPosition"; period: number; direction: "above" | "below" }
+	/** EMA(period) が bars 本前から percent % 以上 上がった（up）/ 下がった（down）。percent が 0 なら向きだけを見る。どのグループでも使える */
+	| {
+			type: "emaSlope";
+			period: number;
+			bars: number;
+			percent: number;
+			direction: "up" | "down";
+	  }
 	/** 終値がボリンジャーバンド（period 本・sigma σ）の上限以上（upper）/ 下限以下（lower）。どのグループでも使える */
 	| {
 			type: "bollinger";
@@ -161,6 +169,10 @@ export const LIMITS = {
 	/** ボリンジャーバンドの σ。0.1 刻み */
 	bollingerSigma: { min: 0.1, max: 5 },
 	percent: { min: 0.1, max: 100 },
+	/** EMA の傾きで何本前と比べるか */
+	emaSlopeBars: { min: 1, max: 500 },
+	/** EMA の傾きの %。0.01 刻み */
+	emaSlopePercent: { min: 0, max: 100 },
 	holdingBars: { min: 1, max: 1000 },
 	/** 買い指値を現在値から下げる %。0 以上 100 未満、0.01 刻み */
 	buyBelowPercent: { min: 0, maxExclusive: 100 },
@@ -299,6 +311,34 @@ function checkCondition(c: Condition, ctx: Ctx): Hit {
 				? {
 						ok: true,
 						why: `終値 ${formatYen(ctx.price)} が EMA(${c.period}) ${formatYen(v)} より${c.direction === "above" ? "上" : "下"}`,
+					}
+				: { ok: false };
+		}
+		case "emaSlope": {
+			const need = c.period + c.bars;
+			if (n < need) {
+				return {
+					insufficient: `EMA(${c.period}) の ${c.bars} 本前比に ${need} 本必要、現在 ${n} 本`,
+				};
+			}
+			const e = emaOf(ctx, c.period);
+			const before = e[n - 1 - c.bars] as number;
+			const now = e[n - 1] as number;
+			const change = (now / before - 1) * 100;
+			// 変化が 0 のときはどちらの向きでも成立しない
+			const hit =
+				c.direction === "up"
+					? change > 0 && change >= c.percent
+					: change < 0 && -change >= c.percent;
+			const sign = change >= 0 ? "+" : "−";
+			const target =
+				c.percent > 0
+					? `（${c.direction === "up" ? "+" : "−"}${c.percent}% 以上）`
+					: "";
+			return hit
+				? {
+						ok: true,
+						why: `EMA(${c.period}) ${formatYen(now)} は ${c.bars} 本前 ${formatYen(before)} から ${sign}${Math.abs(change).toFixed(2)}%${target}`,
 					}
 				: { ok: false };
 		}
@@ -456,7 +496,7 @@ export function emaPeriods(params: ConditionSet): number[] {
 			if (c.type === "emaCross") {
 				set.add(c.fast);
 				set.add(c.slow);
-			} else if (c.type === "emaPosition") {
+			} else if (c.type === "emaPosition" || c.type === "emaSlope") {
 				set.add(c.period);
 			}
 		}
@@ -516,6 +556,8 @@ export function historyBars(params: ConditionSet): number {
 				n = Math.max(n, c.slow * EMA_HISTORY_FACTOR + 1);
 			} else if (c.type === "emaPosition" || c.type === "rsi") {
 				n = Math.max(n, c.period * EMA_HISTORY_FACTOR + 1);
+			} else if (c.type === "emaSlope") {
+				n = Math.max(n, c.period * EMA_HISTORY_FACTOR + c.bars + 1);
 			} else if (c.type === "breakout") {
 				n = Math.max(n, c.lookback + 1);
 			} else if (c.type === "bollinger") {
@@ -631,6 +673,22 @@ export function validateConditionSet(p: ConditionSet): ValidationError[] {
 						err(`${at}.period`, `${range(LIMITS.emaPeriod)} の整数で入れる`);
 					}
 					break;
+				case "emaSlope": {
+					if (!isIntIn(c.period, LIMITS.emaPeriod)) {
+						err(`${at}.period`, `${range(LIMITS.emaPeriod)} の整数で入れる`);
+					}
+					if (!isIntIn(c.bars, LIMITS.emaSlopeBars)) {
+						err(`${at}.bars`, `${range(LIMITS.emaSlopeBars)} の整数で入れる`);
+					}
+					const r = LIMITS.emaSlopePercent;
+					if (
+						!isNumIn(c.percent, r) ||
+						Math.abs(c.percent * 100 - Math.round(c.percent * 100)) > 1e-9
+					) {
+						err(`${at}.percent`, `${range(r)}、0.01 刻みで入れる`);
+					}
+					break;
+				}
 				case "bollinger": {
 					if (!isIntIn(c.period, LIMITS.bollingerPeriod)) {
 						err(
@@ -1060,6 +1118,15 @@ function parseCondition(v: unknown): Condition | null {
 			return {
 				type: "emaPosition",
 				period: num(v.period),
+				direction: v.direction,
+			};
+		case "emaSlope":
+			if (v.direction !== "up" && v.direction !== "down") return null;
+			return {
+				type: "emaSlope",
+				period: num(v.period),
+				bars: num(v.bars),
+				percent: num(v.percent),
 				direction: v.direction,
 			};
 		case "bollinger":

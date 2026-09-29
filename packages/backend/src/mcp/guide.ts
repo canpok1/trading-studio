@@ -17,6 +17,7 @@ const CONDITIONS: Record<ConditionType, string> = {
 	breakout: `- \`{"type":"breakout","lookback":20,"direction":"high"|"low"}\` 終値が今の足を除く直近 N 本の最高値を上回った・最安値を下回った。本数 ${LIMITS.lookback.min}〜${LIMITS.lookback.max}`,
 	rsi: `- \`{"type":"rsi","period":14,"threshold":30,"direction":"above"|"below"}\` RSI（Wilder 方式）が N 以上・以下。期間 ${LIMITS.rsiPeriod.min}〜${LIMITS.rsiPeriod.max}、しきい値 ${LIMITS.rsiThreshold.min}〜${LIMITS.rsiThreshold.max} の整数`,
 	emaPosition: `- \`{"type":"emaPosition","period":200,"direction":"above"|"below"}\` 終値が EMA(N) より上・下（等しいときは成立しない）。本数 ${LIMITS.emaPeriod.min}〜${LIMITS.emaPeriod.max}`,
+	emaSlope: `- \`{"type":"emaSlope","period":50,"bars":5,"percent":0,"direction":"up"|"down"}\` EMA(N) が M 本前の EMA から percent% 以上上がっている・下がっている。percent 0 なら向きだけを見る（変化が 0 のときはどちらも成立しない）。本数 ${LIMITS.emaPeriod.min}〜${LIMITS.emaPeriod.max}、M ${LIMITS.emaSlopeBars.min}〜${LIMITS.emaSlopeBars.max}、percent ${LIMITS.emaSlopePercent.min}〜${LIMITS.emaSlopePercent.max}（0.01 刻み）`,
 	bollinger: `- \`{"type":"bollinger","period":20,"sigma":2,"band":"upper"|"lower"}\` 終値がボリンジャーバンド（N 本・Kσ、中央は単純移動平均）の上限以上・下限以下。本数 ${LIMITS.bollingerPeriod.min}〜${LIMITS.bollingerPeriod.max}、σ ${LIMITS.bollingerSigma.min}〜${LIMITS.bollingerSigma.max}（0.1 刻み）`,
 	entryChange: `- \`{"type":"entryChange","percent":2,"direction":"up"|"down"}\` 現在値がそのロットの買値から N% 以上上がった・下がった。売りのグループ（takeProfit・stopLoss）だけ。${LIMITS.percent.min}〜${LIMITS.percent.max}`,
 	trailingStop: `- \`{"type":"trailingStop","percent":3}\` 現在値がそのロットを買ってからの最高値から N% 以上下がった。売りのグループだけ。${LIMITS.percent.min}〜${LIMITS.percent.max}`,

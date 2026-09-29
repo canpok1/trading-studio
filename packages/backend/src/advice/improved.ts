@@ -45,6 +45,7 @@ const CONDITION: ResponseSchema = {
 				"breakout=終値が直近 lookback 本の最高値を上抜けた(direction=high)/最安値を下抜けた(low)。",
 				"rsi=RSI period 本が threshold 以上(direction=above)/以下(below)。",
 				"emaPosition=終値が EMA period 本より上(direction=above)/下(below)。",
+				"emaSlope=EMA period 本が bars 本前より percent % 以上上がっている(direction=up)/下がっている(down)。percent=0 なら向きだけ。",
 				"bollinger=終値がボリンジャーバンド period 本・sigma σ の上限以上(band=upper)/下限以下(lower)。",
 				"entryChange=買値から percent % 上がった(direction=up)/下がった(down)。売りの条件だけ。",
 				"trailingStop=買ってからの最高値から percent % 下がった。売りの条件だけ。",
@@ -56,6 +57,7 @@ const CONDITION: ResponseSchema = {
 				"breakout",
 				"rsi",
 				"emaPosition",
+				"emaSlope",
 				"bollinger",
 				"entryChange",
 				"trailingStop",
@@ -71,7 +73,9 @@ const CONDITION: ResponseSchema = {
 		sigma: opt(num("ボリンジャーバンドの σ")),
 		band: opt(str("ボリンジャーバンドの上限・下限", ["upper", "lower"])),
 		percent: opt(num("%")),
-		bars: opt(int("本数")),
+		bars: opt(
+			int("本数（holdingBars の保有本数・emaSlope の何本前と比べるか）"),
+		),
 		direction: opt(
 			str("向き", ["up", "down", "high", "low", "above", "below"]),
 		),
