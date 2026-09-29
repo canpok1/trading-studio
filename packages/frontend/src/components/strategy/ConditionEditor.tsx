@@ -290,9 +290,8 @@ const CONDITION_NAMES: Record<ConditionKind, string> = {
 	entryChange: "買値からの %",
 	trailingStop: "買ってからの最高値からの %（トレーリングストップ）",
 	holdingBars: "買ってからの本数",
-	"judgment:trend": "トレンド判定が指定のどれか",
-	"judgment:risk": "リスク判定が指定のどれか",
 	"judgment:sentiment": "センチメント判定が指定のどれか",
+	"judgment:risk": "リスク判定が指定のどれか",
 };
 
 const PRICE_KINDS: Record<ConditionGroupKey, ConditionKind[]> = {
@@ -325,9 +324,8 @@ const JUDGMENT_KINDS = JUDGES.map((j) => `judgment:${j}` as const);
 const JUDGMENT_DEFAULTS: {
 	[J in Judge]: { buy: JudgmentValue<J>[]; sell: JudgmentValue<J>[] };
 } = {
-	trend: { buy: ["up", "range"], sell: ["down"] },
-	risk: { buy: ["normal", "caution"], sell: ["crisis"] },
 	sentiment: { buy: ["0", "+1", "+2"], sell: ["-2"] },
+	risk: { buy: ["normal", "caution"], sell: ["crisis"] },
 };
 
 function defaultCondition(

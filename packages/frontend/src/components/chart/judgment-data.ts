@@ -15,7 +15,7 @@ export function alignJudgments(
 	series: JudgmentSeries,
 	barTimes: readonly number[],
 ): BarJudgments | null {
-	const out = { trend: [], risk: [], sentiment: [] } as BarJudgments;
+	const out = { sentiment: [], risk: [] } as BarJudgments;
 	let any = false;
 	for (const t of barTimes) {
 		const i = (t - series.from) / series.step;
@@ -36,9 +36,8 @@ export function slotAligned(
 	const pick = <V>(values: readonly (V | null)[]) =>
 		slots.map((s) => (s.bar === null ? null : (values[s.bar] ?? null)));
 	return {
-		trend: pick(judgments.trend),
-		risk: pick(judgments.risk),
 		sentiment: pick(judgments.sentiment),
+		risk: pick(judgments.risk),
 	};
 }
 

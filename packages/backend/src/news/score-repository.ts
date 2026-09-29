@@ -11,7 +11,6 @@ import type { CriteriaVersion, NewsScore } from "./types";
 type ScoreRow = {
 	news_id: number;
 	status: NewsScore["status"];
-	trend: number | null;
 	risk: number | null;
 	sentiment: number | null;
 	comment: string | null;
@@ -26,10 +25,7 @@ type ScoreRow = {
 
 export const toNewsScore = (r: ScoreRow): NewsScore => ({
 	status: r.status,
-	scores:
-		r.status === "done"
-			? { trend: r.trend, risk: r.risk, sentiment: r.sentiment }
-			: null,
+	scores: r.status === "done" ? { sentiment: r.sentiment, risk: r.risk } : null,
 	comment: r.comment,
 	scoredAt: r.scored_at,
 	criteriaVersion: r.criteria_version,
@@ -239,18 +235,16 @@ export class ScoreRepository {
 		},
 	) {
 		this.sql.run(
-			`insert into news_scores (news_id, status, trend, risk, sentiment, comment, scored_at, criteria_version, model, app_built_at, error, attempts, next_attempt_at)
-			 values (?, 'done', ?, ?, ?, ?, ?, ?, ?, ?, null, ?, null)
-			 on conflict (news_id) do update set status = 'done', trend = excluded.trend, risk = excluded.risk,
-			   sentiment = excluded.sentiment, comment = excluded.comment, scored_at = excluded.scored_at,
+			`insert into news_scores (news_id, status, sentiment, risk, comment, scored_at, criteria_version, model, app_built_at, error, attempts, next_attempt_at)
+			 values (?, 'done', ?, ?, ?, ?, ?, ?, ?, null, ?, null)
+			 on conflict (news_id) do update set status = 'done', sentiment = excluded.sentiment, risk = excluded.risk, comment = excluded.comment, scored_at = excluded.scored_at,
 			   criteria_version = excluded.criteria_version, model = excluded.model,
 			   app_built_at = excluded.app_built_at, error = null,
 			   attempts = excluded.attempts, next_attempt_at = null`,
 			[
 				newsId,
-				r.scores.trend,
-				r.scores.risk,
 				r.scores.sentiment,
+				r.scores.risk,
 				r.comment,
 				meta.scoredAt,
 				meta.criteriaVersion,
@@ -311,13 +305,12 @@ export class ScoreRepository {
 					published_at: number;
 					fetched_at: number;
 					scored_at: number;
-					trend: number | null;
-					risk: number | null;
 					sentiment: number | null;
+					risk: number | null;
 				},
 				[number, number]
 			>(
-				`select n.id, n.published_at, n.fetched_at, s.scored_at, s.trend, s.risk, s.sentiment
+				`select n.id, n.published_at, n.fetched_at, s.scored_at, s.sentiment, s.risk
 				 from news_scores s join news n on n.id = s.news_id
 				 where s.status = 'done' and s.scored_at >= ? and s.scored_at < ?
 				 order by s.scored_at, n.id`,
@@ -328,7 +321,7 @@ export class ScoreRepository {
 				publishedAt: r.published_at,
 				fetchedAt: r.fetched_at,
 				scoredAt: r.scored_at,
-				scores: { trend: r.trend, risk: r.risk, sentiment: r.sentiment },
+				scores: { sentiment: r.sentiment, risk: r.risk },
 			}));
 	}
 

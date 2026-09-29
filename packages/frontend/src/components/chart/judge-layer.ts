@@ -1,7 +1,7 @@
 // 価格チャートに AI 判定を重ねる描画拡張。背景に選んだ判定1つを薄く、残りをチャートの下の帯に濃く塗る
 
 import type { Judge } from "@trading-studio/core";
-import { JUDGE_LABELS } from "@trading-studio/core";
+import { JUDGE_LABELS, JUDGES } from "@trading-studio/core";
 import type {
 	IChartApi,
 	IPrimitivePaneRenderer,
@@ -30,7 +30,9 @@ const STRIP_PAD = 4;
 
 /** 帯の領域の高さ（px）。判定が無ければ 0 */
 export function stripArea(hasJudgments: boolean): number {
-	return hasJudgments ? 2 * (STRIP_H + STRIP_GAP) + STRIP_PAD : 0;
+	return hasJudgments
+		? (JUDGES.length - 1) * (STRIP_H + STRIP_GAP) + STRIP_PAD
+		: 0;
 }
 
 export class JudgeLayer implements ISeriesPrimitive<Time> {
@@ -38,7 +40,7 @@ export class JudgeLayer implements ISeriesPrimitive<Time> {
 	private requestUpdate: (() => void) | null = null;
 	private runs: { [J in Judge]?: JudgmentRun[] } = {};
 	private has = false;
-	private bg: Judge = "trend";
+	private bg: Judge = "sentiment";
 	private height = 0;
 	private readonly bgView: IPrimitivePaneView;
 	private readonly stripView: IPrimitivePaneView;
@@ -73,9 +75,8 @@ export class JudgeLayer implements ISeriesPrimitive<Time> {
 		this.bg = bg;
 		this.runs = judgments
 			? {
-					trend: judgmentRuns(judgments.trend),
-					risk: judgmentRuns(judgments.risk),
 					sentiment: judgmentRuns(judgments.sentiment),
+					risk: judgmentRuns(judgments.risk),
 				}
 			: {};
 		this.redraw();

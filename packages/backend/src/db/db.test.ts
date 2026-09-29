@@ -107,45 +107,49 @@ describe("migrateDb", () => {
 	});
 });
 
+/** idx が last までのマイグレーションだけを持つフォルダ */
+async function migrationsUpTo(last: number) {
+	const folder = join(dir, `migrations-${last}`);
+	await cp(MIGRATIONS_FOLDER, folder, { recursive: true });
+	const journalPath = join(folder, "meta", "_journal.json");
+	const journal = JSON.parse(await readFile(journalPath, "utf8"));
+	journal.entries = journal.entries.filter(
+		(e: { idx: number }) => e.idx <= last,
+	);
+	await writeFile(journalPath, JSON.stringify(journal));
+	return folder;
+}
+
+/** idx が last までを適用した DB */
+async function dbUpTo(last: number) {
+	const db = openDb(join(dir, "a.db"));
+	migrateDb(db, { migrationsFolder: await migrationsUpTo(last), now: 0 });
+	return db;
+}
+
+/** NOT NULL の列を仮の値で埋めて1行入れる */
+function insert(
+	db: ReturnType<typeof openDb>,
+	table: string,
+	values: Record<string, unknown>,
+) {
+	const cols = db.$client
+		.query<{ name: string; notnull: number; pk: number }, []>(
+			`pragma table_info(${table})`,
+		)
+		.all();
+	const row: Record<string, unknown> = {};
+	for (const c of cols) if (c.notnull && !c.pk) row[c.name] = 0;
+	Object.assign(row, values);
+	const keys = Object.keys(row);
+	db.$client.run(
+		`insert into ${table} (${keys.join(", ")}) values (${keys.map(() => "?").join(", ")})`,
+		// biome-ignore lint/suspicious/noExplicitAny: テスト用に任意の値を入れる
+		Object.values(row) as any[],
+	);
+}
+
 describe("0009 点数の尺度の換算", () => {
-	/** 0008 までを適用した DB。0009 の前の状態 */
-	async function before0009() {
-		const folder = join(dir, "migrations-0008");
-		await cp(MIGRATIONS_FOLDER, folder, { recursive: true });
-		await rm(join(folder, "0009_score_scale_and_version.sql"));
-		const journalPath = join(folder, "meta", "_journal.json");
-		const journal = JSON.parse(await readFile(journalPath, "utf8"));
-		journal.entries = journal.entries.filter(
-			(e: { idx: number }) => e.idx <= 8,
-		);
-		await writeFile(journalPath, JSON.stringify(journal));
-		const db = openDb(join(dir, "a.db"));
-		migrateDb(db, { migrationsFolder: folder, now: 0 });
-		return db;
-	}
-
-	/** NOT NULL の列を仮の値で埋めて1行入れる */
-	function insert(
-		db: ReturnType<typeof openDb>,
-		table: string,
-		values: Record<string, unknown>,
-	) {
-		const cols = db.$client
-			.query<{ name: string; notnull: number; pk: number }, []>(
-				`pragma table_info(${table})`,
-			)
-			.all();
-		const row: Record<string, unknown> = {};
-		for (const c of cols) if (c.notnull && !c.pk) row[c.name] = 0;
-		Object.assign(row, values);
-		const keys = Object.keys(row);
-		db.$client.run(
-			`insert into ${table} (${keys.join(", ")}) values (${keys.map(() => "?").join(", ")})`,
-			// biome-ignore lint/suspicious/noExplicitAny: テスト用に任意の値を入れる
-			Object.values(row) as any[],
-		);
-	}
-
 	const OLD_RULE = {
 		windowHours: 24,
 		halfLifeHours: 6,
@@ -166,7 +170,7 @@ describe("0009 点数の尺度の換算", () => {
 	};
 
 	test("トレンドとセンチメントの点数・しきい値を (旧 − 50) × 2 にし、リスクと null はそのまま", async () => {
-		const db = await before0009();
+		const db = await dbUpTo(8);
 		insert(db, "news", { id: 1, url: "https://a.example/1" });
 		insert(db, "news", { id: 2, url: "https://a.example/2" });
 		insert(db, "news_scores", {
@@ -192,7 +196,8 @@ describe("0009 点数の尺度の換算", () => {
 		});
 		insert(db, "backtest_runs", { id: 2, aggregation_rule: null });
 
-		migrateDb(db, { now: 1 });
+		// トレンドの列は 0012 で無くなるので、その前まで適用して確かめる
+		migrateDb(db, { migrationsFolder: await migrationsUpTo(11), now: 1 });
 
 		expect(
 			db.$client
@@ -223,6 +228,151 @@ describe("0009 点数の尺度の換算", () => {
 			.all();
 		expect(JSON.parse(runs[0]?.aggregation_rule ?? "")).toEqual(NEW_RULE);
 		expect(runs[1]?.aggregation_rule).toBeNull();
+	});
+});
+
+describe("0012 トレンドをセンチメントへ統合", () => {
+	const RULE_WITH_TREND = {
+		windowHours: 24,
+		halfLifeHours: 6,
+		thresholds: {
+			trend: { up: 20, down: -20 },
+			risk: { caution: 40, crisis: 70 },
+			sentiment: { plus2: 60, plus1: 20, minus1: -20, minus2: -60 },
+		},
+	};
+	const { trend: _, ...RULE } = RULE_WITH_TREND.thresholds;
+	const ema = { type: "emaCross", fast: 5, slow: 20, direction: "up" };
+	const OLD_PARAMS = {
+		timeframe: "1h",
+		buy: {
+			match: "all",
+			conditions: [
+				ema,
+				{ type: "judgment", judge: "trend", values: ["up", "range"] },
+				{ type: "judgment", judge: "risk", values: ["normal"] },
+			],
+		},
+		takeProfit: { match: "any", conditions: [] },
+		stopLoss: {
+			match: "any",
+			conditions: [
+				{ type: "judgment", judge: "trend", values: ["none", "down"] },
+			],
+		},
+	};
+	const NEW_PARAMS = {
+		...OLD_PARAMS,
+		buy: {
+			match: "all",
+			conditions: [
+				ema,
+				{ type: "judgment", judge: "sentiment", values: ["+2", "+1", "0"] },
+				{ type: "judgment", judge: "risk", values: ["normal"] },
+			],
+		},
+		stopLoss: {
+			match: "any",
+			conditions: [
+				{ type: "judgment", judge: "sentiment", values: ["-1", "-2", "none"] },
+			],
+		},
+	};
+
+	test("センチメントの点数をトレンドの点数で置き換え、戦略の条件としきい値のトレンドを書き換える", async () => {
+		const db = await dbUpTo(11);
+		insert(db, "news", { id: 1, url: "https://a.example/1" });
+		insert(db, "news", { id: 2, url: "https://a.example/2" });
+		insert(db, "news_scores", {
+			news_id: 1,
+			status: "done",
+			trend: -40,
+			risk: 30,
+			sentiment: 80,
+		});
+		insert(db, "news_scores", {
+			news_id: 2,
+			status: "done",
+			trend: null,
+			risk: 10,
+			sentiment: 50,
+		});
+		db.insert(settings)
+			.values({
+				key: "aggregation_rule",
+				value: JSON.stringify(RULE_WITH_TREND),
+			})
+			.run();
+		insert(db, "strategies", {
+			id: 1,
+			name: "a",
+			params: JSON.stringify(OLD_PARAMS),
+		});
+		insert(db, "backtest_runs", {
+			id: 1,
+			strategy_name: "a",
+			params: JSON.stringify(OLD_PARAMS),
+			aggregation_rule: JSON.stringify(RULE_WITH_TREND),
+		});
+		insert(db, "backtest_runs", {
+			id: 2,
+			strategy_name: "b",
+			params: JSON.stringify(NEW_PARAMS),
+			aggregation_rule: null,
+		});
+		insert(db, "backtest_advice", {
+			run_id: 1,
+			status: "done",
+			model: "m",
+			content: JSON.stringify({
+				analysis: "x",
+				improved: { ok: true, params: OLD_PARAMS },
+			}),
+		});
+		insert(db, "backtest_advice", {
+			run_id: 2,
+			status: "done",
+			model: "m",
+			content: JSON.stringify({
+				analysis: "x",
+				improved: { ok: false, reason: "変更なし" },
+			}),
+		});
+
+		migrateDb(db, { now: 1 });
+
+		expect(
+			db.$client
+				.query(
+					"select news_id, risk, sentiment from news_scores order by news_id",
+				)
+				.all(),
+		).toEqual([
+			{ news_id: 1, risk: 30, sentiment: -40 },
+			{ news_id: 2, risk: 10, sentiment: null },
+		]);
+		const json = (q: string) =>
+			db.$client
+				.query<{ v: string | null }, []>(q)
+				.all()
+				.map((r) => (r.v === null ? null : JSON.parse(r.v)));
+		expect(json("select value as v from settings")).toEqual([
+			{ ...RULE_WITH_TREND, thresholds: RULE },
+		]);
+		expect(json("select params as v from strategies")).toEqual([NEW_PARAMS]);
+		expect(json("select params as v from backtest_runs order by id")).toEqual([
+			NEW_PARAMS,
+			NEW_PARAMS,
+		]);
+		expect(
+			json("select aggregation_rule as v from backtest_runs order by id"),
+		).toEqual([{ ...RULE_WITH_TREND, thresholds: RULE }, null]);
+		expect(
+			json("select content as v from backtest_advice order by run_id"),
+		).toEqual([
+			{ analysis: "x", improved: { ok: true, params: NEW_PARAMS } },
+			{ analysis: "x", improved: { ok: false, reason: "変更なし" } },
+		]);
 	});
 });
 

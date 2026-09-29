@@ -1,21 +1,19 @@
-// ニュースごとの AI の点数から、ある時刻のトレンド・リスク・センチメントの判定を出す。AI は呼ばない
+// ニュースごとの AI の点数から、ある時刻のセンチメント・リスクの判定を出す。AI は呼ばない
 
 import type { ValidationError } from "./strategy";
 
-export const JUDGES = ["trend", "risk", "sentiment"] as const;
+export const JUDGES = ["sentiment", "risk"] as const;
 export type Judge = (typeof JUDGES)[number];
 
 export const JUDGE_LABELS: Record<Judge, string> = {
-	trend: "トレンド",
-	risk: "リスク",
 	sentiment: "センチメント",
+	risk: "リスク",
 };
 
 /** 判定の値。並びは画面の複数選択の並び */
 export const JUDGMENT_VALUES = {
-	trend: ["up", "range", "down"],
-	risk: ["normal", "caution", "crisis"],
 	sentiment: ["+2", "+1", "0", "-1", "-2"],
+	risk: ["normal", "caution", "crisis"],
 } as const satisfies Record<Judge, readonly string[]>;
 
 export type JudgmentValue<J extends Judge = Judge> =
@@ -26,18 +24,14 @@ export const NO_JUDGMENT = "none";
 
 /** 判定の条件で選べる値。並びは画面の複数選択の並び */
 export const JUDGMENT_CONDITION_VALUES = {
-	trend: [...JUDGMENT_VALUES.trend, NO_JUDGMENT],
-	risk: [...JUDGMENT_VALUES.risk, NO_JUDGMENT],
 	sentiment: [...JUDGMENT_VALUES.sentiment, NO_JUDGMENT],
+	risk: [...JUDGMENT_VALUES.risk, NO_JUDGMENT],
 } as const satisfies Record<Judge, readonly string[]>;
 
 export type JudgmentConditionValue<J extends Judge = Judge> =
 	(typeof JUDGMENT_CONDITION_VALUES)[J][number];
 
 export const JUDGMENT_VALUE_LABELS: Record<string, string> = {
-	up: "上昇",
-	range: "レンジ",
-	down: "下落",
 	normal: "平常",
 	caution: "警戒",
 	crisis: "危機",
@@ -51,16 +45,14 @@ export const JUDGMENT_VALUE_LABELS: Record<string, string> = {
 
 /** 期間内に対象が無いときの判定 */
 export const NEUTRAL: { [J in Judge]: JudgmentValue<J> } = {
-	trend: "range",
-	risk: "normal",
 	sentiment: "0",
+	risk: "normal",
 };
 
-/** 観点ごとの点数の範囲。トレンドとセンチメントは 0 が中立の両側、リスクは 0 が安全の片側 */
+/** 観点ごとの点数の範囲。センチメントは 0 が中立の両側、リスクは 0 が安全の片側 */
 export const SCORE_RANGES: Record<Judge, { min: number; max: number }> = {
-	trend: { min: -100, max: 100 },
-	risk: { min: 0, max: 100 },
 	sentiment: { min: -100, max: 100 },
+	risk: { min: 0, max: 100 },
 };
 
 /** 観点ごとの点数。SCORE_RANGES の範囲の整数、関係なしは null */
@@ -83,8 +75,6 @@ export type AggregationRule = {
 	windowHours: number;
 	halfLifeHours: number;
 	thresholds: {
-		/** up 以上=上昇、down 以下=下落 */
-		trend: { up: number; down: number };
 		/** caution 以上=警戒、crisis 以上=危機 */
 		risk: { caution: number; crisis: number };
 		/** plus2 以上=+2、plus1 以上=+1、minus1 未満=−1、minus2 未満=−2 */
@@ -96,7 +86,6 @@ export const DEFAULT_AGGREGATION_RULE: AggregationRule = {
 	windowHours: 24,
 	halfLifeHours: 6,
 	thresholds: {
-		trend: { up: 20, down: -20 },
 		risk: { caution: 40, crisis: 70 },
 		sentiment: { plus2: 60, plus1: 20, minus1: -20, minus2: -60 },
 	},
@@ -114,7 +103,7 @@ function isIntIn(v: unknown, r: { min: number; max: number }): v is number {
 	);
 }
 
-/** 集計ルールの入力検証。path はフォームの項目（thresholds.trend.up など） */
+/** 集計ルールの入力検証。path はフォームの項目（thresholds.risk.caution など） */
 export function validateAggregationRule(r: AggregationRule): ValidationError[] {
 	const errors: ValidationError[] = [];
 	const err = (path: string, message: string) => errors.push({ path, message });
@@ -134,9 +123,6 @@ export function validateAggregationRule(r: AggregationRule): ValidationError[] {
 	}
 	if (!scoresOk) return errors;
 	const t = r.thresholds;
-	if (t.trend.down >= t.trend.up) {
-		err("thresholds.trend.down", `上昇（${t.trend.up}）より小さくする`);
-	}
 	if (t.risk.caution >= t.risk.crisis) {
 		err("thresholds.risk.caution", `危機（${t.risk.crisis}）より小さくする`);
 	}
@@ -165,12 +151,11 @@ function num(v: unknown): number {
 export function parseAggregationRule(v: unknown): AggregationRule | null {
 	if (!isObj(v) || !isObj(v.thresholds)) return null;
 	const t = v.thresholds;
-	if (!isObj(t.trend) || !isObj(t.risk) || !isObj(t.sentiment)) return null;
+	if (!isObj(t.risk) || !isObj(t.sentiment)) return null;
 	return {
 		windowHours: num(v.windowHours),
 		halfLifeHours: num(v.halfLifeHours),
 		thresholds: {
-			trend: { up: num(t.trend.up), down: num(t.trend.down) },
 			risk: { caution: num(t.risk.caution), crisis: num(t.risk.crisis) },
 			sentiment: {
 				plus2: num(t.sentiment.plus2),
@@ -196,14 +181,6 @@ export function classify<J extends Judge>(
 	const t = rule.thresholds;
 	let v: JudgmentValue;
 	switch (judge) {
-		case "trend":
-			v =
-				average >= t.trend.up
-					? "up"
-					: average <= t.trend.down
-						? "down"
-						: "range";
-			break;
 		case "risk":
 			v =
 				average >= t.risk.crisis
@@ -254,9 +231,9 @@ function summarize(
 	rule: AggregationRule,
 ): JudgmentSnapshot["results"] {
 	const halfLifeMs = rule.halfLifeHours * HOUR;
-	const sum: Record<Judge, number> = { trend: 0, risk: 0, sentiment: 0 };
-	const wsum: Record<Judge, number> = { trend: 0, risk: 0, sentiment: 0 };
-	const count: Record<Judge, number> = { trend: 0, risk: 0, sentiment: 0 };
+	const sum: Record<Judge, number> = { sentiment: 0, risk: 0 };
+	const wsum: Record<Judge, number> = { sentiment: 0, risk: 0 };
+	const count: Record<Judge, number> = { sentiment: 0, risk: 0 };
 	for (const n of active) {
 		const w = 0.5 ** ((time - newsTime(n)) / halfLifeMs);
 		for (const j of JUDGES) {
@@ -277,9 +254,8 @@ function summarize(
 		return { value: classify(j, average, rule), average, count: count[j] };
 	};
 	return {
-		trend: result("trend"),
-		risk: result("risk"),
 		sentiment: result("sentiment"),
+		risk: result("risk"),
 	};
 }
 
@@ -344,9 +320,8 @@ export function judgmentCursor(
 		if (changed) {
 			const r = summarize([...active], time, rule);
 			values = {
-				trend: r.trend.value,
-				risk: r.risk.value,
 				sentiment: r.sentiment.value,
+				risk: r.risk.value,
 			};
 		}
 		return values;

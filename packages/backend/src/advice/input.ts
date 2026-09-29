@@ -183,7 +183,7 @@ function barTable(
 				Math.floor(
 					(b.time + step - judgments.step - judgments.from) / judgments.step,
 				),
-				judgments.values.trend.length - 1,
+				judgments.values.sentiment.length - 1,
 			);
 			for (const j of JUDGES) {
 				const v = judgments.values[j][k] ?? null;

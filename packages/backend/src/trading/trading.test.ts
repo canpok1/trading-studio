@@ -27,8 +27,8 @@ const always = (over: Partial<ConditionSet> = {}): ConditionSet => ({
 		conditions: [
 			{
 				type: "judgment",
-				judge: "trend",
-				values: ["up", "range", "down", "none"],
+				judge: "sentiment",
+				values: ["+2", "+1", "0", "-1", "-2", "none"],
 			},
 		],
 	},
@@ -127,7 +127,7 @@ function startScoring(t: ReturnType<typeof setup>, at: number) {
 	const id = (t.newsRepo.listNews(1)[0] as { id: number }).id;
 	t.scoreRepo.saveScore(
 		id,
-		{ scores: { trend: null, risk: null, sentiment: null }, comment: "c" },
+		{ scores: { sentiment: null, risk: null }, comment: "c" },
 		{
 			scoredAt: at,
 			criteriaVersion: 1,
@@ -163,15 +163,14 @@ describe("自動取引のオンオフ", () => {
 		]);
 		const detail = t.trading.order("paper", "p1");
 		expect(detail?.decision?.judgments).toEqual({
-			trend: "range",
-			risk: "normal",
 			sentiment: "0",
+			risk: "normal",
 		});
 		expect(detail?.decision?.decision.time).toBe(T0 + M);
 		const api = await t.call("GET", "/orders/paper/p1");
 		expect(api.body).toMatchObject({
 			order: { id: "p1", mode: "paper" },
-			judgments: { trend: "range" },
+			judgments: { sentiment: "0" },
 		});
 		expect((await t.call("GET", "/orders/paper/p9")).status).toBe(404);
 	});
@@ -181,7 +180,9 @@ describe("自動取引のオンオフ", () => {
 			always({
 				buy: {
 					match: "all",
-					conditions: [{ type: "judgment", judge: "trend", values: ["none"] }],
+					conditions: [
+						{ type: "judgment", judge: "sentiment", values: ["none"] },
+					],
 				},
 			}),
 		);

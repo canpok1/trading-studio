@@ -21,7 +21,7 @@ const CONDITIONS: Record<ConditionType, string> = {
 	entryChange: `- \`{"type":"entryChange","percent":2,"direction":"up"|"down"}\` 現在値がそのロットの買値から N% 以上上がった・下がった。売りのグループ（takeProfit・stopLoss）だけ。${LIMITS.percent.min}〜${LIMITS.percent.max}`,
 	trailingStop: `- \`{"type":"trailingStop","percent":3}\` 現在値がそのロットを買ってからの最高値から N% 以上下がった。売りのグループだけ。${LIMITS.percent.min}〜${LIMITS.percent.max}`,
 	holdingBars: `- \`{"type":"holdingBars","bars":24}\` そのロットの買いの約定から、戦略の粒度の足で N 本ぶんの時間が経った。売りのグループだけ。${LIMITS.holdingBars.min}〜${LIMITS.holdingBars.max}`,
-	judgment: `- \`{"type":"judgment","judge":"trend"|"risk"|"sentiment","values":[...]}\` ニュースの AI 判定が values のどれか。values は trend: ${JUDGMENT_VALUES.trend.join("/")}、risk: ${JUDGMENT_VALUES.risk.join("/")}、sentiment: ${JUDGMENT_VALUES.sentiment.join("/")}。どの判定でも ${NO_JUDGMENT}（データなし＝採点の記録が始まる前）を足せる。データなしのとき ${NO_JUDGMENT} を含まない条件は満たさない。記録開始前を含む期間のバックテストは、判定の条件のどれかに ${NO_JUDGMENT} があるときだけ実行できる`,
+	judgment: `- \`{"type":"judgment","judge":"sentiment"|"risk","values":[...]}\` ニュースの AI 判定が values のどれか。values は sentiment: ${JUDGMENT_VALUES.sentiment.join("/")}（BTC の価格にとって強気材料か弱気材料か）、risk: ${JUDGMENT_VALUES.risk.join("/")}。どの判定でも ${NO_JUDGMENT}（データなし＝採点の記録が始まる前）を足せる。データなしのとき ${NO_JUDGMENT} を含まない条件は満たさない。記録開始前を含む期間のバックテストは、判定の条件のどれかに ${NO_JUDGMENT} があるときだけ実行できる`,
 };
 
 export function conditionSetGuide(): string {

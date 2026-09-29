@@ -75,13 +75,11 @@ const CONDITION: ResponseSchema = {
 		direction: opt(
 			str("向き", ["up", "down", "high", "low", "above", "below"]),
 		),
-		judge: opt(
-			str("判定。trend=トレンド・risk=リスク・sentiment=センチメント", JUDGES),
-		),
+		judge: opt(str("判定。sentiment=センチメント・risk=リスク", JUDGES)),
 		values: opt({
 			type: "ARRAY",
 			description:
-				"判定の値。trend: up=上昇・range=レンジ・down=下落 / risk: normal=平常・caution=警戒・crisis=危機 / sentiment: +2・+1・0・-1・-2 / どれでも none=データなし（採点の記録が始まる前）",
+				"判定の値。sentiment: +2・+1・0・-1・-2 / risk: normal=平常・caution=警戒・crisis=危機 / どれでも none=データなし（採点の記録が始まる前）",
 			items: {
 				type: "STRING",
 				enum: [...new Set(Object.values(JUDGMENT_CONDITION_VALUES).flat())],

@@ -17,12 +17,11 @@ export const PROMPT_TEMPLATE = `<news>
 
 # 出力（この形式以外は受け付けない）
 観点ごとの整数。関係ない観点は null。
-- trend: -100〜100。-100=強い下落要因 / 0=中立 / 100=強い上昇要因
+- sentiment: -100〜100。BTC の価格にとって強気材料か弱気材料か。-100=強い弱気材料（下落要因） / 0=中立 / 100=強い強気材料（上昇要因）
 - risk: 0〜100。0=安全 / 100=危険
-- sentiment: -100〜100。-100=強い悲観 / 0=中立 / 100=強い楽観
 comment には採点の理由を日本語で書く。
 
-JSON のみを出力: {"trend": 整数|null, "risk": 整数|null, "sentiment": 整数|null, "comment": 文字列}`;
+JSON のみを出力: {"sentiment": 整数|null, "risk": 整数|null, "comment": 文字列}`;
 
 /** 採点の基準の初版 */
 export const DEFAULT_CRITERIA = `- 価格そのものの推移ではなく、ニュースの材料で判断する
@@ -58,11 +57,11 @@ export function buildPrompt(news: PromptNews, criteria: string): string {
 export const RESPONSE_SCHEMA = {
 	type: "OBJECT",
 	properties: {
-		trend: {
+		sentiment: {
 			type: "INTEGER",
 			nullable: true,
-			minimum: SCORE_RANGES.trend.min,
-			maximum: SCORE_RANGES.trend.max,
+			minimum: SCORE_RANGES.sentiment.min,
+			maximum: SCORE_RANGES.sentiment.max,
 		},
 		risk: {
 			type: "INTEGER",
@@ -70,16 +69,10 @@ export const RESPONSE_SCHEMA = {
 			minimum: SCORE_RANGES.risk.min,
 			maximum: SCORE_RANGES.risk.max,
 		},
-		sentiment: {
-			type: "INTEGER",
-			nullable: true,
-			minimum: SCORE_RANGES.sentiment.min,
-			maximum: SCORE_RANGES.sentiment.max,
-		},
 		comment: { type: "STRING" },
 	},
-	required: ["trend", "risk", "sentiment", "comment"],
-	propertyOrdering: ["trend", "risk", "sentiment", "comment"],
+	required: ["sentiment", "risk", "comment"],
+	propertyOrdering: ["sentiment", "risk", "comment"],
 } as const;
 
 export const COMMENT_MAX = 1000;

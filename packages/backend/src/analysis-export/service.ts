@@ -109,19 +109,14 @@ const newsTable: Table<NewsExportRow> = {
 		...time<NewsExportRow>("fetched_at", "取得時刻", (r) => r.fetched_at),
 		col("score_status", SCORE_STATUS, (r) => r.status ?? "unscored"),
 		col(
-			"trend",
-			"トレンドの点数（-100〜100、0 が中立、高いほど上昇）。関係なし・採点済みでなければ空",
-			(r) => (r.status === "done" ? r.trend : null),
+			"sentiment",
+			"センチメントの点数（-100〜100、0 が中立、高いほど BTC の価格にとって強気材料）。関係なし・採点済みでなければ空",
+			(r) => (r.status === "done" ? r.sentiment : null),
 		),
 		col(
 			"risk",
 			"リスクの点数（0〜100、高いほど危険）。関係なし・採点済みでなければ空",
 			(r) => (r.status === "done" ? r.risk : null),
-		),
-		col(
-			"sentiment",
-			"センチメントの点数（-100〜100、0 が中立、高いほど強気）。関係なし・採点済みでなければ空",
-			(r) => (r.status === "done" ? r.sentiment : null),
 		),
 		col("comment", "AI が書いた採点の理由", (r) => r.comment),
 		...time<NewsExportRow>(
@@ -190,12 +185,6 @@ function ruleRows(rule: AggregationRule): RuleRow[] {
 			value: rule.halfLifeHours,
 			desc: "重みの半減期（時間）。新しさの時刻からこの時間で重みが半分になる",
 		},
-		{ key: "trend_up", value: t.trend.up, desc: "平均点がこれ以上なら上昇" },
-		{
-			key: "trend_down",
-			value: t.trend.down,
-			desc: "平均点がこれ以下なら下落（間はレンジ）",
-		},
 		{
 			key: "risk_caution",
 			value: t.risk.caution,
@@ -236,9 +225,8 @@ type JudgmentRow = {
 };
 
 const JUDGE_DESC: Record<Judge, string> = {
-	trend: "トレンドの判定（up: 上昇 / range: レンジ / down: 下落）",
-	risk: "リスクの判定（normal: 平常 / caution: 警戒 / crisis: 危機）",
 	sentiment: "センチメントの判定（+2 / +1 / 0 / -1 / -2）",
+	risk: "リスクの判定（normal: 平常 / caution: 警戒 / crisis: 危機）",
 };
 
 const judgmentsTable: Table<JudgmentRow> = {
@@ -643,7 +631,7 @@ function readme({
 		"",
 		"## AI 判定のしくみ",
 		"",
-		"ニュースを取得するたびに AI が3観点（トレンド・リスク・センチメント）を採点する。トレンドとセンチメントは -100〜100（0 が中立）、リスクは 0〜100（高いほど危険）。判定は、ある時刻までに採点済みで、新しさの時刻が集計の期間内のニュースの点数を、新しいほど重くして（半減期で半分になる指数の重み）平均し、平均点を整数に丸めてしきい値と比べて決める。対象のニュースが無ければ レンジ・平常・0。",
+		"ニュースを取得するたびに AI が2観点（センチメント・リスク）を採点する。センチメントは BTC の価格にとって強気材料か弱気材料かで -100〜100（0 が中立）、リスクは 0〜100（高いほど危険）。トレンドを統合する前の採点は、センチメントの列に当時のトレンド（上昇要因か下落要因か）の点数を入れ直してある。判定は、ある時刻までに採点済みで、新しさの時刻が集計の期間内のニュースの点数を、新しいほど重くして（半減期で半分になる指数の重み）平均し、平均点を整数に丸めてしきい値と比べて決める。対象のニュースが無ければ 0・平常。",
 		"",
 		"## ファイル",
 		"",

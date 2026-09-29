@@ -16,7 +16,7 @@ import {
 	TIMEFRAME_LABELS,
 } from "@trading-studio/core";
 
-const JUDGE_SHORT = { trend: "トレンド", risk: "リスク", sentiment: "感情" };
+const JUDGE_SHORT = { sentiment: "センチメント", risk: "リスク" };
 
 const freq = (f: Frequency) => `${f.value}${FREQUENCY_UNIT_LABELS[f.unit]}`;
 
@@ -55,7 +55,7 @@ export function conditionText(c: Condition): string {
 /** 集計ルールの要約（バックテスト結果に出す） */
 export function ruleText(r: AggregationRule): string {
 	const t = r.thresholds;
-	return `集計 ${r.windowHours}時間・半減期${r.halfLifeHours}時間 · トレンド ${t.trend.down}/${t.trend.up} · リスク ${t.risk.caution}/${t.risk.crisis} · 感情 ${t.sentiment.minus2}/${t.sentiment.minus1}/${t.sentiment.plus1}/${t.sentiment.plus2}`;
+	return `集計 ${r.windowHours}時間・半減期${r.halfLifeHours}時間 · センチメント ${t.sentiment.minus2}/${t.sentiment.minus1}/${t.sentiment.plus1}/${t.sentiment.plus2} · リスク ${t.risk.caution}/${t.risk.crisis}`;
 }
 
 export function buyOrderText(o: BuyOrder): string {

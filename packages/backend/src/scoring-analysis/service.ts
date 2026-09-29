@@ -40,13 +40,6 @@ export const MAX_ANALYSIS_DAYS = 92;
 
 /** 点数の帯。集計ルールの既定のしきい値の前後で区切る */
 const BANDS: Record<Judge, { label: string; min: number; max: number }[]> = {
-	trend: [
-		{ label: "-100〜-50", min: -100, max: -50 },
-		{ label: "-49〜-20", min: -49, max: -20 },
-		{ label: "-19〜19", min: -19, max: 19 },
-		{ label: "20〜49", min: 20, max: 49 },
-		{ label: "50〜100", min: 50, max: 100 },
-	],
 	risk: [
 		{ label: "0〜19", min: 0, max: 19 },
 		{ label: "20〜39", min: 20, max: 39 },
@@ -328,15 +321,14 @@ export function createScoringAnalysis({
 			const end = Math.min(to, now());
 			const s = judgments.series(from, end, HOUR, rule);
 			const p = prices(from, end);
-			const points = s.values.trend.map((_, i) => ({
+			const points = s.values.sentiment.map((_, i) => ({
 				time: Math.min(from + (i + 1) * HOUR, end),
 				values: {
-					trend: s.values.trend[i],
-					risk: s.values.risk[i],
 					sentiment: s.values.sentiment[i],
+					risk: s.values.risk[i],
 				} as Record<Judge, string | null>,
 			}));
-			const judged = points.filter((x) => x.values.trend !== null);
+			const judged = points.filter((x) => x.values.sentiment !== null);
 			const withReturns = judged.map((x) => ({
 				...x,
 				ret: p.returnsFrom(x.time),

@@ -16,26 +16,6 @@ export type ValueStyle = {
 export const VALUE_STYLES: {
 	[J in Judge]: Record<JudgmentValue<J>, ValueStyle>;
 } = {
-	trend: {
-		up: {
-			label: "上昇",
-			bg: "--color-up-bg",
-			solid: "--color-up",
-			shape: "up",
-		},
-		range: {
-			label: "レンジ",
-			bg: "--color-range-bg",
-			solid: "--color-range",
-			shape: "bar",
-		},
-		down: {
-			label: "下落",
-			bg: "--color-down-bg",
-			solid: "--color-down",
-			shape: "down",
-		},
-	},
 	risk: {
 		normal: {
 			label: "平常",
@@ -58,13 +38,13 @@ export const VALUE_STYLES: {
 	},
 	sentiment: {
 		"+2": {
-			label: "+2 強い楽観",
+			label: "+2 強い強気",
 			bg: "--color-sp2-bg",
 			solid: "--color-sp2",
 			shape: "sq",
 		},
 		"+1": {
-			label: "+1 やや楽観",
+			label: "+1 やや強気",
 			bg: "--color-sp1-bg",
 			solid: "--color-sp1",
 			shape: "sq",
@@ -76,13 +56,13 @@ export const VALUE_STYLES: {
 			shape: "sq",
 		},
 		"-1": {
-			label: "−1 やや悲観",
+			label: "−1 やや弱気",
 			bg: "--color-sm1-bg",
 			solid: "--color-sm1",
 			shape: "sq",
 		},
 		"-2": {
-			label: "−2 強い悲観",
+			label: "−2 強い弱気",
 			bg: "--color-sm2-bg",
 			solid: "--color-sm2",
 			shape: "sq",

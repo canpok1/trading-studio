@@ -246,7 +246,9 @@ test("AI 判定の条件がある戦略は、採点の記録が始まる前の�
 		...PARAMS,
 		buy: {
 			match: "all",
-			conditions: [{ type: "judgment", judge: "trend", values: ["up"] }],
+			conditions: [
+				{ type: "judgment", judge: "sentiment", values: ["+2", "+1"] },
+			],
 		},
 	});
 	await choose(page, name, "2026-05-03", "2026-05-25");
@@ -269,7 +271,7 @@ test("判定の条件で「データなし」を選ぶと、採点の記録が�
 		buy: {
 			match: "all",
 			conditions: [
-				{ type: "judgment", judge: "trend", values: ["up", "none"] },
+				{ type: "judgment", judge: "sentiment", values: ["+1", "none"] },
 			],
 		},
 	});

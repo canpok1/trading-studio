@@ -529,7 +529,7 @@ function toMarkers(
 	});
 }
 
-/** AI の今の判定3つ。押すとニュース画面へ */
+/** AI の今の判定。押すとニュース画面へ */
 function JudgmentPanel({ current }: { current: CurrentJudgment | null }) {
 	return (
 		<section aria-label="AI評価" className={PANEL}>
@@ -537,7 +537,7 @@ function JudgmentPanel({ current }: { current: CurrentJudgment | null }) {
 			{current === null ? (
 				<Skeleton className="h-[74px]" />
 			) : (
-				<div className="grid grid-cols-3 gap-2">
+				<div className="grid grid-cols-2 gap-2">
 					{JUDGES.map((j) => {
 						const r = current.results[j];
 						return (

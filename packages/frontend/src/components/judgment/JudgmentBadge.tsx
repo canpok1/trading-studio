@@ -52,7 +52,7 @@ export function JudgmentBadge<J extends Judge>({
 	const s = valueStyle(judge, value);
 	const crisis = judge === "risk" && value === "crisis";
 	const label =
-		judge === "sentiment" ? `感情 ${s.label.split(" ")[0]}` : s.label;
+		judge === "sentiment" ? `センチメント ${s.label.split(" ")[0]}` : s.label;
 	return (
 		<span
 			data-testid={`badge-${judge}`}
@@ -60,7 +60,7 @@ export function JudgmentBadge<J extends Judge>({
 			style={
 				crisis
 					? { background: `var(${s.solid})` }
-					: judge === "trend" || (judge === "risk" && value === "caution")
+					: judge === "risk" && value === "caution"
 						? { background: `var(${s.bg})` }
 						: undefined
 			}
@@ -117,25 +117,19 @@ export function ZoneBar({
 	const { min, max } = SCORE_RANGES[judge];
 	const pct = (v: number) => ((v - min) / (max - min)) * 100;
 	const zones: [string, number, number][] =
-		judge === "trend"
+		judge === "risk"
 			? [
-					["down", min, t.trend.down],
-					["range", t.trend.down, t.trend.up],
-					["up", t.trend.up, max],
+					["normal", min, t.risk.caution],
+					["caution", t.risk.caution, t.risk.crisis],
+					["crisis", t.risk.crisis, max],
 				]
-			: judge === "risk"
-				? [
-						["normal", min, t.risk.caution],
-						["caution", t.risk.caution, t.risk.crisis],
-						["crisis", t.risk.crisis, max],
-					]
-				: [
-						["-2", min, t.sentiment.minus2],
-						["-1", t.sentiment.minus2, t.sentiment.minus1],
-						["0", t.sentiment.minus1, t.sentiment.plus1],
-						["+1", t.sentiment.plus1, t.sentiment.plus2],
-						["+2", t.sentiment.plus2, max],
-					];
+			: [
+					["-2", min, t.sentiment.minus2],
+					["-1", t.sentiment.minus2, t.sentiment.minus1],
+					["0", t.sentiment.minus1, t.sentiment.plus1],
+					["+1", t.sentiment.plus1, t.sentiment.plus2],
+					["+2", t.sentiment.plus2, max],
+				];
 	const gradient = zones
 		.map(
 			([v, a, b]) =>

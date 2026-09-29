@@ -361,11 +361,11 @@ describe("MCP", () => {
 			const j = judged.json as {
 				hours: number;
 				judgedHours: number;
-				byJudge: { trend: { hours: number }[] };
+				byJudge: { sentiment: { hours: number }[] };
 			};
 			expect(j.hours).toBe(24);
 			expect(j.judgedHours).toBe(24);
-			expect(j.byJudge.trend.reduce((a, x) => a + x.hours, 0)).toBe(24);
+			expect(j.byJudge.sentiment.reduce((a, x) => a + x.hours, 0)).toBe(24);
 
 			const bad = await call("evaluate_judgments", {
 				from: "2026-08-02",

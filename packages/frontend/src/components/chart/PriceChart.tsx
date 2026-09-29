@@ -133,7 +133,7 @@ function tickLabel(t: Time, type: TickMarkType): string {
 	}
 }
 
-/** ローソク足の色。上昇=緑・下落=赤（AI 判定のトレンドと同じ色） */
+/** ローソク足の色。上昇=緑・下落=赤 */
 function candleColors() {
 	const up = cssVar("--color-up");
 	const down = cssVar("--color-down");
@@ -193,7 +193,7 @@ export function PriceChart({
 	latestNote,
 	viewKey,
 	judgments = null,
-	bg = "trend",
+	bg = "sentiment",
 	onBgChange,
 }: Props) {
 	const box = useRef<HTMLDivElement>(null);
@@ -868,7 +868,7 @@ export function PriceChart({
 											className="flex items-center gap-1"
 										>
 											<ShapeIcon shape={st.shape} color={`var(${st.solid})`} />
-											{j === "sentiment" ? `感情 ${v}` : st.label}
+											{j === "sentiment" ? `センチメント ${v}` : st.label}
 										</span>
 									);
 								})}

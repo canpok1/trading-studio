@@ -37,9 +37,8 @@ export function createJudgmentService({
 				Math.min(from + (i + 1) * step, t),
 			);
 			const values = {
-				trend: [],
-				risk: [],
 				sentiment: [],
+				risk: [],
 			} as JudgmentSeries["values"];
 			const judged =
 				firstScoredAt === null

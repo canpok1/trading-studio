@@ -379,7 +379,7 @@ describe("チャートの AI 判定", () => {
 		const id = (t.newsRepo.listNews(1)[0] as { id: number }).id;
 		t.scoreRepo.saveScore(
 			id,
-			{ scores: { trend: 60, risk: null, sentiment: null }, comment: "c" },
+			{ scores: { sentiment: 60, risk: null }, comment: "c" },
 			{
 				scoredAt: at,
 				criteriaVersion: 1,
@@ -391,11 +391,14 @@ describe("チャートの AI 判定", () => {
 		const rule = t.scoreRepo.aggregationRule();
 		t.scoreRepo.setAggregationRule({
 			...rule,
-			thresholds: { ...rule.thresholds, trend: { up: 80, down: -20 } },
+			thresholds: {
+				...rule.thresholds,
+				sentiment: { ...rule.thresholds.sentiment, plus2: 80, plus1: 70 },
+			},
 		});
 		const run = (await post(t, body())).json.run as BacktestRun;
 		await t.backtests.running();
-		expect(run.aggregationRule?.thresholds.trend.up).toBe(80);
+		expect(run.aggregationRule?.thresholds.sentiment.plus2).toBe(80);
 		expect(run.dailyLossLimitApplied).toBe(true);
 		// 1日の損失上限を持つ前の実行は、上限を効かせずに回した結果として読む
 		const old = JSON.parse(
@@ -416,13 +419,13 @@ describe("チャートの AI 判定", () => {
 
 		const chart = await getJson<{
 			bars: { time: number }[];
-			judgments: { values: { trend: (string | null)[] } };
+			judgments: { values: { sentiment: (string | null)[] } };
 		}>(t, `/api/backtests/${run.id}/chart`);
-		const trend = chart.judgments.values.trend;
-		expect(trend).toHaveLength(chart.bars.length);
+		const sentiment = chart.judgments.values.sentiment;
+		expect(sentiment).toHaveLength(chart.bars.length);
 		const i = chart.bars.findIndex((b) => b.time + H >= at);
-		expect(trend[i - 1]).toBeNull();
-		expect(trend[i]).toBe("range");
+		expect(sentiment[i - 1]).toBeNull();
+		expect(sentiment[i]).toBe("0");
 	});
 });
 
@@ -431,11 +434,13 @@ describe("AI 判定の条件", () => {
 		...PARAMS,
 		buy: {
 			match: "all",
-			conditions: [{ type: "judgment", judge: "trend", values: ["up"] }],
+			conditions: [
+				{ type: "judgment", judge: "sentiment", values: ["+2", "+1"] },
+			],
 		},
 	};
 
-	function score(t: T, at: number, trend: number) {
+	function score(t: T, at: number, sentiment: number) {
 		const source = t.newsRepo.insertSource(
 			{ name: `S${at}`, url: `https://a.example/${at}/feed`, language: "ja" },
 			0,
@@ -459,7 +464,7 @@ describe("AI 判定の条件", () => {
 		).id;
 		t.scoreRepo.saveScore(
 			id,
-			{ scores: { trend, risk: null, sentiment: null }, comment: "c" },
+			{ scores: { sentiment, risk: null }, comment: "c" },
 			{
 				scoredAt: at,
 				criteriaVersion: 1,
@@ -498,7 +503,11 @@ describe("AI 判定の条件", () => {
 			buy: {
 				match: "all",
 				conditions: [
-					{ type: "judgment", judge: "trend", values: ["up", "none"] },
+					{
+						type: "judgment",
+						judge: "sentiment",
+						values: ["+2", "+1", "none"],
+					},
 				],
 			},
 		};
@@ -511,7 +520,7 @@ describe("AI 判定の条件", () => {
 		}>(t, `/api/backtests/${run.id}/orders?filter=all&limit=200`);
 		const buys = orders.orders.filter((o) => o.side === "buy");
 		expect(buys.length).toBeGreaterThan(0);
-		// 記録の開始後は中立（レンジ）なので買わない
+		// 記録の開始後は中立（0）なので買わない
 		for (const o of buys) expect(o.placedAt).toBeLessThan(recorded);
 	});
 
@@ -519,7 +528,7 @@ describe("AI 判定の条件", () => {
 		const t = setup();
 		// 記録の開始。中立の点数
 		score(t, START, 0);
-		// 上昇の判定になるのは、この採点から集計の期間（24時間）のあいだだけ
+		// +2 の判定になるのは、この採点から集計の期間（24時間）のあいだだけ
 		const up = START + 5 * 24 * H;
 		score(t, up, 80);
 		const r = await post(t, body({ params: withJudgment }));
