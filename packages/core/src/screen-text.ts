@@ -31,13 +31,13 @@ export function conditionScreenText(c: Condition): string {
 		case "emaPosition":
 			return `終値が EMA ${c.period} 本より${c.direction === "above" ? "上" : "下"}`;
 		case "emaSlope":
-			return `EMA ${c.period} 本が ${c.bars} 本前より${c.percent > 0 ? ` ${c.percent} % 以上` : ""}${c.direction === "up" ? "上がっている" : "下がっている"}`;
+			return `EMA ${c.period} 本が ${c.bars} 本前より${c.percent > 0 ? ` ${c.percent}% 以上` : ""}${c.direction === "up" ? "上がっている" : "下がっている"}`;
 		case "bollinger":
 			return `終値がボリンジャーバンド ${c.period} 本・${c.sigma}σ の${c.band === "upper" ? "上限以上" : "下限以下"}`;
 		case "entryChange":
-			return `買値から ${c.percent} % ${c.direction === "up" ? "上がった" : "下がった"}`;
+			return `買値から ${c.percent}% ${c.direction === "up" ? "上がった" : "下がった"}`;
 		case "trailingStop":
-			return `買ってからの最高値から ${c.percent} % 下がった`;
+			return `買ってからの最高値から ${c.percent}% 下がった`;
 		case "holdingBars":
 			return `買ってから ${c.bars} 本経った`;
 		case "judgment":
@@ -50,11 +50,11 @@ export function conditionSetScreenText(p: ConditionSet): string[] {
 	const lines = [
 		"### 足と判定の間隔",
 		`- 足の粒度: ${TIMEFRAME_LABELS[p.timeframe]}`,
-		`- ポジションなしのとき: ${freq(p.frequency.flat)}ごとに買いの条件を判定`,
-		`- ポジションありのとき: ${freq(p.frequency.holding)}ごとに売りの条件を判定`,
-		"### 1回の注文量",
-		`- ${formatBtc(p.orderSize)} BTC`,
-		`- 最大ポジション数: ${p.maxPositions}`,
+		`- 保有なしのとき: ${freq(p.frequency.flat)}ごとに買いの条件を判定`,
+		`- 保有中のとき: ${freq(p.frequency.holding)}ごとに売りの条件を判定`,
+		"### 注文量とロット数",
+		`- 1回の注文量: ${formatBtc(p.orderSize)} BTC`,
+		`- 最大ロット数: ${p.maxPositions}`,
 		"### リスク上限",
 		`- 1日の損失上限（円）: ${formatYen(p.dailyLossLimit)}`,
 	];
@@ -72,7 +72,7 @@ export function conditionSetScreenText(p: ConditionSet): string[] {
 			o.lines.forEach((l, i) => {
 				lines.push(
 					l.type === "limit"
-						? `- 注文${i + 1}: 指値。現在値から ${l.belowPercent} % 下に指値。${o.expireBars} 本のあいだ約定しなければ取消`
+						? `- 注文${i + 1}: 指値。現在値から ${l.belowPercent}% 下に指値。${o.expireBars} 本のあいだ約定しなければ取消`
 						: `- 注文${i + 1}: 成行`,
 				);
 			});

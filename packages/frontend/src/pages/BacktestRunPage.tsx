@@ -548,7 +548,7 @@ function RunForm({
 			title="バックテスト"
 			help={
 				<p>
-					テンプレートから条件を作って、取り込んだ CSV
+					ひな形か保存済みの戦略から条件を作って、取り込んだ CSV
 					の過去データで模擬売買する。
 				</p>
 			}
@@ -754,7 +754,7 @@ function RunForm({
 								<h2 className="text-[17px] font-bold">戦略設定</h2>
 								<Help label="戦略設定">
 									<p>
-										テンプレートの条件をコピーして試す。ここで変えても戦略には保存されない。
+										読み込んだ条件をコピーして試す。ここで変えても戦略には保存されない。
 									</p>
 								</Help>
 							</div>
@@ -775,7 +775,7 @@ function RunForm({
 								className="ml-auto shrink-0"
 								onClick={() => setPicking(true)}
 							>
-								テンプレート読み込み
+								条件を読み込む
 							</Button>
 						</div>
 						{draft.improvement && (
@@ -974,10 +974,8 @@ function TemplateDialog({
 		["保存済みの戦略", choices.filter((t) => t.key.startsWith("s:"))],
 	] as const;
 	return (
-		<Modal title="テンプレート読み込み" onClose={onClose}>
-			{replacing && (
-				<Note>今の条件は、選んだテンプレートの条件に置き換わる。</Note>
-			)}
+		<Modal title="条件を読み込む" onClose={onClose}>
+			{replacing && <Note>今の条件は、選んだ条件に置き換わる。</Note>}
 			{groups.map(
 				([label, items]) =>
 					items.length > 0 && (

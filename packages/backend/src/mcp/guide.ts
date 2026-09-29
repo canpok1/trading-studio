@@ -49,7 +49,7 @@ export function conditionSetGuide(): string {
 		"",
 		"## 項目",
 		`- timeframe: 足の粒度（${TIMEFRAMES.join(" / ")}）。EMA・RSI・ボリンジャーバンドの本数・直近 N 本・買ってからの本数・指値の取消までの本数はこの足で数える`,
-		`- frequency.flat / frequency.holding: ポジションなし・ありのときの判定の間隔。\`{"value":1,"unit":"h"}\`（value ${LIMITS.frequency.min}〜${LIMITS.frequency.max}、unit は s/m/h）`,
+		`- frequency.flat / frequency.holding: 保有なし・保有中のときの判定の間隔。\`{"value":1,"unit":"h"}\`（value ${LIMITS.frequency.min}〜${LIMITS.frequency.max}、unit は s/m/h）`,
 		`- orderSize: 1回の注文量（satoshi、${LIMITS.orderSize.min}〜${LIMITS.orderSize.max}）。約定した買い1件がこの量の1ロット`,
 		`- maxPositions: 同時に持てるロットの数（${LIMITS.maxPositions.min}〜${LIMITS.maxPositions.max}）。未約定の買いも数える`,
 		`- dailyLossLimit: 1日（JST）の確定損失の上限（円、${LIMITS.dailyLossLimit.min}〜${LIMITS.dailyLossLimit.max}）。達したら翌 0:00 まで新しい買いを止める`,

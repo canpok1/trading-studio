@@ -164,7 +164,7 @@ describe("MCP", () => {
 		const got = await call("get_strategy", { id });
 		expect(got.json).toMatchObject({ params: { maxPositions: 3 } });
 		expect((got.json as { screenText: string }).screenText).toContain(
-			"買値から 1 % 下がった",
+			"買値から 1% 下がった",
 		);
 	});
 

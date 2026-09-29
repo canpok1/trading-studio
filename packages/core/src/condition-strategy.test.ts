@@ -353,7 +353,7 @@ describe("買い", () => {
 		expect(run("any")).toBe(1);
 	});
 
-	test("ポジションなしの判定頻度で次回時刻を返す", () => {
+	test("保有なしの判定頻度で次回時刻を返す", () => {
 		const cs = candles([100, 90]);
 		const out = evaluateConditionSet(input(cs, always));
 		expect(out.nextEvalAt).toBe(2 * H + H);
@@ -415,7 +415,7 @@ describe("売り", () => {
 		expect(out.note).toContain("（損切りの条件）");
 	});
 
-	test("どちらも成立しなければ売らない。ポジションありの判定頻度を使う", () => {
+	test("どちらも成立しなければ売らない。保有中の判定頻度を使う", () => {
 		const out = evaluateConditionSet(
 			input(candles([101]), sellParams([gain], [loss]), {
 				position: holding(100),
@@ -524,7 +524,7 @@ describe("validateConditionSet", () => {
 		]);
 	});
 
-	test("最大ポジション数は 1〜10 の整数", () => {
+	test("最大ロット数は 1〜10 の整数", () => {
 		const errs = (maxPositions: number) =>
 			validateConditionSet({
 				...strategyTemplate("range").params,
@@ -574,7 +574,7 @@ describe("parseConditionSet", () => {
 		).toBeNull();
 	});
 
-	test("行を持つ前の注文方法は1行として読み、最大ポジション数が無ければ 1 で読む", () => {
+	test("行を持つ前の注文方法は1行として読み、最大ロット数が無ければ 1 で読む", () => {
 		const { maxPositions: _, ...old } = strategyTemplate("range").params;
 		const limit = parseConditionSet({
 			...old,
@@ -639,7 +639,7 @@ describe("判定に使う足の粒度", () => {
 	};
 
 	test.each([
-		// 戦略の粒度, ポジションなし, あり, 最も細かいデータ, 期待する粒度, 足りないか
+		// 戦略の粒度, 保有なし, あり, 最も細かいデータ, 期待する粒度, 足りないか
 		["1h", "1h", "15m", "1m", "15m", false],
 		["1h", "1h", "2h", "1m", "1h", false],
 		["1h", "20m", "1h", "1m", "5m", false],
@@ -825,14 +825,14 @@ describe("複数ポジション", () => {
 		]);
 	});
 
-	test("最大ポジション数に達していれば買わない", () => {
+	test("最大ロット数に達していれば買わない", () => {
 		const out = evaluateConditionSet(
 			input(rising, multi({ maxPositions: 2 }), {
 				lots: [lot("b1", 10_000_000), lot("b2", 10_000_000)],
 			}),
 		);
 		expect(out.intents).toEqual([]);
-		expect(out.note).toContain("最大ポジション数 2 に達しているため買わない");
+		expect(out.note).toContain("最大ロット数 2 に達しているため買わない");
 	});
 
 	test("未約定の買いがあれば新しい買いを出さない", () => {
@@ -853,7 +853,7 @@ describe("複数ポジション", () => {
 		expect(out.note).toBe("買い注文の約定待ち");
 	});
 
-	test("最大ポジション数が 2 以上なら、前回も条件が成立していたときは買わない（一度外れてから買う）", () => {
+	test("最大ロット数が 2 以上なら、前回も条件が成立していたときは買わない（一度外れてから買う）", () => {
 		const kept = evaluateConditionSet(
 			input(rising, multi(), { state: { buyHit: true } }),
 		);
@@ -870,7 +870,7 @@ describe("複数ポジション", () => {
 		).toHaveLength(3);
 	});
 
-	test("最大ポジション数が 1 なら前回の成立を見ず、state も変えない（今までどおり）", () => {
+	test("最大ロット数が 1 なら前回の成立を見ず、state も変えない（今までどおり）", () => {
 		const one = multi({ maxPositions: 1 });
 		const out = evaluateConditionSet(
 			input(rising, one, { state: { buyHit: true } }),

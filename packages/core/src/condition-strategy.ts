@@ -136,16 +136,16 @@ export const MARKET_BUY_ORDER: BuyOrder = {
 	expireBars: DEFAULT_BUY_ORDER.expireBars,
 };
 
-/** 最大ポジション数の既定。これを持たない保存済みの戦略もこの数で読む */
+/** 最大ロット数の既定。これを持たない保存済みの戦略もこの数で読む */
 export const DEFAULT_MAX_POSITIONS = 1;
 
 export type ConditionSet = {
 	/** EMA・RSI の本数・直近 N 本・指値の取消までの本数は、すべてこの粒度の足で数える */
 	timeframe: Timeframe;
 	frequency: {
-		/** ポジションなしのとき */
+		/** 保有なしのとき */
 		flat: Frequency;
-		/** ポジションありのとき */
+		/** 保有中のとき */
 		holding: Frequency;
 	};
 	/** 1回の注文量（satoshi）。1ロットの量 */
@@ -947,11 +947,11 @@ export function evaluateConditionSet(
 		}
 	}
 
-	// 買い: 空き枠（最大ポジション数 − 保有ロット − 未約定の買い）があり、未約定の買いが無いときだけ出す。
+	// 買い: 空き枠（最大ロット数 − 保有ロット − 未約定の買い）があり、未約定の買いが無いときだけ出す。
 	// 空き枠は売る前の保有数で数える（売りで空く枠は次の判定から使う）
 	const openBuys = openOrders.filter((o) => o.side === "buy").length;
 	const free = p.maxPositions - lots.length - openBuys;
-	// 最大ポジション数が 2 以上なら、条件が続く間の連続買いを防ぐため、前回外れていたときだけ買う（1 は今までどおり）
+	// 最大ロット数が 2 以上なら、条件が続く間の連続買いを防ぐため、前回外れていたときだけ買う（1 は今までどおり）
 	const edge = p.maxPositions >= 2;
 	const buyCheck = () => {
 		const r = evaluateGroup(p.buy, ctx);
@@ -966,7 +966,7 @@ export function evaluateConditionSet(
 	} else if (free <= 0) {
 		if (edge) {
 			buyCheck();
-			notes.push(`最大ポジション数 ${p.maxPositions} に達しているため買わない`);
+			notes.push(`最大ロット数 ${p.maxPositions} に達しているため買わない`);
 		}
 	} else {
 		const wasHit = buyHit;
