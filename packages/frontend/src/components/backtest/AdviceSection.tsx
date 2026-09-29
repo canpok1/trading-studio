@@ -14,6 +14,7 @@ import {
 	useInterval,
 	usePageVisible,
 } from "../../lib/useAsync";
+import { Help } from "../Help";
 import { Skeleton } from "../States";
 import { Button } from "../ui";
 
@@ -91,7 +92,15 @@ export function AdviceSection({
 			className="flex flex-col gap-3 rounded-xl border border-line bg-surface px-4 py-3.5"
 		>
 			<div className="flex items-center justify-between gap-2">
-				<h2 className="text-[15px] font-bold">AI アドバイス</h2>
+				<div className="flex items-center gap-1.5">
+					<h2 className="text-[15px] font-bold">AI アドバイス</h2>
+					<Help label="AI アドバイス">
+						<p>
+							結果の分析と改善案を AI
+							が作る。使うモデルと指示は設定の「バックテスト」で変える。
+						</p>
+					</Help>
+				</div>
 				{advice !== undefined && (
 					<Button
 						size="sm"
@@ -104,12 +113,6 @@ export function AdviceSection({
 				)}
 			</div>
 			{advice === undefined && !error && <Skeleton className="h-10 w-full" />}
-			{advice === null && (
-				<p className="text-xs text-text-2">
-					結果の分析と改善案を AI
-					が作る。使うモデルと指示は設定の「バックテスト」で変える。
-				</p>
-			)}
 			{error && (
 				<p role="alert" className="text-xs font-semibold text-loss">
 					読み込めなかった（{error}）

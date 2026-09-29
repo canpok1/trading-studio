@@ -34,6 +34,7 @@ import {
 import type { ReactNode } from "react";
 import { useId, useState } from "react";
 import { formatInt } from "../../lib/number";
+import { Help } from "../Help";
 import { Modal } from "../Modal";
 import { NumberInput } from "../NumberInput";
 import { Button, Card, Segmented } from "../ui";
@@ -111,7 +112,16 @@ export function FrequencyCard({ params, onChange, errors }: Props) {
 	};
 	return (
 		<Card className="flex flex-col gap-2.5">
-			<h2 className="text-[15px] font-bold">足と判定の頻度</h2>
+			<div className="flex items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">足と判定の頻度</h2>
+				<Help label="足と判定の頻度">
+					<p>
+						EMA・RSI・ボリンジャーバンドの本数・直近 N
+						本・買ってからの本数・指値を取り消すまでの本数は、この粒度の足で数える。
+					</p>
+					<p>バックテストでは、足より短い間隔は足ごとに判定する。</p>
+				</Help>
+			</div>
 			<label className="flex flex-wrap items-center gap-2">
 				<span className="text-[13px] font-semibold">足の粒度</span>
 				<select
@@ -128,15 +138,8 @@ export function FrequencyCard({ params, onChange, errors }: Props) {
 					))}
 				</select>
 			</label>
-			<p className="text-xs text-text-2">
-				EMA・RSI・ボリンジャーバンドの本数・直近 N
-				本・買ってからの本数・指値を取り消すまでの本数は、この粒度の足で数える。
-			</p>
 			{freq("flat", "ポジションなしのとき", "ごとに買いの条件を判定")}
 			{freq("holding", "ポジションありのとき", "ごとに売りの条件を判定")}
-			<p className="text-xs text-text-2">
-				バックテストでは、足より短い間隔は足ごとに判定する。
-			</p>
 		</Card>
 	);
 }
@@ -166,7 +169,18 @@ export function OrderSizeCard({
 		);
 	return (
 		<Card className="flex flex-col gap-2.5">
-			<h2 className="text-[15px] font-bold">注文量とポジション数</h2>
+			<div className="flex items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">注文量とポジション数</h2>
+				<Help label="注文量とポジション数">
+					<p>
+						約定した買い1件がこの量の1ロットになる。最大ポジション数は同時に持てるロットの数で、約定待ちの買いも数える。2
+						以上にすると保有中も買い、買いの条件が一度外れてから再び成り立ったときに次を買う。売りはロットごとに判定する。
+					</p>
+					<p>
+						買いの出し方は「買い注文する条件」で選ぶ。売りは成行。利確・損切りの両方が同時に成り立ったら損切りを優先する。
+					</p>
+				</Help>
+			</div>
 			<div className="flex items-center gap-2">
 				<Button
 					className="w-11 px-0"
@@ -217,13 +231,6 @@ export function OrderSizeCard({
 				</div>
 				<ErrorText messages={maxErrs} />
 			</div>
-			<p className="text-xs leading-relaxed text-text-2">
-				約定した買い1件がこの量の1ロットになる。最大ポジション数は同時に持てるロットの数で、約定待ちの買いも数える。2
-				以上にすると保有中も買い、買いの条件が一度外れてから再び成り立ったときに次を買う。売りはロットごとに判定する。
-			</p>
-			<p className="text-xs leading-relaxed text-text-2">
-				買いの出し方は「買い注文する条件」で選ぶ。売りは成行。利確・損切りの両方が同時に成り立ったら損切りを優先する。
-			</p>
 		</Card>
 	);
 }
@@ -234,11 +241,15 @@ export function RiskLimitCard({ params, onChange, errors }: Props) {
 	const id = useId();
 	return (
 		<Card className="flex flex-col gap-2.5">
-			<div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">
+			<div className="flex items-center gap-1.5">
 				<h2 className="text-[15px] font-bold">リスク上限</h2>
-				<span className="text-xs text-text-2">
-					達したら新しい買い注文を止める（翌 0 時に再開）
-				</span>
+				<Help label="リスク上限">
+					<p>達したら新しい買い注文を止める（翌 0 時に再開）。</p>
+					<p>
+						その日（0
+						時区切り）に売って確定した損益（手数料込み）で数える。含み損は数えない。売り（利確・損切り）は止めない。バックテストにも効く。
+					</p>
+				</Help>
 			</div>
 			<div className="flex flex-col gap-1.5">
 				<label htmlFor={id} className="text-[13px] font-semibold">
@@ -255,10 +266,6 @@ export function RiskLimitCard({ params, onChange, errors }: Props) {
 				/>
 			</div>
 			<ErrorText messages={errs} />
-			<p className="text-xs leading-relaxed text-text-2">
-				その日（0
-				時区切り）に売って確定した損益（手数料込み）で数える。含み損は数えない。売り（利確・損切り）は止めない。バックテストにも効く。
-			</p>
 		</Card>
 	);
 }
@@ -771,8 +778,15 @@ function BuyOrderLines({
 	const hasLimit = lines.some((l) => l.type === "limit");
 	return (
 		<div className="flex flex-col gap-1.5 border-t border-line pt-2.5">
-			<span className="text-[13px] font-semibold">
-				注文（条件が成り立つと全部を同時に出す）
+			<span className="flex items-center gap-1.5 text-[13px] font-semibold">
+				注文
+				<Help label="注文">
+					<p>条件が成り立つと全部を同時に出す。</p>
+					<p>
+						成行は1件目だけ選べる。指値は下の行ほど大きい %
+						にする。最大ポジション数の空きより多ければ、空きの数だけ上から出す。
+					</p>
+				</Help>
 			</span>
 			{lines.map((line, i) => {
 				const below = errorsAt(errors, `buyOrder.lines.${i}.belowPercent`);
@@ -890,10 +904,6 @@ function BuyOrderLines({
 					<ErrorText messages={expire} />
 				</div>
 			)}
-			<p className="text-xs text-text-2">
-				成行は1件目だけ選べる。指値は下の行ほど大きい %
-				にする。最大ポジション数の空きより多ければ、空きの数だけ上から出す。
-			</p>
 		</div>
 	);
 }
