@@ -18,14 +18,9 @@ export function NewsTab({
 	data: AiData;
 	onChanged: () => void;
 }) {
-	const { news, current, collector, scorer } = data;
+	const { news, current, scorer } = data;
 	return (
 		<>
-			<p className="text-xs text-text-2">
-				{collector.intervalMinutes}
-				分ごとにニュースを集め、新着だけを1回ずつ採点する。—
-				は関係なし（その観点の集計に入れない）。
-			</p>
 			{news.length === 0 ? (
 				<div className="rounded-xl border border-line bg-surface">
 					<EmptyState

@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useApi } from "../api";
 import { NewsTab } from "../components/ai/NewsTab";
+import { Help } from "../components/Help";
 import { SettingsIcon } from "../components/icons";
 import { JudgmentBadge, ZoneBar } from "../components/judgment/JudgmentBadge";
 import { Page } from "../components/Page";
@@ -119,11 +120,18 @@ export function NewsPage() {
 					);
 				})}
 			</section>
-			<p className="num text-xs text-text-2">
-				直近 {current.rule.windowHours}{" "}
-				時間のニュースの点数を、新しいほど重く平均（半減期{" "}
-				{current.rule.halfLifeHours} 時間）· {formatDateTime(current.time)} 時点
-			</p>
+			<div className="flex items-center gap-1.5">
+				<p className="num text-xs text-text-2">
+					{formatDateTime(current.time)} 時点
+				</p>
+				<Help label="今の判定">
+					<p>
+						直近 {current.rule.windowHours}{" "}
+						時間のニュースの点数を、新しいほど重く平均する（半減期{" "}
+						{current.rule.halfLifeHours} 時間）。
+					</p>
+				</Help>
+			</div>
 			{troubles.map((t) => (
 				<div
 					key={t.title}
@@ -152,7 +160,16 @@ export function NewsPage() {
 					最新の状態を読み込めなかった（{error}）。5秒ごとに読み直している
 				</p>
 			)}
-			<h2 className="text-[15px] font-bold">ニュースごと</h2>
+			<div className="flex items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">ニュースごと</h2>
+				<Help label="ニュースごと">
+					<p>
+						{data.collector.intervalMinutes}
+						分ごとにニュースを集め、新着だけを1回ずつ採点する。—
+						は関係なし（その観点の集計に入れない）。
+					</p>
+				</Help>
+			</div>
 			<NewsTab data={data} onChanged={load} />
 		</Page>
 	);
