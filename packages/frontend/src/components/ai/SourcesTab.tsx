@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useApi } from "../../api";
 import { formatDateTime } from "../../format";
 import { errorMessage, readJson, useAsync } from "../../lib/useAsync";
+import { Help } from "../Help";
 import { Modal } from "../Modal";
 import { NumberInput } from "../NumberInput";
 import { Button, Card } from "../ui";
@@ -77,7 +78,14 @@ function SourceList({
 
 	return (
 		<section className="flex flex-col gap-2">
-			<h2 className="text-[15px] font-bold">ニュースの取得元（RSS）</h2>
+			<div className="flex items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">ニュースの取得元（RSS）</h2>
+				<Help label="ニュースの取得元（RSS）">
+					<p>
+						無効にした取得元は次の収集から取らない。削除しても集めたニュースと採点は残る。
+					</p>
+				</Help>
+			</div>
 			{sources.length === 0 ? (
 				<p className="text-xs text-text-2">
 					取得元が無い。下の「取得元を追加」から追加する
@@ -141,9 +149,6 @@ function SourceList({
 					変更できなかった: {error}
 				</p>
 			)}
-			<p className="text-xs text-text-2">
-				無効にした取得元は次の収集から取らない。削除しても集めたニュースと採点は残る。
-			</p>
 			{removing && (
 				<Modal title="取得元を削除する" onClose={() => setRemoving(null)}>
 					<p className="text-sm">
@@ -204,7 +209,15 @@ function AddSource({ onChanged }: { onChanged: () => void }) {
 
 	return (
 		<Card className="flex flex-col gap-2.5">
-			<h2 className="text-[15px] font-bold">取得元を追加</h2>
+			<div className="flex items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">取得元を追加</h2>
+				<Help label="取得元を追加">
+					<p>
+						利用規約で自動取得や AI
+						への入力が禁止されていないかを確かめてから追加する。
+					</p>
+				</Help>
+			</div>
 			<div className="flex flex-col gap-1.5">
 				<label htmlFor="source-name" className="text-[13px] font-semibold">
 					名前
@@ -262,10 +275,6 @@ function AddSource({ onChanged }: { onChanged: () => void }) {
 			>
 				追加する
 			</Button>
-			<p className="text-xs text-text-2">
-				利用規約で自動取得や AI
-				への入力が禁止されていないかを確かめてから追加する。
-			</p>
 		</Card>
 	);
 }
@@ -396,9 +405,14 @@ function ModelSetting() {
 
 	return (
 		<Card className="flex flex-col gap-2.5">
-			<h2 className="text-[15px] font-bold">
-				<label htmlFor="scoring-model">採点に使うモデル</label>
-			</h2>
+			<div className="flex items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">
+					<label htmlFor="scoring-model">採点に使うモデル</label>
+				</h2>
+				<Help label="採点に使うモデル">
+					<p>モデルを変えても採点済みのニュースは採点し直さない。</p>
+				</Help>
+			</div>
 			{state.kind === "error" ? (
 				<p role="alert" className="text-xs font-semibold text-loss">
 					読み込めなかった: {state.message}
@@ -439,9 +453,6 @@ function ModelSetting() {
 					{message.text}
 				</p>
 			)}
-			<p className="text-xs text-text-2">
-				モデルを変えても採点済みのニュースは採点し直さない。
-			</p>
 		</Card>
 	);
 }

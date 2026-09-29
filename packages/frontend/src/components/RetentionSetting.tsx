@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useApi } from "../api";
 import { formatDateTime } from "../format";
 import { errorMessage, readJson, useAsync } from "../lib/useAsync";
+import { Help } from "./Help";
 import { Button, Card } from "./ui";
 
 /** 保持期間の選択肢。null は削除しない */
@@ -75,14 +76,23 @@ export function RetentionSetting() {
 
 	return (
 		<Card className="flex flex-col gap-2.5">
-			<h2 className="text-[15px] font-bold">データの保持</h2>
+			<div className="flex items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">データの保持</h2>
+				<Help label="データの保持">
+					{ITEMS.map(({ key, label, note }) => (
+						<p key={key}>
+							{label}: {note}。
+						</p>
+					))}
+				</Help>
+			</div>
 			{state.kind === "error" ? (
 				<p role="alert" className="text-xs font-semibold text-loss">
 					読み込めなかった: {state.message}
 				</p>
 			) : (
 				<>
-					{ITEMS.map(({ key, label, note }) => (
+					{ITEMS.map(({ key, label }) => (
 						<div key={key} className="flex flex-col gap-1">
 							<div className="flex items-center justify-between gap-2">
 								<label htmlFor={`retention-${key}`} className="text-[13px]">
@@ -113,7 +123,6 @@ export function RetentionSetting() {
 									))}
 								</select>
 							</div>
-							<p className="text-xs text-text-2">{note}</p>
 						</div>
 					))}
 					<div className="flex justify-end">

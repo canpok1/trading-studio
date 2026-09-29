@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { useApi } from "../api";
 import { formatDateTime } from "../format";
 import { errorMessage, readJson, useAsync } from "../lib/useAsync";
+import { Help } from "./Help";
 import { Modal } from "./Modal";
 import { Button, Card } from "./ui";
 
@@ -53,9 +54,16 @@ export function ApiKeySetting() {
 
 	return (
 		<Card className="flex flex-col gap-2.5">
-			<h2 className="text-[15px] font-bold">
-				<label htmlFor="gemini-api-key">Gemini の API キー</label>
-			</h2>
+			<div className="flex items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">
+					<label htmlFor="gemini-api-key">Gemini の API キー</label>
+				</h2>
+				<Help label="Gemini の API キー">
+					<p>
+						保存したキーは画面に出さない。変えるときは上書きする。無料枠のキーだと記事が学習に使われるので、有料枠のキーを使う。
+					</p>
+				</Help>
+			</div>
 			{state.kind === "error" ? (
 				<p role="alert" className="text-xs font-semibold text-loss">
 					読み込めなかった: {state.message}
@@ -114,9 +122,6 @@ export function ApiKeySetting() {
 					{message.text}
 				</p>
 			)}
-			<p className="text-xs text-text-2">
-				保存したキーは画面に出さない。変えるときは上書きする。無料枠のキーだと記事が学習に使われるので、有料枠のキーを使う。
-			</p>
 			{deleting && (
 				<Modal title="API キーを削除する" onClose={() => setDeleting(false)}>
 					<p className="text-sm">

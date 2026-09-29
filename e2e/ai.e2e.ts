@@ -95,7 +95,7 @@ test("基準を版として保存して使用すると、次に採点するニ�
 	page,
 }, info) => {
 	await page.goto("/settings?section=news&tab=prompt");
-	const text = page.getByLabel(/採点の基準/);
+	const text = page.getByRole("textbox", { name: /採点の基準/ });
 	await expect(text).not.toHaveValue("");
 	await text.fill(`- E2E の基準 ${info.project.name}`);
 	await page.getByRole("button", { name: "最新のニュースで試す" }).click();
@@ -158,15 +158,17 @@ test("取得元・収集間隔・モデルの変更が保存される", async ({
 	await page.getByRole("button", { name: "保存" }).first().click();
 	await expect(page.getByText("収集間隔を保存した")).toBeVisible();
 
-	await page.getByLabel("採点に使うモデル").selectOption("gemini-3.8-flash");
+	await page
+		.getByLabel("採点に使うモデル", { exact: true })
+		.selectOption("gemini-3.8-flash");
 	await page.getByRole("button", { name: "保存" }).last().click();
 	await expect(page.getByText("モデルを保存した")).toBeVisible();
 
 	await page.reload();
 	await expect(page.getByLabel("収集間隔（分）")).toHaveValue("30");
-	await expect(page.getByLabel("採点に使うモデル")).toHaveValue(
-		"gemini-3.8-flash",
-	);
+	await expect(
+		page.getByLabel("採点に使うモデル", { exact: true }),
+	).toHaveValue("gemini-3.8-flash");
 
 	await row.getByRole("button", { name: /削除/ }).click();
 	await page
@@ -187,7 +189,7 @@ test("API キーは保存・上書き・削除でき、保存したキーは画�
 }) => {
 	await page.goto("/settings");
 	const state = page.getByTestId("api-key-state");
-	const input = page.getByLabel("Gemini の API キー");
+	const input = page.getByLabel("Gemini の API キー", { exact: true });
 	await expect(state).toHaveText("未設定");
 	await expect(input).toHaveAttribute("type", "password");
 	// 入力欄と同じ行のボタン

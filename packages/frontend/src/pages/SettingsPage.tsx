@@ -11,6 +11,7 @@ import { PromptTab } from "../components/ai/PromptTab";
 import { RuleTab } from "../components/ai/RuleTab";
 import { SourcesTab } from "../components/ai/SourcesTab";
 import { AdviceSettings } from "../components/backtest/AdviceSettings";
+import { Help } from "../components/Help";
 import { Page } from "../components/Page";
 import { RetentionSetting } from "../components/RetentionSetting";
 import { ErrorState, LoadingCard } from "../components/States";
@@ -109,7 +110,12 @@ function ThemeSetting() {
 	const { preference, setPreference } = useTheme();
 	return (
 		<section className="flex flex-col gap-2.5 rounded-xl border border-line bg-surface px-4 py-3.5">
-			<h2 className="text-[15px] font-bold">画面の色</h2>
+			<div className="flex items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">画面の色</h2>
+				<Help label="画面の色">
+					<p>選んだ設定はこのブラウザに保存する。</p>
+				</Help>
+			</div>
 			<fieldset className="grid auto-cols-fr grid-flow-col gap-0.5 rounded-[10px] bg-surface-2 p-[3px]">
 				<legend className="sr-only">画面の色</legend>
 				{OPTIONS.map(([value, label]) => (
@@ -129,7 +135,6 @@ function ThemeSetting() {
 					</label>
 				))}
 			</fieldset>
-			<p className="text-xs text-text-2">選んだ設定はこのブラウザに保存する</p>
 		</section>
 	);
 }

@@ -11,6 +11,7 @@ import { useApi } from "../../api";
 import { formatDateTime } from "../../format";
 import { lineDiff } from "../../lib/line-diff";
 import { errorMessage, readJson, useAsync } from "../../lib/useAsync";
+import { Help } from "../Help";
 import { ScoreChip } from "../judgment/JudgmentBadge";
 import { Modal } from "../Modal";
 import { ErrorState, LoadingCard, Skeleton } from "../States";
@@ -198,14 +199,25 @@ function PromptBody({
 
 	return (
 		<>
-			<p className="text-xs text-text-2">
-				ニュース1件を採点するプロンプト。編集できるのは「採点の基準」だけ。版を変えても採点済みのニュースはそのままで、次に採点するニュースから新しい版で採点する。
-			</p>
 			<Template template={template} />
 			<div className="flex items-center justify-between gap-2 text-xs">
-				<label htmlFor="criteria-text" className="font-semibold">
-					採点の基準 · v{activeVersion} を元に編集中
-				</label>
+				<span className="flex items-center gap-1.5">
+					<label htmlFor="criteria-text" className="font-semibold">
+						採点の基準 · v{activeVersion} を元に編集中
+					</label>
+					<Help label="採点の基準">
+						<p>
+							ニュース1件を採点するプロンプト。編集できるのは「採点の基準」だけ。版を変えても採点済みのニュースはそのままで、次に採点するニュースから新しい版で採点する。
+						</p>
+						<p>
+							AI
+							の応答がこの形式に合わない（範囲外の点数など）ときは採点に失敗として扱い、集計に入れない。
+						</p>
+						<p>
+							保存しても使用中の版は変わらない。版の一覧で「使用する」を押して切り替える。
+						</p>
+					</Help>
+				</span>
 				<span className="text-text-2">
 					{dirty ? "未保存の変更あり" : "変更なし"}
 				</span>
@@ -233,10 +245,6 @@ function PromptBody({
 					className="h-11 w-full rounded-lg border border-line bg-surface px-3 text-[15px]"
 				/>
 			</div>
-			<p className="text-xs text-text-2">
-				AI
-				の応答がこの形式に合わない（範囲外の点数など）ときは採点に失敗として扱い、集計に入れない。
-			</p>
 			<div className="flex items-center justify-between gap-2 text-xs">
 				<span data-testid="trial-targets" className="text-text-2">
 					試す記事:{" "}
@@ -261,9 +269,6 @@ function PromptBody({
 					v{maxVersion + 1} として保存
 				</Button>
 			</div>
-			<p className="text-xs text-text-2">
-				保存しても使用中の版は変わらない。版の一覧で「使用する」を押して切り替える。
-			</p>
 			{message && (
 				<p
 					role={message.ok ? "status" : "alert"}
