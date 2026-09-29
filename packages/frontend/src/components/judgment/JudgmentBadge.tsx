@@ -103,7 +103,7 @@ export function ScoreChip({
 	);
 }
 
-/** 点数の範囲の帯をしきい値ごとに判定の色で塗り、平均点の位置に印を付ける */
+/** 点数の範囲の帯をしきい値ごとに判定の色で塗り、平均点の位置に印を付ける。下に色の意味を1行で添える */
 export function ZoneBar({
 	judge,
 	rule,
@@ -130,45 +130,9 @@ export function ZoneBar({
 					["+1", t.sentiment.plus1, t.sentiment.plus2],
 					["+2", t.sentiment.plus2, max],
 				];
-	const variant =
-		(globalThis as { __zoneVariant?: string }).__zoneVariant ?? "A";
-	const short = (v: string) =>
-		valueStyle(judge, v as JudgmentValue).label.replace(/^[+−\-]?\d /, "");
-	const marker = score !== null && (
-		<svg
-			width="12"
-			height="8"
-			viewBox="0 0 12 8"
-			className="absolute -top-2.5 -ml-1.5"
-			style={{ left: `${pct(score)}%` }}
-		>
-			<polygon points="0,0 12,0 6,8" style={{ fill: "var(--color-text)" }} />
-		</svg>
-	);
-	if (variant === "A") {
-		return (
-			<div aria-hidden="true" className="relative mt-2 flex h-5">
-				{zones.map(([v, a, b], i) => (
-					<span
-						key={v}
-						className={`flex items-center justify-center overflow-hidden text-[10px] font-semibold whitespace-nowrap text-white [text-shadow:0_0_2px_rgba(0,0,0,.55)] ${i === 0 ? "rounded-l" : ""} ${i === zones.length - 1 ? "rounded-r" : ""}`}
-						style={{
-							width: `${pct(b) - pct(a)}%`,
-							background: `var(${valueStyle(judge, v as JudgmentValue).solid})`,
-						}}
-					>
-						{pct(b) - pct(a) >= 12 ? short(v) : ""}
-					</span>
-				))}
-				{marker}
-			</div>
-		);
-	}
+	const styles = zones.map(([v]) => valueStyle(judge, v as JudgmentValue));
 	const gradient = zones
-		.map(
-			([v, a, b]) =>
-				`var(${valueStyle(judge, v as JudgmentValue).solid}) ${pct(a)}% ${pct(b)}%`,
-		)
+		.map(([, a, b], i) => `var(${styles[i]?.solid}) ${pct(a)}% ${pct(b)}%`)
 		.join(",");
 	return (
 		<div className="flex flex-col gap-1.5">
@@ -184,17 +148,23 @@ export function ZoneBar({
 					/>
 				)}
 			</div>
-			<div className="flex justify-between gap-1 text-[10px] text-text-2">
-				{zones.map(([v]) => {
-					const st = valueStyle(judge, v as JudgmentValue);
+			<ul
+				aria-label={`${JUDGE_LABELS[judge]}の色の意味`}
+				className="flex justify-between gap-1 text-[10px] text-text-2"
+			>
+				{styles.map((st) => {
+					const name = st.label.split(" ").at(-1);
 					return (
-						<span key={v} className="inline-flex items-center gap-1 whitespace-nowrap">
+						<li
+							key={st.label}
+							className="inline-flex items-center gap-1 whitespace-nowrap"
+						>
 							<ShapeIcon shape={st.shape} color={`var(${st.solid})`} size={8} />
-							{short(v)}
-						</span>
+							{name}
+						</li>
 					);
 				})}
-			</div>
+			</ul>
 		</div>
 	);
 }
