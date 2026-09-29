@@ -1,13 +1,14 @@
 import type {
 	CurrentJudgment,
 	NewsCollectorStatus,
-	NewsItem,
+	NewsSearchResult,
 	ScorerStatus,
 } from "@trading-studio/backend";
 import { JUDGE_LABELS, JUDGES } from "@trading-studio/core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useApi } from "../api";
+import { NewsFilterBar } from "../components/ai/NewsFilter";
 import { NewsTab } from "../components/ai/NewsTab";
 import { Help } from "../components/Help";
 import { SettingsIcon } from "../components/icons";
@@ -18,6 +19,15 @@ import { Button, buttonClass } from "../components/ui";
 import { formatDateTime } from "../format";
 import type { AiData } from "../lib/ai";
 import { aiTroubles } from "../lib/ai";
+import type { NewsFilterState } from "../lib/news-filter";
+import {
+	EMPTY_FILTER,
+	evaluationTime,
+	isFiltered,
+	newsFilterParams,
+	newsQuery,
+	parseNewsFilter,
+} from "../lib/news-filter";
 import {
 	errorMessage,
 	readJson,
@@ -27,11 +37,26 @@ import {
 
 /** 判定とニュースを問い合わせる間隔 */
 const POLL_MS = 5_000;
-const NEWS_LIMIT = 100;
+/** 一度に読むニュースの件数。「さらに読み込む」でこの件数ずつ増やす */
+const NEWS_PAGE = 100;
+/** 読み込める件数の上限（API の上限） */
+const NEWS_MAX = 1000;
 
 export function NewsPage() {
 	const api = useApi();
 	const visible = usePageVisible();
+
+	const [params, setParams] = useSearchParams();
+	const filter = parseNewsFilter(params);
+	const filterKey = newsFilterParams(filter).toString();
+	const setFilter = useCallback(
+		(f: NewsFilterState) => setParams(newsFilterParams(f), { replace: true }),
+		[setParams],
+	);
+	const [limit, setLimit] = useState(NEWS_PAGE);
+	// 条件を変えたら読む件数を戻す
+	// biome-ignore lint/correctness/useExhaustiveDependencies: filterKey が変わったときだけ戻す
+	useEffect(() => setLimit(NEWS_PAGE), [filterKey]);
 
 	const [data, setData] = useState<AiData | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -39,26 +64,36 @@ export function NewsPage() {
 	const seq = useRef(0);
 	const load = useCallback(async () => {
 		const id = ++seq.current;
+		const f = parseNewsFilter(new URLSearchParams(filterKey));
+		const now = Date.now();
+		const at = evaluationTime(f, now);
 		try {
 			const [current, news, collector, scorer] = await Promise.all([
 				api.api.judgments.current
-					.$get()
+					.$get({ query: at === null ? {} : { at: String(at) } })
 					.then((r) => readJson<CurrentJudgment>(r)),
 				api.api.news
-					.$get({ query: { limit: String(NEWS_LIMIT) } })
-					.then((r) => readJson<{ news: NewsItem[] }>(r)),
+					.$get({ query: newsQuery(f, now, limit) })
+					.then((r) => readJson<NewsSearchResult>(r)),
 				api.api.news.status
 					.$get()
 					.then((r) => readJson<NewsCollectorStatus>(r)),
 				api.api.scoring.status.$get().then((r) => readJson<ScorerStatus>(r)),
 			]);
 			if (id !== seq.current) return;
-			setData({ current, news: news.news, collector, scorer });
+			setData({
+				current,
+				news: news.news,
+				total: news.total,
+				at,
+				collector,
+				scorer,
+			});
 			setError(null);
 		} catch (e) {
 			if (id === seq.current) setError(errorMessage(e));
 		}
-	}, [api]);
+	}, [api, filterKey, limit]);
 	useEffect(() => {
 		if (visible) load();
 	}, [visible, load]);
@@ -93,8 +128,10 @@ export function NewsPage() {
 	return (
 		<Page title="ニュース" actions={<SettingsLink />}>
 			<div className="flex items-center gap-1.5">
-				<h2 className="text-[15px] font-bold">今の市場評価</h2>
-				<Help label="今の市場評価">
+				<h2 className="text-[15px] font-bold">
+					{data.at === null ? "今の市場評価" : "過去の時点の市場評価"}
+				</h2>
+				<Help label="市場評価">
 					<p>
 						直近 {current.rule.windowHours}{" "}
 						時間のニュースの点数を、新しいほど重く平均する（半減期{" "}
@@ -103,7 +140,7 @@ export function NewsPage() {
 				</Help>
 			</div>
 			<section
-				aria-label="今の市場評価"
+				aria-label="市場評価"
 				className="overflow-hidden rounded-xl border border-line bg-surface"
 			>
 				{JUDGES.map((j) => {
@@ -169,9 +206,36 @@ export function NewsPage() {
 						分ごとにニュースを取得し、新着だけを1回ずつ採点する。—
 						は関係なし（その観点の集計に入れない）。
 					</p>
+					<p>
+						強気材料・弱気材料・リスク高は、評価基準のやや強気以上・やや弱気以下・警戒以上の点数が付いたもの。影響の大きい順は、センチメントの点数の絶対値とリスクの点数の大きい方で並べる。
+					</p>
 				</Help>
 			</div>
-			<NewsTab data={data} onChanged={load} />
+			<NewsFilterBar filter={filter} onChange={setFilter} />
+			<p className="num text-xs text-text-2" aria-live="polite">
+				{isFiltered(filter) ? "条件に当てはまる" : "全部で"} {data.total} 件
+			</p>
+			<NewsTab
+				data={data}
+				grouped={filter.sort === "new"}
+				filtered={isFiltered(filter)}
+				onClearFilter={() => setFilter(EMPTY_FILTER)}
+				onChanged={load}
+			/>
+			{data.news.length < data.total &&
+				(limit < NEWS_MAX ? (
+					<Button
+						size="sm"
+						className="self-center"
+						onClick={() => setLimit(Math.min(NEWS_MAX, limit + NEWS_PAGE))}
+					>
+						さらに読み込む（あと {data.total - data.news.length} 件）
+					</Button>
+				) : (
+					<p className="text-center text-xs text-text-2">
+						{NEWS_MAX} 件まで出す。続きは期間や条件で絞って見る
+					</p>
+				))}
 		</Page>
 	);
 }

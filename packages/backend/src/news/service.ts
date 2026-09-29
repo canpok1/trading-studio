@@ -1,3 +1,4 @@
+import type { AggregationRule } from "@trading-studio/core";
 import type { NewsCollector } from "./collector";
 import { DEFAULT_INTERVAL_MINUTES } from "./collector";
 import type { NewsRepository } from "./repository";
@@ -52,10 +53,13 @@ function checkUrl(url: string): string | null {
 export function createNewsService({
 	repo,
 	collector,
+	rule,
 	now = Date.now,
 }: {
 	repo: NewsRepository;
 	collector: Pick<NewsCollector, "lastRunAt" | "nextRunAt">;
+	/** 影響の大きさで絞るときの評価基準（今の評価ルール） */
+	rule: () => AggregationRule;
 	now?: () => number;
 }): NewsService {
 	const found = (id: number): NewsSourceResult => {
@@ -156,5 +160,6 @@ export function createNewsService({
 		},
 
 		listNews: (limit) => repo.listNews(limit),
+		searchNews: (filter) => repo.searchNews(filter, rule()),
 	};
 }

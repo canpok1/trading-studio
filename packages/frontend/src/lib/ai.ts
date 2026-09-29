@@ -12,6 +12,10 @@ import { formatDateTime } from "../format";
 export type AiData = {
 	current: CurrentJudgment;
 	news: NewsItem[];
+	/** 条件に当てはまるニュースの件数（news に無い分も数える） */
+	total: number;
+	/** 市場評価の時点。今なら null */
+	at: number | null;
 	collector: NewsCollectorStatus;
 	scorer: ScorerStatus;
 };

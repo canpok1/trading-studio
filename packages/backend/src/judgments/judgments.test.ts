@@ -154,3 +154,18 @@ test("足の粒度や期間が不正なら 400", async () => {
 		);
 	}
 });
+
+test("時刻を指定するとその時点の判定。先の時刻は今", async () => {
+	const t = setup();
+	t.add("a", 10, 60);
+	t.add("b", 0, -100);
+	const at = async (time: number) =>
+		(await (
+			await t.app.request(`/api/judgments/current?at=${time}`)
+		).json()) as CurrentJudgment;
+	const past = await at(95 * H);
+	expect(past.time).toBe(95 * H);
+	expect(past.results.sentiment).toMatchObject({ average: 60, count: 1 });
+	expect((await at(200 * H)).time).toBe(100 * H);
+	expect((await t.app.request("/api/judgments/current?at=x")).status).toBe(400);
+});

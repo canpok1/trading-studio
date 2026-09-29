@@ -25,7 +25,14 @@ function ruleOf(v: unknown, c: Context) {
 
 export function judgmentRoutes(service: JudgmentService) {
 	return new Hono()
-		.get("/current", (c) => c.json(service.current()))
+		.get("/current", (c) => {
+			const at = c.req.query("at");
+			if (at === undefined || at === "") return c.json(service.current(), 200);
+			const t = Number(at);
+			return Number.isSafeInteger(t)
+				? c.json(service.current(undefined, t), 200)
+				: c.json({ message: "時刻の形が違う" }, 400);
+		})
 		.get(
 			"/series",
 			validator("query", (q, c) => {

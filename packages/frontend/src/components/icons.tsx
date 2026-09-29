@@ -159,3 +159,31 @@ export function HelpIcon({ size = 16 }: IconProps) {
 		</Svg>
 	);
 }
+
+export function SearchIcon({ size = 18 }: IconProps) {
+	return (
+		<Svg size={size} strokeLinecap="round" strokeLinejoin="round">
+			<circle cx="11" cy="11" r="7" />
+			<path d="m20 20-4-4" />
+		</Svg>
+	);
+}
+
+export function FilterIcon({ size = 18 }: IconProps) {
+	return (
+		<Svg size={size} strokeLinecap="round" strokeLinejoin="round">
+			<path d="M4 6h16M7 12h10M10 18h4" />
+		</Svg>
+	);
+}
+
+export function ChevronIcon({
+	size = 16,
+	open = false,
+}: IconProps & { open?: boolean }) {
+	return (
+		<Svg size={size} strokeLinecap="round" strokeLinejoin="round">
+			<path d={open ? "m6 15 6-6 6 6" : "m6 9 6 6 6-6"} />
+		</Svg>
+	);
+}

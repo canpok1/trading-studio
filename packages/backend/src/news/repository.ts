@@ -1,9 +1,12 @@
+import type { AggregationRule } from "@trading-studio/core";
 import type { Db } from "../db/open";
 import type { FeedItem } from "./rss";
 import { toNewsScore } from "./score-repository";
 import type {
+	NewsFilter,
 	NewsItem,
 	NewsLanguage,
+	NewsSearchResult,
 	NewsSource,
 	NewsSourceInput,
 } from "./types";
@@ -206,6 +209,63 @@ export class NewsRepository {
 			)
 			.all(limit)
 			.map(toNewsItem);
+	}
+
+	/** 条件で絞る。影響の大きさは rule の評価基準で測る */
+	searchNews(f: NewsFilter, rule: AggregationRule): NewsSearchResult {
+		const where: string[] = [];
+		const args: (number | string)[] = [];
+		if (f.from !== null) {
+			where.push("n.published_at >= ?");
+			args.push(f.from);
+		}
+		if (f.to !== null) {
+			where.push("n.published_at < ?");
+			args.push(f.to);
+		}
+		for (const word of f.q.split(/\s+/).filter(Boolean)) {
+			const like = `%${word.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+			where.push(
+				"(n.title like ? escape '\\' or n.summary like ? escape '\\' or (s.status = 'done' and s.comment like ? escape '\\'))",
+			);
+			args.push(like, like, like);
+		}
+		const impacts: string[] = [];
+		const t = rule.thresholds;
+		if (f.impacts.includes("bull")) {
+			impacts.push("s.sentiment >= ?");
+			args.push(t.sentiment.plus1);
+		}
+		if (f.impacts.includes("bear")) {
+			impacts.push("s.sentiment < ?");
+			args.push(t.sentiment.minus1);
+		}
+		if (f.impacts.includes("risk")) {
+			impacts.push("s.risk >= ?");
+			args.push(t.risk.caution);
+		}
+		if (impacts.length) {
+			where.push(`(s.status = 'done' and (${impacts.join(" or ")}))`);
+		}
+		const from = `from news n left join news_scores s on s.news_id = n.id${where.length ? ` where ${where.join(" and ")}` : ""}`;
+		// 採点済みでないものは影響の大きい順では最後
+		const order =
+			f.sort === "impact"
+				? "case when s.status = 'done' then max(abs(coalesce(s.sentiment, 0)), coalesce(s.risk, 0)) else -1 end desc, n.published_at desc, n.id desc"
+				: "n.published_at desc, n.id desc";
+		const total =
+			this.sql
+				.query<{ c: number }, (number | string)[]>(
+					`select count(*) as c ${from}`,
+				)
+				.get(...args)?.c ?? 0;
+		const news = this.sql
+			.query<NewsRow, (number | string)[]>(
+				`select * ${from} order by ${order} limit ?`,
+			)
+			.all(...args, f.limit)
+			.map(toNewsItem);
+		return { news, total };
 	}
 
 	/** ID で引く。無い ID は飛ばす。並びは ids の順 */
