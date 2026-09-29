@@ -374,7 +374,7 @@ function checkCondition(c: Condition, ctx: Ctx): Hit {
 		}
 		case "judgment": {
 			const v = ctx.judgments[c.judge];
-			const name = `${JUDGE_LABELS[c.judge]}判定`;
+			const name = JUDGE_LABELS[c.judge];
 			const label = (x: string) => JUDGMENT_VALUE_LABELS[x] ?? x;
 			const current = v ?? NO_JUDGMENT;
 			return (c.values as string[]).includes(current)

@@ -29,7 +29,7 @@ async function addSource(page: Page, name: string) {
 	expect(res.ok()).toBe(true);
 }
 
-test("集めて採点したニュースが一覧に出て、判定が表示される", async ({
+test("集めて採点したニュースが一覧に出て、市場評価が表示される", async ({
 	page,
 }) => {
 	await page.goto("/news");
@@ -54,7 +54,7 @@ test("集めて採点したニュースが一覧に出て、判定が表示さ�
 	);
 });
 
-test("集計ルールを保存すると判定が変わる", async ({ page }) => {
+test("評価ルールを保存すると市場評価が変わる", async ({ page }) => {
 	try {
 		await page.goto("/news");
 		await expect(page.getByTestId("judge-sentiment")).toContainText(
@@ -63,26 +63,32 @@ test("集計ルールを保存すると判定が変わる", async ({ page }) => 
 				timeout: 20_000,
 			},
 		);
-		// 集計ルールはニュースの右上の「設定」から開く
+		// 評価ルールはニュースの右上の「設定」から開く
 		await page
 			.getByRole("main")
 			.getByRole("link", { name: "設定", exact: true })
 			.click();
 		await expect(page).toHaveURL(/\/settings\?section=news$/);
-		// 偽物の AI のセンチメントは -40〜40 点なので、+1 を -40 点以上にすれば必ず +1 になる。負の数も入れられる
-		await page.getByLabel("−1", { exact: true }).fill("-41");
-		await page.getByLabel("+1", { exact: true }).fill("-40");
-		await expect(page.getByTestId("rule-preview")).toContainText("+1");
+		// 偽物の AI のセンチメントは -40〜40 点なので、やや強気の下限を -40 点にすれば必ずやや強気になる。負の数も入れられる
+		await page.getByLabel("中立", { exact: true }).fill("-41");
+		await page.getByLabel("やや強気", { exact: true }).fill("-40");
+		// 上限は上の範囲の下限から決まる
+		await expect(page.getByText("〜 -41 点")).toBeVisible();
+		await expect(page.getByTestId("rule-preview")).toContainText("やや強気");
 		await page.getByRole("button", { name: "保存" }).click();
 		await expect(
 			page.getByRole("status").filter({ hasText: "保存した" }),
 		).toBeVisible();
 		await page.goto("/news");
-		await expect(page.getByTestId("badge-sentiment").first()).toHaveText(/\+1/);
+		await expect(page.getByTestId("badge-sentiment").first()).toHaveText(
+			/やや強気/,
+		);
 
 		await page.goto("/settings?section=news");
-		await page.getByLabel("+1", { exact: true }).fill("-42");
-		await expect(page.getByText("+1（-42）以下にする")).toBeVisible();
+		await page.getByLabel("やや強気", { exact: true }).fill("-42");
+		await expect(
+			page.getByText("やや強気の下限（-42）以下にする"),
+		).toBeVisible();
 		await expect(page.getByRole("button", { name: "保存" })).toBeDisabled();
 	} finally {
 		await page.request.put("/api/judgments/rule", {

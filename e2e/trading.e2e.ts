@@ -159,7 +159,7 @@ test("仮想注文が出て約定すると、ホームの保有・注文に出�
 
 		await rows.first().click();
 		const sheet = page.getByRole("dialog", { name: "注文の詳細" });
-		await expect(sheet).toContainText("このときの判定");
+		await expect(sheet).toContainText("このときの市場評価");
 		await expect(sheet.getByTestId("badge-sentiment")).toBeVisible();
 		await sheet.getByRole("button", { name: "閉じる" }).click();
 

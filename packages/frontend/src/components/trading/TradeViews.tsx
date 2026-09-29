@@ -83,7 +83,9 @@ export function TradeOrderSheet({
 	return (
 		<OrderSheet order={order} onClose={onClose} onPair={onSelect}>
 			<div className="flex flex-col gap-1.5">
-				<h3 className="text-xs font-semibold text-text-2">このときの判定</h3>
+				<h3 className="text-xs font-semibold text-text-2">
+					このときの市場評価
+				</h3>
 				{detail === null ? (
 					<p className="text-sm text-text-2">
 						{error ? `読み込めなかった（${error}）` : "読み込み中…"}

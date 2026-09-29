@@ -164,7 +164,7 @@ type RuleRow = { key: string; value: number; desc: string };
 
 const ruleTable: Table<RuleRow> = {
 	file: "aggregation_rule.csv",
-	desc: "今の集計ルール（ニュースの点数から判定を出すルール）。judgments.csv はこのルールで計算している",
+	desc: "今の評価ルール（ニュースの点数から市場評価を出すルール。画面の 設定 > ニュース > 評価ルール）。judgments.csv はこのルールで計算している",
 	columns: [
 		col("key", "項目", (r) => r.key),
 		col("value", "値", (r) => r.value),
@@ -231,7 +231,7 @@ const JUDGE_DESC: Record<Judge, string> = {
 
 const judgmentsTable: Table<JudgmentRow> = {
 	file: "judgments.csv",
-	desc: "1時間ごとの AI 判定。1時間足の終わりの時刻ごとに、今の集計ルール（aggregation_rule.csv）で計算した。採点の記録が始まる前の時刻は判定の列が空",
+	desc: "1時間ごとの市場評価。1時間足の終わりの時刻ごとに、今の評価ルール（aggregation_rule.csv）で計算した。採点の記録が始まる前の時刻は評価の列が空",
 	columns: [
 		...time<JudgmentRow>(
 			"time",
@@ -443,7 +443,7 @@ const paperOrdersTable: Table<OrderExportRow> = {
 
 const backtestRunsTable: Table<BacktestRun> = {
 	file: "backtest_runs.csv",
-	desc: "選んだバックテストの実行。実行したときの条件・集計ルールの写しと成績",
+	desc: "選んだバックテストの実行。実行したときの条件・評価ルールの写しと成績",
 	columns: [
 		col("run_id", "実行の ID", (r) => r.id),
 		col("name", "バックテスト名", (r) => r.name),
@@ -489,7 +489,7 @@ const backtestRunsTable: Table<BacktestRun> = {
 		),
 		col(
 			"aggregation_rule",
-			"実行したときの AI 判定の集計ルール（JSON）。記録する前の実行は空",
+			"実行したときの市場評価の評価ルール（JSON）。記録する前の実行は空",
 			(r) => (r.aggregationRule ? json(r.aggregationRule) : null),
 		),
 		col("bar_count", "期間内の足の数", (r) => r.barCount),
@@ -575,7 +575,7 @@ const backtestTradesTable: Table<RunTrade> = {
 type RunDecision = { runId: number; log: DecisionLog };
 const backtestDecisionsTable: Table<RunDecision> = {
 	file: "backtest_decisions.csv",
-	desc: "選んだバックテストの判断ログ。評価のたびに1行。そのときの AI 判定は、実行の集計ルール（backtest_runs.csv の aggregation_rule）で news.csv から計算できる",
+	desc: "選んだバックテストの判断ログ。評価のたびに1行。そのときの市場評価は、実行の評価ルール（backtest_runs.csv の aggregation_rule）で news.csv から計算できる",
 	columns: [
 		col("run_id", "実行の ID（backtest_runs.csv の run_id）", (r) => r.runId),
 		...decisionColumns<RunDecision>((r) => r.log),
@@ -607,7 +607,7 @@ function readme({
 	const out: string[] = [
 		"# trading-studio 分析用データ",
 		"",
-		"BTC/JPY の自動売買アプリ trading-studio の記録。AI 判定の精度と戦略の成績の分析に使う。",
+		"BTC/JPY の自動売買アプリ trading-studio の記録。市場評価の精度と戦略の成績の分析に使う。",
 		"",
 		`- 期間: ${formatJstRfc3339(from)} 〜 ${formatJstRfc3339(to)}（終わりの時刻は含まない）`,
 		`- 書き出した時刻: ${formatJstRfc3339(now)}`,
@@ -629,13 +629,13 @@ function readme({
 		"- scoring_criteria.csv・aggregation_rule.csv・strategies.csv: 期間に関係なく今あるもの全部",
 		"- backtest_*.csv: 画面で選んだ実行だけ",
 		"",
-		"## AI 判定のしくみ",
+		"## 市場評価のしくみ",
 		"",
-		"ニュースを取得するたびに AI が2観点（センチメント・リスク）を採点する。センチメントは BTC の価格にとって強気材料か弱気材料かで -100〜100（0 が中立）、リスクは 0〜100（高いほど危険）。トレンドを統合する前の採点は、センチメントの列に当時のトレンド（上昇要因か下落要因か）の点数を入れ直してある。判定は、ある時刻までに採点済みで、新しさの時刻が集計の期間内のニュースの点数を、新しいほど重くして（半減期で半分になる指数の重み）平均し、平均点を整数に丸めてしきい値と比べて決める。対象のニュースが無ければ 0・平常。",
+		"ニュースを取得するたびに AI が2観点（センチメント・リスク）を採点する。センチメントは BTC の価格にとって強気材料か弱気材料かで -100〜100（0 が中立）、リスクは 0〜100（高いほど危険）。トレンドを統合する前の採点は、センチメントの列に当時のトレンド（上昇要因か下落要因か）の点数を入れ直してある。市場評価は、ある時刻までに採点済みで、新しさの時刻が集計の期間内のニュースの点数を、新しいほど重くして（半減期で半分になる指数の重み）平均し、平均点を整数に丸めて評価基準（評価ごとの点数の範囲）に当てはめて決める。対象のニュースが無ければ 0・平常。",
 		"",
 		"## ファイル",
 		"",
-		"### AI 判定の精度向上用",
+		"### 市場評価の精度向上用",
 		"",
 	];
 	const section = ({ table, rows }: Listed) => {

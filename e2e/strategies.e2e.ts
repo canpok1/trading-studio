@@ -110,7 +110,7 @@ test("戦略の画面は横にはみ出さない", async ({ page }) => {
 	expect(overflow).toBeLessThanOrEqual(0);
 });
 
-test("AI 判定の条件を追加して保存でき、値を1つも選ばないと保存できない", async ({
+test("市場評価の条件を追加して保存でき、値を1つも選ばないと保存できない", async ({
 	page,
 }, info) => {
 	const name = `判定 ${info.project.name}`;
@@ -120,9 +120,9 @@ test("AI 判定の条件を追加して保存でき、値を1つも選ばない�
 	await buy.getByRole("button", { name: "＋ 条件を追加" }).click();
 	await page
 		.getByRole("dialog")
-		.getByRole("button", { name: "リスク判定が指定のどれか" })
+		.getByRole("button", { name: "リスクが指定のどれか" })
 		.click();
-	const risk = buy.getByRole("group").filter({ hasText: "リスク判定が" });
+	const risk = buy.getByRole("group").filter({ hasText: "リスクが" });
 	await expect(risk.getByLabel("平常")).toBeChecked();
 	await expect(risk.getByLabel("警戒")).toBeChecked();
 	await expect(risk.getByLabel("危機")).not.toBeChecked();
@@ -141,7 +141,7 @@ test("AI 判定の条件を追加して保存でき、値を1つも選ばない�
 	const saved = page
 		.getByRole("region", { name: "買い注文する条件" })
 		.getByRole("group")
-		.filter({ hasText: "リスク判定が" });
+		.filter({ hasText: "リスクが" });
 	await expect(saved.getByLabel("平常")).toBeChecked();
 	await expect(saved.getByLabel("警戒")).not.toBeChecked();
 });

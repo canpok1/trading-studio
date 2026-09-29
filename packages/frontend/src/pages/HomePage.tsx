@@ -531,11 +531,14 @@ function toMarkers(
 	});
 }
 
-/** AI の今の判定。押すとニュース画面へ */
+/** 今の市場評価。押すとニュース画面へ */
 function JudgmentPanel({ current }: { current: CurrentJudgment | null }) {
 	return (
-		<section aria-label="AI評価" className={PANEL}>
-			<PanelHeader title="AI評価" link={{ to: "/news", label: "ニュース ›" }} />
+		<section aria-label="市場評価" className={PANEL}>
+			<PanelHeader
+				title="市場評価"
+				link={{ to: "/news", label: "ニュース ›" }}
+			/>
 			{current === null ? (
 				<Skeleton className="h-[74px]" />
 			) : (
