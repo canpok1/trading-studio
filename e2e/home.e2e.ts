@@ -262,14 +262,17 @@ test("チャートに AI 判定の背景と帯が出て、帯をタップする�
 	await expect(bgSelect).toHaveValue("sentiment");
 	// 背景がセンチメントのとき、帯はリスクの1本。その帯をタップする
 	const chart = page.getByRole("img", { name: "価格チャート" });
+	// 指した足で上の値の表示の行数が変わり、チャートが上下にずれる（足の無い枠は「データなし」の1行）。
+	// 帯は下端近くにあり、ずれると指す位置がチャートの外へ出て表示が戻り、ずれが止まらない。
+	// 先に同じ足の上の方を指してずれを済ませてから、帯を押す
+	const x = (await chart.boundingBox())?.width ?? 0;
+	await chart.hover({ position: { x: x / 2, y: 40 } });
 	const box = await chart.boundingBox();
 	if (!box) throw new Error("チャートが無い");
 	// 下端から時間軸（約 26px）を除き、帯の中ほどの位置
-	const at = { x: box.width / 2, y: box.height - 26 - 10 };
-	// 指した足で上の値の表示の行数が変わり、チャートが上下にずれる（足の無い枠は「データなし」の1行）。
-	// 先に指してずれを済ませてから押す
-	await chart.hover({ position: at });
-	await chart.click({ position: at });
+	await chart.click({
+		position: { x: box.width / 2, y: box.height - 26 - 10 },
+	});
 	await expect(bgSelect).toHaveValue("risk");
 	await page.reload();
 	await expect(page.getByLabel("背景に使う判定")).toHaveValue("risk", {
