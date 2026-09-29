@@ -85,17 +85,17 @@ async function prepare(
 
 async function choose(page: Page, strategy: string, from: string, to: string) {
 	await page.goto("/backtest");
-	await page.getByRole("button", { name: "テンプレート読み込み" }).click();
-	const dialog = page.getByRole("dialog", { name: "テンプレート読み込み" });
+	await page.getByRole("button", { name: "条件を読み込む" }).click();
+	const dialog = page.getByRole("dialog", { name: "条件を読み込む" });
 	await dialog.getByRole("button", { name: strategy }).click();
 	await expect(dialog).toBeHidden();
-	// テンプレートを読み込んでも名前は変わらないので、テンプレートと同じ名前を付ける
+	// 条件を読み込んでも名前は変わらないので、読み込み元と同じ名前を付ける
 	await page.getByLabel("バックテスト名").fill(strategy);
 	await page.getByLabel("開始").fill(from);
 	await page.getByLabel("終了").fill(to);
 }
 
-test("テンプレートから名前を付けて実行すると結果が出て、注文の詳細が見られ、条件を新しい戦略に保存できる", async ({
+test("ひな形から名前を付けて実行すると結果が出て、注文の詳細が見られ、条件を新しい戦略に保存できる", async ({
 	page,
 	request,
 }, info) => {
@@ -111,15 +111,15 @@ test("テンプレートから名前を付けて実行すると結果が出て�
 	await tf.selectOption({ label: "4時間足" });
 	await expect(page.getByText("4時間足 · 138 本")).toBeVisible();
 	await expect(page.getByText(`${name}（変更あり）`)).toBeVisible();
-	// テンプレートを読み込み直すと条件は戻り、バックテスト名は変わらない
-	await page.getByRole("button", { name: "テンプレート読み込み" }).click();
+	// 条件を読み込み直すと条件は戻り、バックテスト名は変わらない
+	await page.getByRole("button", { name: "条件を読み込む" }).click();
 	await page
-		.getByRole("dialog", { name: "テンプレート読み込み" })
+		.getByRole("dialog", { name: "条件を読み込む" })
 		.getByRole("button", { name })
 		.click();
 	await expect(page.getByText("1時間足 · 552 本")).toBeVisible();
 	await expect(runName).toHaveValue(title);
-	// テンプレートから変えて試す
+	// 読み込んだ条件から変えて試す
 	await page.getByRole("button", { name: "0.001 増やす" }).click();
 	await expect(page.getByText(`${name}（変更あり）`)).toBeVisible();
 	await page.getByRole("button", { name: "バックテストを実行" }).click();
@@ -221,7 +221,7 @@ test("判定の間隔より細かいデータが無いと、実行前と結果�
 	request,
 }, info) => {
 	const name = `BT 頻度 ${info.project.name}`;
-	// 1時間足しか無いのに、ポジションありは15分ごとに判定する
+	// 1時間足しか無いのに、保有中は15分ごとに判定する
 	await prepare(request, name, {
 		...PARAMS,
 		frequency: { ...PARAMS.frequency, holding: { value: 15, unit: "m" } },

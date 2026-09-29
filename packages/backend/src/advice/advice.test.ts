@@ -223,7 +223,7 @@ describe("アドバイスの生成", () => {
 			"### 買い注文する条件（組み合わせ方: すべて満たす）\n1. 終値が直近 5 本の最高値を上抜けた",
 		);
 		expect(prompts[0]).toContain("- 1日の損失上限（円）: 30,000");
-		expect(prompts[0]).toContain("- 最大ポジション数: 1");
+		expect(prompts[0]).toContain("- 最大ロット数: 1");
 		expect(prompts[0]).not.toContain("orderSize");
 		// 改善案を反映した戦略も一緒に持つ
 		expect(a?.content?.improved).toMatchObject({
@@ -403,7 +403,7 @@ describe("AI に渡す資料", () => {
 			orders: [o],
 			judgments: null,
 		});
-		const table = text.split("## 注文")[1]?.split("\n") ?? [];
+		const table = text.split("\n## 注文")[1]?.split("\n") ?? [];
 		const cols = (line = "") => line.split(",").length;
 		expect(cols(table[2])).toBe(cols(table[1]));
 		expect(table[2]).toContain("指値 15 000 000 が約定しなかった");

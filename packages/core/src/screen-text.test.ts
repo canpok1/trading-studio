@@ -40,9 +40,9 @@ describe("戦略設定の変更点", () => {
 		after.maxPositions = 3;
 		expect(conditionSetChanges(BASE, after)).toEqual([
 			{
-				section: "1回の注文量",
-				removed: ["最大ポジション数: 1"],
-				added: ["最大ポジション数: 3"],
+				section: "注文量とロット数",
+				removed: ["最大ロット数: 1"],
+				added: ["最大ロット数: 3"],
 			},
 			{
 				section: "買い注文する条件",
@@ -71,7 +71,7 @@ describe("戦略設定の変更点", () => {
 			{
 				section: "売り注文（損切り）する条件",
 				removed: ["条件なし"],
-				added: ["買ってからの最高値から 3 % 下がった"],
+				added: ["買ってからの最高値から 3% 下がった"],
 			},
 		]);
 	});

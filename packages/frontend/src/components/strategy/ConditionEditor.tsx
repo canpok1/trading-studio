@@ -138,8 +138,8 @@ export function FrequencyCard({ params, onChange, errors }: Props) {
 					))}
 				</select>
 			</label>
-			{freq("flat", "ポジションなしのとき", "ごとに買いの条件を判定")}
-			{freq("holding", "ポジションありのとき", "ごとに売りの条件を判定")}
+			{freq("flat", "保有なしのとき", "ごとに買いの条件を判定")}
+			{freq("holding", "保有中のとき", "ごとに売りの条件を判定")}
 		</Card>
 	);
 }
@@ -170,10 +170,10 @@ export function OrderSizeCard({
 	return (
 		<Card className="flex flex-col gap-2.5">
 			<div className="flex items-center gap-1.5">
-				<h2 className="text-[15px] font-bold">注文量とポジション数</h2>
-				<Help label="注文量とポジション数">
+				<h2 className="text-[15px] font-bold">注文量とロット数</h2>
+				<Help label="注文量とロット数">
 					<p>
-						約定した買い1件がこの量の1ロットになる。最大ポジション数は同時に持てるロットの数で、約定待ちの買いも数える。2
+						約定した買い1件がこの量の1ロットになる。最大ロット数は同時に持てるロットの数で、約定待ちの買いも数える。2
 						以上にすると保有中も買い、買いの条件が一度外れてから再び成り立ったときに次を買う。売りはロットごとに判定する。
 					</p>
 					<p>
@@ -216,13 +216,13 @@ export function OrderSizeCard({
 			<ErrorText messages={errs} />
 			<div className="flex flex-col gap-1 rounded-[10px] bg-bg px-3 py-2">
 				<div className="flex flex-wrap items-center gap-1.5 text-sm">
-					<span>最大ポジション数</span>
+					<span>最大ロット数</span>
 					<NumberInput
 						value={params.maxPositions}
 						onChange={(maxPositions) => onChange({ ...params, maxPositions })}
 						invalid={maxErrs.length > 0}
 						inputMode="numeric"
-						aria-label="最大ポジション数"
+						aria-label="最大ロット数"
 						className="w-16"
 					/>
 					<span className="text-xs text-text-2">
@@ -784,7 +784,7 @@ function BuyOrderLines({
 					<p>条件が成り立つと全部を同時に出す。</p>
 					<p>
 						成行は1件目だけ選べる。指値は下の行ほど大きい %
-						にする。最大ポジション数の空きより多ければ、空きの数だけ上から出す。
+						にする。最大ロット数の空きより多ければ、空きの数だけ上から出す。
 					</p>
 				</Help>
 			</span>
