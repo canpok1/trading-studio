@@ -4,6 +4,7 @@ import { TIMEFRAME_LABELS, TIMEFRAMES } from "@trading-studio/core";
 import { useCallback, useId, useState } from "react";
 import { useApi } from "../api";
 import { Help } from "../components/Help";
+import { Modal } from "../components/Modal";
 import { Page } from "../components/Page";
 import { ErrorState, LoadingCard } from "../components/States";
 import { Button, Card, Segmented } from "../components/ui";
@@ -163,13 +164,7 @@ function AnalysisCard() {
 	// 期間を変えて一覧から外れた実行は入れない
 	const chosen = runs.filter((r) => selected.has(r.id)).map((r) => r.id);
 
-	const toggle = (id: number, on: boolean) =>
-		setSelected((cur) => {
-			const next = new Set(cur);
-			if (on) next.add(id);
-			else next.delete(id);
-			return next;
-		});
+	const [picking, setPicking] = useState(false);
 
 	const run = async () => {
 		if (range.from === null || range.to === null) return;
@@ -196,10 +191,22 @@ function AnalysisCard() {
 		<Card className="flex flex-col gap-3">
 			<PeriodInputs value={period} onChange={setPeriod} disabled={busy} />
 			<Alert>{range.error}</Alert>
-			<fieldset className="flex min-w-0 flex-col gap-1.5">
-				<legend className="mb-1 text-xs text-text-2">
-					入れるバックテスト（期間内に実行して完了したもの）
-				</legend>
+			<div className="flex min-w-0 flex-col gap-1.5">
+				<div className="flex items-center justify-between gap-2 text-xs">
+					<span data-testid="export-backtests" className="text-text-2">
+						入れるバックテスト:{" "}
+						{state.kind === "ok"
+							? `${chosen.length} 件（期間内 ${runs.length} 件）`
+							: "—"}
+					</span>
+					<Button
+						size="sm"
+						onClick={() => setPicking(true)}
+						disabled={busy || runs.length === 0}
+					>
+						選ぶ
+					</Button>
+				</div>
 				{state.kind === "loading" && <LoadingCard lines={1} />}
 				{state.kind === "error" && (
 					<ErrorState
@@ -207,9 +214,65 @@ function AnalysisCard() {
 						next="サーバーが動いているか確かめてから、期間を選び直す"
 					/>
 				)}
-				{state.kind === "ok" && runs.length === 0 && (
-					<p className="text-xs text-text-2">期間内に実行したものは無い</p>
-				)}
+			</div>
+			<Alert>{error}</Alert>
+			<Button
+				variant="primary"
+				onClick={run}
+				disabled={busy || range.error !== null}
+			>
+				{busy ? "書き出し中…" : "分析用 ZIP を書き出す"}
+			</Button>
+			{picking && (
+				<PickBacktestsModal
+					runs={runs}
+					initial={chosen}
+					onDone={(ids) => {
+						setSelected(new Set(ids));
+						setPicking(false);
+					}}
+					onClose={() => setPicking(false)}
+				/>
+			)}
+		</Card>
+	);
+}
+
+/** 入れるバックテストを期間内の実行から選ぶ。背景タップ・Esc は変更を捨てて閉じる */
+function PickBacktestsModal({
+	runs,
+	initial,
+	onDone,
+	onClose,
+}: {
+	runs: BacktestRun[];
+	initial: number[];
+	onDone: (ids: number[]) => void;
+	onClose: () => void;
+}) {
+	const [selected, setSelected] = useState<Set<number>>(() => new Set(initial));
+	const all = selected.size === runs.length;
+	const toggle = (id: number, on: boolean) =>
+		setSelected((cur) => {
+			const next = new Set(cur);
+			if (on) next.add(id);
+			else next.delete(id);
+			return next;
+		});
+	return (
+		<Modal title="入れるバックテストを選ぶ" onClose={onClose}>
+			<div className="flex items-center justify-between gap-2 text-xs">
+				<span className="text-text-2">期間内に実行して完了したもの</span>
+				<Button
+					size="sm"
+					onClick={() =>
+						setSelected(all ? new Set() : new Set(runs.map((r) => r.id)))
+					}
+				>
+					{all ? "すべて外す" : "すべて選ぶ"}
+				</Button>
+			</div>
+			<div className="flex flex-col gap-1.5">
 				{runs.map((r) => {
 					const pct = r.summary?.pnlPercent;
 					return (
@@ -221,7 +284,6 @@ function AnalysisCard() {
 								type="checkbox"
 								checked={selected.has(r.id)}
 								onChange={(e) => toggle(r.id, e.target.checked)}
-								disabled={busy}
 								className="size-4 shrink-0 accent-accent"
 							/>
 							<span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -243,16 +305,18 @@ function AnalysisCard() {
 						</label>
 					);
 				})}
-			</fieldset>
-			<Alert>{error}</Alert>
-			<Button
-				variant="primary"
-				onClick={run}
-				disabled={busy || range.error !== null}
-			>
-				{busy ? "書き出し中…" : "分析用 ZIP を書き出す"}
-			</Button>
-		</Card>
+			</div>
+			<div className="grid grid-cols-2 gap-3">
+				<Button onClick={() => onDone([])}>選ばない</Button>
+				<Button
+					variant="primary"
+					disabled={selected.size === 0}
+					onClick={() => onDone([...selected])}
+				>
+					{selected.size} 件で決定
+				</Button>
+			</div>
+		</Modal>
 	);
 }
 
