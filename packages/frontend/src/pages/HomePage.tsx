@@ -433,7 +433,7 @@ function HomeBody({
 				<section aria-label="価格チャート" className={`${PANEL} lg:col-span-2`}>
 					<PanelHeader title="チャート" />
 					<EmptyState
-						title="収集を始めたばかりでデータがない"
+						title="収集を始めたばかりでデータが無い"
 						description="価格を受け取ると、ここにチャートが出る"
 					/>
 				</section>

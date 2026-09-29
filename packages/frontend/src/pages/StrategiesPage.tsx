@@ -120,7 +120,7 @@ export function StrategiesPage() {
 			<Page title="戦略">
 				<Card>
 					<EmptyState
-						title="戦略がまだない"
+						title="戦略がまだ無い"
 						description="ひな形から作って、条件を調整する。"
 						action={
 							<Button variant="primary" onClick={() => setDialog("create")}>
@@ -199,7 +199,7 @@ export function StrategiesPage() {
 								この条件でバックテスト
 							</Button>
 							<Button size="sm" onClick={() => setDialog("rename")}>
-								この戦略をリネーム
+								この戦略の名前を変える
 							</Button>
 							<Button
 								size="sm"

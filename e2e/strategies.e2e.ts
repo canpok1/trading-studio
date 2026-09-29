@@ -78,7 +78,7 @@ test("戦略の複製・リネーム・削除ができ、同じ名前は付け�
 
 	// リネーム
 	const renamed = `${base} 改`;
-	await page.getByRole("button", { name: "この戦略をリネーム" }).click();
+	await page.getByRole("button", { name: "この戦略の名前を変える" }).click();
 	const rename = page.getByRole("dialog", { name: "戦略の名前を変える" });
 	await rename.getByLabel("新しい名前").fill(renamed);
 	await rename.getByRole("button", { name: "名前を変える" }).click();
