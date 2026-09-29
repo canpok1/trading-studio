@@ -789,6 +789,14 @@ export function PriceChart({
 	];
 	const controls = (
 		<>
+			<div className="flex min-h-6 items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">チャート</h2>
+				<Help label="チャート">
+					{onMarker && <p>アイコンをタップで詳細。</p>}
+					{judgments && <p>下の帯をタップで背景と入れ替え。</p>}
+					<p>ピンチ / ホイール / ＋−で拡大・縮小。</p>
+				</Help>
+			</div>
 			{compact ? (
 				<div className="flex flex-wrap items-center gap-2">
 					{toolbar}
@@ -972,132 +980,123 @@ export function PriceChart({
 						: `h-[260px] ${compact ? "lg:h-[480px]" : "lg:h-[360px]"}`
 				}`}
 			/>
-			<div className="flex items-start gap-2">
-				{(onMarker || showEma || showBb || showRsi || judgments) && (
-					<details className="min-w-0 flex-1 rounded-[10px] border border-line px-3 py-2 text-xs">
-						<summary className="cursor-pointer font-semibold">凡例</summary>
-						<div className="mt-2 flex flex-col gap-2">
-							{onMarker && (
-								<LegendRow title="注文">
-									<LegendItem
-										shape="up"
-										colorVar="--color-buy"
-										label="買い約定"
-									/>
-									<LegendItem
-										shape="down"
-										colorVar="--color-sell"
-										label="売り約定"
-									/>
-									<LegendItem
-										shape="circle"
-										colorVar="--color-buy"
-										label="注文中"
-									/>
-									<LegendItem
-										shape="square"
-										colorVar="--color-cancel"
-										label="取消"
-									/>
-								</LegendRow>
-							)}
-							{showEma && (
-								<LegendRow
-									title="EMA"
-									note={
-										indicators.ema.custom
-											? "指数移動平均。本数は歯車で変えた値"
-											: indicators.ema.fromStrategy
-												? "指数移動平均。本数は戦略の条件の値"
-												: "指数移動平均。本数は既定の値（歯車で変えられる）"
-									}
-								>
-									{emaPeriods.map((n, j) => (
-										<span key={n} className="flex items-center gap-1">
-											<i
-												className="inline-block h-[3px] w-3"
-												style={{ background: `var(${emaVar(j)})` }}
-											/>
-											EMA {n}
-										</span>
-									))}
-								</LegendRow>
-							)}
-							{showBb && (
-								<LegendRow
-									title="ボリンジャーバンド"
-									note={
-										indicators.bb.custom
-											? "上限・中央（点線）・下限。本数と σ は歯車で変えた値"
-											: indicators.bb.fromStrategy
-												? "上限・中央（点線）・下限。本数と σ は戦略の条件の値"
-												: "上限・中央（点線）・下限。本数と σ は既定の値（歯車で変えられる）"
-									}
-								>
-									<span className="flex items-center gap-1">
+			{(onMarker || showEma || showBb || showRsi || judgments) && (
+				<details className="min-w-0 rounded-[10px] border border-line px-3 py-2 text-xs">
+					<summary className="cursor-pointer font-semibold">凡例</summary>
+					<div className="mt-2 flex flex-col gap-2">
+						{onMarker && (
+							<LegendRow title="注文">
+								<LegendItem
+									shape="up"
+									colorVar="--color-buy"
+									label="買い約定"
+								/>
+								<LegendItem
+									shape="down"
+									colorVar="--color-sell"
+									label="売り約定"
+								/>
+								<LegendItem
+									shape="circle"
+									colorVar="--color-buy"
+									label="注文中"
+								/>
+								<LegendItem
+									shape="square"
+									colorVar="--color-cancel"
+									label="取消"
+								/>
+							</LegendRow>
+						)}
+						{showEma && (
+							<LegendRow
+								title="EMA"
+								note={
+									indicators.ema.custom
+										? "指数移動平均。本数は歯車で変えた値"
+										: indicators.ema.fromStrategy
+											? "指数移動平均。本数は戦略の条件の値"
+											: "指数移動平均。本数は既定の値（歯車で変えられる）"
+								}
+							>
+								{emaPeriods.map((n, j) => (
+									<span key={n} className="flex items-center gap-1">
 										<i
 											className="inline-block h-[3px] w-3"
-											style={{ background: "var(--color-bb)" }}
+											style={{ background: `var(${emaVar(j)})` }}
 										/>
-										{bb.period} 本・{bb.sigma}σ
+										EMA {n}
 									</span>
-								</LegendRow>
-							)}
-							{showRsi && (
-								<LegendRow
-									title="RSI"
-									note="下の小窓に 0〜100 で描き、点線はしきい値。本数・しきい値は歯車で変えられる"
-								>
-									{rsiLines.map((l, j) => (
-										<span key={l.period} className="flex items-center gap-1">
-											<i
-												className="inline-block h-[3px] w-3"
-												style={{ background: `var(${rsiVar(j)})` }}
-											/>
-											RSI {l.period}
-										</span>
-									))}
-								</LegendRow>
-							)}
-							{judgments &&
-								JUDGES.map((j) => (
-									<LegendRow
-										key={j}
-										title={JUDGE_LABELS[j]}
-										note={j === bg ? "背景" : "下の帯"}
-									>
-										{JUDGMENT_VALUES[j].map((v) => {
-											const st = valueStyle(j, v);
-											return (
-												<span key={v} className="flex items-center gap-1">
-													<i
-														className="inline-block h-2.5 w-3 rounded-sm"
-														style={
-															j === bg
-																? {
-																		background: `var(${st.bg})`,
-																		outline: `1px solid var(${st.solid})`,
-																	}
-																: { background: `var(${st.solid})` }
-														}
-													/>
-													{st.label}
-												</span>
-											);
-										})}
-									</LegendRow>
 								))}
-						</div>
-					</details>
-				)}
-				<span className="mt-2.5 ml-auto">
-					<Help label="チャートの操作">
-						{onMarker && <p>アイコンをタップで詳細。</p>}
-						{judgments && <p>下の帯をタップで背景と入れ替え。</p>}
-						<p>ピンチ / ホイール / ＋−で拡大・縮小。</p>
-					</Help>
-				</span>
-			</div>
+							</LegendRow>
+						)}
+						{showBb && (
+							<LegendRow
+								title="ボリンジャーバンド"
+								note={
+									indicators.bb.custom
+										? "上限・中央（点線）・下限。本数と σ は歯車で変えた値"
+										: indicators.bb.fromStrategy
+											? "上限・中央（点線）・下限。本数と σ は戦略の条件の値"
+											: "上限・中央（点線）・下限。本数と σ は既定の値（歯車で変えられる）"
+								}
+							>
+								<span className="flex items-center gap-1">
+									<i
+										className="inline-block h-[3px] w-3"
+										style={{ background: "var(--color-bb)" }}
+									/>
+									{bb.period} 本・{bb.sigma}σ
+								</span>
+							</LegendRow>
+						)}
+						{showRsi && (
+							<LegendRow
+								title="RSI"
+								note="下の小窓に 0〜100 で描き、点線はしきい値。本数・しきい値は歯車で変えられる"
+							>
+								{rsiLines.map((l, j) => (
+									<span key={l.period} className="flex items-center gap-1">
+										<i
+											className="inline-block h-[3px] w-3"
+											style={{ background: `var(${rsiVar(j)})` }}
+										/>
+										RSI {l.period}
+									</span>
+								))}
+							</LegendRow>
+						)}
+						{judgments &&
+							JUDGES.map((j) => (
+								<LegendRow
+									key={j}
+									title={JUDGE_LABELS[j]}
+									note={j === bg ? "背景" : "下の帯"}
+								>
+									{JUDGMENT_VALUES[j].map((v) => {
+										const st = valueStyle(j, v);
+										return (
+											<span key={v} className="flex items-center gap-1">
+												<i
+													className="inline-block h-2.5 w-3 rounded-sm"
+													style={
+														j === bg
+															? {
+																	background: `var(${st.bg})`,
+																	outline: `1px solid var(${st.solid})`,
+																}
+															: { background: `var(${st.solid})` }
+													}
+												/>
+												{st.label}
+											</span>
+										);
+									})}
+								</LegendRow>
+							))}
+					</div>
+				</details>
+			)}
 		</>
 	);
 

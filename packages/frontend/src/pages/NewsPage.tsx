@@ -92,6 +92,16 @@ export function NewsPage() {
 	const troubles = aiTroubles(data.collector, data.scorer);
 	return (
 		<Page title="ニュース" actions={<SettingsLink />}>
+			<div className="flex items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">今の判定</h2>
+				<Help label="今の判定">
+					<p>
+						直近 {current.rule.windowHours}{" "}
+						時間のニュースの点数を、新しいほど重く平均する（半減期{" "}
+						{current.rule.halfLifeHours} 時間）。
+					</p>
+				</Help>
+			</div>
 			<section
 				aria-label="今の判定"
 				className="overflow-hidden rounded-xl border border-line bg-surface"
@@ -120,18 +130,9 @@ export function NewsPage() {
 					);
 				})}
 			</section>
-			<div className="flex items-center gap-1.5">
-				<p className="num text-xs text-text-2">
-					{formatDateTime(current.time)} 時点
-				</p>
-				<Help label="今の判定">
-					<p>
-						直近 {current.rule.windowHours}{" "}
-						時間のニュースの点数を、新しいほど重く平均する（半減期{" "}
-						{current.rule.halfLifeHours} 時間）。
-					</p>
-				</Help>
-			</div>
+			<p className="num text-xs text-text-2">
+				{formatDateTime(current.time)} 時点
+			</p>
 			{troubles.map((t) => (
 				<div
 					key={t.title}

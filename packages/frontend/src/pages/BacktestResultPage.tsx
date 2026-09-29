@@ -379,6 +379,7 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 				aria-label="成績の要約"
 				className="flex flex-col gap-3.5 rounded-xl border border-line bg-surface px-4 py-3.5"
 			>
+				<h2 className="text-[15px] font-bold">成績</h2>
 				<div className="flex flex-col gap-0.5">
 					<span className="text-xs text-text-2">損益</span>
 					<div className="flex items-baseline gap-2.5">
