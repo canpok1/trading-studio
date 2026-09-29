@@ -149,10 +149,10 @@ export function NewsPage() {
 						</span>
 					)}
 					<Link
-						to="/settings?section=news&tab=sources"
+						to={`/settings?section=news&tab=${t.tab}`}
 						className="self-start font-semibold text-accent"
 					>
-						収集と採点の設定を開く
+						{t.tab === "sources" ? "取得の設定を開く" : "採点の設定を開く"}
 					</Link>
 				</div>
 			))}
@@ -166,7 +166,7 @@ export function NewsPage() {
 				<Help label="ニュースごと">
 					<p>
 						{data.collector.intervalMinutes}
-						分ごとにニュースを集め、新着だけを1回ずつ採点する。—
+						分ごとにニュースを取得し、新着だけを1回ずつ採点する。—
 						は関係なし（その観点の集計に入れない）。
 					</p>
 				</Help>
@@ -176,7 +176,7 @@ export function NewsPage() {
 	);
 }
 
-/** ニュースの設定（集計ルール・プロンプト・収集と採点）は設定画面に置く */
+/** ニュースの設定（集計ルール・プロンプト・取得）は設定画面に置く */
 function SettingsLink() {
 	return (
 		<Link to="/settings?section=news" className={buttonClass("default", "sm")}>

@@ -1,12 +1,8 @@
-import type {
-	NewsCollectorStatus,
-	NewsSource,
-	ScoringModelOption,
-} from "@trading-studio/backend";
-import { useCallback, useEffect, useState } from "react";
+import type { NewsCollectorStatus, NewsSource } from "@trading-studio/backend";
+import { useState } from "react";
 import { useApi } from "../../api";
 import { formatDateTime } from "../../format";
-import { errorMessage, readJson, useAsync } from "../../lib/useAsync";
+import { errorMessage, readJson } from "../../lib/useAsync";
 import { Help } from "../Help";
 import { Modal } from "../Modal";
 import { NumberInput } from "../NumberInput";
@@ -34,7 +30,6 @@ export function SourcesTab({
 				nextRunAt={collector.nextRunAt}
 				onChanged={onChanged}
 			/>
-			<ModelSetting />
 		</>
 	);
 }
@@ -82,7 +77,7 @@ function SourceList({
 				<h2 className="text-[15px] font-bold">ニュースの取得元（RSS）</h2>
 				<Help label="ニュースの取得元（RSS）">
 					<p>
-						無効にした取得元は次の収集から取らない。削除しても集めたニュースと採点は残る。
+						無効にした取得元からは次の回から取得しない。削除しても取得済みのニュースと採点は残る。
 					</p>
 				</Help>
 			</div>
@@ -123,7 +118,7 @@ function SourceList({
 								type="button"
 								role="switch"
 								aria-checked={s.enabled}
-								aria-label={`${s.name} から集める`}
+								aria-label={`${s.name} から取得する`}
 								disabled={busy === s.id}
 								onClick={() => toggle(s)}
 								className="flex h-8 w-14 shrink-0 items-center rounded-full bg-surface-2 p-[3px] transition-colors aria-checked:bg-accent disabled:opacity-60"
@@ -153,7 +148,7 @@ function SourceList({
 				<Modal title="取得元を削除する" onClose={() => setRemoving(null)}>
 					<p className="text-sm">
 						「{removing.name}
-						」を削除する。集めたニュースと採点は残る。
+						」を削除する。取得済みのニュースと採点は残る。
 					</p>
 					<div className="grid grid-cols-2 gap-3">
 						<Button onClick={() => setRemoving(null)}>やめる</Button>
@@ -305,7 +300,7 @@ function IntervalSetting({
 				.then((r) => readJson(r));
 			setMessage({
 				ok: true,
-				text: "収集間隔を保存した。次の収集から反映する",
+				text: "取得間隔を保存した。次の取得から反映する",
 			});
 			onChanged();
 		} catch (e) {
@@ -316,11 +311,11 @@ function IntervalSetting({
 	};
 	return (
 		<Card className="flex flex-col gap-2.5">
-			<h2 className="text-[15px] font-bold">収集間隔</h2>
+			<h2 className="text-[15px] font-bold">取得間隔</h2>
 			<div className="flex flex-wrap items-center gap-2">
 				<NumberInput
 					id="news-interval"
-					aria-label="収集間隔（分）"
+					aria-label="取得間隔（分）"
 					inputMode="numeric"
 					value={value}
 					onChange={(v) => {
@@ -354,104 +349,8 @@ function IntervalSetting({
 			)}
 			{nextRunAt !== null && (
 				<span className="num text-xs text-text-2">
-					次の収集: {formatDateTime(nextRunAt)}
+					次の取得: {formatDateTime(nextRunAt)}
 				</span>
-			)}
-		</Card>
-	);
-}
-
-function ModelSetting() {
-	const api = useApi();
-	const load = useCallback(
-		() =>
-			api.api.scoring.model
-				.$get()
-				.then((r) =>
-					readJson<{ models: ScoringModelOption[]; current: string }>(r),
-				),
-		[api],
-	);
-	const { state, reload } = useAsync(load);
-	const [value, setValue] = useState<string | null>(null);
-	const [busy, setBusy] = useState(false);
-	const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(
-		null,
-	);
-	const current = state.kind === "ok" ? state.data.current : null;
-	useEffect(() => {
-		if (current !== null) setValue(current);
-	}, [current]);
-
-	const save = async () => {
-		if (value === null) return;
-		setBusy(true);
-		setMessage(null);
-		try {
-			await api.api.scoring.model
-				.$put({ json: { model: value } })
-				.then((r) => readJson(r));
-			setMessage({
-				ok: true,
-				text: "モデルを保存した。次に採点するニュースから反映する",
-			});
-			reload();
-		} catch (e) {
-			setMessage({ ok: false, text: errorMessage(e) });
-		} finally {
-			setBusy(false);
-		}
-	};
-
-	return (
-		<Card className="flex flex-col gap-2.5">
-			<div className="flex items-center gap-1.5">
-				<h2 className="text-[15px] font-bold">
-					<label htmlFor="scoring-model">採点に使うモデル</label>
-				</h2>
-				<Help label="採点に使うモデル">
-					<p>モデルを変えても採点済みのニュースは採点し直さない。</p>
-				</Help>
-			</div>
-			{state.kind === "error" ? (
-				<p role="alert" className="text-xs font-semibold text-loss">
-					読み込めなかった: {state.message}
-				</p>
-			) : (
-				<div className="flex items-center gap-2">
-					<select
-						id="scoring-model"
-						value={value ?? ""}
-						disabled={state.kind !== "ok"}
-						onChange={(e) => {
-							setValue(e.target.value);
-							setMessage(null);
-						}}
-						className="h-11 min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 text-[15px]"
-					>
-						{state.kind === "ok" &&
-							state.data.models.map((m) => (
-								<option key={m.id} value={m.id}>
-									{m.label}
-								</option>
-							))}
-					</select>
-					<Button
-						size="sm"
-						disabled={busy || value === null || value === current}
-						onClick={save}
-					>
-						保存
-					</Button>
-				</div>
-			)}
-			{message && (
-				<p
-					role={message.ok ? "status" : "alert"}
-					className={`text-xs font-semibold ${message.ok ? "" : "text-loss"}`}
-				>
-					{message.text}
-				</p>
 			)}
 		</Card>
 	);
