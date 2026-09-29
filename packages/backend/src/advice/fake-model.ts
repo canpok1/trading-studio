@@ -43,7 +43,7 @@ export function demoAdviceModel({
 				good: "- デモのうまくいった点",
 				bad: "- デモの悪かった点",
 				improvements:
-					"- 「売り注文（損切り）する条件」に「買値から 3 % 下がった」を足す",
+					"- 「売り注文（損切り）する条件」に「買値から 3% 下がった」を足す",
 				improvedStrategy: DEMO_IMPROVED_STRATEGY,
 			};
 		},

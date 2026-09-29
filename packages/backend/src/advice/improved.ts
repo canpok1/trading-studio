@@ -115,13 +115,13 @@ export const IMPROVED_STRATEGY_SCHEMA: ResponseSchema = {
 			type: "OBJECT",
 			description: "足と判定の間隔",
 			properties: {
-				flat: { ...FREQUENCY, description: "ポジションなしのとき" },
-				holding: { ...FREQUENCY, description: "ポジションありのとき" },
+				flat: { ...FREQUENCY, description: "保有なしのとき" },
+				holding: { ...FREQUENCY, description: "保有中のとき" },
 			},
 			required: ["flat", "holding"],
 		},
 		orderSizeBtc: num("1回の注文量（BTC）"),
-		maxPositions: int("最大ポジション数"),
+		maxPositions: int("最大ロット数"),
 		dailyLossLimitYen: int("1日の損失上限（円）"),
 		...Object.fromEntries(
 			CONDITION_GROUPS.map((k) => [k, group(CONDITION_GROUP_LABELS[k])]),

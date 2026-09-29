@@ -313,7 +313,7 @@ function decisionColumns<T>(get: (r: T) => DecisionLog): Column<T>[] {
 		col("cash", "判断したときの現金（円）", (r) => get(r).cash),
 		col(
 			"position_quantity",
-			"判断したときの保有数量（satoshi）。0 ならポジションなし",
+			"判断したときの保有数量（satoshi）。0 なら保有なし",
 			(r) => get(r).position.quantity,
 		),
 		col(

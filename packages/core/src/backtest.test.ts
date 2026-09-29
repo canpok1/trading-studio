@@ -302,7 +302,7 @@ describe("期間と指標", () => {
 describe("判定頻度が戦略の粒度より短い", () => {
 	const M15 = TIMEFRAME_MS["15m"];
 	const P = 10_000_000;
-	// 1時間足の戦略。ポジションありは15分ごとに判定し、買値から1%下がったら損切り
+	// 1時間足の戦略。保有中は15分ごとに判定し、買値から1%下がったら損切り
 	const params: ConditionSet = {
 		timeframe: "1h",
 		frequency: {
@@ -626,6 +626,6 @@ describe("複数ポジション", () => {
 		expect(r.summary.trades).toBe(3);
 		expect(r.summary.openPositionQuantity).toBe(0);
 		// 売りと同じ判定で買いの条件が成立しても、売る前の保有で枠が埋まっているので買わない
-		expect(r.decisions[3]?.note).toContain("最大ポジション数 3 に達している");
+		expect(r.decisions[3]?.note).toContain("最大ロット数 3 に達している");
 	});
 });

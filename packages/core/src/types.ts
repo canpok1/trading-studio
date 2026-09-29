@@ -63,12 +63,12 @@ export type Fill = {
 	fee: number;
 };
 
-/** 保有の合計（全ロット）。quantity が 0 ならポジションなし */
+/** 保有の合計（全ロット）。quantity が 0 なら保有なし */
 export type Position = {
 	quantity: number;
-	/** 約定価格の平均（手数料を含めない）。ポジションなしなら null */
+	/** 約定価格の平均（手数料を含めない）。保有なしなら null */
 	entryPrice: number | null;
-	/** 最初のロットの買いが約定した時刻。ポジションなしなら null */
+	/** 最初のロットの買いが約定した時刻。保有なしなら null */
 	openedAt: number | null;
 };
 
