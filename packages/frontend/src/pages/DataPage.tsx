@@ -10,6 +10,7 @@ import type { DragEvent } from "react";
 import { useCallback, useId, useState } from "react";
 import { Link } from "react-router";
 import { useApi } from "../api";
+import { Help } from "../components/Help";
 import { DataIcon, ErrorIcon } from "../components/icons";
 import { Page } from "../components/Page";
 import { EmptyState, ErrorState, LoadingCard } from "../components/States";
@@ -162,7 +163,17 @@ export function DataPage() {
 	return (
 		<Page
 			title="過去データ"
-			description="バックテストに使う BTC/JPY の足を CSV で取り込む"
+			help={
+				<>
+					<p>バックテストに使う BTC/JPY の足を CSV で取り込む。</p>
+					<p>
+						列: {CSV_EXPECTED_FORMAT}。
+						<span className="hidden lg:inline">
+							CSV は取り込みの枠へドラッグ＆ドロップもできる。
+						</span>
+					</p>
+				</>
+			}
 		>
 			<section
 				aria-label="CSV の取り込み"
@@ -207,12 +218,6 @@ export function DataPage() {
 						e.target.value = "";
 					}}
 				/>
-				<p className="text-xs leading-relaxed text-text-2">
-					列: {CSV_EXPECTED_FORMAT}。
-					<span className="hidden lg:inline">
-						ここへドラッグ＆ドロップもできる。
-					</span>
-				</p>
 			</section>
 
 			{job?.phase === "confirming" ? (
@@ -236,7 +241,21 @@ export function DataPage() {
 				/>
 			)}
 
-			<h2 className="text-[15px] font-bold">取り込み済み</h2>
+			<div className="flex items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">取り込み済み</h2>
+				<Help label="取り込み済み">
+					<p>
+						取り込んだ足より粗い粒度（5分・15分・1時間・4時間・日足）は自動で作る。取り込んだ・収集した足と同じ粒度・同じ日時の行があれば、上書きするかを選ぶ。
+					</p>
+					<p>
+						保存済みの足の CSV 書き出しは
+						<Link to="/export" className="font-semibold text-accent">
+							エクスポート
+						</Link>
+						の画面にある。
+					</p>
+				</Help>
+			</div>
 			{state.kind === "loading" && <LoadingCard lines={2} />}
 			{state.kind === "error" && (
 				<Card>
@@ -252,17 +271,6 @@ export function DataPage() {
 				</Card>
 			)}
 			{state.kind === "ok" && <Coverage data={state.data} runningJob={job} />}
-			<p className="text-xs leading-relaxed text-text-2">
-				取り込んだ足より粗い粒度（5分・15分・1時間・4時間・日足）は自動で作る。取り込んだ・収集した足と同じ粒度・同じ日時の行があれば、上書きするかを選ぶ。
-			</p>
-
-			<p className="text-xs leading-relaxed text-text-2">
-				保存済みの足の CSV 書き出しは
-				<Link to="/export" className="font-semibold text-accent">
-					エクスポート
-				</Link>
-				の画面にある。
-			</p>
 		</Page>
 	);
 }

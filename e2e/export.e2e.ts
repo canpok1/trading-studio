@@ -28,13 +28,14 @@ test("保存済みの足を期間を選んで CSV で書き出せる", async ({ 
 		page.getByRole("status").filter({ hasText: "30 行を取り込んだ" }),
 	).toBeVisible();
 
-	// 過去データの画面には書き出しを置かず、エクスポートの画面へ案内する
+	// 過去データの画面には書き出しを置かず、「？」の説明からエクスポートの画面へ案内する
 	await expect(
 		page.getByRole("button", { name: /CSV で書き出す/ }),
 	).toHaveCount(0);
+	await page.getByRole("button", { name: "取り込み済みの説明" }).click();
 	await page
-		.getByRole("link", { name: "エクスポート", exact: true })
-		.last()
+		.getByRole("note", { name: "取り込み済みの説明" })
+		.getByRole("link", { name: "エクスポート" })
 		.click();
 	await expect(
 		page.getByRole("heading", { level: 1, name: "エクスポート" }),

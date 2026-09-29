@@ -3,6 +3,7 @@ import type { Timeframe } from "@trading-studio/core";
 import { TIMEFRAME_LABELS, TIMEFRAMES } from "@trading-studio/core";
 import { useCallback, useId, useState } from "react";
 import { useApi } from "../api";
+import { Help } from "../components/Help";
 import { Page } from "../components/Page";
 import { ErrorState, LoadingCard } from "../components/States";
 import { Button, Card, Segmented } from "../components/ui";
@@ -28,14 +29,37 @@ export function ExportPage() {
 	return (
 		<Page
 			title="エクスポート"
-			description="記録をファイルで書き出す。分析を Claude に頼むときや、バックアップに使う"
+			help={
+				<p>
+					記録をファイルで書き出す。分析を Claude
+					に頼むときや、バックアップに使う。
+				</p>
+			}
 		>
 			<section aria-label="分析用（ZIP）" className="flex flex-col gap-2">
-				<h2 className="text-[15px] font-bold">分析用（ZIP）</h2>
+				<div className="flex items-center gap-1.5">
+					<h2 className="text-[15px] font-bold">分析用（ZIP）</h2>
+					<Help label="分析用（ZIP）">
+						<p>
+							ニュースと AI
+							の採点、採点の基準、集計ルール、1時間ごとの判定、1分足、戦略、ペーパーの判断と注文、選んだバックテストの中身を、表ごとの
+							CSV にして入れる。列の意味と単位は ZIP の中の README.md
+							に書いてある。API キーは入れない。
+						</p>
+					</Help>
+				</div>
 				<AnalysisCard />
 			</section>
 			<section aria-label="価格データ（CSV）" className="flex flex-col gap-2">
-				<h2 className="text-[15px] font-bold">価格データ（CSV）</h2>
+				<div className="flex items-center gap-1.5">
+					<h2 className="text-[15px] font-bold">価格データ（CSV）</h2>
+					<Help label="価格データ（CSV）">
+						<p>
+							取り込みと同じ列（日時は
+							JST）で書き出すので、そのまま取り込み直せる。欠損は埋めない。1分足を残せば、粗い粒度は取り込み直したときに作り直される。
+						</p>
+					</Help>
+				</div>
 				<CandleCsvSection />
 			</section>
 		</Page>
@@ -228,12 +252,6 @@ function AnalysisCard() {
 			>
 				{busy ? "書き出し中…" : "分析用 ZIP を書き出す"}
 			</Button>
-			<p className="text-xs leading-relaxed text-text-2">
-				ニュースと AI
-				の採点、採点の基準、集計ルール、1時間ごとの判定、1分足、戦略、ペーパーの判断と注文、選んだバックテストの中身を、表ごとの
-				CSV にして入れる。列の意味と単位は ZIP の中の README.md
-				に書いてある。API キーは入れない。
-			</p>
 		</Card>
 	);
 }
@@ -344,10 +362,6 @@ function CandleCsvCard({ coverage }: { coverage: TimeframeCoverage[] }) {
 					? "書き出し中…"
 					: `${TIMEFRAME_LABELS[timeframe]}を CSV で書き出す`}
 			</Button>
-			<p className="text-xs leading-relaxed text-text-2">
-				取り込みと同じ列（日時は
-				JST）で書き出すので、そのまま取り込み直せる。欠損は埋めない。1分足を残せば、粗い粒度は取り込み直したときに作り直される。
-			</p>
 		</Card>
 	);
 }
