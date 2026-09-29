@@ -34,6 +34,7 @@ import {
 } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { useApi } from "../api";
+import { Help } from "../components/Help";
 import { Modal } from "../components/Modal";
 import { NumberInput } from "../components/NumberInput";
 import { Page } from "../components/Page";
@@ -545,7 +546,12 @@ function RunForm({
 	return (
 		<Page
 			title="バックテスト"
-			description="テンプレートから条件を作って、取り込んだ CSV の過去データで模擬売買する"
+			help={
+				<p>
+					テンプレートから条件を作って、取り込んだ CSV
+					の過去データで模擬売買する。
+				</p>
+			}
 		>
 			<Tabs
 				label="バックテストの画面"
@@ -744,7 +750,14 @@ function RunForm({
 					</Card>
 					<div className="mt-2 flex flex-col gap-0.5 lg:col-span-2">
 						<div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-							<h2 className="shrink-0 text-[17px] font-bold">戦略設定</h2>
+							<h2 className="flex shrink-0 items-center gap-1.5 text-[17px] font-bold">
+								戦略設定
+								<Help label="戦略設定">
+									<p>
+										テンプレートの条件をコピーして試す。ここで変えても戦略には保存されない。
+									</p>
+								</Help>
+							</h2>
 							{/* スマホは見出しとボタンの下の行に出す。長い名前は省略し、「変更あり」は残す */}
 							{draft.improvement && !template && (
 								<span className="order-last flex min-w-0 basis-full text-xs text-text-2 lg:order-none lg:basis-auto">
@@ -765,9 +778,6 @@ function RunForm({
 								テンプレート読み込み
 							</Button>
 						</div>
-						<p className="text-xs text-text-2">
-							テンプレートの条件をコピーして試す。ここで変えても戦略には保存されない。
-						</p>
 						{draft.improvement && (
 							<ImprovementChanges
 								changes={draft.improvement.changes}
