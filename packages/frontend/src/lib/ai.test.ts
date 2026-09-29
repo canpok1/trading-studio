@@ -57,9 +57,9 @@ test("止まっている間だけ知らせる", () => {
 			pending: 3,
 		}),
 	);
-	expect(t.map((x) => [x.title, x.since])).toEqual([
-		["ニュースの収集が止まっている", 5],
-		["ニュースの採点が止まっている", 7],
+	expect(t.map((x) => [x.title, x.since, x.tab])).toEqual([
+		["ニュースの取得が止まっている", 5, "sources"],
+		["ニュースの採点が止まっている", 7, "prompt"],
 	]);
 	expect(t[0]?.lines).toContain("A: HTTP 503");
 	expect(t[1]?.lines[1]).toContain("3 件");

@@ -25,7 +25,7 @@ export function NewsTab({
 				<div className="rounded-xl border border-line bg-surface">
 					<EmptyState
 						title="ニュースがまだ無い"
-						description="収集すると、ここに採点と一緒に並ぶ"
+						description="取得すると、ここに採点と一緒に並ぶ"
 					/>
 				</div>
 			) : (

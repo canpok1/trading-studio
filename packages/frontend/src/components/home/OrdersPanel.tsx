@@ -134,7 +134,7 @@ export function OrdersPanel({
 					{groups.length === 0 ? (
 						filtered ? (
 							<EmptyState
-								title="条件に合う注文はない"
+								title="条件に合う注文は無い"
 								action={
 									<Button
 										onClick={() => {
@@ -149,7 +149,7 @@ export function OrdersPanel({
 							/>
 						) : (
 							<p className="rounded-xl border border-line px-4 py-6 text-center text-sm text-text-2">
-								{MODE_LABELS[mode]}の注文はまだない
+								{MODE_LABELS[mode]}の注文はまだ無い
 							</p>
 						)
 					) : (

@@ -513,7 +513,7 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 		reason: string,
 	): string | null => {
 		if (intent.type === "limit" && intent.price === undefined) {
-			return "指値の価格が無いため発注しない";
+			return "指値の価格が無いため注文しない";
 		}
 		if (intent.side === "buy" && blockBuy) {
 			return blockBuy;
@@ -526,20 +526,20 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 			// 成行は約定時に確かめる（1件だけなら今までどおり発注する）
 			if ((intent.type === "limit" || reserved > 0) && cash - reserved < need) {
 				return reserved > 0
-					? `資金 ${formatYen(cash)} 円から未約定の買い ${formatYen(reserved)} 円を除くと、手数料込みの注文額 ${formatYen(need)} 円に足りないため発注しない`
-					: `資金 ${formatYen(cash)} 円が手数料込みの注文額 ${formatYen(need)} 円に足りないため発注しない`;
+					? `資金 ${formatYen(cash)} 円から未約定の買い ${formatYen(reserved)} 円を除くと、手数料込みの注文額 ${formatYen(need)} 円に足りないため注文しない`
+					: `資金 ${formatYen(cash)} 円が手数料込みの注文額 ${formatYen(need)} 円に足りないため注文しない`;
 			}
 		}
 		if (intent.side === "sell") {
 			const lot = lots.find((l) => l.id === intent.lotId);
 			if (!lot) {
-				return "売るロットが無いため発注しない";
+				return "売るロットが無いため注文しない";
 			}
 			if (intent.quantity !== lot.quantity) {
-				return `ロットの ${formatBtc(lot.quantity)} BTC と違う数量は売れないため発注しない`;
+				return `ロットの ${formatBtc(lot.quantity)} BTC と違う数量は売れないため注文しない`;
 			}
 			if (open.some((x) => x.order.lotId === lot.id)) {
-				return "このロットの売りが約定待ちのため発注しない";
+				return "このロットの売りが約定待ちのため注文しない";
 			}
 		}
 		seq++;

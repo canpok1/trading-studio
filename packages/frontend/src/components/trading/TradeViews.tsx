@@ -99,7 +99,7 @@ export function TradeOrderSheet({
 						))}
 					</div>
 				) : (
-					<p className="text-sm text-text-2">記録がない</p>
+					<p className="text-sm text-text-2">記録が無い</p>
 				)}
 			</div>
 		</OrderSheet>

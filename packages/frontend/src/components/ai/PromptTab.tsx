@@ -1,12 +1,13 @@
 import type {
 	CriteriaVersion,
 	NewsItem,
+	ScoringModelOption,
 	TrialItem,
 	TrialResult,
 } from "@trading-studio/backend";
 import type { AggregationRule, Scores } from "@trading-studio/core";
 import { JUDGES } from "@trading-studio/core";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useApi } from "../../api";
 import { formatDateTime } from "../../format";
 import { lineDiff } from "../../lib/line-diff";
@@ -41,25 +42,125 @@ export function PromptTab({
 		[api],
 	);
 	const { state, reload } = useAsync(load);
-	if (state.kind === "loading") return <LoadingCard lines={6} />;
-	if (state.kind === "error") {
-		return (
-			<ErrorState
-				what="プロンプトを読み込めなかった"
-				next={state.message}
-				action={<Button onClick={reload}>もう一度読み込む</Button>}
-			/>
-		);
-	}
+	// モデルとプロンプトは近くに置く（設定の「バックテスト」区分と同じ並び）
 	return (
-		<PromptBody
-			criteria={state.data}
-			rule={rule}
-			onChanged={() => {
-				reload();
-				onChanged();
-			}}
-		/>
+		<>
+			<ModelSetting />
+			{state.kind === "loading" ? (
+				<LoadingCard lines={6} />
+			) : state.kind === "error" ? (
+				<ErrorState
+					what="プロンプトを読み込めなかった"
+					next={state.message}
+					action={<Button onClick={reload}>もう一度読み込む</Button>}
+				/>
+			) : (
+				<PromptBody
+					criteria={state.data}
+					rule={rule}
+					onChanged={() => {
+						reload();
+						onChanged();
+					}}
+				/>
+			)}
+		</>
+	);
+}
+
+function ModelSetting() {
+	const api = useApi();
+	const load = useCallback(
+		() =>
+			api.api.scoring.model
+				.$get()
+				.then((r) =>
+					readJson<{ models: ScoringModelOption[]; current: string }>(r),
+				),
+		[api],
+	);
+	const { state, reload } = useAsync(load);
+	const [value, setValue] = useState<string | null>(null);
+	const [busy, setBusy] = useState(false);
+	const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(
+		null,
+	);
+	const current = state.kind === "ok" ? state.data.current : null;
+	useEffect(() => {
+		if (current !== null) setValue(current);
+	}, [current]);
+
+	const save = async () => {
+		if (value === null) return;
+		setBusy(true);
+		setMessage(null);
+		try {
+			await api.api.scoring.model
+				.$put({ json: { model: value } })
+				.then((r) => readJson(r));
+			setMessage({
+				ok: true,
+				text: "モデルを保存した。次に採点するニュースから反映する",
+			});
+			reload();
+		} catch (e) {
+			setMessage({ ok: false, text: errorMessage(e) });
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	return (
+		<Card className="flex flex-col gap-2.5">
+			<div className="flex items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">
+					<label htmlFor="scoring-model">採点に使うモデル</label>
+				</h2>
+				<Help label="採点に使うモデル">
+					<p>モデルを変えても採点済みのニュースは採点し直さない。</p>
+				</Help>
+			</div>
+			{state.kind === "error" ? (
+				<p role="alert" className="text-xs font-semibold text-loss">
+					読み込めなかった: {state.message}
+				</p>
+			) : (
+				<div className="flex items-center gap-2">
+					<select
+						id="scoring-model"
+						value={value ?? ""}
+						disabled={state.kind !== "ok"}
+						onChange={(e) => {
+							setValue(e.target.value);
+							setMessage(null);
+						}}
+						className="h-11 min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 text-[15px]"
+					>
+						{state.kind === "ok" &&
+							state.data.models.map((m) => (
+								<option key={m.id} value={m.id}>
+									{m.label}
+								</option>
+							))}
+					</select>
+					<Button
+						size="sm"
+						disabled={busy || value === null || value === current}
+						onClick={save}
+					>
+						保存
+					</Button>
+				</div>
+			)}
+			{message && (
+				<p
+					role={message.ok ? "status" : "alert"}
+					className={`text-xs font-semibold ${message.ok ? "" : "text-loss"}`}
+				>
+					{message.text}
+				</p>
+			)}
+		</Card>
 	);
 }
 

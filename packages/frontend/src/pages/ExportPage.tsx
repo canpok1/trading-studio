@@ -76,7 +76,7 @@ function periodRange({ from, to }: Period) {
 		fromMs === null || toMs === null
 			? "開始日と終了日を入れる"
 			: fromMs > toMs
-				? "終了日は開始日より後にする"
+				? "終了日は開始日以降にする"
 				: null;
 	// 期間は [開始日の 0:00, 終了日の翌日の 0:00)
 	return error === null
@@ -275,7 +275,7 @@ function CandleCsvSection() {
 					next="サーバーが動いているか確かめてから、もう一度読み込む"
 					action={
 						<Button size="sm" onClick={reload}>
-							再読み込み
+							もう一度読み込む
 						</Button>
 					}
 				/>
@@ -287,7 +287,7 @@ function CandleCsvSection() {
 		return (
 			<Card>
 				<p className="text-xs text-text-2">
-					保存済みの足が無い。過去データの画面で CSV
+					保存済みの足が無い。インポートの画面で CSV
 					を取り込むか、収集した足が溜まると書き出せる。
 				</p>
 			</Card>

@@ -254,7 +254,7 @@ export function buildAdviceSource(
 	if (run.stepTimeframe !== tf || run.stepLimited) {
 		lines.push(
 			"### 判定と約定に使った足",
-			`- 判定と約定は ${TIMEFRAME_LABELS[run.stepTimeframe]}で見た${run.stepLimited ? "（細かい過去データが無く、判定の頻度より粗い間隔でしか判定できなかった）" : ""}`,
+			`- 判定と約定は ${TIMEFRAME_LABELS[run.stepTimeframe]}で見た${run.stepLimited ? "（細かい過去データが無く、判定の間隔より粗い間隔でしか判定できなかった）" : ""}`,
 		);
 	}
 	lines.push("");

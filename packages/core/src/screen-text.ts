@@ -44,7 +44,7 @@ export function conditionScreenText(c: Condition): string {
 /** 戦略設定。戦略画面の見出しと項目の並びどおりに書く */
 export function conditionSetScreenText(p: ConditionSet): string[] {
 	const lines = [
-		"### 足と判定の頻度",
+		"### 足と判定の間隔",
 		`- 足の粒度: ${TIMEFRAME_LABELS[p.timeframe]}`,
 		`- ポジションなしのとき: ${freq(p.frequency.flat)}ごとに買いの条件を判定`,
 		`- ポジションありのとき: ${freq(p.frequency.holding)}ごとに売りの条件を判定`,

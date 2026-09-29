@@ -70,7 +70,7 @@ function ErrorText({ messages }: { messages: string[] }) {
 	);
 }
 
-/** 足の粒度と判定の頻度 */
+/** 足の粒度と判定の間隔 */
 export function FrequencyCard({ params, onChange, errors }: Props) {
 	const freq = (k: "flat" | "holding", label: string, tail: string) => {
 		const f = params.frequency[k];
@@ -113,8 +113,8 @@ export function FrequencyCard({ params, onChange, errors }: Props) {
 	return (
 		<Card className="flex flex-col gap-2.5">
 			<div className="flex items-center gap-1.5">
-				<h2 className="text-[15px] font-bold">足と判定の頻度</h2>
-				<Help label="足と判定の頻度">
+				<h2 className="text-[15px] font-bold">足と判定の間隔</h2>
+				<Help label="足と判定の間隔">
 					<p>
 						EMA・RSI・ボリンジャーバンドの本数・直近 N
 						本・買ってからの本数・指値を取り消すまでの本数は、この粒度の足で数える。

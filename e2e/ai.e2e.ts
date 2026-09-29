@@ -29,7 +29,7 @@ async function addSource(page: Page, name: string) {
 	expect(res.ok()).toBe(true);
 }
 
-test("集めて採点したニュースが一覧に出て、判定が表示される", async ({
+test("取得して採点したニュースが一覧に出て、判定が表示される", async ({
 	page,
 }) => {
 	await page.goto("/news");
@@ -138,7 +138,9 @@ test("基準を版として保存して使用すると、次に採点するニ�
 	).toBeVisible({ timeout: 20_000 });
 });
 
-test("取得元・収集間隔・モデルの変更が保存される", async ({ page }, info) => {
+test("取得元・取得間隔・採点のモデルの変更が保存される", async ({
+	page,
+}, info) => {
 	await page.goto("/settings?section=news&tab=sources");
 	const name = `追加 ${info.project.name}`;
 	await page.getByLabel("名前").fill(name);
@@ -154,21 +156,12 @@ test("取得元・収集間隔・モデルの変更が保存される", async ({
 		"false",
 	);
 
-	await page.getByLabel("収集間隔（分）").fill("30");
+	await page.getByLabel("取得間隔（分）").fill("30");
 	await page.getByRole("button", { name: "保存" }).first().click();
-	await expect(page.getByText("収集間隔を保存した")).toBeVisible();
-
-	await page
-		.getByLabel("採点に使うモデル", { exact: true })
-		.selectOption("gemini-3.8-flash");
-	await page.getByRole("button", { name: "保存" }).last().click();
-	await expect(page.getByText("モデルを保存した")).toBeVisible();
+	await expect(page.getByText("取得間隔を保存した")).toBeVisible();
 
 	await page.reload();
-	await expect(page.getByLabel("収集間隔（分）")).toHaveValue("30");
-	await expect(
-		page.getByLabel("採点に使うモデル", { exact: true }),
-	).toHaveValue("gemini-3.8-flash");
+	await expect(page.getByLabel("取得間隔（分）")).toHaveValue("30");
 
 	await row.getByRole("button", { name: /削除/ }).click();
 	await page
@@ -179,6 +172,15 @@ test("取得元・収集間隔・モデルの変更が保存される", async ({
 	await page.request.put("/api/news/settings", {
 		data: { intervalMinutes: 15 },
 	});
+
+	// 採点に使うモデルはプロンプトのタブ（先頭のカード）にある
+	await page.goto("/settings?section=news&tab=prompt");
+	const model = page.getByLabel("採点に使うモデル", { exact: true });
+	await model.selectOption("gemini-3.8-flash");
+	await page.getByRole("button", { name: "保存", exact: true }).first().click();
+	await expect(page.getByText("モデルを保存した")).toBeVisible();
+	await page.reload();
+	await expect(model).toHaveValue("gemini-3.8-flash");
 	await page.request.put("/api/scoring/model", {
 		data: { model: "gemini-3.5-flash-lite" },
 	});
