@@ -63,12 +63,21 @@ test("保存済みの足を期間を選んで CSV で書き出せる", async ({ 
 test("期間を選んで分析用の ZIP を書き出せる", async ({ page }) => {
 	await page.goto("/export");
 	const card = page.getByRole("region", { name: "分析用（ZIP）" });
-	// 他のテストで実行したバックテストが一覧に出ていれば、1つ選んで入れる
-	const runs = card.getByRole("checkbox");
-	await expect(
-		runs.first().or(card.getByText("期間内に実行したものは無い")),
-	).toBeVisible();
-	if ((await runs.count()) > 0) await runs.first().check();
+	// 他のテストで実行したバックテストが期間内にあれば、モーダルで全部選んで入れる
+	const count = card.getByTestId("export-backtests");
+	await expect(count).toContainText("期間内");
+	const pick = card.getByRole("button", { name: "選ぶ", exact: true });
+	if (await pick.isEnabled()) {
+		await pick.click();
+		const modal = page.getByRole("dialog", {
+			name: "入れるバックテストを選ぶ",
+		});
+		await modal.getByRole("button", { name: "すべて選ぶ" }).click();
+		const n = await modal.getByRole("checkbox").count();
+		await modal.getByRole("button", { name: `${n} 件で決定` }).click();
+		await expect(modal).toBeHidden();
+		await expect(count).toContainText(`${n} 件（期間内 ${n} 件）`);
+	}
 	const download = page.waitForEvent("download");
 	await card.getByRole("button", { name: "分析用 ZIP を書き出す" }).click();
 	const file = await download;
