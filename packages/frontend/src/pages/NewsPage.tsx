@@ -69,7 +69,7 @@ export function NewsPage() {
 			<Page title="ニュース" actions={<SettingsLink />}>
 				{error ? (
 					<ErrorState
-						what="ニュースと判定を読み込めなかった"
+						what="ニュースと市場評価を読み込めなかった"
 						next={error}
 						action={<Button onClick={load}>もう一度読み込む</Button>}
 					/>
@@ -93,8 +93,8 @@ export function NewsPage() {
 	return (
 		<Page title="ニュース" actions={<SettingsLink />}>
 			<div className="flex items-center gap-1.5">
-				<h2 className="text-[15px] font-bold">今の判定</h2>
-				<Help label="今の判定">
+				<h2 className="text-[15px] font-bold">今の市場評価</h2>
+				<Help label="今の市場評価">
 					<p>
 						直近 {current.rule.windowHours}{" "}
 						時間のニュースの点数を、新しいほど重く平均する（半減期{" "}
@@ -103,7 +103,7 @@ export function NewsPage() {
 				</Help>
 			</div>
 			<section
-				aria-label="今の判定"
+				aria-label="今の市場評価"
 				className="overflow-hidden rounded-xl border border-line bg-surface"
 			>
 				{JUDGES.map((j) => {
@@ -176,7 +176,7 @@ export function NewsPage() {
 	);
 }
 
-/** ニュースの設定（集計ルール・プロンプト・取得）は設定画面に置く */
+/** ニュースの設定（評価ルール・プロンプト・取得）は設定画面に置く */
 function SettingsLink() {
 	return (
 		<Link to="/settings?section=news" className={buttonClass("default", "sm")}>

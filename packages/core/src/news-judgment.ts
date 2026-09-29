@@ -35,11 +35,11 @@ export const JUDGMENT_VALUE_LABELS: Record<string, string> = {
 	normal: "平常",
 	caution: "警戒",
 	crisis: "危機",
-	"+2": "+2",
-	"+1": "+1",
-	"0": "0",
-	"-1": "−1",
-	"-2": "−2",
+	"+2": "強い強気",
+	"+1": "やや強気",
+	"0": "中立",
+	"-1": "やや弱気",
+	"-2": "強い弱気",
 	none: "データなし",
 };
 
@@ -70,14 +70,14 @@ export type ScoredNews = {
 	scores: Scores;
 };
 
-/** 集計ルール。時間は時間単位の整数、しきい値は観点の点数の範囲（SCORE_RANGES）の整数 */
+/** 評価ルール（画面の名前。コード上は集計ルール）。時間は時間単位の整数、しきい値は観点の点数の範囲（SCORE_RANGES）の整数 */
 export type AggregationRule = {
 	windowHours: number;
 	halfLifeHours: number;
 	thresholds: {
 		/** caution 以上=警戒、crisis 以上=危機 */
 		risk: { caution: number; crisis: number };
-		/** plus2 以上=+2、plus1 以上=+1、minus1 未満=−1、minus2 未満=−2 */
+		/** plus2 以上=+2、plus1 以上=+1、minus1 未満=−1、minus2 未満=−2。画面では各値の下限として見せる（judgmentBands） */
 		sentiment: { plus2: number; plus1: number; minus1: number; minus2: number };
 	};
 };
@@ -103,7 +103,47 @@ function isIntIn(v: unknown, r: { min: number; max: number }): v is number {
 	);
 }
 
-/** 集計ルールの入力検証。path はフォームの項目（thresholds.risk.caution など） */
+/** 評価基準の1区間。下限〜上限（両端を含む整数）。下限が上限より大きければ当てはまる点数が無い */
+export type JudgmentBand<J extends Judge = Judge> = {
+	value: JudgmentValue<J>;
+	min: number;
+	max: number;
+	/** 下限を決めるしきい値の項目。一番下の区間は点数の範囲の下端で決まるので無い */
+	key: string | null;
+};
+
+/**
+ * 評価基準を重ならない区間で表す。上の区間から順に並べる。
+ * 平均点は整数に丸めてから比べるので、整数の区間で過不足なく表せる
+ */
+export function judgmentBands<J extends Judge>(
+	judge: J,
+	rule: AggregationRule,
+): JudgmentBand<J>[] {
+	const { min, max } = SCORE_RANGES[judge];
+	const lowers: [string, string | null, number][] =
+		judge === "risk"
+			? [
+					["crisis", "crisis", rule.thresholds.risk.crisis],
+					["caution", "caution", rule.thresholds.risk.caution],
+					["normal", null, min],
+				]
+			: [
+					["+2", "plus2", rule.thresholds.sentiment.plus2],
+					["+1", "plus1", rule.thresholds.sentiment.plus1],
+					["0", "minus1", rule.thresholds.sentiment.minus1],
+					["-1", "minus2", rule.thresholds.sentiment.minus2],
+					["-2", null, min],
+				];
+	return lowers.map(([value, key, lower], i) => ({
+		value: value as JudgmentValue<J>,
+		min: lower,
+		max: i === 0 ? max : (lowers[i - 1]?.[2] as number) - 1,
+		key,
+	}));
+}
+
+/** 評価ルールの入力検証。path はフォームの項目（thresholds.risk.caution など） */
 export function validateAggregationRule(r: AggregationRule): ValidationError[] {
 	const errors: ValidationError[] = [];
 	const err = (path: string, message: string) => errors.push({ path, message });
@@ -124,17 +164,29 @@ export function validateAggregationRule(r: AggregationRule): ValidationError[] {
 	if (!scoresOk) return errors;
 	const t = r.thresholds;
 	if (t.risk.caution >= t.risk.crisis) {
-		err("thresholds.risk.caution", `危機（${t.risk.crisis}）より小さくする`);
+		err(
+			"thresholds.risk.caution",
+			`危機の下限（${t.risk.crisis}）より小さくする`,
+		);
 	}
 	const se = t.sentiment;
 	if (se.plus1 >= se.plus2) {
-		err("thresholds.sentiment.plus1", `+2（${se.plus2}）より小さくする`);
+		err(
+			"thresholds.sentiment.plus1",
+			`強い強気の下限（${se.plus2}）より小さくする`,
+		);
 	}
 	if (se.minus1 > se.plus1) {
-		err("thresholds.sentiment.minus1", `+1（${se.plus1}）以下にする`);
+		err(
+			"thresholds.sentiment.minus1",
+			`やや強気の下限（${se.plus1}）以下にする`,
+		);
 	}
 	if (se.minus2 >= se.minus1) {
-		err("thresholds.sentiment.minus2", `−1（${se.minus1}）より小さくする`);
+		err(
+			"thresholds.sentiment.minus2",
+			`中立の下限（${se.minus1}）より小さくする`,
+		);
 	}
 	return errors;
 }

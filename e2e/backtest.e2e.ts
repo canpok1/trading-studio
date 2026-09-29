@@ -237,7 +237,7 @@ test("判定の間隔より細かいデータが無いと、実行前と結果�
 	await expect(notice).toBeVisible();
 });
 
-test("AI 判定の条件がある戦略は、採点の記録が始まる前の期間では実行できず理由が出る", async ({
+test("市場評価の条件がある戦略は、採点の記録が始まる前の期間では実行できず理由が出る", async ({
 	page,
 	request,
 }, info) => {
@@ -252,16 +252,16 @@ test("AI 判定の条件がある戦略は、採点の記録が始まる前の�
 		},
 	});
 	await choose(page, name, "2026-05-03", "2026-05-25");
-	await expect(page.getByText(/判定履歴を使う/)).toBeVisible();
+	await expect(page.getByText(/市場評価の履歴を使う/)).toBeVisible();
 	await expect(page.getByRole("alert")).toContainText(
-		/AI 判定の(記録は .+ から|条件があるが、ニュースの採点の記録がまだ無い)/,
+		/市場評価の(記録は .+ から|条件があるが、ニュースの採点の記録がまだ無い)/,
 	);
 	await expect(
 		page.getByRole("button", { name: "バックテストを実行" }),
 	).toBeDisabled();
 });
 
-test("判定の条件で「データなし」を選ぶと、採点の記録が始まる前の期間でも実行できる", async ({
+test("市場評価の条件で「データなし」を選ぶと、採点の記録が始まる前の期間でも実行できる", async ({
 	page,
 	request,
 }, info) => {
@@ -276,7 +276,7 @@ test("判定の条件で「データなし」を選ぶと、採点の記録が�
 		},
 	});
 	await choose(page, name, "2026-05-03", "2026-05-25");
-	await expect(page.getByText(/判定履歴を使う/)).toBeVisible();
+	await expect(page.getByText(/市場評価の履歴を使う/)).toBeVisible();
 	await expect(page.getByRole("alert")).toHaveCount(0);
 	await expect(
 		page.getByRole("button", { name: "バックテストを実行" }),

@@ -1,6 +1,12 @@
 import type { CurrentJudgment } from "@trading-studio/backend";
 import type { AggregationRule } from "@trading-studio/core";
-import { JUDGES, validateAggregationRule } from "@trading-studio/core";
+import {
+	JUDGE_LABELS,
+	JUDGES,
+	JUDGMENT_VALUE_LABELS,
+	judgmentBands,
+	validateAggregationRule,
+} from "@trading-studio/core";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { useApi } from "../../api";
@@ -50,7 +56,7 @@ export function RuleTab({
 	const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
 	const errorOf = (p: Path) => errors.find((e) => e.path === p)?.message;
 
-	// 入力が正しい間は、この設定での今の判定を問い合わせる
+	// 入力が正しい間は、この設定での今の市場評価を問い合わせる
 	const valid = errors.length === 0;
 	const key = JSON.stringify(draft);
 	useEffect(() => {
@@ -79,7 +85,7 @@ export function RuleTab({
 			await api.api.judgments.rule
 				.$put({ json: { rule: draft } })
 				.then((r) => readJson(r));
-			setNotice("集計ルールを保存した。次の判定から反映する");
+			setNotice("評価ルールを保存した。次の評価から反映する");
 			onSaved();
 		} catch (e) {
 			setSaveError(errorMessage(e));
@@ -130,8 +136,8 @@ export function RuleTab({
 							時間前のニュースは今の半分の重み。
 						</p>
 						<p>
-							集計は判定のたびに計算し直す（AI
-							は呼ばない）。保存すると次の判定から反映し、過去の判定（チャート・バックテスト）もこのルールで計算し直す。
+							市場評価は評価のたびに計算し直す（AI
+							は呼ばない）。保存すると次の評価から反映し、過去の市場評価（チャート・バックテスト）もこのルールで計算し直す。
 						</p>
 					</Help>
 				</div>
@@ -139,23 +145,50 @@ export function RuleTab({
 				{field("半減期", "halfLifeHours", "時間")}
 			</Card>
 			<Card className="flex flex-col gap-2.5">
-				<h2 className="text-[15px] font-bold">判定に変えるしきい値</h2>
-				<strong className="text-xs">
-					センチメント（-100〜100、0 が中立、高いほど強気材料）
-				</strong>
-				{field("+2", "thresholds.sentiment.plus2", "点以上", true)}
-				{field("+1", "thresholds.sentiment.plus1", "点以上", true)}
-				{field("−1", "thresholds.sentiment.minus1", "点未満", true)}
-				{field("−2", "thresholds.sentiment.minus2", "点未満", true)}
-				<span className="text-xs text-text-2">間は 0</span>
-				<strong className="text-xs">リスク（0〜100、高いほど危険）</strong>
-				{field("警戒", "thresholds.risk.caution", "点以上")}
-				{field("危機", "thresholds.risk.crisis", "点以上")}
-				<span className="text-xs text-text-2">未満は平常</span>
+				<div className="flex items-center gap-1.5">
+					<h2 className="text-[15px] font-bold">評価基準</h2>
+					<Help label="評価基準">
+						<p>
+							平均点がどの範囲に入るかで評価を決める。下限を入れると、上の範囲との境目が決まる。
+						</p>
+						<p>
+							センチメントは -100〜100（0 が中立、高いほど強気材料）、リスクは
+							0〜100（高いほど危険）。
+						</p>
+					</Help>
+				</div>
+				{JUDGES.map((j) => (
+					<div key={j} className="flex flex-col gap-2">
+						<strong className="text-xs">{JUDGE_LABELS[j]}</strong>
+						{judgmentBands(j, draft).map((b) => {
+							const name = JUDGMENT_VALUE_LABELS[b.value] as string;
+							const upper = b.min > b.max ? "（範囲なし）" : `〜 ${b.max} 点`;
+							return b.key === null ? (
+								<div
+									key={b.value}
+									className="flex flex-wrap items-center gap-2"
+								>
+									<span className="min-w-[72px]">{name}</span>
+									<span className="num w-[76px] text-center">{b.min}</span>
+									<span className="num">{upper}</span>
+								</div>
+							) : (
+								<div key={b.value}>
+									{field(
+										name,
+										`thresholds.${j}.${b.key}`,
+										<span className="num">{upper}</span>,
+										j === "sentiment",
+									)}
+								</div>
+							);
+						})}
+					</div>
+				))}
 			</Card>
 			{valid && preview && (
 				<Card className="flex flex-col gap-2">
-					<span className="text-xs text-text-2">この設定での今の判定</span>
+					<span className="text-xs text-text-2">この設定での今の市場評価</span>
 					<div
 						data-testid="rule-preview"
 						className="flex flex-wrap items-center gap-1.5"

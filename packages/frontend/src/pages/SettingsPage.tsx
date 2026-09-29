@@ -39,7 +39,7 @@ const isSection = (v: string | null): v is SettingsSection =>
 	SECTIONS.some(([s]) => s === v);
 
 const NEWS_TABS = [
-	["rule", "集計ルール"],
+	["rule", "評価ルール"],
 	["prompt", "プロンプト"],
 	["sources", "取得"],
 ] as const;
@@ -144,7 +144,7 @@ type NewsSettingsData = {
 	collector: NewsCollectorStatus;
 };
 
-/** ニュースの設定。集計ルールと取得の状態を読み、取得の状態は定期的に読み直す */
+/** ニュースの設定。評価ルールと取得の状態を読み、取得の状態は定期的に読み直す */
 function NewsSettings({ tab }: { tab: NewsSettingsTab }) {
 	const api = useApi();
 	const visible = usePageVisible();

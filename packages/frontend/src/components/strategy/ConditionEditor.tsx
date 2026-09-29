@@ -283,7 +283,7 @@ const GROUP_BORDER: Record<ConditionGroupKey, string> = {
 	stopLoss: "border-l-loss",
 };
 
-/** 追加の選択肢。AI の判定は判定器ごとに別の選択肢にする */
+/** 追加の選択肢。市場評価は観点ごとに別の選択肢にする */
 type ConditionKind =
 	| Exclude<Condition["type"], "judgment">
 	| `judgment:${Judge}`;
@@ -298,8 +298,8 @@ const CONDITION_NAMES: Record<ConditionKind, string> = {
 	entryChange: "買値からの %",
 	trailingStop: "買ってからの最高値からの %（トレーリングストップ）",
 	holdingBars: "買ってからの本数",
-	"judgment:sentiment": "センチメント判定が指定のどれか",
-	"judgment:risk": "リスク判定が指定のどれか",
+	"judgment:sentiment": "センチメントが指定のどれか",
+	"judgment:risk": "リスクが指定のどれか",
 };
 
 const PRICE_KINDS: Record<ConditionGroupKey, ConditionKind[]> = {
@@ -666,7 +666,7 @@ function ConditionRow({
 			};
 			body = (
 				<>
-					<span>{JUDGE_LABELS[c.judge]}判定が</span>
+					<span>{JUDGE_LABELS[c.judge]}が</span>
 					<span className="flex flex-wrap gap-1">
 						{all.map((v) => (
 							<label
@@ -1004,7 +1004,7 @@ export function ConditionGroups({ params, onChange, errors }: Props) {
 					{(
 						[
 							["価格・保有", PRICE_KINDS[adding]],
-							["AI の判定", JUDGMENT_KINDS],
+							["市場評価", JUDGMENT_KINDS],
 						] as const
 					).map(([title, kinds]) => (
 						<div key={title} className="flex flex-col gap-1.5">

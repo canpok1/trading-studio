@@ -41,7 +41,7 @@ export function ShapeIcon({
 	);
 }
 
-/** 判定の値のバッジ */
+/** 判定の値のバッジ。値の名前（強気・警戒など）で観点が分かるので観点名は付けない */
 export function JudgmentBadge<J extends Judge>({
 	judge,
 	value,
@@ -51,8 +51,6 @@ export function JudgmentBadge<J extends Judge>({
 }) {
 	const s = valueStyle(judge, value);
 	const crisis = judge === "risk" && value === "crisis";
-	const label =
-		judge === "sentiment" ? `センチメント ${s.label.split(" ")[0]}` : s.label;
 	return (
 		<span
 			data-testid={`badge-${judge}`}
@@ -66,7 +64,7 @@ export function JudgmentBadge<J extends Judge>({
 			}
 		>
 			<ShapeIcon shape={s.shape} color={crisis ? "#fff" : `var(${s.solid})`} />
-			{label}
+			{s.label}
 		</span>
 	);
 }
@@ -153,14 +151,13 @@ export function ZoneBar({
 				className="flex justify-between gap-1 text-[10px] text-text-2"
 			>
 				{styles.map((st) => {
-					const name = st.label.split(" ").at(-1);
 					return (
 						<li
 							key={st.label}
 							className="inline-flex items-center gap-1 whitespace-nowrap"
 						>
 							<ShapeIcon shape={st.shape} color={`var(${st.solid})`} size={8} />
-							{name}
+							{st.label}
 						</li>
 					);
 				})}

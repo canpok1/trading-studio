@@ -7,8 +7,12 @@ import {
 	FREQUENCY_UNIT_LABELS,
 } from "./condition-strategy";
 import { formatBtc, formatYen } from "./format";
-import type { AggregationRule } from "./news-judgment";
-import { JUDGE_LABELS, JUDGMENT_VALUE_LABELS } from "./news-judgment";
+import type { AggregationRule, Judge } from "./news-judgment";
+import {
+	JUDGE_LABELS,
+	JUDGMENT_VALUE_LABELS,
+	judgmentBands,
+} from "./news-judgment";
 import { TIMEFRAME_LABELS } from "./timeframe";
 import type { FeeRates } from "./trading";
 
@@ -37,7 +41,7 @@ export function conditionScreenText(c: Condition): string {
 		case "holdingBars":
 			return `買ってから ${c.bars} 本経った`;
 		case "judgment":
-			return `${JUDGE_LABELS[c.judge]}判定が ${c.values.map((v) => JUDGMENT_VALUE_LABELS[v] ?? v).join("・")} のどれか`;
+			return `${JUDGE_LABELS[c.judge]}が ${c.values.map((v) => JUDGMENT_VALUE_LABELS[v] ?? v).join("・")} のどれか`;
 	}
 }
 
@@ -85,13 +89,19 @@ export function accountScreenText(initialCash: number, fees: FeeRates) {
 	];
 }
 
-/** 設定 > ニュース > 集計ルール の項目 */
+/** 設定 > ニュース > 評価ルール の項目 */
 export function ruleScreenText(r: AggregationRule): string[] {
-	const t = r.thresholds;
+	const bands = (j: Judge) =>
+		judgmentBands(j, r)
+			.map(
+				(b) =>
+					`${JUDGMENT_VALUE_LABELS[b.value]} ${b.min > b.max ? "なし" : `${b.min}〜${b.max} 点`}`,
+			)
+			.join("・");
 	return [
 		`- 平均のとり方: 期間 ${r.windowHours} 時間・半減期 ${r.halfLifeHours} 時間`,
-		`- センチメント: +2 ${t.sentiment.plus2} 点以上・+1 ${t.sentiment.plus1} 点以上・−1 ${t.sentiment.minus1} 点未満・−2 ${t.sentiment.minus2} 点未満（間は 0）`,
-		`- リスク: 警戒 ${t.risk.caution} 点以上・危機 ${t.risk.crisis} 点以上（未満は平常）`,
+		`- 評価基準 センチメント: ${bands("sentiment")}`,
+		`- 評価基準 リスク: ${bands("risk")}`,
 	];
 }
 

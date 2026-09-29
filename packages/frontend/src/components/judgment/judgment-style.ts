@@ -38,31 +38,31 @@ export const VALUE_STYLES: {
 	},
 	sentiment: {
 		"+2": {
-			label: "+2 強い強気",
+			label: "強い強気",
 			bg: "--color-sp2-bg",
 			solid: "--color-sp2",
 			shape: "sq",
 		},
 		"+1": {
-			label: "+1 やや強気",
+			label: "やや強気",
 			bg: "--color-sp1-bg",
 			solid: "--color-sp1",
 			shape: "sq",
 		},
 		"0": {
-			label: "0 中立",
+			label: "中立",
 			bg: "--color-s0-bg",
 			solid: "--color-s0",
 			shape: "sq",
 		},
 		"-1": {
-			label: "−1 やや弱気",
+			label: "やや弱気",
 			bg: "--color-sm1-bg",
 			solid: "--color-sm1",
 			shape: "sq",
 		},
 		"-2": {
-			label: "−2 強い弱気",
+			label: "強い弱気",
 			bg: "--color-sm2-bg",
 			solid: "--color-sm2",
 			shape: "sq",
