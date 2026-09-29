@@ -658,7 +658,7 @@ describe("判定に使う足の粒度", () => {
 	);
 });
 
-describe("AI 判定の条件", () => {
+describe("市場評価の条件", () => {
 	const bullish: Condition = {
 		type: "judgment",
 		judge: "sentiment",
@@ -674,7 +674,7 @@ describe("AI 判定の条件", () => {
 			input(cs, buyWith(bullish), { judgments: judged("0") }),
 		);
 		expect(hit.intents).toHaveLength(1);
-		expect(hit.note).toContain("センチメント判定が0（+1・0のどれか）");
+		expect(hit.note).toContain("センチメントが中立（やや強気・中立のどれか）");
 		const miss = evaluateConditionSet(
 			input(cs, buyWith(bullish), { judgments: judged("-1") }),
 		);
@@ -693,7 +693,7 @@ describe("AI 判定の条件", () => {
 		const hit = evaluateConditionSet(input(candles([100]), buyWith(withNone)));
 		expect(hit.intents[0]).toMatchObject({ side: "buy" });
 		expect(hit.note).toContain(
-			"センチメント判定がデータなし（+1・データなしのどれか）",
+			"センチメントがデータなし（やや強気・データなしのどれか）",
 		);
 		// 判定があればデータなしは成立しない
 		const neutral = evaluateConditionSet(

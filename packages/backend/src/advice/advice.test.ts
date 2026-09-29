@@ -443,7 +443,7 @@ describe("AI に渡す資料", () => {
 		);
 		const overview = text.split("## 値動きの全体")[1]?.split("\n\n")[0] ?? "";
 		expect(overview).toContain("5分足、18 本");
-		expect(overview.trim().split("\n").at(-1)).toMatch(/,\+2,平常$/);
+		expect(overview.trim().split("\n").at(-1)).toMatch(/,強い強気,平常$/);
 	});
 });
 
@@ -463,7 +463,7 @@ describe("画面の表記", () => {
 				judge: "sentiment",
 				values: ["+2", "+1"],
 			}),
-		).toBe("センチメント判定が +2・+1 のどれか");
+		).toBe("センチメントが 強い強気・やや強気 のどれか");
 		expect(
 			conditionScreenText({
 				type: "rsi",

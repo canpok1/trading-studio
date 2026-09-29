@@ -432,9 +432,9 @@ function RunForm({
 		!usesJudgments || acceptsNoJudgment(p)
 			? null
 			: firstScoredAt === null
-				? "AI 判定の条件があるが、ニュースの採点の記録がまだ無いため実行できない。判定の条件で「データなし」を選ぶと実行できる"
+				? "市場評価の条件があるが、ニュースの採点の記録がまだ無いため実行できない。市場評価の条件で「データなし」を選ぶと実行できる"
 				: fromMs < firstScoredAt
-					? `AI 判定の記録は ${formatDateTime(firstScoredAt)} から。開始を ${formatDate(firstAllowedFrom(firstScoredAt))} 以降にするか、判定の条件で「データなし」を選ぶと実行できる`
+					? `市場評価の記録は ${formatDateTime(firstScoredAt)} から。開始を ${formatDate(firstAllowedFrom(firstScoredAt))} 以降にするか、市場評価の条件で「データなし」を選ぶと実行できる`
 					: null;
 
 	const bars = useMemo(() => {
@@ -723,11 +723,11 @@ function RunForm({
 								{step && step.timeframe !== tf
 									? ` · ${TIMEFRAME_LABELS[step.timeframe]}で判定`
 									: ""}
-								{usesJudgments && " · 判定履歴を使う"}
+								{usesJudgments && " · 市場評価の履歴を使う"}
 							</span>
 							{usesJudgments && firstScoredAt !== null && (
 								<span className="num text-xs text-text-2">
-									AI 判定の記録の開始: {formatDateTime(firstScoredAt)}
+									市場評価の記録の開始: {formatDateTime(firstScoredAt)}
 									{judgmentError === null &&
 										fromMs < firstScoredAt &&
 										"（それより前はデータなし）"}
@@ -737,7 +737,7 @@ function RunForm({
 								firstScoredAt === null &&
 								judgmentError === null && (
 									<span className="text-xs text-text-2">
-										AI 判定の記録がまだ無いため、全期間がデータなし
+										市場評価の記録がまだ無いため、全期間がデータなし
 									</span>
 								)}
 						</div>

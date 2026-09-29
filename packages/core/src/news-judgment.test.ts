@@ -4,6 +4,7 @@ import {
 	classify,
 	DEFAULT_AGGREGATION_RULE,
 	judgeAt,
+	judgmentBands,
 	judgmentSeries,
 	newsTime,
 	parseAggregationRule,
@@ -187,6 +188,32 @@ describe("judgmentSeries", () => {
 		const series = judgmentSeries(list, times, rule);
 		expect(series.length).toBe(times.length);
 		expect(performance.now() - begin).toBeLessThan(3000);
+	});
+});
+
+describe("judgmentBands", () => {
+	test("上の区間から、重ならず隙間の無い整数の区間で表す", () => {
+		expect(judgmentBands("sentiment", rule)).toEqual([
+			{ value: "+2", min: 60, max: 100, key: "plus2" },
+			{ value: "+1", min: 20, max: 59, key: "plus1" },
+			{ value: "0", min: -20, max: 19, key: "minus1" },
+			{ value: "-1", min: -60, max: -21, key: "minus2" },
+			{ value: "-2", min: -100, max: -61, key: null },
+		]);
+		expect(judgmentBands("risk", rule)).toEqual([
+			{ value: "crisis", min: 70, max: 100, key: "crisis" },
+			{ value: "caution", min: 40, max: 69, key: "caution" },
+			{ value: "normal", min: 0, max: 39, key: null },
+		]);
+	});
+
+	test("区間の端の点数は classify でもその区間になる", () => {
+		for (const j of ["sentiment", "risk"] as const) {
+			for (const b of judgmentBands(j, rule)) {
+				expect(classify(j, b.min, rule)).toBe(b.value);
+				expect(classify(j, b.max, rule)).toBe(b.value);
+			}
+		}
 	});
 });
 

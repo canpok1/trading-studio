@@ -225,10 +225,10 @@ test("PC 幅では上の4つのパネルが2列に並び、チャートと注文
 	const auto = await box("自動取引設定");
 	const account = await box("口座情報");
 	const perf = await box("成績");
-	const ai = await box("AI評価");
+	const ai = await box("市場評価");
 	const chart = await box("価格チャート");
 	const orders = await box("注文・約定");
-	// 自動取引設定の右に口座情報、その下の段に成績・AI評価
+	// 自動取引設定の右に口座情報、その下の段に成績・市場評価
 	expect(account.x).toBeGreaterThan(auto.x + auto.width);
 	expect(perf.y).toBeGreaterThan(auto.y + auto.height);
 	expect(ai.x).toBeGreaterThan(perf.x + perf.width);
@@ -240,7 +240,7 @@ test("PC 幅では上の4つのパネルが2列に並び、チャートと注文
 	}
 });
 
-test("チャートに AI 判定の背景と帯が出て、帯をタップすると背景が入れ替わり、再読み込み後も保たれる", async ({
+test("チャートに市場評価の背景と帯が出て、帯をタップすると背景が入れ替わり、再読み込み後も保たれる", async ({
 	page,
 }) => {
 	// 足は1分ごとに閉じるので、採点が付いた後の足ができるまで待つことがある

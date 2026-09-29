@@ -877,7 +877,9 @@ export function PriceChart({
 											className="flex items-center gap-1"
 										>
 											<ShapeIcon shape={st.shape} color={`var(${st.solid})`} />
-											{j === "sentiment" ? `センチメント ${v}` : st.label}
+											{j === "sentiment"
+												? `センチメント ${st.label}`
+												: st.label}
 										</span>
 									);
 								})}

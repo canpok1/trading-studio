@@ -168,7 +168,7 @@ function barTable(
 	judgments: JudgmentSeries | null,
 ): string {
 	const head = ["時刻(JST)", "始値", "高値", "安値", "終値"];
-	if (judgments) head.push(...JUDGES.map((j) => `${JUDGE_LABELS[j]}判定`));
+	if (judgments) head.push(...JUDGES.map((j) => JUDGE_LABELS[j]));
 	const rows = bars.map((b) => {
 		const cols = [
 			jst(b.time),
@@ -262,7 +262,7 @@ export function buildAdviceSource(
 	lines.push(...conditionSetScreenText(run.params));
 	if (run.aggregationRule && judgments) {
 		lines.push("");
-		lines.push("## ニュースの集計ルール（設定 > ニュース > 集計ルール）");
+		lines.push("## 市場評価の評価ルール（設定 > ニュース > 評価ルール）");
 		lines.push(...ruleScreenText(run.aggregationRule));
 	}
 	if (s) {

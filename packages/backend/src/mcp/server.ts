@@ -458,7 +458,7 @@ function createServer({
 		"get_scoring_setup",
 		{
 			description:
-				"ニュースの AI 採点の仕組み: プロンプトの固定のひな形（{news} と {criteria} を差し込む）、採点の基準（編集できる部分）の全版と使用中の版、モデル、点数から判定を出す集計ルール、採点の状態",
+				"ニュースの AI 採点の仕組み: プロンプトの固定のひな形（{news} と {criteria} を差し込む）、採点の基準（編集できる部分）の全版と使用中の版、モデル、点数から市場評価を出す評価ルール（コード上の名前は aggregationRule）、採点の状態",
 			annotations: readOnly,
 		},
 		() => {
@@ -551,14 +551,14 @@ function createServer({
 	server.registerTool(
 		"evaluate_judgments",
 		{
-			description: `期間内の1時間ごとの判定（センチメント・リスク）と、その時刻からの値動きを、判定の値ごとに集計する。rule を渡すとその集計ルールで計算し直す（保存しない。集計ルールの変更は画面で行う）。baseline は全時間の騰落率。${RETURNS_NOTE}`,
+			description: `期間内の1時間ごとの判定（センチメント・リスク）と、その時刻からの値動きを、判定の値ごとに集計する。rule を渡すとその評価ルールで計算し直す（保存しない。評価ルールの変更は画面で行う）。baseline は全時間の騰落率。${RETURNS_NOTE}`,
 			inputSchema: {
 				...periodSchema,
 				rule: z
 					.record(z.string(), z.unknown())
 					.optional()
 					.describe(
-						"集計ルールの案。形は get_scoring_setup の aggregationRule",
+						"評価ルールの案。形は get_scoring_setup の aggregationRule",
 					),
 			},
 			annotations: readOnly,
@@ -569,9 +569,9 @@ function createServer({
 			let rule: AggregationRule | undefined;
 			if (a.rule !== undefined) {
 				const r = parseAggregationRule(a.rule);
-				if (!r) return fail("集計ルールの形が違う");
+				if (!r) return fail("評価ルールの形が違う");
 				const errors = validateAggregationRule(r);
-				if (errors.length) return fail("集計ルールに入力の誤りがある", errors);
+				if (errors.length) return fail("評価ルールに入力の誤りがある", errors);
 				rule = r;
 			}
 			const r = scoringAnalysis.evaluateJudgments(p.from, p.to, rule);

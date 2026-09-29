@@ -50,14 +50,14 @@ export function conditionText(c: Condition): string {
 		case "holdingBars":
 			return `${c.bars}本保有`;
 		case "judgment":
-			return `${JUDGE_SHORT[c.judge]}${c.values.map((v) => JUDGMENT_VALUE_LABELS[v] ?? v).join("/")}`;
+			return `${JUDGE_SHORT[c.judge]} ${c.values.map((v) => JUDGMENT_VALUE_LABELS[v] ?? v).join("/")}`;
 	}
 }
 
-/** 集計ルールの要約（バックテスト結果に出す） */
+/** 評価ルールの要約（バックテスト結果に出す） */
 export function ruleText(r: AggregationRule): string {
 	const t = r.thresholds;
-	return `集計 ${r.windowHours}時間・半減期${r.halfLifeHours}時間 · センチメント ${t.sentiment.minus2}/${t.sentiment.minus1}/${t.sentiment.plus1}/${t.sentiment.plus2} · リスク ${t.risk.caution}/${t.risk.crisis}`;
+	return `評価ルール 期間${r.windowHours}時間・半減期${r.halfLifeHours}時間 · センチメントの境目 ${t.sentiment.minus2}/${t.sentiment.minus1}/${t.sentiment.plus1}/${t.sentiment.plus2} · リスクの境目 ${t.risk.caution}/${t.risk.crisis}`;
 }
 
 export function buyOrderText(o: BuyOrder): string {
