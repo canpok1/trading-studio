@@ -23,26 +23,39 @@ export function Help({
 		top: number;
 		left: number;
 		width: number;
+		maxHeight: number;
 	}>();
 	const button = useRef<HTMLButtonElement>(null);
 	const bubble = useRef<HTMLDivElement>(null);
 	const id = useId();
 
 	useLayoutEffect(() => {
-		if (!open || !button.current) return;
+		if (!open || !button.current || !bubble.current) return;
 		const r = button.current.getBoundingClientRect();
 		const vw = document.documentElement.clientWidth;
+		const vh = document.documentElement.clientHeight;
 		const width = Math.min(WIDTH, vw - GUTTER * 2);
 		const left = Math.min(
 			Math.max(r.left + r.width / 2 - width / 2, GUTTER),
 			vw - width - GUTTER,
 		);
-		setPos({ top: r.bottom + 6, left, width });
+		// 高さは幅で決まるので、幅を当ててから測る。下に収まらず上に収まるなら上に出す
+		bubble.current.style.width = `${width}px`;
+		const h = bubble.current.offsetHeight;
+		const below = r.bottom + 6;
+		const above = r.top - 6 - h;
+		const top = below + h > vh - GUTTER && above >= GUTTER ? above : below;
+		setPos({ top, left, width, maxHeight: vh - top - GUTTER });
 	}, [open]);
 
 	useEffect(() => {
 		if (!open) return;
 		const close = () => setOpen(false);
+		// 吹き出しの中のスクロール（長い説明）では閉じない
+		const onScroll = (e: Event) => {
+			if (bubble.current?.contains(e.target as Node)) return;
+			close();
+		};
 		const onDown = (e: PointerEvent) => {
 			const t = e.target as Node;
 			if (bubble.current?.contains(t) || button.current?.contains(t)) return;
@@ -53,12 +66,12 @@ export function Help({
 		};
 		document.addEventListener("pointerdown", onDown);
 		window.addEventListener("keydown", onKey);
-		window.addEventListener("scroll", close, true);
+		window.addEventListener("scroll", onScroll, true);
 		window.addEventListener("resize", close);
 		return () => {
 			document.removeEventListener("pointerdown", onDown);
 			window.removeEventListener("keydown", onKey);
-			window.removeEventListener("scroll", close, true);
+			window.removeEventListener("scroll", onScroll, true);
 			window.removeEventListener("resize", close);
 		};
 	}, [open]);
@@ -83,7 +96,7 @@ export function Help({
 					role="note"
 					aria-label={`${label}の説明`}
 					style={pos}
-					className={`fixed z-90 flex flex-col gap-1.5 rounded-xl border border-line bg-surface px-3.5 py-3 text-left text-xs leading-relaxed font-normal text-text shadow-xl ${pos ? "" : "invisible"}`}
+					className={`fixed z-90 flex flex-col overflow-auto gap-1.5 rounded-xl border border-line bg-surface px-3.5 py-3 text-left text-xs leading-relaxed font-normal text-text shadow-xl ${pos ? "" : "invisible"}`}
 				>
 					{children}
 				</div>
