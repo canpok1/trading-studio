@@ -134,6 +134,7 @@ describe("MCP", () => {
 			"entryChange",
 			"judgment",
 			"emaPosition",
+			"emaSlope",
 			"bollinger",
 			"trailingStop",
 			"holdingBars",

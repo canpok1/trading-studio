@@ -39,6 +39,8 @@ export function conditionText(c: Condition): string {
 			return `RSI${c.period} ${c.threshold}${c.direction === "above" ? "以上" : "以下"}`;
 		case "emaPosition":
 			return `EMA${c.period}より${c.direction === "above" ? "上" : "下"}`;
+		case "emaSlope":
+			return `EMA${c.period}が${c.bars}本前より${c.percent > 0 ? `${c.percent}%以上` : ""}${c.direction === "up" ? "上向き" : "下向き"}`;
 		case "bollinger":
 			return `BB${c.period}/${c.sigma}σ${c.band === "upper" ? "上限以上" : "下限以下"}`;
 		case "entryChange":
