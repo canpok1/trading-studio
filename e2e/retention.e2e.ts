@@ -13,10 +13,13 @@ test("設定の「全般」でデータの保持期間を変えられる", async
 		.locator("div", {
 			has: page.getByRole("heading", { name: "データの保持" }),
 		})
+		.filter({ has: page.getByRole("combobox", { name: "判断の記録" }) })
 		.last();
-	const decisions = card.getByLabel("判断の記録");
+	const decisions = card.getByRole("combobox", { name: "判断の記録" });
 	await expect(decisions).toHaveValue("90");
-	await expect(card.getByLabel("バックテストの実行")).toHaveValue("null");
+	await expect(
+		card.getByRole("combobox", { name: "バックテストの実行" }),
+	).toHaveValue("null");
 	await expect(card).toContainText("まだ削除していない");
 	await expect(card).toContainText("DB の大きさ");
 	await page.screenshot({
@@ -28,5 +31,7 @@ test("設定の「全般」でデータの保持期間を変えられる", async
 	await card.getByRole("button", { name: "保存" }).click();
 	await expect(card.getByText("保存した")).toBeVisible();
 	await page.reload();
-	await expect(card.getByLabel("判断の記録")).toHaveValue("180");
+	await expect(card.getByRole("combobox", { name: "判断の記録" })).toHaveValue(
+		"180",
+	);
 });

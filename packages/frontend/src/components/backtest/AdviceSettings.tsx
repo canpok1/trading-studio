@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useApi } from "../../api";
 import { formatDateTime } from "../../format";
 import { errorMessage, readJson, useAsync } from "../../lib/useAsync";
+import { Help } from "../Help";
 import { ErrorState, LoadingCard } from "../States";
 import { Button, Card } from "../ui";
 
@@ -75,9 +76,14 @@ function AdviceModelSetting() {
 
 	return (
 		<Card className="flex flex-col gap-2.5">
-			<h2 className="text-[15px] font-bold">
-				<label htmlFor="advice-model">アドバイスに使うモデル</label>
-			</h2>
+			<div className="flex items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">
+					<label htmlFor="advice-model">アドバイスに使うモデル</label>
+				</h2>
+				<Help label="アドバイスに使うモデル">
+					<p>API キーはニュースの採点と共用（設定の「全般」）。</p>
+				</Help>
+			</div>
 			{state.kind === "error" ? (
 				<p role="alert" className="text-xs font-semibold text-loss">
 					読み込めなかった: {state.message}
@@ -111,9 +117,6 @@ function AdviceModelSetting() {
 				</div>
 			)}
 			<MessageLine message={message} />
-			<p className="text-xs text-text-2">
-				API キーはニュースの採点と共用（設定の「全般」）。
-			</p>
 		</Card>
 	);
 }
@@ -222,10 +225,17 @@ function InstructionsBody({
 
 	return (
 		<Card className="flex flex-col gap-2.5">
-			<h2 className="text-[15px] font-bold">アドバイスのプロンプト</h2>
-			<p className="text-xs text-text-2">
-				バックテスト結果の分析と改善案を作るプロンプト。編集できるのは「指示」だけ。版を変えても作成済みのアドバイスはそのままで、次に作るアドバイスから新しい版を使う。
-			</p>
+			<div className="flex items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">アドバイスのプロンプト</h2>
+				<Help label="アドバイスのプロンプト">
+					<p>
+						バックテスト結果の分析と改善案を作るプロンプト。編集できるのは「指示」だけ。版を変えても作成済みのアドバイスはそのままで、次に作るアドバイスから新しい版を使う。
+					</p>
+					<p>
+						保存しても使用中の版は変わらない。版の一覧で「使用する」を押して切り替える。
+					</p>
+				</Help>
+			</div>
 			<Template template={template} />
 			<div className="flex items-center justify-between gap-2 text-xs">
 				<label htmlFor="advice-instructions" className="font-semibold">
@@ -265,9 +275,6 @@ function InstructionsBody({
 			>
 				v{maxVersion + 1} として保存
 			</Button>
-			<p className="text-xs text-text-2">
-				保存しても使用中の版は変わらない。版の一覧で「使用する」を押して切り替える。
-			</p>
 			<MessageLine message={message} />
 			<h3 className="text-[13px] font-bold">版の履歴</h3>
 			<div className="overflow-hidden rounded-xl border border-line">

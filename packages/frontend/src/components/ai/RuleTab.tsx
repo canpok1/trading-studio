@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { useApi } from "../../api";
 import { errorMessage, readJson } from "../../lib/useAsync";
+import { Help } from "../Help";
 import { JudgmentBadge } from "../judgment/JudgmentBadge";
 import { NumberInput } from "../NumberInput";
 import { Button, Card } from "../ui";
@@ -120,14 +121,22 @@ export function RuleTab({
 	return (
 		<>
 			<Card className="flex flex-col gap-2.5">
-				<h2 className="text-[15px] font-bold">平均のとり方</h2>
+				<div className="flex items-center gap-1.5">
+					<h2 className="text-[15px] font-bold">平均のとり方</h2>
+					<Help label="平均のとり方">
+						<p>
+							半減期ごとに重みが半分になる。
+							{Number.isFinite(draft.halfLifeHours) ? draft.halfLifeHours : "—"}{" "}
+							時間前のニュースは今の半分の重み。
+						</p>
+						<p>
+							集計は判定のたびに計算し直す（AI
+							は呼ばない）。保存すると次の判定から反映し、過去の判定（チャート・バックテスト）もこのルールで計算し直す。
+						</p>
+					</Help>
+				</div>
 				{field("期間", "windowHours", "時間")}
 				{field("半減期", "halfLifeHours", "時間")}
-				<p className="text-xs text-text-2">
-					半減期ごとに重みが半分になる。
-					{Number.isFinite(draft.halfLifeHours) ? draft.halfLifeHours : "—"}{" "}
-					時間前のニュースは今の半分の重み。
-				</p>
 			</Card>
 			<Card className="flex flex-col gap-2.5">
 				<h2 className="text-[15px] font-bold">判定に変えるしきい値</h2>
@@ -190,10 +199,6 @@ export function RuleTab({
 					{notice}
 				</p>
 			)}
-			<p className="text-xs text-text-2">
-				集計は判定のたびに計算し直す（AI
-				は呼ばない）。保存すると次の判定から反映し、過去の判定（チャート・バックテスト）もこのルールで計算し直す。
-			</p>
 		</>
 	);
 }
