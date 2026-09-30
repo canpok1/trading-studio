@@ -16,6 +16,41 @@ export function adviceRoutes(service: AdviceService) {
 				? c.json({ advice: r.advice }, 202)
 				: c.json({ message: r.message }, r.status);
 		})
+		.get("/runs/:id/external-prompt", (c) => {
+			const r = service.externalPrompt(Number(c.req.param("id")));
+			return r.ok
+				? c.json(
+						{ prompt: r.prompt, instructionsVersion: r.instructionsVersion },
+						200,
+					)
+				: c.json({ message: r.message }, r.status);
+		})
+		.post(
+			"/runs/:id/import",
+			validator("json", (v, c) => {
+				if (
+					!isObj(v) ||
+					typeof v.text !== "string" ||
+					!Number.isSafeInteger(v.instructionsVersion)
+				) {
+					return c.json({ message: "text と instructionsVersion が必要" }, 400);
+				}
+				return {
+					text: v.text,
+					model: typeof v.model === "string" ? v.model : "",
+					instructionsVersion: v.instructionsVersion as number,
+				};
+			}),
+			(c) => {
+				const r = service.importExternal(
+					Number(c.req.param("id")),
+					c.req.valid("json"),
+				);
+				return r.ok
+					? c.json({ advice: r.advice }, 200)
+					: c.json({ message: r.message }, r.status);
+			},
+		)
 		.get("/instructions", (c) => c.json(service.instructions()))
 		.post(
 			"/instructions",
