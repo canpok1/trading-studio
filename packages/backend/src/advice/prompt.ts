@@ -42,6 +42,38 @@ export function buildAdvicePrompt(backtest: string, instructions: string) {
 	);
 }
 
+/**
+ * チャット型の AI へコピペで渡すときに足す説明。Gemini には構造化出力で渡している
+ * 改善版の戦略設定の形を、文章で伝える
+ */
+export function buildExternalAdvicePrompt(
+	backtest: string,
+	instructions: string,
+) {
+	return `${buildAdvicePrompt(backtest, instructions)}
+
+# improvedStrategy の形
+次の JSON Schema に従う。description が画面の項目との対応。使わない項目は null にする。
+${JSON.stringify(IMPROVED_STRATEGY_SCHEMA)}
+
+回答は JSON だけにする。前後に説明文を付けない。`;
+}
+
+/**
+ * 利用者が貼ったチャット型 AI の答えから JSON を取り出す。
+ * コードブロックの囲みや前後の説明文が混ざっても、最初の { から最後の } までを読む
+ */
+export function extractAdviceJson(text: string): unknown {
+	const from = text.indexOf("{");
+	const to = text.lastIndexOf("}");
+	if (from < 0 || to < from) throw new Error("貼った答えに JSON が無い");
+	try {
+		return JSON.parse(text.slice(from, to + 1));
+	} catch {
+		throw new Error("貼った答えの JSON を読めない");
+	}
+}
+
 const KEYS = ["analysis", "good", "bad", "improvements"] as const;
 type TextKey = (typeof KEYS)[number];
 

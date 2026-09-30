@@ -10,7 +10,11 @@ import { createTestApp } from "../test-app";
 import { DEMO_IMPROVED_STRATEGY } from "./fake-model";
 import { readImprovedStrategy } from "./improved";
 import { aggregateBars, buildAdviceSource, selectBars } from "./input";
-import { buildAdvicePrompt, parseAdviceResponse } from "./prompt";
+import {
+	buildAdvicePrompt,
+	extractAdviceJson,
+	parseAdviceResponse,
+} from "./prompt";
 import type { BacktestAdvice } from "./types";
 
 const M = TIMEFRAME_MS["1m"];
@@ -103,6 +107,14 @@ describe("応答の検証", () => {
 		});
 		expect(() => parseAdviceResponse({ ...ok, bad: "" })).toThrow("bad");
 		expect(() => parseAdviceResponse(null)).toThrow();
+	});
+
+	test("貼った答えは囲みや前後の説明文があっても JSON を取り出す", () => {
+		expect(
+			extractAdviceJson('はい。\n```json\n{"a": {"b": 1}}\n```\n以上です'),
+		).toEqual({ a: { b: 1 } });
+		expect(() => extractAdviceJson("JSON なし")).toThrow("JSON が無い");
+		expect(() => extractAdviceJson("{壊れた}")).toThrow("読めない");
 	});
 
 	test("差し込む値に差し込み口の文字があっても二重に置き換えない", () => {
@@ -273,6 +285,118 @@ describe("アドバイスの生成", () => {
 		expect(await noKey.json()).toEqual({ message: "キーが無い" });
 
 		expect((await start(t, 999)).status).toBe(404);
+	});
+});
+
+describe("別の AI で作る", () => {
+	const promptOf = async (t: T, id: number) =>
+		t.app.request(`/api/advice/runs/${id}/external-prompt`);
+	const importAdvice = (t: T, id: number, body: unknown) =>
+		t.app.request(`/api/advice/runs/${id}/import`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		});
+	const answer = {
+		analysis: "外の分析",
+		good: "- 良い",
+		bad: "- 悪い",
+		improvements: "- 変える",
+		improvedStrategy: DEMO_IMPROVED_STRATEGY,
+	};
+
+	test("渡す文は API キーが無くても出せ、改善版の戦略設定の形も含む", async () => {
+		const t = createTestApp();
+		const run = await doneRun(t);
+		t.adviceAi.model = { ...t.adviceAi.model, unavailable: () => "キーが無い" };
+		const res = await promptOf(t, run.id);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			prompt: string;
+			instructionsVersion: number;
+		};
+		expect(body.instructionsVersion).toBe(1);
+		expect(body.prompt).toContain("## 成績");
+		expect(body.prompt).toContain("# improvedStrategy の形");
+		expect(body.prompt).toContain("最大ロット数");
+		expect((await promptOf(t, 999)).status).toBe(404);
+	});
+
+	test("貼った答えを取り込むと、名前と指示の版と一緒に最新のアドバイスとして保存する", async () => {
+		const t = createTestApp();
+		const run = await doneRun(t);
+		await start(t, run.id);
+		await t.advice.running(run.id);
+
+		const res = await importAdvice(t, run.id, {
+			text: `\`\`\`json\n${JSON.stringify(answer)}\n\`\`\``,
+			model: " ChatGPT ",
+			instructionsVersion: 1,
+		});
+		expect(res.status).toBe(200);
+		const a = await read(t, run.id);
+		expect(a).toMatchObject({
+			status: "done",
+			model: "ChatGPT",
+			instructionsVersion: 1,
+			error: null,
+		});
+		expect(a?.content?.analysis).toBe("外の分析");
+		expect(a?.content?.improved).toMatchObject({ ok: true });
+
+		await importAdvice(t, run.id, {
+			text: JSON.stringify(answer),
+			model: "",
+			instructionsVersion: 1,
+		});
+		expect((await read(t, run.id))?.model).toBe("外部の AI");
+	});
+
+	test("初めてでも取り込め、読めない答え・無い版・生成中は断る", async () => {
+		const t = createTestApp();
+		const run = await doneRun(t);
+		const bad = await importAdvice(t, run.id, {
+			text: JSON.stringify({ ...answer, bad: "" }),
+			model: "",
+			instructionsVersion: 1,
+		});
+		expect(bad.status).toBe(400);
+		expect(await bad.json()).toEqual({ message: "AI の応答に bad が無い" });
+		expect(await read(t, run.id)).toBeNull();
+		expect(
+			(
+				await importAdvice(t, run.id, {
+					text: JSON.stringify(answer),
+					model: "",
+					instructionsVersion: 99,
+				})
+			).status,
+		).toBe(400);
+
+		let release = () => {};
+		t.adviceAi.model = {
+			unavailable: () => null,
+			generate: () =>
+				new Promise((resolve) => {
+					release = () => resolve(answer);
+				}),
+		};
+		await start(t, run.id);
+		const busy = await importAdvice(t, run.id, {
+			text: JSON.stringify(answer),
+			model: "",
+			instructionsVersion: 1,
+		});
+		expect(busy.status).toBe(409);
+		release();
+		await t.advice.running(run.id);
+
+		const ok = await importAdvice(t, run.id, {
+			text: JSON.stringify(answer),
+			model: "Claude",
+			instructionsVersion: 1,
+		});
+		expect(ok.status).toBe(200);
 	});
 });
 

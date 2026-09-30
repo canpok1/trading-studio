@@ -176,6 +176,31 @@ export class AdviceRepository {
 		);
 	}
 
+	/** 別の AI で作った本文を取り込む。前のアドバイスは置き換える */
+	saveImported(
+		runId: number,
+		content: AdviceContent,
+		g: AdviceGeneration,
+		now: number,
+	) {
+		this.sql.run(
+			`insert into backtest_advice (run_id, status, content, model, instructions_version, app_built_at, started_at, finished_at)
+			 values (?, 'done', ?, ?, ?, ?, ?, ?)
+			 on conflict (run_id) do update set status = 'done', content = excluded.content, model = excluded.model,
+			   instructions_version = excluded.instructions_version, app_built_at = excluded.app_built_at,
+			   started_at = excluded.started_at, finished_at = excluded.finished_at, error = null`,
+			[
+				runId,
+				JSON.stringify(content),
+				g.model,
+				g.instructionsVersion,
+				g.appBuiltAt,
+				now,
+				now,
+			],
+		);
+	}
+
 	/** 失敗しても前のアドバイスの本文と、それを作った時刻は残す */
 	finishFailed(runId: number, error: string) {
 		this.sql.run(

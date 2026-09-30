@@ -50,11 +50,32 @@ export type StartAdviceResult =
 	| { ok: true; advice: BacktestAdvice }
 	| { ok: false; status: 404 | 409 | 503; message: string };
 
+export type ExternalPromptResult =
+	| { ok: true; prompt: string; instructionsVersion: number }
+	| { ok: false; status: 404 | 409; message: string };
+
+export type ImportAdviceInput = {
+	/** チャット型 AI の答え（貼ったまま） */
+	text: string;
+	/** 使った AI の名前。空なら「外部の AI」 */
+	model: string;
+	/** 渡す文をコピーしたときの指示の版 */
+	instructionsVersion: number;
+};
+
+export type ImportAdviceResult =
+	| { ok: true; advice: BacktestAdvice }
+	| { ok: false; status: 400 | 404 | 409; message: string };
+
 export interface AdviceService {
 	/** 実行のアドバイス。まだ無ければ null */
 	get(runId: number): BacktestAdvice | null;
 	/** 生成を始める。前のアドバイスは生成が終わると置き換わる */
 	start(runId: number): StartAdviceResult;
+	/** チャット型の AI へコピペで渡す文 */
+	externalPrompt(runId: number): ExternalPromptResult;
+	/** チャット型の AI の答えを、その実行のアドバイスとして取り込む */
+	importExternal(runId: number, input: ImportAdviceInput): ImportAdviceResult;
 	instructions(): {
 		versions: InstructionsVersion[];
 		activeVersion: number | null;
