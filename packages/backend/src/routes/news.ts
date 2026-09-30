@@ -30,7 +30,7 @@ function respond(c: Context, r: NewsSourceResult, okStatus: 200 | 201 = 200) {
 }
 
 /** 一覧の条件を読む。形が違えばその理由 */
-function parseFilter(
+export function parseFilter(
 	q: Record<string, string | undefined>,
 ): NewsFilter | string {
 	const limit = Math.min(

@@ -38,6 +38,7 @@ const scorer = (over: Partial<ScorerStatus>): ScorerStatus => ({
 	model: "m",
 	activeCriteriaVersion: 1,
 	pending: 0,
+	rescorePending: 0,
 	...over,
 });
 

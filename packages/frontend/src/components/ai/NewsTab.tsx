@@ -64,6 +64,7 @@ export function NewsTab({
 			weight={current.weights[n.id] ?? null}
 			rule={current.rule}
 			scorerStopped={scorer.state === "stopped"}
+			activeVersion={scorer.activeCriteriaVersion}
 			onChanged={onChanged}
 		/>
 	);
@@ -98,6 +99,7 @@ function NewsCard({
 	weight,
 	rule,
 	scorerStopped,
+	activeVersion,
 	onChanged,
 }: {
 	news: NewsItem;
@@ -106,29 +108,49 @@ function NewsCard({
 	weight: number | null;
 	rule: AggregationRule;
 	scorerStopped: boolean;
+	/** 使用中の採点の基準の版。採点し直すときに使う */
+	activeVersion: number | null;
 	onChanged: () => void;
 }) {
 	const api = useApi();
 	const [busy, setBusy] = useState(false);
-	const [error, setError] = useState<string | null>(null);
+	const [error, setError] = useState<{ what: string; message: string } | null>(
+		null,
+	);
 	const [open, setOpen] = useState(false);
 	const detailId = useId();
 	const state = newsState(n, scorerStopped);
 
-	const retry = async () => {
+	const send = async (
+		what: string,
+		post: () => Promise<Parameters<typeof readJson>[0]>,
+	) => {
 		setBusy(true);
 		setError(null);
 		try {
-			await api.api.scoring.news[":id"].retry
-				.$post({ param: { id: String(n.id) } })
-				.then((r) => readJson(r));
+			await post().then((r) => readJson(r));
 			onChanged();
 		} catch (e) {
-			setError(errorMessage(e));
+			setError({ what, message: errorMessage(e) });
 		} finally {
 			setBusy(false);
 		}
 	};
+	const param = { param: { id: String(n.id) } };
+	const retry = () =>
+		send("再試行できなかった", () =>
+			api.api.scoring.news[":id"].retry.$post(param),
+		);
+	const rescore = () =>
+		send("採点し直せなかった", () =>
+			api.api.scoring.news[":id"].rescore.$post(param),
+		);
+	// 使用中の版と違う版で採点したものだけ採点し直せる。待っている間は出さない
+	const canRescore =
+		state.kind === "done" &&
+		activeVersion !== null &&
+		n.score?.criteriaVersion !== activeVersion &&
+		n.rescore?.status !== "pending";
 
 	return (
 		<article
@@ -179,8 +201,10 @@ function NewsCard({
 					{open && (
 						<div id={detailId} className="flex flex-col gap-0.5">
 							<span className="num text-xs text-text-2">
-								採点 {formatDateTime(n.score.scoredAt ?? 0)} · プロンプト v
-								{n.score.criteriaVersion} · {n.score.model} ·{" "}
+								採点 {formatDateTime(n.score.scoredAt ?? 0)}
+								{n.score.rescoredAt !== null &&
+									` · 採点し直し ${formatDateTime(n.score.rescoredAt)}`}{" "}
+								· プロンプト v{n.score.criteriaVersion} · {n.score.model} ·{" "}
 								{formatVersion(n.score.appBuiltAt, "記録なし")}
 							</span>
 							<span className="num text-xs text-text-2">
@@ -188,6 +212,38 @@ function NewsCard({
 									? `集計の対象外（${rule.windowHours}時間より前）`
 									: `集計での重み ${Math.round(weight * 100)}%`}
 							</span>
+							{canRescore && n.rescore === null && (
+								<Button
+									size="sm"
+									className="self-start"
+									onClick={rescore}
+									disabled={busy}
+								>
+									v{activeVersion} で採点し直す
+								</Button>
+							)}
+						</div>
+					)}
+					{n.rescore?.status === "pending" && (
+						<div className="flex items-center gap-2 text-xs text-text-2">
+							<Skeleton className="h-4 w-16" />v{n.rescore.version}{" "}
+							で採点し直し中
+							{scorerStopped && "（採点が止まっている）"}
+						</div>
+					)}
+					{n.rescore?.status === "failed" && (
+						<div className="flex items-center justify-between gap-2">
+							<span className="text-xs">
+								<span className="font-semibold text-loss">
+									v{n.rescore.version} での採点し直しに失敗
+								</span>
+								（{n.rescore.error}）。今の採点のまま
+							</span>
+							{canRescore && (
+								<Button size="sm" onClick={rescore} disabled={busy}>
+									採点し直す
+								</Button>
+							)}
 						</div>
 					)}
 				</>
@@ -230,7 +286,7 @@ function NewsCard({
 			)}
 			{error && (
 				<p role="alert" className="text-xs font-semibold text-loss">
-					再試行できなかった: {error}
+					{error.what}: {error.message}
 				</p>
 			)}
 		</article>

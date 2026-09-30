@@ -37,7 +37,21 @@ type NewsRow = Omit<ScoreRow, "status"> & {
 	published_at: number;
 	fetched_at: number;
 	status: ScoreRow["status"] | null;
+	rescore_version: number | null;
+	rescore_status: string | null;
+	rescore_error: string | null;
 };
+
+/**
+ * ニュースと運用の採点、運用の採点の置き換えのうち最後に頼んだもの（終わっていないもの）を結ぶ。
+ * 採点し直しの列は news_scores と名前がぶつかるので別名で取る
+ */
+const NEWS_FROM = `from news n left join news_scores s on s.news_id = n.id
+	left join news_rescores r on r.rowid = (
+	  select x.rowid from news_rescores x where x.news_id = n.id and x.replace_requested_at is not null
+	  order by x.replace_requested_at desc, x.criteria_version desc limit 1)`;
+const NEWS_COLUMNS =
+	"n.*, s.*, r.criteria_version as rescore_version, r.status as rescore_status, r.error as rescore_error";
 
 const toSource = (r: SourceRow): NewsSource => ({
 	id: r.id,
@@ -62,6 +76,14 @@ export const toNewsItem = (r: NewsRow): NewsItem => ({
 	publishedAt: r.published_at,
 	fetchedAt: r.fetched_at,
 	score: r.status === null ? null : toNewsScore({ ...r, status: r.status }),
+	rescore:
+		r.rescore_version === null
+			? null
+			: {
+					version: r.rescore_version,
+					status: r.rescore_status === "failed" ? "failed" : "pending",
+					error: r.rescore_error,
+				},
 });
 
 const INTERVAL_KEY = "news_interval_minutes";
@@ -205,7 +227,7 @@ export class NewsRepository {
 	listNews(limit: number): NewsItem[] {
 		return this.sql
 			.query<NewsRow, [number]>(
-				"select * from news n left join news_scores s on s.news_id = n.id order by n.published_at desc, n.id desc limit ?",
+				`select ${NEWS_COLUMNS} ${NEWS_FROM} order by n.published_at desc, n.id desc limit ?`,
 			)
 			.all(limit)
 			.map(toNewsItem);
@@ -247,7 +269,7 @@ export class NewsRepository {
 		if (impacts.length) {
 			where.push(`(s.status = 'done' and (${impacts.join(" or ")}))`);
 		}
-		const from = `from news n left join news_scores s on s.news_id = n.id${where.length ? ` where ${where.join(" and ")}` : ""}`;
+		const from = `${NEWS_FROM}${where.length ? ` where ${where.join(" and ")}` : ""}`;
 		// 採点済みでないものは影響の大きい順では最後
 		const order =
 			f.sort === "impact"
@@ -261,7 +283,7 @@ export class NewsRepository {
 				.get(...args)?.c ?? 0;
 		const news = this.sql
 			.query<NewsRow, (number | string)[]>(
-				`select * ${from} order by ${order} limit ?`,
+				`select ${NEWS_COLUMNS} ${from} order by ${order} limit ?`,
 			)
 			.all(...args, f.limit)
 			.map(toNewsItem);
@@ -273,7 +295,7 @@ export class NewsRepository {
 		if (ids.length === 0) return [];
 		const rows = this.sql
 			.query<NewsRow, number[]>(
-				`select * from news n left join news_scores s on s.news_id = n.id where n.id in (${ids.map(() => "?").join(",")})`,
+				`select ${NEWS_COLUMNS} ${NEWS_FROM} where n.id in (${ids.map(() => "?").join(",")})`,
 			)
 			.all(...ids)
 			.map(toNewsItem);

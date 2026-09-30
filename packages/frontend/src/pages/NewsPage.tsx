@@ -8,6 +8,7 @@ import { JUDGE_LABELS, JUDGES } from "@trading-studio/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useApi } from "../api";
+import { BulkRescore } from "../components/ai/BulkRescore";
 import { NewsFilterBar } from "../components/ai/NewsFilter";
 import { NewsTab } from "../components/ai/NewsTab";
 import { Help } from "../components/Help";
@@ -212,9 +213,19 @@ export function NewsPage() {
 				</Help>
 			</div>
 			<NewsFilterBar filter={filter} onChange={setFilter} />
-			<p className="num text-xs text-text-2" aria-live="polite">
-				{isFiltered(filter) ? "条件に当てはまる" : "全部で"} {data.total} 件
-			</p>
+			<div className="flex flex-wrap items-center justify-between gap-2">
+				<p className="num text-xs text-text-2" aria-live="polite">
+					{isFiltered(filter) ? "条件に当てはまる" : "全部で"} {data.total} 件
+					{data.scorer.rescorePending > 0 &&
+						` · 採点し直しを待っている ${data.scorer.rescorePending} 件`}
+				</p>
+				<BulkRescore
+					filter={filter}
+					total={data.total}
+					activeVersion={data.scorer.activeCriteriaVersion}
+					onDone={load}
+				/>
+			</div>
 			<NewsTab
 				data={data}
 				grouped={filter.sort === "new"}
