@@ -3,10 +3,17 @@ import { PROMPT_TEMPLATE } from "./prompt";
 import type { NewsRepository } from "./repository";
 import type { ScoreRepository } from "./score-repository";
 import type { Scorer } from "./scorer";
-import type { RescoreResult, ScoringService, TrialItem } from "./types";
+import type {
+	LiveRescoreResult,
+	RescoreResult,
+	ScoringService,
+	TrialItem,
+} from "./types";
 import { TRIAL_MAX_NEWS } from "./types";
 
 export const CRITERIA_MAX = 4000;
+/** 絞り込みの条件でまとめて採点し直せる件数の上限（ニュース画面で読み込める件数と同じ） */
+export const LIVE_RESCORE_MAX = 1000;
 const NOTE_MAX = 100;
 const API_KEY_MAX = 200;
 
@@ -48,6 +55,7 @@ export function createScoringService({
 				model: repo.model(DEFAULT_SCORING_MODEL),
 				activeCriteriaVersion: repo.activeCriteriaVersion(),
 				pending: repo.pendingCount(),
+				rescorePending: repo.liveRescorePending(),
 			};
 		},
 
@@ -124,6 +132,35 @@ export function createScoringService({
 			return {
 				ok: true,
 				coverage: repo.rescoreCoverage(...usedBy(from, to), version),
+			};
+		},
+
+		rescoreLive(target): LiveRescoreResult {
+			const version = repo.activeCriteriaVersion();
+			if (version === null || !repo.getCriteria(version))
+				return { ok: false, status: 409, message: "使用中の採点の基準が無い" };
+			let ids: number[];
+			if ("newsId" in target) {
+				ids = [target.newsId];
+			} else {
+				const found = newsRepo.searchNews(
+					{ ...target.filter, limit: LIVE_RESCORE_MAX },
+					repo.aggregationRule(),
+				);
+				if (found.total > LIVE_RESCORE_MAX)
+					return {
+						ok: false,
+						status: 400,
+						message: `${LIVE_RESCORE_MAX} 件までに絞る`,
+					};
+				ids = found.news.map((n) => n.id);
+			}
+			const requested = repo.requestReplace(ids, version, now());
+			return {
+				ok: true,
+				version,
+				requested,
+				skipped: ids.length - requested,
 			};
 		},
 

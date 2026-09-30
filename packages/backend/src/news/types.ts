@@ -31,6 +31,16 @@ export type NewsItem = {
 	fetchedAt: number;
 	/** 採点の結果。まだ採点していなければ null */
 	score: NewsScore | null;
+	/** 運用の採点を置き換える採点し直し（ニュース画面から頼んだもの）のうち、終わっていないもの。無ければ null */
+	rescore: LiveRescore | null;
+};
+
+export type LiveRescore = {
+	/** 採点し直す版 */
+	version: number;
+	/** pending: 待っている（再試行待ちを含む） / failed: 失敗して止まっている */
+	status: "pending" | "failed";
+	error: string | null;
 };
 
 export type NewsScore = {
@@ -39,7 +49,10 @@ export type NewsScore = {
 	/** 観点ごとの点数。採点済みでなければ null */
 	scores: Scores | null;
 	comment: string | null;
+	/** 判定に使い始める時刻。採点し直して置き換えても変えない */
 	scoredAt: number | null;
+	/** 採点し直して点数を置き換えた時刻。置き換えていなければ null。版・モデル・アプリのバージョンは置き換えた採点のもの */
+	rescoredAt: number | null;
 	criteriaVersion: number | null;
 	model: string | null;
 	/** 採点したアプリのバージョン（ビルド日時）。開発版と記録前の採点は null */
@@ -66,6 +79,8 @@ export type ScorerStatus = {
 	activeCriteriaVersion: number | null;
 	/** 採点していないニュースの件数（再試行待ちを含む） */
 	pending: number;
+	/** 運用の採点を置き換える採点し直しを待っている件数（再試行待ちを含む） */
+	rescorePending: number;
 };
 
 export type NewsCollectorStatus = {
@@ -187,6 +202,18 @@ export type RescoreResult =
 	| { ok: true; coverage: RescoreCoverage }
 	| { ok: false; status: 400 | 404; message: string };
 
+export type LiveRescoreResult =
+	| {
+			ok: true;
+			/** 採点し直す版（使用中の版） */
+			version: number;
+			/** 採点し直しを頼んだか、その版の採点が既にあって置き換えた件数 */
+			requested: number;
+			/** 使用中の版で採点済みか、運用で採点済みでないので飛ばした件数 */
+			skipped: number;
+	  }
+	| { ok: false; status: 400 | 409; message: string };
+
 export type ApiKeyStatus = { configured: boolean; savedAt: number | null };
 
 export interface ScoringService {
@@ -217,6 +244,13 @@ export interface ScoringService {
 	rescoreCoverage(from: number, to: number, version: number): RescoreResult;
 	/** バックテストの期間 [from, to) の市場評価に使う記事のうち、指定した版の採点が無いもの（失敗を含む）を採点し直す対象に入れる */
 	requestRescore(from: number, to: number, version: number): RescoreResult;
+	/**
+	 * ニュースを使用中の版で採点し直し、運用の採点を置き換えるよう頼む（ニュース画面から）。
+	 * 1件か、絞り込みの条件に当てはまるもの（1000件まで）。判定に使い始める時刻は変えない
+	 */
+	rescoreLive(
+		target: { newsId: number } | { filter: NewsFilter },
+	): LiveRescoreResult;
 	/** 指定したニュース（省けば最新の1件）を、渡した採点の基準で採点する。保存も集計への反映もしない */
 	trial(criteria: string, newsIds?: readonly number[]): Promise<TrialResult>;
 }

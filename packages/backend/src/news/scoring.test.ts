@@ -713,3 +713,211 @@ describe("版を指定した採点し直し", () => {
 		});
 	});
 });
+
+describe("運用の採点を置き換える採点し直し", () => {
+	/** 運用で v1 で採点済みのニュースを作り、v2 を使用中にする。採点時刻は T0 + i 秒 */
+	async function scoredThenV2(t: ReturnType<typeof setup>, n: number) {
+		const ids = Array.from({ length: n }, (_, i) => t.addNews(`n${i}`));
+		for (let i = 1; i <= n; i++) await t.at(T0 + i * 1000);
+		const v2 = t.service.addCriteria("基準2", "改善");
+		if (!v2.ok) throw new Error();
+		t.service.setActiveCriteria(v2.version.version);
+		return ids as [number, ...number[]];
+	}
+	const filter = {
+		from: null,
+		to: null,
+		q: "",
+		impacts: [],
+		sort: "new" as const,
+		limit: 100,
+	};
+
+	test("使用中の版で採点し直して運用の採点を置き換え、使い始める時刻は変えず、元の採点は版の採点として残す", async () => {
+		const t = setup();
+		const [a] = await scoredThenV2(t, 1);
+		expect(t.service.rescoreLive({ newsId: a })).toEqual({
+			ok: true,
+			version: 2,
+			requested: 1,
+			skipped: 0,
+		});
+		expect(t.service.status().rescorePending).toBe(1);
+		expect(t.newsRepo.newsByIds([a])[0]?.rescore).toEqual({
+			version: 2,
+			status: "pending",
+			error: null,
+		});
+		t.replies.push({ sentiment: -70, risk: 10, comment: "v2 の理由" });
+		await t.at(T0 + 10_000);
+		expect(t.calls.at(-1)?.prompt).toContain("基準2");
+		const item = t.newsRepo.newsByIds([a])[0];
+		expect(item?.rescore).toBeNull();
+		expect(item?.score).toMatchObject({
+			scores: { sentiment: -70, risk: 10 },
+			comment: "v2 の理由",
+			criteriaVersion: 2,
+			scoredAt: T0 + 1000,
+			rescoredAt: T0 + 10_000,
+		});
+		expect(t.service.status().rescorePending).toBe(0);
+		// 運用どおりは置き換えた点数、v1 を指定すると元の点数。どちらも使い始める時刻は運用の採点時刻
+		expect(t.repo.scoredNews(0, T0 + 5000)).toEqual([
+			expect.objectContaining({
+				scoredAt: T0 + 1000,
+				scores: { sentiment: -70, risk: 10 },
+			}),
+		]);
+		expect(t.repo.scoredNews(0, T0 + 5000, 1)).toEqual([
+			expect.objectContaining({
+				scoredAt: T0 + 1000,
+				scores: { sentiment: 60, risk: 30 },
+			}),
+		]);
+		// 使用中の版で採点済みなら頼まない
+		expect(t.service.rescoreLive({ newsId: a })).toMatchObject({
+			requested: 0,
+			skipped: 1,
+		});
+	});
+
+	test("その版の採点が既にあれば、問い合わせずにすぐ置き換える", async () => {
+		const t = setup();
+		const [a] = await scoredThenV2(t, 1);
+		const from = T0 + 24 * H;
+		t.service.requestRescore(from, from + H, 2);
+		t.replies.push({ sentiment: -20, risk: null, comment: "v2" });
+		await t.at(T0 + 10_000);
+		expect(t.repo.getScore(a)?.criteriaVersion).toBe(1);
+		const calls = t.calls.length;
+		expect(t.service.rescoreLive({ newsId: a })).toMatchObject({
+			requested: 1,
+		});
+		expect(t.calls).toHaveLength(calls);
+		expect(t.repo.getScore(a)).toMatchObject({
+			criteriaVersion: 2,
+			scores: { sentiment: -20, risk: null },
+			rescoredAt: T0 + 10_000,
+		});
+	});
+
+	test("バックテスト用に待っている採点し直しは、順番を変えずに置き換える印を付ける", async () => {
+		const t = setup();
+		const [a] = await scoredThenV2(t, 1);
+		const from = T0 + 24 * H;
+		t.service.requestRescore(from, from + H, 2);
+		t.service.rescoreLive({ newsId: a });
+		await t.at(T0 + 10_000);
+		expect(t.repo.getScore(a)?.criteriaVersion).toBe(2);
+	});
+
+	test("後から別の版で頼んだ置き換えを優先し、前の頼みが後で終わっても戻さない", async () => {
+		const t = setup();
+		const [a] = await scoredThenV2(t, 1);
+		t.service.rescoreLive({ newsId: a });
+		t.replies.push(new Error("503"));
+		await t.at(T0 + 10_000);
+		// v2 が再試行を待っている間に v3 へ切り替えて頼み直す
+		const v3 = t.service.addCriteria("基準3", "改善");
+		if (!v3.ok) throw new Error();
+		t.service.setActiveCriteria(v3.version.version);
+		t.service.rescoreLive({ newsId: a });
+		t.replies.push({ sentiment: 30, risk: null, comment: "v3" });
+		await t.at(T0 + 11_000);
+		expect(t.repo.getScore(a)?.criteriaVersion).toBe(3);
+		// v2 の再試行が後で成功しても、運用の採点は v3 のまま
+		t.replies.push({ sentiment: -90, risk: null, comment: "v2" });
+		await t.at(T0 + 10_000 + RETRY_DELAYS_MS[0]);
+		expect(t.calls.at(-1)?.prompt).toContain("基準2");
+		expect(t.newsRepo.newsByIds([a])[0]).toMatchObject({
+			rescore: null,
+			score: { criteriaVersion: 3, scores: { sentiment: 30 } },
+		});
+		expect(t.service.status().rescorePending).toBe(0);
+	});
+
+	test("失敗して止まると理由を出し、頼み直すと採点し直す", async () => {
+		const t = setup();
+		const [a] = await scoredThenV2(t, 1);
+		t.service.rescoreLive({ newsId: a });
+		t.replies.push(
+			...RETRY_DELAYS_MS.map(() => new Error("503")),
+			new Error("503"),
+		);
+		let time = T0 + 10_000;
+		await t.at(time);
+		for (const d of RETRY_DELAYS_MS) {
+			time += d;
+			await t.at(time);
+		}
+		expect(t.newsRepo.newsByIds([a])[0]?.rescore).toEqual({
+			version: 2,
+			status: "failed",
+			error: "503",
+		});
+		expect(t.repo.getScore(a)?.criteriaVersion).toBe(1);
+		expect(t.service.rescoreLive({ newsId: a })).toMatchObject({
+			requested: 1,
+		});
+		expect(t.newsRepo.newsByIds([a])[0]?.rescore?.status).toBe("pending");
+		await t.at(time + 1000);
+		expect(t.newsRepo.newsByIds([a])[0]).toMatchObject({
+			rescore: null,
+			score: { criteriaVersion: 2 },
+		});
+	});
+
+	test("絞り込みの条件に当てはまるものをまとめて頼み、運用で採点済みでないものと使用中の版のものは飛ばす", async () => {
+		const t = setup();
+		const [a, b] = (await scoredThenV2(t, 2)) as [number, number];
+		// v2 で運用の採点をした記事
+		const c = t.addNews("c");
+		await t.at(T0 + 10_000);
+		// 採点に失敗して止まっている記事
+		const d = t.addNews("d");
+		t.replies.push(
+			...RETRY_DELAYS_MS.map(() => new Error("503")),
+			new Error("503"),
+		);
+		let time = T0 + 11_000;
+		await t.at(time);
+		for (const delay of RETRY_DELAYS_MS) {
+			time += delay;
+			await t.at(time);
+		}
+		expect(t.repo.getScore(d)?.status).toBe("failed");
+		expect(t.service.rescoreLive({ filter })).toEqual({
+			ok: true,
+			version: 2,
+			requested: 2,
+			skipped: 2,
+		});
+		// キーワードで絞ると当てはまるものだけ
+		expect(
+			t.service.rescoreLive({ filter: { ...filter, q: "n0" } }),
+		).toMatchObject({ requested: 1, skipped: 0 });
+		expect(
+			t.newsRepo.newsByIds([a, b, c, d]).map((n) => n.rescore?.status ?? null),
+		).toEqual(["pending", "pending", null, null]);
+	});
+
+	test("使用中の版が無ければ理由を返す", () => {
+		const t = setup();
+		t.repo.setActiveCriteria(999);
+		expect(t.service.rescoreLive({ newsId: 1 })).toMatchObject({
+			ok: false,
+			status: 409,
+		});
+	});
+
+	test("API", async () => {
+		const { app } = createTestApp();
+		const post = (path: string) =>
+			app.request(`/api/scoring/news/${path}`, { method: "POST" });
+		expect((await post("1/rescore")).status).toBe(409);
+		expect((await post("rescore?sort=x")).status).toBe(400);
+		const r = await post("rescore?q=abc");
+		expect(r.status).toBe(200);
+		expect(await r.json()).toEqual({ version: 1, requested: 0, skipped: 0 });
+	});
+});
