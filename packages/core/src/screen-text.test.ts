@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ConditionSet } from "./condition-strategy";
-import { DEFAULT_BUY_ORDER } from "./condition-strategy";
+import { DEFAULT_BUY_ORDER, DEFAULT_PARTIAL_SELL } from "./condition-strategy";
 import { conditionSetChanges } from "./screen-text";
 
 const BASE: ConditionSet = {
@@ -17,6 +17,8 @@ const BASE: ConditionSet = {
 		conditions: [{ type: "emaCross", fast: 12, slow: 48, direction: "up" }],
 	},
 	buyOrder: DEFAULT_BUY_ORDER,
+	partialTakeProfit: { match: "all", conditions: [] },
+	partialSell: DEFAULT_PARTIAL_SELL,
 	takeProfit: {
 		match: "any",
 		conditions: [{ type: "entryChange", percent: 5, direction: "up" }],
@@ -61,7 +63,9 @@ describe("戦略設定の変更点", () => {
 				...BASE.takeProfit.conditions,
 			],
 		};
-		after.stopLoss.conditions = [{ type: "trailingStop", percent: 3 }];
+		after.stopLoss.conditions = [
+			{ type: "trailingStop", percent: 3, activatePercent: 0 },
+		];
 		expect(conditionSetChanges(BASE, after)).toEqual([
 			{
 				section: "売り注文（利確）する条件",

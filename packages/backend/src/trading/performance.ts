@@ -89,27 +89,31 @@ export function tradingPerformance({
 	const equity = equityOf(cash, position, price);
 	if (equity !== null && price !== null) mark(now, price);
 
-	// 往復は売りの約定（損益つき）と、対応づけた買いの約定時刻から作る
+	// 往復は売りの約定（損益つき）と、対応づけた買いの約定時刻から作る。
+	// 一部利確の売りは、同じロットを閉じた売りの往復にまとめる（ロットが残っている間は往復に数えない）
 	const buyTime = new Map(
 		fills.filter((f) => f.side === "buy").map((f) => [f.id, f.filledAt ?? 0]),
 	);
-	const trades = fills.flatMap((f) =>
-		f.side === "sell" && f.pnl !== null
-			? [
-					{
-						pnl: f.pnl,
-						holdingMs:
-							(f.filledAt ?? 0) -
-							(buyTime.get(f.pairId ?? "") ?? f.filledAt ?? 0),
-					},
-				]
-			: [],
-	);
+	const sells = fills.filter((f) => f.side === "sell" && f.pnl !== null);
+	const partialPnl = new Map<string, number>();
+	for (const f of sells) {
+		if (f.exitKind === "partialTakeProfit" && f.pairId) {
+			partialPnl.set(f.pairId, (partialPnl.get(f.pairId) ?? 0) + (f.pnl ?? 0));
+		}
+	}
+	const trades = sells
+		.filter((f) => f.exitKind !== "partialTakeProfit")
+		.map((f) => ({
+			pnl: (f.pnl ?? 0) + (partialPnl.get(f.pairId ?? "") ?? 0),
+			holdingMs:
+				(f.filledAt ?? 0) - (buyTime.get(f.pairId ?? "") ?? f.filledAt ?? 0),
+		}));
 	const wins = trades.filter((t) => t.pnl > 0);
 	const losses = trades.filter((t) => t.pnl <= 0);
 	const grossProfit = wins.reduce((a, t) => a + t.pnl, 0);
 	const grossLoss = -losses.reduce((a, t) => a + t.pnl, 0);
-	const realizedPnl = trades.reduce((a, t) => a + t.pnl, 0);
+	// 確定損益は、ロットが残っている一部利確の売りも含めた売りの損益の合計
+	const realizedPnl = sells.reduce((a, f) => a + (f.pnl ?? 0), 0);
 	const pnl = equity === null ? null : equity - initialCash;
 
 	return {

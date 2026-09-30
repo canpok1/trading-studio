@@ -75,8 +75,11 @@ export type Condition =
 	  }
 	/** 現在値が買値から percent % 上がった（up）/ 下がった（down）。売りのグループだけで使える */
 	| { type: "entryChange"; percent: number; direction: "up" | "down" }
-	/** 現在値が買ってからの最高値から percent % 下がった。売りのグループだけで使える */
-	| { type: "trailingStop"; percent: number }
+	/**
+	 * 現在値が買ってからの最高値から percent % 下がった。最高値が買値から activatePercent % 以上になるまでは成立しない（0 は買った直後から）。
+	 * 売りのグループだけで使える
+	 */
+	| { type: "trailingStop"; percent: number; activatePercent: number }
 	/** 買ってから戦略の粒度の足で bars 本経った。売りのグループだけで使える */
 	| { type: "holdingBars"; bars: number }
 	/** AI の判定が values のどれか。判定がまだ無いときは values に NO_JUDGMENT があれば成立。どのグループでも使える */
@@ -90,13 +93,36 @@ export type ConditionGroup = {
 	conditions: Condition[];
 };
 
-export const CONDITION_GROUPS = ["buy", "takeProfit", "stopLoss"] as const;
+export const CONDITION_GROUPS = [
+	"buy",
+	"partialTakeProfit",
+	"takeProfit",
+	"stopLoss",
+] as const;
 export type ConditionGroupKey = (typeof CONDITION_GROUPS)[number];
+
+/** 売りのグループ */
+export type SellGroupKey = Exclude<ConditionGroupKey, "buy">;
 
 export const CONDITION_GROUP_LABELS: Record<ConditionGroupKey, string> = {
 	buy: "買い注文する条件",
+	partialTakeProfit: "売り注文（一部利確）する条件",
 	takeProfit: "売り注文（利確）する条件",
 	stopLoss: "売り注文（損切り）する条件",
+};
+
+/** 一部利確の売り方。一部利確の条件が空なら使わない */
+export type PartialSell = {
+	/** ロットの何 % を売るか（整数） */
+	percent: number;
+	/** 一部利確の後、現在値が買値を下回ったら残りを損切りとして売る（建値ストップ） */
+	breakevenStop: boolean;
+};
+
+/** 一部利確の売り方の既定。これを持たない保存済みの戦略もこれで読む（一部利確の条件は空なので効かない） */
+export const DEFAULT_PARTIAL_SELL: PartialSell = {
+	percent: 50,
+	breakevenStop: true,
 };
 
 /** 買い注文の1行。成行か、現在値から何 % 下の指値か */
@@ -156,6 +182,9 @@ export type ConditionSet = {
 	dailyLossLimit: number;
 	buy: ConditionGroup;
 	buyOrder: BuyOrder;
+	/** 空なら一部利確しない。持たない保存済みの戦略は空として読む */
+	partialTakeProfit: ConditionGroup;
+	partialSell: PartialSell;
 	takeProfit: ConditionGroup;
 	stopLoss: ConditionGroup;
 };
@@ -169,6 +198,10 @@ export const LIMITS = {
 	/** ボリンジャーバンドの σ。0.1 刻み */
 	bollingerSigma: { min: 0.1, max: 5 },
 	percent: { min: 0.1, max: 100 },
+	/** トレーリングストップを発動する、最高値の買値からの %。0 は買った直後から */
+	trailingActivatePercent: { min: 0, max: 100 },
+	/** 一部利確で売る割合（%、整数） */
+	partialSellPercent: { min: 1, max: 99 },
 	/** EMA の傾きで何本前と比べるか */
 	emaSlopeBars: { min: 1, max: 500 },
 	/** EMA の傾きの %。0.01 刻み */
@@ -204,7 +237,11 @@ type Ctx = {
 	now: number;
 	timeframeMs: number;
 	/** 売りの判定中のロット。買いの判定では null */
-	lot: { entryPrice: number; openedAt: number; peak: number } | null;
+	lot: {
+		entryPrice: number;
+		openedAt: number;
+		peak: number;
+	} | null;
 	emaCache: Map<number, number[]>;
 	rsiCache: Map<number, number[]>;
 	bollingerCache: Map<string, ReturnType<typeof bollinger>>;
@@ -404,12 +441,24 @@ function checkCondition(c: Condition, ctx: Ctx): Hit {
 			if (ctx.lot === null) {
 				return { ok: false };
 			}
-			const { peak } = ctx.lot;
+			const { peak, entryPrice } = ctx.lot;
+			// 最高値が買値から activatePercent % 以上になるまでは発動しない
+			if (
+				c.activatePercent > 0 &&
+				(peak / entryPrice - 1) * 100 < c.activatePercent
+			) {
+				return { ok: false };
+			}
 			const drop = (1 - ctx.price / peak) * 100;
+			const since =
+				c.activatePercent > 0
+					? `。最高値が買値から +${c.activatePercent}% 以上になってから発動`
+					: "";
+			// 発動の文は別の文にする（売りのバッジが「（−N% 以上）」で終わる文から条件名を読むため）
 			return drop >= c.percent
 				? {
 						ok: true,
-						why: `現在値 ${formatYen(ctx.price)} は買ってからの最高値 ${formatYen(peak)} から −${drop.toFixed(1)}%（−${c.percent}% 以上）`,
+						why: `現在値 ${formatYen(ctx.price)} は買ってからの最高値 ${formatYen(peak)} から −${drop.toFixed(1)}%（−${c.percent}% 以上）${since}`,
 					}
 				: { ok: false };
 		}
@@ -712,13 +761,25 @@ export function validateConditionSet(p: ConditionSet): ValidationError[] {
 						err(`${at}.percent`, `${range(LIMITS.percent)} の範囲で入れる`);
 					}
 					break;
-				case "trailingStop":
+				case "trailingStop": {
 					if (g === "buy") {
 						err(at, "最高値からの % は売りの条件だけで使える");
-					} else if (!isNumIn(c.percent, LIMITS.percent)) {
+						break;
+					}
+					if (!isNumIn(c.percent, LIMITS.percent)) {
 						err(`${at}.percent`, `${range(LIMITS.percent)} の範囲で入れる`);
 					}
+					const r = LIMITS.trailingActivatePercent;
+					if (
+						!isNumIn(c.activatePercent, r) ||
+						Math.abs(
+							c.activatePercent * 10 - Math.round(c.activatePercent * 10),
+						) > 1e-9
+					) {
+						err(`${at}.activatePercent`, `${range(r)}、0.1 刻みで入れる`);
+					}
 					break;
+				}
 				case "holdingBars":
 					if (g === "buy") {
 						err(at, "保有本数は売りの条件だけで使える");
@@ -781,7 +842,31 @@ export function validateConditionSet(p: ConditionSet): ValidationError[] {
 			"損切りの条件が無いと、下がり続けても売らない。1つ以上追加する",
 		);
 	}
+	const ps = p.partialSell;
+	if (!isIntIn(ps.percent, LIMITS.partialSellPercent)) {
+		const r = LIMITS.partialSellPercent;
+		err("partialSell.percent", `${r.min}〜${r.max} の整数で入れる`);
+	} else if (
+		p.partialTakeProfit.conditions.length > 0 &&
+		isIntIn(p.orderSize, size)
+	) {
+		const sold = partialSellQuantity(p.orderSize, ps.percent);
+		if (sold < size.min || p.orderSize - sold < size.min) {
+			err(
+				"partialSell.percent",
+				`売る量 ${formatBtc(sold)} BTC と残り ${formatBtc(p.orderSize - sold)} BTC がどちらも ${formatBtc(size.min)} BTC 以上になるようにする`,
+			);
+		}
+	}
+	if (typeof ps.breakevenStop !== "boolean") {
+		err("partialSell.breakevenStop", "選ぶ");
+	}
 	return errors;
+}
+
+/** 一部利確で売る量（satoshi）。1 satoshi 未満は切り捨てる */
+export function partialSellQuantity(quantity: number, percent: number): number {
+	return Math.floor((quantity * percent) / 100);
 }
 
 function nextEval(now: number, p: ConditionSet, holding: boolean): number {
@@ -907,30 +992,56 @@ export function evaluateConditionSet(
 					peak: peaks?.[lot.id] ?? lot.entryPrice,
 				},
 			};
+			const done = lot.partialExitDone ?? false;
 			const sl = evaluateGroup(p.stopLoss, lotCtx);
 			const tp = evaluateGroup(p.takeProfit, lotCtx);
-			const short = [sl, tp].find((r) => r.kind === "insufficient");
+			// 一部利確は1ロットにつき1回だけ
+			const partialQty = done
+				? 0
+				: partialSellQuantity(lot.quantity, p.partialSell.percent);
+			const ptp: GroupResult =
+				partialQty > 0 && partialQty < lot.quantity
+					? evaluateGroup(p.partialTakeProfit, lotCtx)
+					: { kind: "miss" };
+			const short = [sl, tp, ptp].find((r) => r.kind === "insufficient");
 			if (short?.kind === "insufficient") {
 				lacking = short.why;
 				break;
 			}
+			// 建値ストップ: 一部利確の後、現在値が買値を下回ったら残りを損切りとして売る
+			const breakeven =
+				done && p.partialSell.breakevenStop && ctx.price < lot.entryPrice
+					? `一部利確の後、現在値 ${formatYen(ctx.price)} が買値 ${formatYen(lot.entryPrice)} を下回った。`
+					: null;
 			const hit =
 				sl.kind === "hit"
 					? { why: sl.why, label: "損切り", exitKind: "stopLoss" as const }
-					: tp.kind === "hit"
-						? { why: tp.why, label: "利確", exitKind: "takeProfit" as const }
-						: null;
+					: breakeven !== null
+						? { why: breakeven, label: "損切り", exitKind: "stopLoss" as const }
+						: tp.kind === "hit"
+							? { why: tp.why, label: "利確", exitKind: "takeProfit" as const }
+							: ptp.kind === "hit"
+								? {
+										why: ptp.why,
+										label: "一部利確",
+										exitKind: "partialTakeProfit" as const,
+									}
+								: null;
 			if (!hit) continue;
+			const quantity =
+				hit.exitKind === "partialTakeProfit" ? partialQty : lot.quantity;
 			const what =
 				lots.length === 1
 					? `保有中の ${formatBtc(lot.quantity)} BTC`
 					: `買値 ${formatYen(lot.entryPrice)} のロット ${formatBtc(lot.quantity)} BTC`;
-			sells.push(`${hit.why}${what} を売却（${hit.label}の条件）`);
+			const part =
+				quantity < lot.quantity ? ` のうち ${formatBtc(quantity)} BTC` : "";
+			sells.push(`${hit.why}${what}${part} を売却（${hit.label}の条件）`);
 			intents.push({
 				kind: "place",
 				side: "sell",
 				type: "market",
-				quantity: lot.quantity,
+				quantity,
 				lotId: lot.id,
 				exitKind: hit.exitKind,
 			});
@@ -1138,7 +1249,13 @@ function parseCondition(v: unknown): Condition | null {
 				band: v.band,
 			};
 		case "trailingStop":
-			return { type: "trailingStop", percent: num(v.percent) };
+			return {
+				type: "trailingStop",
+				percent: num(v.percent),
+				// 発動の % を持つ前の条件は、買った直後から発動する
+				activatePercent:
+					v.activatePercent === undefined ? 0 : num(v.activatePercent),
+			};
 		case "holdingBars":
 			return { type: "holdingBars", bars: num(v.bars) };
 		default:
@@ -1196,6 +1313,16 @@ function parseBuyOrder(v: unknown): BuyOrder | null {
 		: null;
 }
 
+/** 無ければ既定の売り方（保存済みの戦略が持っていない） */
+function parsePartialSell(v: unknown): PartialSell | null {
+	if (v === undefined) return { ...DEFAULT_PARTIAL_SELL };
+	if (!isObj(v)) return null;
+	return {
+		percent: typeof v.percent === "number" ? v.percent : Number.NaN,
+		breakevenStop: v.breakevenStop === true,
+	};
+}
+
 function parseFrequency(v: unknown): Frequency | null {
 	if (!isObj(v) || !FREQUENCY_UNITS.includes(v.unit as FrequencyUnit))
 		return null;
@@ -1215,10 +1342,25 @@ export function parseConditionSet(v: unknown): ConditionSet | null {
 	const flat = parseFrequency(v.frequency.flat);
 	const holding = parseFrequency(v.frequency.holding);
 	const buy = parseGroup(v.buy);
+	// 一部利確の条件を持つ前の戦略は空として読む
+	const partialTakeProfit =
+		v.partialTakeProfit === undefined
+			? { match: "all" as const, conditions: [] }
+			: parseGroup(v.partialTakeProfit);
+	const partialSell = parsePartialSell(v.partialSell);
 	const takeProfit = parseGroup(v.takeProfit);
 	const stopLoss = parseGroup(v.stopLoss);
 	const buyOrder = parseBuyOrder(v.buyOrder);
-	if (!flat || !holding || !buy || !buyOrder || !takeProfit || !stopLoss)
+	if (
+		!flat ||
+		!holding ||
+		!buy ||
+		!buyOrder ||
+		!partialTakeProfit ||
+		!partialSell ||
+		!takeProfit ||
+		!stopLoss
+	)
 		return null;
 	return {
 		timeframe: v.timeframe,
@@ -1238,6 +1380,8 @@ export function parseConditionSet(v: unknown): ConditionSet | null {
 					: Number.NaN,
 		buy,
 		buyOrder,
+		partialTakeProfit,
+		partialSell,
 		takeProfit,
 		stopLoss,
 	};

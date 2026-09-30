@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Candle, ConditionSet } from "@trading-studio/core";
-import { DEFAULT_BUY_ORDER, TIMEFRAME_MS } from "@trading-studio/core";
+import {
+	DEFAULT_BUY_ORDER,
+	DEFAULT_PARTIAL_SELL,
+	TIMEFRAME_MS,
+} from "@trading-studio/core";
 import { Hono } from "hono";
 import { createTestApp } from "../test-app";
 import { jst, mcpRoutes, parseTime } from "./server";
@@ -25,6 +29,8 @@ const PARAMS: ConditionSet = {
 		conditions: [{ type: "breakout", lookback: 5, direction: "high" }],
 	},
 	buyOrder: DEFAULT_BUY_ORDER,
+	partialTakeProfit: { match: "all", conditions: [] },
+	partialSell: DEFAULT_PARTIAL_SELL,
 	takeProfit: {
 		match: "any",
 		conditions: [{ type: "entryChange", percent: 1, direction: "up" }],

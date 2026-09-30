@@ -48,7 +48,7 @@ const CONDITION: ResponseSchema = {
 				"emaSlope=EMA period 本が bars 本前より percent % 以上上がっている(direction=up)/下がっている(down)。percent=0 なら向きだけ。",
 				"bollinger=終値がボリンジャーバンド period 本・sigma σ の上限以上(band=upper)/下限以下(lower)。",
 				"entryChange=買値から percent % 上がった(direction=up)/下がった(down)。売りの条件だけ。",
-				"trailingStop=買ってからの最高値から percent % 下がった。売りの条件だけ。",
+				"trailingStop=買ってからの最高値から percent % 下がった。最高値が買値から activatePercent % 以上になってから発動（0 は買った直後から）。売りの条件だけ。",
 				"holdingBars=買ってから bars 本経った。売りの条件だけ。",
 				"judgment=judge の判定が values のどれか",
 			].join(""),
@@ -73,6 +73,9 @@ const CONDITION: ResponseSchema = {
 		sigma: opt(num("ボリンジャーバンドの σ")),
 		band: opt(str("ボリンジャーバンドの上限・下限", ["upper", "lower"])),
 		percent: opt(num("%")),
+		activatePercent: opt(
+			num("trailingStop を発動する、最高値の買値からの %。0 は買った直後から"),
+		),
 		bars: opt(
 			int("本数（holdingBars の保有本数・emaSlope の何本前と比べるか）"),
 		),
@@ -126,6 +129,19 @@ export const IMPROVED_STRATEGY_SCHEMA: ResponseSchema = {
 		...Object.fromEntries(
 			CONDITION_GROUPS.map((k) => [k, group(CONDITION_GROUP_LABELS[k])]),
 		),
+		partialSell: {
+			type: "OBJECT",
+			description:
+				"一部利確の売り方。partialTakeProfit の条件が空なら使わない。一部利確は1ロットにつき1回だけ",
+			properties: {
+				percent: int("ロットの何 % を売るか（1〜99）"),
+				breakevenStop: {
+					type: "BOOLEAN",
+					description: "一部利確の後、買値を下回ったら残りを損切りとして売るか",
+				},
+			},
+			required: ["percent", "breakevenStop"],
+		},
 		buyOrder: {
 			type: "OBJECT",
 			description: "買い注文の出し方",
@@ -154,6 +170,7 @@ export const IMPROVED_STRATEGY_SCHEMA: ResponseSchema = {
 		"maxPositions",
 		"dailyLossLimitYen",
 		...CONDITION_GROUPS,
+		"partialSell",
 		"buyOrder",
 	],
 };

@@ -3,6 +3,7 @@ import type { BacktestOrder, Candle, ConditionSet } from "@trading-studio/core";
 import {
 	conditionScreenText,
 	DEFAULT_BUY_ORDER,
+	DEFAULT_PARTIAL_SELL,
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
 import type { BacktestRun } from "../backtests/types";
@@ -137,6 +138,8 @@ const PARAMS: ConditionSet = {
 		conditions: [{ type: "breakout", lookback: 5, direction: "high" }],
 	},
 	buyOrder: DEFAULT_BUY_ORDER,
+	partialTakeProfit: { match: "all", conditions: [] },
+	partialSell: DEFAULT_PARTIAL_SELL,
 	takeProfit: {
 		match: "any",
 		conditions: [{ type: "entryChange", percent: 1, direction: "up" }],
@@ -434,6 +437,8 @@ describe("改善版の戦略", () => {
 			lines: [{ type: "limit", belowPercent: 0.1 }],
 			expireBars: 3,
 		},
+		partialTakeProfit: { match: "all", conditions: [] },
+		partialSell: DEFAULT_PARTIAL_SELL,
 		takeProfit: PARAMS.takeProfit,
 		stopLoss: PARAMS.stopLoss,
 		...patch,

@@ -87,4 +87,55 @@ describe("tradingPerformance", () => {
 		});
 		expect(r).toMatchObject({ equity: null, pnl: null, pnlPercent: null });
 	});
+
+	test("一部利確の売りは、ロットを閉じた売りと1往復にまとめる。残っている間は確定損益にだけ数える", () => {
+		const fills = [
+			order({ id: "p1", filledAt: H, pairId: "p3" }),
+			order({
+				id: "p2",
+				side: "sell",
+				quantity: 500_000,
+				filledAt: 2 * H,
+				pairId: "p1",
+				pnl: 3_000,
+				exitKind: "partialTakeProfit",
+			}),
+			order({
+				id: "p3",
+				side: "sell",
+				quantity: 500_000,
+				filledAt: 4 * H,
+				pairId: "p1",
+				pnl: -1_000,
+				exitKind: "stopLoss",
+			}),
+			order({ id: "p4", filledAt: 5 * H }),
+			order({
+				id: "p5",
+				side: "sell",
+				quantity: 500_000,
+				filledAt: 6 * H,
+				pairId: "p4",
+				pnl: 500,
+				exitKind: "partialTakeProfit",
+			}),
+		];
+		const r = tradingPerformance({
+			initialCash: 1_000_000,
+			resetAt: 0,
+			now: 7 * H,
+			cash: 1_000_000,
+			position: EMPTY_POSITION,
+			price: P,
+			fills,
+			prices: [],
+		});
+		expect(r).toMatchObject({
+			realizedPnl: 2_500,
+			trades: 1,
+			wins: 1,
+			losses: 0,
+			averageHoldingMs: 3 * H,
+		});
+	});
 });

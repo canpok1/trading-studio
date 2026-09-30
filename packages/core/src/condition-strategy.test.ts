@@ -9,6 +9,7 @@ import {
 	chooseStepTimeframe,
 	conditionStrategy,
 	DEFAULT_BUY_ORDER,
+	DEFAULT_PARTIAL_SELL,
 	emaPeriods,
 	evaluateConditionSet,
 	historyBars,
@@ -49,6 +50,8 @@ function params(over: Partial<ConditionSet> = {}): ConditionSet {
 		dailyLossLimit: 30_000,
 		buy: { match: "all", conditions: [] },
 		buyOrder: DEFAULT_BUY_ORDER,
+		partialTakeProfit: { match: "all", conditions: [] },
+		partialSell: DEFAULT_PARTIAL_SELL,
 		takeProfit: { match: "any", conditions: [] },
 		stopLoss: { match: "any", conditions: [] },
 		...over,
@@ -1144,7 +1147,11 @@ describe("ボリンジャーバンド", () => {
 });
 
 describe("トレーリングストップ", () => {
-	const trail: Condition = { type: "trailingStop", percent: 3 };
+	const trail: Condition = {
+		type: "trailingStop",
+		percent: 3,
+		activatePercent: 0,
+	};
 	const sellOn = (c: Condition) =>
 		params({ stopLoss: { match: "any", conditions: [c] } });
 	const bar = (i: number, high: number, close: number): Candle => ({
@@ -1275,5 +1282,170 @@ describe("買ってからの本数", () => {
 		expect(
 			parseConditionSet(JSON.parse(JSON.stringify(sellOn)))?.takeProfit,
 		).toEqual(sellOn.takeProfit);
+	});
+});
+
+describe("トレーリングストップの発動", () => {
+	const trail: Condition = {
+		type: "trailingStop",
+		percent: 3,
+		activatePercent: 5,
+	};
+	const p = params({ takeProfit: { match: "any", conditions: [trail] } });
+	const lot = { id: "b1", quantity: 1_000_000, entryPrice: 100, openedAt: 0 };
+
+	test("最高値が買値から発動の % に届くまでは成立しない", () => {
+		const out = evaluateConditionSet(
+			input(candles([100]), p, { lots: [lot], state: { peaks: { b1: 104 } } }),
+		);
+		expect(out.intents).toHaveLength(0);
+	});
+
+	test("一度届けば、その後に買値近くまで戻っても成立する", () => {
+		const out = evaluateConditionSet(
+			input(candles([101]), p, { lots: [lot], state: { peaks: { b1: 106 } } }),
+		);
+		expect(out.intents).toHaveLength(1);
+		expect(out.note).toContain("最高値が買値から +5% 以上になってから発動");
+	});
+
+	test("発動の % は 0〜100、0.1 刻み。持たない保存済みの条件は 0 として読む", () => {
+		const errs = validateConditionSet(
+			params({
+				buy: {
+					match: "all",
+					conditions: [
+						{ type: "rsi", period: 14, threshold: 30, direction: "below" },
+					],
+				},
+				stopLoss: {
+					match: "any",
+					conditions: [{ ...trail, activatePercent: 0.05 }],
+				},
+			}),
+		);
+		expect(errs.map((e) => e.path)).toEqual([
+			"stopLoss.conditions.0.activatePercent",
+		]);
+		const legacy = JSON.parse(JSON.stringify(p));
+		legacy.takeProfit.conditions[0] = { type: "trailingStop", percent: 3 };
+		expect(parseConditionSet(legacy)?.takeProfit.conditions[0]).toEqual({
+			type: "trailingStop",
+			percent: 3,
+			activatePercent: 0,
+		});
+	});
+});
+
+describe("一部利確", () => {
+	const up = (percent: number): Condition => ({
+		type: "entryChange",
+		percent,
+		direction: "up",
+	});
+	const down: Condition = {
+		type: "entryChange",
+		percent: 5,
+		direction: "down",
+	};
+	const p = params({
+		partialTakeProfit: { match: "all", conditions: [up(8)] },
+		takeProfit: { match: "any", conditions: [up(20)] },
+		stopLoss: { match: "any", conditions: [down] },
+	});
+	const lot = (partialExitDone = false) => ({
+		id: "b1",
+		quantity: 1_000_000,
+		entryPrice: 100,
+		openedAt: 0,
+		partialExitDone,
+	});
+	const sellOf = (out: ReturnType<typeof evaluateConditionSet>) =>
+		out.intents.map((i) =>
+			i.kind === "place" ? [i.quantity, i.exitKind] : null,
+		);
+
+	test("成立したらロットの割合ぶんだけ一部利確として売る", () => {
+		const out = evaluateConditionSet(
+			input(candles([110]), p, { lots: [lot()] }),
+		);
+		expect(sellOf(out)).toEqual([[500_000, "partialTakeProfit"]]);
+		expect(out.note).toContain(
+			"保有中の 0.010 BTC のうち 0.005 BTC を売却（一部利確の条件）",
+		);
+	});
+
+	test("1ロットにつき1回だけ。済んだロットには利確・損切りだけが効く", () => {
+		expect(
+			sellOf(
+				evaluateConditionSet(input(candles([110]), p, { lots: [lot(true)] })),
+			),
+		).toEqual([]);
+		expect(
+			sellOf(
+				evaluateConditionSet(input(candles([125]), p, { lots: [lot(true)] })),
+			),
+		).toEqual([[1_000_000, "takeProfit"]]);
+	});
+
+	test("利確と同時に成り立てば利確で全量を売る", () => {
+		expect(
+			sellOf(evaluateConditionSet(input(candles([130]), p, { lots: [lot()] }))),
+		).toEqual([[1_000_000, "takeProfit"]]);
+	});
+
+	test("建値ストップ: 一部利確の後に買値を下回ったら、残りを損切りとして売る", () => {
+		const out = evaluateConditionSet(
+			input(candles([99]), p, { lots: [lot(true)] }),
+		);
+		expect(sellOf(out)).toEqual([[1_000_000, "stopLoss"]]);
+		expect(out.note).toContain("一部利確の後、現在値 99 が買値 100 を下回った");
+		// 一部利確の前と、建値ストップを使わない戦略では効かない
+		expect(
+			sellOf(evaluateConditionSet(input(candles([99]), p, { lots: [lot()] }))),
+		).toEqual([]);
+		const off = { ...p, partialSell: { percent: 50, breakevenStop: false } };
+		expect(
+			sellOf(
+				evaluateConditionSet(input(candles([99]), off, { lots: [lot(true)] })),
+			),
+		).toEqual([]);
+	});
+
+	test("売る量と残りがどちらも最小の注文量以上になる割合だけ保存できる", () => {
+		const buy = {
+			match: "all" as const,
+			conditions: [
+				{ type: "rsi", period: 14, threshold: 30, direction: "below" } as const,
+			],
+		};
+		const at = (orderSize: number, percent: number) =>
+			validateConditionSet({
+				...p,
+				buy,
+				orderSize,
+				partialSell: { percent, breakevenStop: true },
+			}).map((e) => e.path);
+		expect(at(250_000, 50)).toEqual([]);
+		expect(at(150_000, 50)).toEqual(["partialSell.percent"]);
+		expect(at(250_000, 100)).toEqual(["partialSell.percent"]);
+		// 一部利確の条件が空なら量は見ない
+		expect(
+			validateConditionSet({
+				...p,
+				buy,
+				orderSize: 100_000,
+				partialTakeProfit: { match: "all", conditions: [] },
+			}),
+		).toEqual([]);
+	});
+
+	test("持たない保存済みの戦略は、一部利確の条件を空として読む", () => {
+		const legacy = JSON.parse(JSON.stringify(p));
+		delete legacy.partialTakeProfit;
+		delete legacy.partialSell;
+		const read = parseConditionSet(legacy);
+		expect(read?.partialTakeProfit).toEqual({ match: "all", conditions: [] });
+		expect(read?.partialSell).toEqual(DEFAULT_PARTIAL_SELL);
 	});
 });

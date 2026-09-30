@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 import type { BacktestConfig } from "./backtest";
 import { BacktestAborted, BacktestError, runBacktest } from "./backtest";
 import type { ConditionSet } from "./condition-strategy";
-import { conditionStrategy, DEFAULT_BUY_ORDER } from "./condition-strategy";
+import {
+	conditionStrategy,
+	DEFAULT_BUY_ORDER,
+	DEFAULT_PARTIAL_SELL,
+} from "./condition-strategy";
 import { DEFAULT_AGGREGATION_RULE } from "./news-judgment";
 import type { Strategy } from "./strategy";
 import { strategyTemplate } from "./templates";
@@ -317,6 +321,8 @@ describe("判定頻度が戦略の粒度より短い", () => {
 			conditions: [{ type: "breakout", lookback: 2, direction: "high" }],
 		},
 		buyOrder: DEFAULT_BUY_ORDER,
+		partialTakeProfit: { match: "all", conditions: [] },
+		partialSell: DEFAULT_PARTIAL_SELL,
 		takeProfit: { match: "any", conditions: [] },
 		stopLoss: {
 			match: "any",
@@ -590,6 +596,8 @@ describe("複数ポジション", () => {
 			],
 			expireBars: 3,
 		},
+		partialTakeProfit: { match: "all", conditions: [] },
+		partialSell: DEFAULT_PARTIAL_SELL,
 		takeProfit: {
 			match: "any",
 			conditions: [{ type: "entryChange", percent: 2, direction: "up" }],

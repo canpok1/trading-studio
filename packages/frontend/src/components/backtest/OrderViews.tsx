@@ -44,12 +44,13 @@ function conditionName(why: string): string | null {
 }
 
 const EXIT_LABEL: Record<ExitKind, string> = {
+	partialTakeProfit: "一部利確",
 	takeProfit: "利確",
 	stopLoss: "損切り",
 };
 
 /**
- * 売りのバッジの中身。どちらのグループ（利確・損切り）で売ったかと、成り立った条件の名前（例: EMA12/48下抜け、−2%）。
+ * 売りのバッジの中身。どのグループ（一部利確・利確・損切り）で売ったかと、成り立った条件の名前（例: EMA12/48下抜け、−2%）。
  * 利確のグループの条件で損失が出た売りもあるため、グループ名だけでなく条件名も出す。どちらも分からなければ null
  */
 export function exitBadge(
@@ -78,7 +79,7 @@ export function ExitBadge({
 	const b = exitBadge(order);
 	if (!b) return null;
 	const tone =
-		b.kind === "takeProfit"
+		b.kind === "takeProfit" || b.kind === "partialTakeProfit"
 			? "bg-take-profit-bg text-take-profit"
 			: b.kind === "stopLoss"
 				? "bg-stop-loss-bg text-stop-loss"
