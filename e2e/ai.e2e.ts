@@ -313,7 +313,7 @@ test("使用中の版で1件ずつ・絞り込んだものをまとめて採点�
 }, info) => {
 	// 取得・採点・採点し直しを順に待つので長めにとる
 	test.setTimeout(90_000);
-	const name = `rescore-${info.project.name}`;
+	const name = `live-rescore-${info.project.name}`;
 	await addSource(page, name);
 	await page.goto(`/news?q=${name}`);
 	const cards = page
