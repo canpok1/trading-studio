@@ -415,3 +415,117 @@ test("ボリンジャーバンドの条件を持つ戦略の結果では、チ�
 	await page.getByText("凡例").click();
 	await expect(page.getByText(/本数と σ は戦略の条件の値/)).toBeVisible();
 });
+
+test("採点の版を選ぶと、足りない記事をその版で採点し直してから実行でき、結果に版が出る", async ({
+	page,
+	request,
+}, info) => {
+	// ほかのテストが足した取得元の記事も採点し直すので長めに待つ
+	test.setTimeout(180_000);
+	// 採点し直しは運用で採点済みの記事が対象なので、今の時刻のニュースと足を用意する
+	const src = await request.post("/api/news/sources", {
+		data: {
+			name: `版 ${info.project.name}`,
+			url: `https://e2e.example/rescore-${info.project.name}`,
+			language: "ja",
+		},
+	});
+	expect(src.ok()).toBe(true);
+	// 足した取得元の記事（偽物の取得元は3件返す）が採点されるまで待つ。
+	// 採点し直しを頼んだ後に採点された記事は、頼み直すまで対象に入らないため
+	await expect
+		.poll(
+			async () =>
+				(
+					(await (
+						await request.get(
+							`/api/news?q=${encodeURIComponent(`rescore-${info.project.name}`)}`,
+						)
+					).json()) as { news: { score: { status: string } | null }[] }
+				).news.filter((n) => n.score?.status === "done").length,
+			{ timeout: 20_000 },
+		)
+		.toBe(3);
+	const now = Date.now();
+	const from = Math.floor(now / H) * H - 72 * H;
+	const lines = ["日時,始値,高値,安値,終値,出来高"];
+	for (let t = from; t < now - H; t += H) {
+		lines.push(
+			`${new Date(t).toISOString()},10000000,10010000,9990000,10000000,1`,
+		);
+	}
+	const imp = await request.post("/api/data/imports", {
+		multipart: {
+			file: {
+				name: "now.csv",
+				mimeType: "text/csv",
+				buffer: Buffer.from(lines.join("\n")),
+			},
+			timeframe: "1h",
+		},
+	});
+	const { job } = (await imp.json()) as { job: { id: number } };
+	await expect
+		.poll(async () => {
+			const j = (
+				(await (await request.get(`/api/data/imports/${job.id}`)).json()) as {
+					job: { status: string; phase: string };
+				}
+			).job;
+			if (j.phase === "confirming") {
+				await request.post(`/api/data/imports/${job.id}/resolve`, {
+					data: { overwrite: false },
+				});
+			}
+			return j.status;
+		})
+		.toBe("done");
+	const name = `BT 版 ${info.project.name}`;
+	const s = await request.post("/api/strategies", {
+		data: {
+			name,
+			from: {
+				params: {
+					...PARAMS,
+					buy: {
+						match: "all",
+						conditions: [
+							{
+								type: "judgment",
+								judge: "sentiment",
+								values: ["+2", "+1", "0", "none"],
+							},
+						],
+					},
+				},
+			},
+		},
+	});
+	expect(s.status()).toBe(201);
+	const added = await request.post("/api/scoring/criteria", {
+		data: { text: `基準 ${info.project.name}`, note: "E2E の改善" },
+	});
+	const version = ((await added.json()) as { version: { version: number } })
+		.version.version;
+
+	const day = (t: number) => new Date(t + 9 * H).toISOString().slice(0, 10);
+	await choose(page, name, day(now - 24 * H), day(now));
+	await page
+		.getByLabel("採点の版", { exact: true })
+		.selectOption(String(version));
+	const alert = page.getByRole("alert").filter({ hasText: `v${version}` });
+	await expect(alert).toContainText(/件に v\d+ の採点が無い/);
+	const run = page.getByRole("button", { name: /の採点がそろうと実行できる/ });
+	await expect(run).toBeDisabled();
+	await alert.getByRole("button", { name: `v${version} で採点し直す` }).click();
+	await expect(
+		page.getByText(new RegExp(`v${version} の採点: (\\d+) / \\1 件`)),
+	).toBeVisible({
+		timeout: 150_000,
+	});
+	await page.getByRole("button", { name: "バックテストを実行" }).click();
+	await expect(page).toHaveURL(/\/backtest\/runs\/\d+$/);
+	await expect(page.getByRole("list", { name: "実行条件" })).toContainText(
+		`採点の版 v${version}`,
+	);
+});
