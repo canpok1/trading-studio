@@ -492,6 +492,11 @@ const backtestRunsTable: Table<BacktestRun> = {
 			"実行したときの市場評価の評価ルール（JSON）。記録する前の実行は空",
 			(r) => (r.aggregationRule ? json(r.aggregationRule) : null),
 		),
+		col(
+			"criteria_version",
+			"市場評価に使った採点の基準の版。空は運用どおり（記事ごとに運用で採点した版）",
+			(r) => r.criteriaVersion,
+		),
 		col("bar_count", "期間内の足の数", (r) => r.barCount),
 		col("order_count", "注文の数", (r) => r.orderCount),
 		col("filled_count", "約定の数", (r) => r.filledCount),

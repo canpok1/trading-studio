@@ -92,6 +92,13 @@
       "when": 1790638989198,
       "tag": "0012_merge_trend_into_sentiment",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1790739900778,
+      "tag": "0013_news_rescores",
+      "breakpoints": true
     }
   ]
 }

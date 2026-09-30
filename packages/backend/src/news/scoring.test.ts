@@ -600,3 +600,116 @@ test("問い合わせの間を最短の間隔だけ空ける", async () => {
 	}
 	expect(calls).toBe(2);
 });
+
+describe("版を指定した採点し直し", () => {
+	/** 運用で採点済みのニュースを作る。採点時刻は T0 + i 秒 */
+	async function scored(t: ReturnType<typeof setup>, n: number) {
+		const ids = Array.from({ length: n }, (_, i) => t.addNews(`n${i}`));
+		for (let i = 1; i <= n; i++) await t.at(T0 + i * 1000);
+		return ids as [number, ...number[]];
+	}
+
+	test("新着が無いときに頼まれた版で採点し、運用の採点は変えず、採点時刻は運用のものを使う", async () => {
+		const t = setup();
+		const [a, b] = (await scored(t, 2)) as [number, number];
+		const v2 = t.service.addCriteria("基準2", "改善");
+		if (!v2.ok) throw new Error();
+		const version = v2.version.version;
+		// 期間の頭は集計の期間（24時間）だけ前まで含める
+		const from = T0 + 24 * H;
+		const req = t.service.requestRescore(from, from + H, version);
+		expect(req).toMatchObject({
+			ok: true,
+			coverage: { total: 2, done: 0, pending: 2, failed: 0 },
+		});
+		// 新着を先に採点する
+		const c = t.addNews("c");
+		t.replies.push({ sentiment: 10, risk: null, comment: "新着" });
+		await t.at(T0 + 10_000);
+		expect(t.repo.getScore(c)?.status).toBe("done");
+		t.replies.push(
+			{ sentiment: -80, risk: 5, comment: "v2" },
+			{ sentiment: -40, risk: null, comment: "v2" },
+		);
+		await t.at(T0 + 11_000);
+		await t.at(T0 + 12_000);
+		expect(t.calls.at(-1)?.prompt).toContain("基準2");
+		expect(t.repo.getScore(a)).toMatchObject({
+			criteriaVersion: 1,
+			scores: { sentiment: 60, risk: 30 },
+		});
+		// 頼んだ後に採点した新着は、頼み直すまで入らない
+		expect(t.service.rescoreCoverage(from, from + H, version)).toMatchObject({
+			ok: true,
+			coverage: { total: 3, done: 2, pending: 0 },
+		});
+		expect(t.repo.scoredNews(0, T0 + 5000, version)).toEqual([
+			expect.objectContaining({
+				id: a,
+				scoredAt: T0 + 1000,
+				scores: { sentiment: -80, risk: 5 },
+			}),
+			expect.objectContaining({ id: b, scoredAt: T0 + 2000 }),
+		]);
+		// 運用で v2 で採点した記事は、採点し直さずにその採点を使う
+		t.service.setActiveCriteria(version);
+		const d = t.addNews("d");
+		await t.at(T0 + 13_000);
+		expect(t.repo.scoredNews(T0 + 13_000, T0 + 14_000, version)).toEqual([
+			expect.objectContaining({ id: d }),
+		]);
+		expect(
+			t.service.rescoreCoverage(
+				T0 + 13_000 + 24 * H,
+				T0 + 14_000 + 24 * H,
+				version,
+			),
+		).toMatchObject({ coverage: { total: 1, done: 1 } });
+		// 運用どおりなら、それぞれの記事を運用で採点した点数
+		expect(
+			t.repo.scoredNews(0, T0 + 5000).map((n) => n.scores.sentiment),
+		).toEqual([60, 60]);
+	});
+
+	test("失敗は再試行し、止まったものは頼み直すと採点し直す", async () => {
+		const t = setup();
+		const [a] = await scored(t, 1);
+		const v2 = t.service.addCriteria("基準2", "改善");
+		if (!v2.ok) throw new Error();
+		const version = v2.version.version;
+		const from = T0 + 24 * H;
+		t.service.requestRescore(from, from + H, version);
+		t.replies.push(
+			...RETRY_DELAYS_MS.map(() => new Error("503")),
+			new Error("503"),
+		);
+		let time = T0 + 10_000;
+		await t.at(time);
+		for (const d of RETRY_DELAYS_MS) {
+			time += d;
+			await t.at(time);
+		}
+		expect(t.service.rescoreCoverage(from, from + H, version)).toMatchObject({
+			coverage: { total: 1, done: 0, pending: 0, failed: 1 },
+		});
+		expect(t.service.requestRescore(from, from + H, version)).toMatchObject({
+			coverage: { pending: 1, failed: 0 },
+		});
+		await t.at(time + 1000);
+		expect(t.repo.scoredNews(0, T0 + 5000, version).map((n) => n.id)).toEqual([
+			a,
+		]);
+	});
+
+	test("期間の形が違うか版が無ければ理由を返す", () => {
+		const t = setup();
+		expect(t.service.requestRescore(10, 5, 1)).toMatchObject({
+			ok: false,
+			status: 400,
+		});
+		expect(t.service.rescoreCoverage(0, 5, 99)).toMatchObject({
+			ok: false,
+			status: 404,
+		});
+	});
+});

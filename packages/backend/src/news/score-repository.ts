@@ -6,7 +6,7 @@ import {
 } from "@trading-studio/core";
 import type { Db } from "../db/open";
 import type { ScoreResponse } from "./prompt";
-import type { CriteriaVersion, NewsScore } from "./types";
+import type { CriteriaVersion, NewsScore, RescoreCoverage } from "./types";
 
 type ScoreRow = {
 	news_id: number;
@@ -64,6 +64,8 @@ export type NextToScore = {
 	fetchedAt: number;
 	attempts: number;
 };
+
+export type NextToRescore = NextToScore & { criteriaVersion: number };
 
 export class ScoreRepository {
 	constructor(private readonly db: Db) {}
@@ -283,10 +285,13 @@ export class ScoreRepository {
 
 	/** 失敗したものと再試行を待っているものを、すぐ採点し直す対象へ戻す */
 	retryAllFailed(now: number) {
-		this.sql.run(
-			"update news_scores set status = 'retry', attempts = 0, next_attempt_at = ? where status in ('failed', 'retry')",
-			[now],
-		);
+		this.sql.transaction(() => {
+			for (const table of ["news_scores", "news_rescores"])
+				this.sql.run(
+					`update ${table} set status = 'retry', attempts = 0, next_attempt_at = ? where status in ('failed', 'retry')`,
+					[now],
+				);
+		})();
 	}
 
 	getScore(newsId: number): NewsScore | null {
@@ -296,33 +301,155 @@ export class ScoreRepository {
 		return r ? toNewsScore(r) : null;
 	}
 
-	/** 採点時刻が [from, to) の採点済みのニュース（集計の入力） */
-	scoredNews(from: number, to: number): ScoredNews[] {
+	/**
+	 * 採点時刻が [from, to) の採点済みのニュース（集計の入力）。
+	 * version を渡すと、点数をその版の採点（運用の採点がその版ならそれ、無ければ採点し直した結果）にする。
+	 * その版の採点が無い記事は除く。採点時刻は版によらず運用の採点時刻（判定に使い始める時刻を運用とそろえるため）
+	 */
+	scoredNews(
+		from: number,
+		to: number,
+		version: number | null = null,
+	): ScoredNews[] {
+		type Row = {
+			id: number;
+			published_at: number;
+			fetched_at: number;
+			scored_at: number;
+			sentiment: number | null;
+			risk: number | null;
+		};
+		const rows =
+			version === null
+				? this.sql
+						.query<Row, [number, number]>(
+							`select n.id, n.published_at, n.fetched_at, s.scored_at, s.sentiment, s.risk
+							 from news_scores s join news n on n.id = s.news_id
+							 where s.status = 'done' and s.scored_at >= ? and s.scored_at < ?
+							 order by s.scored_at, n.id`,
+						)
+						.all(from, to)
+				: this.sql
+						.query<Row, [number, number, number, number, number, number]>(
+							`select n.id, n.published_at, n.fetched_at, s.scored_at,
+							   case when s.criteria_version = ? then s.sentiment else r.sentiment end as sentiment,
+							   case when s.criteria_version = ? then s.risk else r.risk end as risk
+							 from news_scores s join news n on n.id = s.news_id
+							 left join news_rescores r on r.news_id = s.news_id and r.criteria_version = ? and r.status = 'done'
+							 where s.status = 'done' and s.scored_at >= ? and s.scored_at < ?
+							   and (s.criteria_version = ? or r.news_id is not null)
+							 order by s.scored_at, n.id`,
+						)
+						.all(version, version, version, from, to, version);
+		return rows.map((r) => ({
+			id: r.id,
+			publishedAt: r.published_at,
+			fetchedAt: r.fetched_at,
+			scoredAt: r.scored_at,
+			scores: { sentiment: r.sentiment, risk: r.risk },
+		}));
+	}
+
+	/**
+	 * 運用の採点時刻が [from, to) の採点済みのニュースについて、指定した版の採点が揃っているか。
+	 * 運用で採点されなかった記事（古くて採点しない・失敗）は運用でも使われないので数えない
+	 */
+	rescoreCoverage(from: number, to: number, version: number): RescoreCoverage {
 		return this.sql
-			.query<
-				{
-					id: number;
-					published_at: number;
-					fetched_at: number;
-					scored_at: number;
-					sentiment: number | null;
-					risk: number | null;
-				},
-				[number, number]
-			>(
-				`select n.id, n.published_at, n.fetched_at, s.scored_at, s.sentiment, s.risk
-				 from news_scores s join news n on n.id = s.news_id
-				 where s.status = 'done' and s.scored_at >= ? and s.scored_at < ?
-				 order by s.scored_at, n.id`,
+			.query<RescoreCoverage, [number, number, number, number]>(
+				`select count(*) as total,
+				   coalesce(sum(case when s.criteria_version = ? or r.status = 'done' then 1 else 0 end), 0) as done,
+				   coalesce(sum(case when r.status in ('queued', 'retry') then 1 else 0 end), 0) as pending,
+				   coalesce(sum(case when r.status = 'failed' then 1 else 0 end), 0) as failed
+				 from news_scores s
+				 left join news_rescores r on r.news_id = s.news_id and r.criteria_version = ?
+				 where s.status = 'done' and s.scored_at >= ? and s.scored_at < ?`,
 			)
-			.all(from, to)
-			.map((r) => ({
-				id: r.id,
-				publishedAt: r.published_at,
-				fetchedAt: r.fetched_at,
-				scoredAt: r.scored_at,
-				scores: { sentiment: r.sentiment, risk: r.risk },
-			}));
+			.get(version, version, from, to) as RescoreCoverage;
+	}
+
+	/**
+	 * 運用の採点時刻が [from, to) の採点済みのニュースのうち、指定した版の採点が無いものを採点し直す対象に入れる。
+	 * 失敗したものも入れ直す。入れた件数を返す
+	 */
+	queueRescore(from: number, to: number, version: number, now: number): number {
+		return this.sql.run(
+			`insert into news_rescores (news_id, criteria_version, status, attempts, requested_at)
+			 select s.news_id, ?, 'queued', 0, ? from news_scores s
+			 where s.status = 'done' and s.scored_at >= ? and s.scored_at < ?
+			   and (s.criteria_version is null or s.criteria_version != ?)
+			 on conflict (news_id, criteria_version) do update set status = 'queued', attempts = 0,
+			   next_attempt_at = null, error = null, requested_at = excluded.requested_at
+			 where news_rescores.status = 'failed'`,
+			[version, now, from, to, version],
+		).changes;
+	}
+
+	/** 次に採点し直すニュース。頼んだ順、同じ頼みの中は取得した順 */
+	nextToRescore(now: number): NextToRescore | null {
+		return (
+			this.sql
+				.query<NextToRescore, [number]>(
+					`select n.id, n.source_name as sourceName, n.title, n.summary,
+					   n.published_at as publishedAt, n.fetched_at as fetchedAt,
+					   r.attempts, r.criteria_version as criteriaVersion
+					 from news_rescores r join news n on n.id = r.news_id
+					 where r.status = 'queued' or (r.status = 'retry' and r.next_attempt_at <= ?)
+					 order by r.requested_at, n.fetched_at, n.id limit 1`,
+				)
+				.get(now) ?? null
+		);
+	}
+
+	saveRescore(
+		newsId: number,
+		version: number,
+		r: ScoreResponse,
+		meta: {
+			scoredAt: number;
+			model: string;
+			appBuiltAt: number | null;
+			attempts: number;
+		},
+	) {
+		this.sql.run(
+			`update news_rescores set status = 'done', sentiment = ?, risk = ?, comment = ?, scored_at = ?,
+			   model = ?, app_built_at = ?, error = null, attempts = ?, next_attempt_at = null
+			 where news_id = ? and criteria_version = ?`,
+			[
+				r.scores.sentiment,
+				r.scores.risk,
+				r.comment,
+				meta.scoredAt,
+				meta.model,
+				meta.appBuiltAt,
+				meta.attempts,
+				newsId,
+				version,
+			],
+		);
+	}
+
+	/** 採点し直しの失敗を記録する。nextAttemptAt が null なら「失敗」で止める */
+	saveRescoreFailure(
+		newsId: number,
+		version: number,
+		error: string,
+		attempts: number,
+		nextAttemptAt: number | null,
+	) {
+		this.sql.run(
+			`update news_rescores set status = ?, error = ?, attempts = ?, next_attempt_at = ?
+			 where news_id = ? and criteria_version = ?`,
+			[
+				nextAttemptAt === null ? "failed" : "retry",
+				error,
+				attempts,
+				nextAttemptAt,
+				newsId,
+				version,
+			],
+		);
 	}
 
 	/** 最初に採点した時刻。採点の記録の始まり */

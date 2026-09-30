@@ -40,6 +40,10 @@ export function backtestRoutes(service: BacktestService) {
 							marketPpm: num(v.fees.marketPpm),
 						},
 						skipGaps: v.skipGaps === true,
+						criteriaVersion:
+							v.criteriaVersion === undefined || v.criteriaVersion === null
+								? null
+								: num(v.criteriaVersion),
 					};
 					return input;
 				}),
@@ -82,6 +86,16 @@ export function backtestRoutes(service: BacktestService) {
 									firstScoredAt: e.firstScoredAt,
 								},
 								400,
+							);
+						case "missing_scores":
+							return c.json(
+								{
+									kind: e.kind,
+									message: e.message,
+									version: e.version,
+									coverage: e.coverage,
+								},
+								409,
 							);
 						case "gaps":
 							return c.json(

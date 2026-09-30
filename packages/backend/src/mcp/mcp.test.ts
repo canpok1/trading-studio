@@ -117,6 +117,7 @@ describe("MCP", () => {
 			"list_backtests",
 			"list_news_scores",
 			"list_strategies",
+			"rescore_news",
 			"run_backtest",
 			"set_active_scoring_criteria",
 			"trial_scoring",

@@ -545,4 +545,84 @@ describe("AI 判定の条件", () => {
 			expect(o.placedAt).toBeLessThanOrEqual(up + 24 * H);
 		}
 	});
+
+	test("採点の版を指定すると、その版の採点が期間の記事にそろっているときだけ実行し、使い始める時刻は運用の採点時刻", async () => {
+		const t = setup();
+		t.clock.now = START + 30 * 24 * H;
+		// 記録の開始。期間の頭の集計の期間より前なので、市場評価には使わない
+		score(t, START, 0);
+		const first = START + 3 * 24 * H;
+		score(t, first, 0);
+		const later = START + 8 * 24 * H;
+		score(t, later, 80);
+		const v2 = t.scoreRepo.addCriteria("基準2", "改善", 0).version;
+		const b = body({ params: withJudgment, criteriaVersion: v2 });
+
+		const missing = await post(t, b);
+		expect(missing.status).toBe(409);
+		expect(missing.json).toMatchObject({
+			kind: "missing_scores",
+			version: v2,
+			coverage: { total: 2, done: 0, pending: 0, failed: 0 },
+		});
+		expect(
+			(await post(t, body({ params: withJudgment, criteriaVersion: 99 })))
+				.status,
+		).toBe(400);
+
+		const queued = await t.app.request("/api/scoring/rescore", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ from: b.from, to: b.to, version: v2 }),
+		});
+		expect(await queued.json()).toMatchObject({
+			coverage: { total: 2, done: 0, pending: 2 },
+		});
+		// 運用（v1）と逆に、v2 では先の記事が強気、後の記事が中立
+		const [, a, c] = t.scoreRepo
+			.scoredNews(0, Number.MAX_SAFE_INTEGER)
+			.map((n) => n.id) as [number, number, number];
+		// 採点し直した時刻は後でも、使い始めるのは運用の採点時刻
+		const meta = {
+			scoredAt: START + 30 * 24 * H,
+			model: "m",
+			appBuiltAt: null,
+			attempts: 0,
+		};
+		const rescore = (id: number, sentiment: number) =>
+			t.scoreRepo.saveRescore(
+				id,
+				v2,
+				{ scores: { sentiment, risk: null }, comment: "c" },
+				meta,
+			);
+		rescore(a, 80);
+		rescore(c, 0);
+
+		const r = await post(t, b);
+		expect(r.status).toBe(202);
+		const run = r.json.run as BacktestRun;
+		expect(run.criteriaVersion).toBe(v2);
+		await t.backtests.running();
+		const orders = await getJson<{
+			orders: { side: string; placedAt: number }[];
+		}>(t, `/api/backtests/${run.id}/orders?filter=all&limit=200`);
+		const buys = orders.orders.filter((o) => o.side === "buy");
+		expect(buys.length).toBeGreaterThan(0);
+		for (const o of buys) {
+			expect(o.placedAt).toBeGreaterThanOrEqual(first);
+			expect(o.placedAt).toBeLessThanOrEqual(first + 24 * H);
+		}
+		// チャートの判定も同じ版で出す
+		const chart = await getJson<{
+			bars: { time: number }[];
+			judgments: { values: { sentiment: (string | null)[] } };
+		}>(t, `/api/backtests/${run.id}/chart`);
+		const i = chart.bars.findIndex((x) => x.time + H >= later);
+		expect(chart.judgments.values.sentiment[i]).toBe("0");
+
+		// 判定の条件が無ければ版は使わない
+		const plain = await post(t, body({ criteriaVersion: v2 }));
+		expect((plain.json.run as BacktestRun).criteriaVersion).toBeNull();
+	});
 });

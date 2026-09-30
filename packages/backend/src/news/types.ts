@@ -168,6 +168,25 @@ export type TrialResult =
 	| { ok: true; items: TrialItem[] }
 	| { ok: false; message: string };
 
+/**
+ * バックテストの期間の市場評価に使う記事について、指定した版の採点が揃っているか。
+ * done + pending + failed + まだ頼んでいない数 = total
+ */
+export type RescoreCoverage = {
+	/** 運用で採点済みの記事の数。運用で採点されなかった記事は運用でも使われないので数えない */
+	total: number;
+	/** その版の採点がある */
+	done: number;
+	/** 採点し直しを待っている（再試行待ちを含む） */
+	pending: number;
+	/** 採点し直しに失敗して止まっている */
+	failed: number;
+};
+
+export type RescoreResult =
+	| { ok: true; coverage: RescoreCoverage }
+	| { ok: false; status: 400 | 404; message: string };
+
 export type ApiKeyStatus = { configured: boolean; savedAt: number | null };
 
 export interface ScoringService {
@@ -194,6 +213,10 @@ export interface ScoringService {
 	deleteApiKey(): void;
 	/** 採点に失敗したニュースを採点し直す対象へ戻す。失敗していなければ false */
 	retry(newsId: number): boolean;
+	/** バックテストの期間 [from, to) の市場評価に使う記事に、指定した版の採点が揃っているか */
+	rescoreCoverage(from: number, to: number, version: number): RescoreResult;
+	/** バックテストの期間 [from, to) の市場評価に使う記事のうち、指定した版の採点が無いもの（失敗を含む）を採点し直す対象に入れる */
+	requestRescore(from: number, to: number, version: number): RescoreResult;
 	/** 指定したニュース（省けば最新の1件）を、渡した採点の基準で採点する。保存も集計への反映もしない */
 	trial(criteria: string, newsIds?: readonly number[]): Promise<TrialResult>;
 }

@@ -12,6 +12,7 @@ import {
 } from "@trading-studio/core";
 import type { JudgmentService } from "../judgments/types";
 import type { MarketDataRepository } from "../market-data/repository";
+import type { ScoringService } from "../news/types";
 import { checkName } from "../strategies/service";
 import type { StrategyService } from "../strategies/types";
 import type { BacktestRepository } from "./repository";
@@ -39,6 +40,7 @@ export type BacktestServiceDeps = {
 		JudgmentService,
 		"rule" | "series" | "firstScoredAt" | "scoredNews"
 	>;
+	scoring: Pick<ScoringService, "rescoreCoverage">;
 	now?: () => number;
 };
 
@@ -79,6 +81,7 @@ export function createBacktestService({
 	strategies,
 	runner,
 	judgments,
+	scoring,
 	now = Date.now,
 }: BacktestServiceDeps): BacktestService & { running(): Promise<void> | null } {
 	let current: { id: number; job: RunningJob; done: Promise<void> } | null =
@@ -142,6 +145,28 @@ export function createBacktestService({
 							: "市場評価の条件があるが、期間に採点の記録が始まる前が含まれるため実行できない。開始を記録が始まった日時より後の日にするか、市場評価の条件で「データなし」を選ぶと実行できる",
 				});
 			}
+			// 版を指定したら、期間の市場評価に使う記事がすべてその版で採点されているときだけ実行する。
+			// 一部の記事だけで比べると、成績の差が版の違いによるのか記事の数の違いによるのか分からないため
+			const criteriaVersion = usesJudgments ? input.criteriaVersion : null;
+			if (criteriaVersion !== null) {
+				const r = scoring.rescoreCoverage(from, to, criteriaVersion);
+				if (!r.ok) {
+					return fail({
+						kind: "invalid_input",
+						field: "criteriaVersion",
+						message: r.message,
+					});
+				}
+				const c = r.coverage;
+				if (c.done + c.failed < c.total) {
+					return fail({
+						kind: "missing_scores",
+						version: criteriaVersion,
+						coverage: c,
+						message: `期間の市場評価に使う記事のうち ${c.total - c.done - c.failed} 件に v${criteriaVersion} の採点が無いため実行できない。v${criteriaVersion} で採点し直すと実行できる`,
+					});
+				}
+			}
 			// 判定頻度が戦略の粒度より短ければ、細かい足で判定する
 			const step = chooseStepTimeframe(params, finest);
 			const gaps = marketData.gaps(step.timeframe, from, to);
@@ -177,6 +202,7 @@ export function createBacktestService({
 				stepTimeframe: step.timeframe,
 				stepLimited: step.limited,
 				aggregationRule: rule,
+				criteriaVersion,
 				startedAt: now(),
 				barCount,
 			});
@@ -198,6 +224,7 @@ export function createBacktestService({
 								news: judgments.scoredNews(
 									from - rule.windowHours * 3_600_000,
 									to,
+									criteriaVersion,
 								),
 								rule,
 								since: firstScoredAt,
@@ -254,7 +281,13 @@ export function createBacktestService({
 				...chart,
 				judgments:
 					rule && first && last
-						? judgments.series(first.time, last.time + tfMs, tfMs, rule)
+						? judgments.series(
+								first.time,
+								last.time + tfMs,
+								tfMs,
+								rule,
+								run.criteriaVersion,
+							)
 						: null,
 			};
 		},

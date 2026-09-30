@@ -36,6 +36,7 @@ type RunRow = {
 	order_count: number;
 	error: string | null;
 	aggregation_rule: string | null;
+	criteria_version: number | null;
 };
 
 function toRun(r: RunRow): BacktestRun {
@@ -65,6 +66,7 @@ function toRun(r: RunRow): BacktestRun {
 		aggregationRule: r.aggregation_rule
 			? parseAggregationRule(JSON.parse(r.aggregation_rule))
 			: null,
+		criteriaVersion: r.criteria_version,
 	};
 }
 
@@ -98,8 +100,8 @@ export class BacktestRepository {
 			this.sql.run(
 				`insert into backtest_runs (strategy_name, params, timeframe, from_time, to_time,
 				 initial_cash, fee_limit_ppm, fee_market_ppm, skip_gaps, status, started_at, bar_count,
-				 step_timeframe, step_limited, aggregation_rule)
-				 values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?)`,
+				 step_timeframe, step_limited, aggregation_rule, criteria_version)
+				 values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?)`,
 				[
 					run.name,
 					JSON.stringify(run.params),
@@ -117,6 +119,7 @@ export class BacktestRepository {
 					run.aggregationRule === null
 						? null
 						: JSON.stringify(run.aggregationRule),
+					run.criteriaVersion,
 				],
 			).lastInsertRowid,
 		);

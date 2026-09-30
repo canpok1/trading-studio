@@ -147,12 +147,18 @@ const retentionTimer = setInterval(() => retention.tick(), 60_000);
 retention.tick();
 
 const marketData = createMarketDataService(marketDataRepo);
+const scoring = createScoringService({
+	repo: scoreRepo,
+	newsRepo,
+	scorer,
+});
 const backtests = createBacktestService({
 	repo: backtestRepo,
 	marketData: marketDataRepo,
 	strategies,
 	runner: workerRunner,
 	judgments,
+	scoring,
 });
 const adviceRepo = new AdviceRepository(db);
 adviceRepo.failInterrupted();
@@ -170,11 +176,6 @@ const advice = createAdviceService({
 			: // アドバイスは応答が長く、Pro のモデルでは時間がかかるので長めに待つ
 				geminiModel(() => scoreRepo.apiKey(), { timeoutMs: 180_000 }),
 	appBuiltAt,
-});
-const scoring = createScoringService({
-	repo: scoreRepo,
-	newsRepo,
-	scorer,
 });
 const scoringAnalysis = createScoringAnalysis({
 	repo: new ScoringAnalysisRepository(db),

@@ -25,6 +25,7 @@ export type {
 	NewsSearchResult,
 	NewsSort,
 	NewsSource,
+	RescoreCoverage,
 	ScorerStatus,
 	ScoringModelOption,
 	TrialItem,

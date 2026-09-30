@@ -33,18 +33,19 @@ export type JudgmentSeries = {
 export interface JudgmentService {
 	/** 今の判定。rule を渡すとそのルールで計算する（保存しない）。at を渡すとその時点の判定（先の時刻は今） */
 	current(rule?: AggregationRule, at?: number): CurrentJudgment;
-	/** [from, to) の足ごとの判定。rule を省くと今の集計ルール */
+	/** [from, to) の足ごとの判定。rule を省くと今の集計ルール。version は scoredNews と同じ */
 	series(
 		from: number,
 		to: number,
 		step: number,
 		rule?: AggregationRule,
+		version?: number | null,
 	): JudgmentSeries;
 	rule(): AggregationRule;
 	/** 最初に採点した時刻（採点の記録の始まり）。まだ無ければ null */
 	firstScoredAt(): number | null;
-	/** 採点時刻が [from, to) の採点済みのニュース */
-	scoredNews(from: number, to: number): ScoredNews[];
+	/** 採点時刻が [from, to) の採点済みのニュース。version を渡すとその版の採点だけを使う（無い記事は除く）。null・省略は運用どおり */
+	scoredNews(from: number, to: number, version?: number | null): ScoredNews[];
 	saveRule(
 		rule: AggregationRule,
 	): { ok: true } | { ok: false; errors: ValidationError[] };
