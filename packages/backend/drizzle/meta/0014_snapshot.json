@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "f896c0fb-66ef-404a-ae19-aa7bf6e8123e",
+  "id": "a5753ea5-98a1-4ebd-a921-d094d8f27379",
   "prevId": "bbde13ce-1bca-440b-be5a-97daa717ad5b",
   "tables": {
     "advice_instructions": {
@@ -819,13 +819,12 @@
           "notNull": true,
           "autoincrement": false
         },
-        "replace_live": {
-          "name": "replace_live",
+        "replace_requested_at": {
+          "name": "replace_requested_at",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {

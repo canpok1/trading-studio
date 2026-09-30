@@ -811,6 +811,31 @@ describe("運用の採点を置き換える採点し直し", () => {
 		expect(t.repo.getScore(a)?.criteriaVersion).toBe(2);
 	});
 
+	test("後から別の版で頼んだ置き換えを優先し、前の頼みが後で終わっても戻さない", async () => {
+		const t = setup();
+		const [a] = await scoredThenV2(t, 1);
+		t.service.rescoreLive({ newsId: a });
+		t.replies.push(new Error("503"));
+		await t.at(T0 + 10_000);
+		// v2 が再試行を待っている間に v3 へ切り替えて頼み直す
+		const v3 = t.service.addCriteria("基準3", "改善");
+		if (!v3.ok) throw new Error();
+		t.service.setActiveCriteria(v3.version.version);
+		t.service.rescoreLive({ newsId: a });
+		t.replies.push({ sentiment: 30, risk: null, comment: "v3" });
+		await t.at(T0 + 11_000);
+		expect(t.repo.getScore(a)?.criteriaVersion).toBe(3);
+		// v2 の再試行が後で成功しても、運用の採点は v3 のまま
+		t.replies.push({ sentiment: -90, risk: null, comment: "v2" });
+		await t.at(T0 + 10_000 + RETRY_DELAYS_MS[0]);
+		expect(t.calls.at(-1)?.prompt).toContain("基準2");
+		expect(t.newsRepo.newsByIds([a])[0]).toMatchObject({
+			rescore: null,
+			score: { criteriaVersion: 3, scores: { sentiment: 30 } },
+		});
+		expect(t.service.status().rescorePending).toBe(0);
+	});
+
 	test("失敗して止まると理由を出し、頼み直すと採点し直す", async () => {
 		const t = setup();
 		const [a] = await scoredThenV2(t, 1);

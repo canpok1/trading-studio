@@ -43,13 +43,13 @@ type NewsRow = Omit<ScoreRow, "status"> & {
 };
 
 /**
- * ニュースと運用の採点、運用の採点を置き換える採点し直しのうち最後に頼んだもの（終わっていないもの）を結ぶ。
+ * ニュースと運用の採点、運用の採点の置き換えのうち最後に頼んだもの（終わっていないもの）を結ぶ。
  * 採点し直しの列は news_scores と名前がぶつかるので別名で取る
  */
 const NEWS_FROM = `from news n left join news_scores s on s.news_id = n.id
 	left join news_rescores r on r.rowid = (
-	  select x.rowid from news_rescores x where x.news_id = n.id and x.replace_live = 1
-	  order by x.requested_at desc, x.criteria_version desc limit 1)`;
+	  select x.rowid from news_rescores x where x.news_id = n.id and x.replace_requested_at is not null
+	  order by x.replace_requested_at desc, x.criteria_version desc limit 1)`;
 const NEWS_COLUMNS =
 	"n.*, s.*, r.criteria_version as rescore_version, r.status as rescore_status, r.error as rescore_error";
 

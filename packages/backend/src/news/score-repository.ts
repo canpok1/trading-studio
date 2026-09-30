@@ -431,12 +431,12 @@ export class ScoreRepository {
 					version,
 				],
 			);
-			const row = this.sql
-				.query<{ replace_live: number }, [number, number]>(
-					"select replace_live from news_rescores where news_id = ? and criteria_version = ?",
+			const at = this.sql
+				.query<{ replace_requested_at: number | null }, [number, number]>(
+					"select replace_requested_at from news_rescores where news_id = ? and criteria_version = ?",
 				)
-				.get(newsId, version);
-			if (row?.replace_live === 1) this.replaceLive(newsId, version);
+				.get(newsId, version)?.replace_requested_at;
+			if (at != null) this.replaceLive(newsId, version, at);
 		})();
 	}
 
@@ -457,31 +457,36 @@ export class ScoreRepository {
 						"select status, criteria_version from news_scores where news_id = ?",
 					)
 					.get(id);
-				if (s?.status !== "done" || s.criteria_version === version) continue;
+				if (s?.status !== "done") continue;
+				if (s.criteria_version === version) {
+					// 今の採点のままにするのが最後の頼みなので、前に頼んだ別の版の置き換えは取り下げる
+					this.dropReplaceRequests(id, now);
+					continue;
+				}
 				const r = this.sql
 					.query<{ status: string }, [number, number]>(
 						"select status from news_rescores where news_id = ? and criteria_version = ?",
 					)
 					.get(id, version);
 				if (r?.status === "done") {
-					this.replaceLive(id, version);
+					this.replaceLive(id, version, now);
 				} else if (r) {
-					// 待っているものは順番を変えずに印だけ付ける。失敗して止まっているものは頼み直す
+					// 待っているものは順番を変えずに頼んだ時刻だけ付ける。失敗して止まっているものは頼み直す
 					this.sql.run(
-						`update news_rescores set replace_live = 1,
+						`update news_rescores set replace_requested_at = ?,
 						   status = case when status = 'failed' then 'queued' else status end,
 						   attempts = case when status = 'failed' then 0 else attempts end,
 						   next_attempt_at = case when status = 'failed' then null else next_attempt_at end,
 						   error = case when status = 'failed' then null else error end,
 						   requested_at = case when status = 'failed' then ? else requested_at end
 						 where news_id = ? and criteria_version = ?`,
-						[now, id, version],
+						[now, now, id, version],
 					);
 				} else {
 					this.sql.run(
-						`insert into news_rescores (news_id, criteria_version, status, attempts, requested_at, replace_live)
-						 values (?, ?, 'queued', 0, ?, 1)`,
-						[id, version, now],
+						`insert into news_rescores (news_id, criteria_version, status, attempts, requested_at, replace_requested_at)
+						 values (?, ?, 'queued', 0, ?, ?)`,
+						[id, version, now, now],
 					);
 				}
 				n++;
@@ -492,9 +497,23 @@ export class ScoreRepository {
 
 	/**
 	 * 運用の採点を、採点し直したその版の採点で置き換える。判定に使い始める時刻（scored_at）は変えない。
-	 * 元の採点は、版ごとのバックテストで使えるようにその版の行として残す（版の記録が無い採点は残せない）
+	 * 元の採点は、版ごとのバックテストで使えるようにその版の行として残す（版の記録が無い採点は残せない）。
+	 * requestedAt より後に別の版の置き換えを頼んでいれば、最後の頼みを優先して置き換えない
 	 */
-	private replaceLive(newsId: number, version: number) {
+	private replaceLive(newsId: number, version: number, requestedAt: number) {
+		const newer = this.sql
+			.query<{ c: number }, [number, number, number]>(
+				`select count(*) as c from news_rescores
+				 where news_id = ? and criteria_version != ? and replace_requested_at > ?`,
+			)
+			.get(newsId, version, requestedAt)?.c;
+		if (newer) {
+			this.sql.run(
+				"update news_rescores set replace_requested_at = null where news_id = ? and criteria_version = ?",
+				[newsId, version],
+			);
+			return;
+		}
 		const r = this.sql
 			.query<ScoreRow, [number, number]>(
 				"select * from news_rescores where news_id = ? and criteria_version = ? and status = 'done'",
@@ -541,10 +560,14 @@ export class ScoreRepository {
 				],
 			);
 		}
-		// 置き換えたら、前に頼んで失敗したままのものの印も外す（古い失敗を出し続けないため）
+		this.dropReplaceRequests(newsId, requestedAt);
+	}
+
+	/** at までに頼んだ置き換えを取り下げる。後から古い版で置き換えたり、古い失敗を出し続けたりしないため */
+	private dropReplaceRequests(newsId: number, at: number) {
 		this.sql.run(
-			"update news_rescores set replace_live = 0 where news_id = ? and (criteria_version = ? or status = 'failed')",
-			[newsId, version],
+			"update news_rescores set replace_requested_at = null where news_id = ? and replace_requested_at <= ?",
+			[newsId, at],
 		);
 	}
 
@@ -553,7 +576,7 @@ export class ScoreRepository {
 		return (
 			this.sql
 				.query<{ c: number }, []>(
-					"select count(*) as c from news_rescores where replace_live = 1 and status in ('queued', 'retry')",
+					"select count(*) as c from news_rescores where replace_requested_at is not null and status in ('queued', 'retry')",
 				)
 				.get()?.c ?? 0
 		);
