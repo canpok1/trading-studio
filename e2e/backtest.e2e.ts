@@ -341,7 +341,10 @@ test("別の AI の答えを貼ると、アドバイスとして取り込める"
 	const advice = page.getByRole("region", { name: "AI アドバイス" });
 	await advice.getByRole("button", { name: "別の AI で作る" }).click();
 	const dialog = page.getByRole("dialog", { name: "別の AI で作る" });
-	await expect(dialog.getByText(/文字 · 指示 v\d+/)).toBeVisible();
+	await expect(dialog.getByText(/指示 v\d+（[\d,]+ 文字）/)).toBeVisible();
+	const download = page.waitForEvent("download");
+	await dialog.getByRole("button", { name: "資料をダウンロード" }).click();
+	expect((await download).suggestedFilename()).toMatch(/^backtest-\d+\.md$/);
 
 	await dialog.getByLabel("返ってきた答え").fill("答えではない");
 	await dialog.getByRole("button", { name: "取り込む" }).click();

@@ -305,7 +305,7 @@ describe("別の AI で作る", () => {
 		improvedStrategy: DEMO_IMPROVED_STRATEGY,
 	};
 
-	test("渡す文は API キーが無くても出せ、改善版の戦略設定の形も含む", async () => {
+	test("指示と添付の資料は API キーが無くても出せ、資料は添付だけに入る", async () => {
 		const t = createTestApp();
 		const run = await doneRun(t);
 		t.adviceAi.model = { ...t.adviceAi.model, unavailable: () => "キーが無い" };
@@ -313,10 +313,20 @@ describe("別の AI で作る", () => {
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as {
 			prompt: string;
+			file: { name: string; content: string };
 			instructionsVersion: number;
 		};
 		expect(body.instructionsVersion).toBe(1);
-		expect(body.prompt).toContain("## 成績");
+		expect(body.file.name).toBe(`backtest-${run.id}.md`);
+		expect(body.file.content).toStartWith(
+			"<backtest>\n## バックテストの実行画面",
+		);
+		expect(body.file.content).toContain("## 成績");
+		expect(body.file.content).toEndWith("</backtest>");
+		expect(body.file.content).not.toContain("<instructions>");
+		expect(body.prompt).toStartWith(`添付した backtest-${run.id}.md の`);
+		expect(body.prompt).not.toContain("## 成績");
+		expect(body.prompt).toContain("<instructions>\n- 損益だけでなく");
 		expect(body.prompt).toContain("# improvedStrategy の形");
 		expect(body.prompt).toContain("最大ロット数");
 		expect((await promptOf(t, 999)).status).toBe(404);

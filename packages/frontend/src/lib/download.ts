@@ -8,6 +8,11 @@ export async function saveResponse(
 		/filename="([^"]+)"/.exec(
 			res.headers.get("content-disposition") ?? "",
 		)?.[1] ?? fallback;
+	saveBlob(blob, name);
+}
+
+/** データをファイルとして保存させる */
+export function saveBlob(blob: Blob, name: string) {
 	const url = URL.createObjectURL(blob);
 	const a = document.createElement("a");
 	a.href = url;

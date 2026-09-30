@@ -20,7 +20,11 @@ export function adviceRoutes(service: AdviceService) {
 			const r = service.externalPrompt(Number(c.req.param("id")));
 			return r.ok
 				? c.json(
-						{ prompt: r.prompt, instructionsVersion: r.instructionsVersion },
+						{
+							prompt: r.prompt,
+							file: r.file,
+							instructionsVersion: r.instructionsVersion,
+						},
 						200,
 					)
 				: c.json({ message: r.message }, r.status);
