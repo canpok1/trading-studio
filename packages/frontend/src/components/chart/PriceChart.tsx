@@ -841,7 +841,7 @@ export function PriceChart({
 	);
 	const chart = (
 		<>
-			<div className="flex items-start gap-2">
+			<div className="flex flex-col gap-2 lg:flex-row lg:items-start">
 				<div
 					aria-live="off"
 					className="num flex min-h-8 min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs"
@@ -877,9 +877,7 @@ export function PriceChart({
 											className="flex items-center gap-1"
 										>
 											<ShapeIcon shape={st.shape} color={`var(${st.solid})`} />
-											{j === "sentiment"
-												? `センチメント ${st.label}`
-												: st.label}
+											{JUDGE_LABELS[j]} {st.label}
 										</span>
 									);
 								})}
@@ -942,7 +940,7 @@ export function PriceChart({
 						</>
 					)}
 				</div>
-				<div className="flex shrink-0 items-center gap-1.5">
+				<div className="flex shrink-0 items-center justify-end gap-1.5">
 					<button
 						type="button"
 						aria-label="縮小"

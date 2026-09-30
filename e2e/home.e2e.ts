@@ -256,6 +256,22 @@ test("チャートに市場評価の背景と帯が出て、帯をタップす�
 			timeout: 3_000,
 		});
 	}).toPass({ timeout: 120_000 });
+	// 上の値の表示の判定は観点名付き
+	await expect(page.getByTestId("chart-judgment-sentiment")).toContainText(
+		"センチメント",
+	);
+	await expect(page.getByTestId("chart-judgment-risk")).toContainText("リスク");
+	// スマホでは −/＋/最新へ を値の表示の下（チャートのすぐ上）に置く。PC では右
+	const close = await page.getByTestId("chart-close").boundingBox();
+	const latest = await page
+		.getByRole("button", { name: "最新へ" })
+		.boundingBox();
+	if (!close || !latest) throw new Error("値の表示かボタンが無い");
+	if ((page.viewportSize()?.width ?? 0) < 1024) {
+		expect(latest.y).toBeGreaterThan(close.y + close.height);
+	} else {
+		expect(latest.x).toBeGreaterThan(close.x + close.width);
+	}
 
 	const bgSelect = page.getByLabel("背景に使う判定");
 	await bgSelect.selectOption("sentiment");
