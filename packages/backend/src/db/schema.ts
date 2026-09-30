@@ -103,6 +103,8 @@ export const backtestRuns = sqliteTable("backtest_runs", {
 	error: text("error"),
 	/** 実行したときの AI 判定の集計ルール（JSON）。この列を足す前の実行は null */
 	aggregationRule: text("aggregation_rule"),
+	/** 市場評価に使った採点の基準の版。null は運用どおり（記事ごとに運用で採点した版） */
+	criteriaVersion: integer("criteria_version"),
 });
 
 /** バックテストの結果の中身。大きいので gzip した JSON で持つ */
@@ -190,6 +192,38 @@ export const newsScores = sqliteTable(
 	(t) => [
 		index("news_scores_status").on(t.status),
 		index("news_scores_scored_at").on(t.scoredAt),
+	],
+);
+
+/**
+ * 過去のニュースを採点の基準の版を指定して採点し直した結果。1件のニュースと版の組に1行。
+ * 運用の採点（news_scores）は上書きしない。判定に使い始める時刻は運用の採点時刻を引き継ぐ
+ */
+export const newsRescores = sqliteTable(
+	"news_rescores",
+	{
+		newsId: integer("news_id")
+			.notNull()
+			.references(() => news.id),
+		criteriaVersion: integer("criteria_version").notNull(),
+		/** queued: 採点を待っている / retry: 再試行を待っている / done: 採点済み / failed: 採点に失敗 */
+		status: text("status").notNull(),
+		risk: integer("risk"),
+		sentiment: integer("sentiment"),
+		comment: text("comment"),
+		/** 採点し直した時刻（記録用。判定には使わない） */
+		scoredAt: integer("scored_at"),
+		model: text("model"),
+		appBuiltAt: integer("app_built_at"),
+		error: text("error"),
+		attempts: integer("attempts").notNull().default(0),
+		nextAttemptAt: integer("next_attempt_at"),
+		/** 採点し直しを頼んだ時刻。この順に採点する */
+		requestedAt: integer("requested_at").notNull(),
+	},
+	(t) => [
+		primaryKey({ columns: [t.newsId, t.criteriaVersion] }),
+		index("news_rescores_status").on(t.status),
 	],
 );
 

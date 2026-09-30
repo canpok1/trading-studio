@@ -1,5 +1,7 @@
 import type {
 	BacktestRun,
+	CriteriaVersion,
+	RescoreCoverage,
 	StoredStrategy,
 	TimeframeCoverage,
 } from "@trading-studio/backend";
@@ -34,6 +36,10 @@ import {
 } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { useApi } from "../api";
+import {
+	RescoreStatus,
+	rescoreReady,
+} from "../components/backtest/RescoreStatus";
 import { Help } from "../components/Help";
 import { Modal } from "../components/Modal";
 import { NumberInput } from "../components/NumberInput";
@@ -95,6 +101,8 @@ export type BacktestDraft = {
 	toDate: string | null;
 	initialCash: number;
 	fees: { limitPpm: number; marketPpm: number };
+	/** 市場評価に使う採点の基準の版。null・省略は運用どおり */
+	criteriaVersion?: number | null;
 };
 
 /** 戦略と結び付いていた頃の下書き（名前もテンプレートも無く、strategyId を持つ）も読む */
@@ -126,6 +134,7 @@ function loadDraft(strategies: StoredStrategy[]): BacktestDraft | null {
 			toDate: v.toDate,
 			initialCash: v.initialCash,
 			fees: v.fees,
+			criteriaVersion: v.criteriaVersion ?? null,
 		};
 	} catch {
 		return null;
@@ -195,6 +204,7 @@ type Data = {
 	latest: number | null;
 	/** AI 判定の採点の記録の始まり。まだ無ければ null */
 	firstScoredAt: number | null;
+	criteriaVersions: CriteriaVersion[];
 };
 
 export function BacktestRunPage() {
@@ -205,7 +215,7 @@ export function BacktestRunPage() {
 	const job = useBacktestJob();
 
 	const load = useCallback(async (): Promise<Data> => {
-		const [s, c, r, l, j] = await Promise.all([
+		const [s, c, r, l, j, cv] = await Promise.all([
 			api.api.strategies
 				.$get()
 				.then((res) => readJson<{ strategies: StoredStrategy[] }>(res)),
@@ -221,6 +231,9 @@ export function BacktestRunPage() {
 			api.api.judgments.current
 				.$get()
 				.then((res) => readJson<{ firstScoredAt: number | null }>(res)),
+			api.api.scoring.criteria
+				.$get()
+				.then((res) => readJson<{ versions: CriteriaVersion[] }>(res)),
 		]);
 		return {
 			strategies: s.strategies,
@@ -228,6 +241,7 @@ export function BacktestRunPage() {
 			runs: r.runs,
 			latest: l.latest?.close ?? null,
 			firstScoredAt: j.firstScoredAt,
+			criteriaVersions: cv.versions,
 		};
 	}, [api]);
 	const { state, reload } = useAsync(load);
@@ -275,6 +289,10 @@ export function BacktestRunPage() {
 						limitPpm: DEFAULT_FEE_PPM,
 						marketPpm: DEFAULT_FEE_PPM,
 					},
+				criteriaVersion:
+					passed?.criteriaVersion !== undefined
+						? passed.criteriaVersion
+						: (base?.criteriaVersion ?? null),
 			});
 			// 再読み込みで同じ条件に戻さないよう、渡された条件を消す
 			navigate(location.pathname, { replace: true, state: null });
@@ -340,6 +358,7 @@ export function BacktestRunPage() {
 			runs={runs}
 			latest={state.data.latest}
 			firstScoredAt={state.data.firstScoredAt}
+			criteriaVersions={state.data.criteriaVersions}
 		/>
 	);
 }
@@ -352,6 +371,7 @@ function RunForm({
 	runs,
 	latest,
 	firstScoredAt,
+	criteriaVersions,
 }: {
 	draft: BacktestDraft;
 	setDraft: (d: BacktestDraft) => void;
@@ -360,6 +380,7 @@ function RunForm({
 	runs: BacktestRun[];
 	latest: number | null;
 	firstScoredAt: number | null;
+	criteriaVersions: CriteriaVersion[];
 }) {
 	const api = useApi();
 	const job = useBacktestJob();
@@ -373,6 +394,7 @@ function RunForm({
 		from: useId(),
 		to: useId(),
 		cash: useId(),
+		version: useId(),
 	};
 
 	const p = draft.params;
@@ -437,6 +459,17 @@ function RunForm({
 					? `市場評価の記録は ${formatDateTime(firstScoredAt)} から。開始を ${formatDate(firstAllowedFrom(firstScoredAt))} 以降にするか、市場評価の条件で「データなし」を選ぶと実行できる`
 					: null;
 
+	// 版を選んだら、期間の市場評価に使う記事がすべてその版で採点されているときだけ実行できる。
+	// 消した版を下書きに残していても運用どおりに戻す
+	const criteriaVersion =
+		usesJudgments &&
+		criteriaVersions.some((v) => v.version === draft.criteriaVersion)
+			? (draft.criteriaVersion ?? null)
+			: null;
+	const [rescore, setRescore] = useState<RescoreCoverage | null>(null);
+	const rescoreBlocked =
+		criteriaVersion !== null && (rescore === null || !rescoreReady(rescore));
+
 	const bars = useMemo(() => {
 		if (!cov || cov.firstTime === null || cov.lastTime === null) return 0;
 		const a = Math.max(fromMs, cov.firstTime);
@@ -489,6 +522,7 @@ function RunForm({
 					initialCash: draft.initialCash,
 					fees: draft.fees,
 					skipGaps,
+					criteriaVersion,
 				},
 			});
 			const body = (await res.json()) as {
@@ -741,6 +775,52 @@ function RunForm({
 									</span>
 								)}
 						</div>
+						{usesJudgments && (
+							<div className="flex flex-col gap-1.5">
+								<div className="flex items-center gap-1.5">
+									<label
+										htmlFor={ids.version}
+										className="text-[13px] font-semibold"
+									>
+										採点の版
+									</label>
+									<Help label="採点の版">
+										<p>
+											市場評価に使うニュースの採点を、どの採点の基準の版のものにするか。「運用どおり」は記事ごとに運用で採点したときの版を使う。
+										</p>
+										<p>
+											版を選ぶと、期間の記事をすべてその版で採点し直した結果で市場評価を出す。採点の基準の改善を確かめるときに使う。記事を市場評価に使い始める時刻は、版によらず運用で採点した時刻のまま。
+										</p>
+									</Help>
+								</div>
+								<select
+									id={ids.version}
+									value={criteriaVersion ?? ""}
+									onChange={(e) =>
+										update({
+											criteriaVersion:
+												e.target.value === "" ? null : Number(e.target.value),
+										})
+									}
+									className="h-11 rounded-[10px] border border-line bg-surface px-2 text-sm"
+								>
+									<option value="">運用どおり</option>
+									{[...criteriaVersions].reverse().map((v) => (
+										<option key={v.version} value={v.version}>
+											v{v.version} {v.note}
+										</option>
+									))}
+								</select>
+								{criteriaVersion !== null && (
+									<RescoreStatus
+										from={fromMs}
+										to={toMs}
+										version={criteriaVersion}
+										onChange={setRescore}
+									/>
+								)}
+							</div>
+						)}
 						{step?.limited && <Note>{stepLimitedText(step.timeframe)}</Note>}
 						{judgmentError && (
 							<span role="alert" className="text-xs font-semibold text-loss">
@@ -879,7 +959,8 @@ function RunForm({
 									running !== null ||
 									hasErr ||
 									bars === 0 ||
-									judgmentError !== null
+									judgmentError !== null ||
+									rescoreBlocked
 								}
 								onClick={() => run(false)}
 							>
@@ -889,7 +970,9 @@ function RunForm({
 										? "入力を直すと実行できる"
 										: bars === 0
 											? "期間にデータが無い"
-											: "バックテストを実行"}
+											: rescoreBlocked
+												? `v${criteriaVersion} の採点がそろうと実行できる`
+												: "バックテストを実行"}
 							</Button>
 						</div>
 					</div>

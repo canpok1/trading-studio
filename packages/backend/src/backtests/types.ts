@@ -11,6 +11,7 @@ import type {
 	ValidationError,
 } from "@trading-studio/core";
 import type { JudgmentSeries } from "../judgments/types";
+import type { RescoreCoverage } from "../news/types";
 import type { StoredStrategy } from "../strategies/types";
 
 export type BacktestStatus = "running" | "done" | "failed" | "canceled";
@@ -26,6 +27,8 @@ export type BacktestInput = {
 	fees: FeeRates;
 	/** 期間内の欠損を承知で実行する */
 	skipGaps: boolean;
+	/** 市場評価に使う採点の基準の版。null は運用どおり（記事ごとに運用で採点した版）。市場評価の条件が無ければ無視する */
+	criteriaVersion: number | null;
 };
 
 export type BacktestRun = {
@@ -55,6 +58,8 @@ export type BacktestRun = {
 	error: string | null;
 	/** 実行したときの AI 判定の集計ルール。記録する前の実行は null */
 	aggregationRule: AggregationRule | null;
+	/** 市場評価に使った採点の基準の版。null は運用どおり */
+	criteriaVersion: number | null;
 	/** 1日の損失上限を効かせて実行したか。上限を持つ前の実行は false（params には既定の上限が入って読まれる） */
 	dailyLossLimitApplied: boolean;
 };
@@ -97,6 +102,13 @@ export type StartBacktestFailure =
 	| { kind: "no_data"; message: string }
 	/** 期間に AI 判定の記録が始まる前が含まれる。firstScoredAt は記録の開始（無ければ null） */
 	| { kind: "no_judgments"; message: string; firstScoredAt: number | null }
+	/** 指定した版の採点が無い記事がある。採点し直すと実行できる */
+	| {
+			kind: "missing_scores";
+			message: string;
+			version: number;
+			coverage: RescoreCoverage;
+	  }
 	/** 期間内に欠損がある。skipGaps で実行し直せる */
 	| { kind: "gaps"; gaps: Gap[]; gapCount: number; missingBars: number };
 

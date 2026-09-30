@@ -96,6 +96,7 @@ function addBacktest(t: T, startedAt: number): number {
 		initialCash: 1_000_000,
 		fees: { limitPpm: 0, marketPpm: 1000 },
 		skipGaps: false,
+		criteriaVersion: null,
 		startedAt,
 		barCount: 24,
 		stepTimeframe: "1h",

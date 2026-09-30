@@ -1,4 +1,4 @@
-// ニュースの採点の常駐処理。新着を1件ずつ Gemini で採点し、点数を記録する
+// ニュースの採点の常駐処理。新着を1件ずつ Gemini で採点し、点数を記録する。新着が無いときは頼まれた採点し直しを進める
 
 import type { AggregationRule } from "@trading-studio/core";
 import type { ScoreModel } from "./gemini";
@@ -74,8 +74,9 @@ export function createScorer({
 
 	async function scoreNext() {
 		repo.skipOlderThan(now() - rule().windowHours * 3_600_000);
+		// 新着を先に採点する。採点し直しは新着が無いときだけ
 		const next = repo.nextToScore(now());
-		if (!next) return;
+		if (!next) return rescoreNext();
 		const version = repo.activeCriteriaVersion();
 		const criteria = version === null ? null : repo.getCriteria(version);
 		if (!criteria) throw new Error("使用中の採点の基準が無い");
@@ -97,6 +98,47 @@ export function createScorer({
 			const delay = retryDelaysMs[attempts - 1];
 			repo.saveFailure(
 				next.id,
+				error,
+				attempts,
+				delay === undefined ? null : now() + delay,
+			);
+			failing = { error, since: failing?.since ?? now() };
+		}
+	}
+
+	/** 過去のニュースを、頼まれた版の基準で採点し直す。失敗は運用の採点と同じく再試行する */
+	async function rescoreNext() {
+		const next = repo.nextToRescore(now());
+		if (!next) return;
+		const criteria = repo.getCriteria(next.criteriaVersion);
+		if (!criteria) {
+			repo.saveRescoreFailure(
+				next.id,
+				next.criteriaVersion,
+				"採点の基準の版が無い",
+				next.attempts + 1,
+				null,
+			);
+			return;
+		}
+		const modelId = repo.model(DEFAULT_SCORING_MODEL);
+		lastAskedAt = now();
+		try {
+			const r = await ask(next, criteria.text, modelId);
+			repo.saveRescore(next.id, next.criteriaVersion, r, {
+				scoredAt: now(),
+				model: modelId,
+				appBuiltAt,
+				attempts: next.attempts,
+			});
+			failing = null;
+		} catch (e) {
+			const error = e instanceof Error ? e.message : String(e);
+			const attempts = next.attempts + 1;
+			const delay = retryDelaysMs[attempts - 1];
+			repo.saveRescoreFailure(
+				next.id,
+				next.criteriaVersion,
 				error,
 				attempts,
 				delay === undefined ? null : now() + delay,

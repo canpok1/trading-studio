@@ -106,6 +106,7 @@ function runView(r: BacktestRun) {
 		stepLimited: r.stepLimited,
 		initialCash: r.initialCash,
 		fees: r.fees,
+		criteriaVersion: r.criteriaVersion,
 		startedAt: jst(r.startedAt),
 		summary: s && {
 			...s,
@@ -140,6 +141,11 @@ function startFailure(e: StartBacktestFailure) {
 			return fail(e.message, {
 				firstScoredAt: e.firstScoredAt === null ? null : jst(e.firstScoredAt),
 			});
+		case "missing_scores":
+			return fail(
+				`${e.message}。rescore_news で採点し直し、終わってから実行する`,
+				{ coverage: e.coverage },
+			);
 		case "gaps":
 			return fail(
 				"期間内にデータの欠損がある。承知で進めるなら skipGaps: true で実行し直す",
@@ -216,7 +222,7 @@ function createServer({
 		{ name: "trading-studio", version: "1.0.0" },
 		{
 			instructions:
-				"BTC/JPY の自動売買アプリ trading-studio。戦略の条件と、ニュースの AI 採点の基準を相談して改良するための道具。戦略: まず get_guide で条件セットの書き方を読む。戦略の新規作成・運用中でない戦略の条件変更・バックテストの実行ができる。自動取引のオンオフや運用する戦略の切替・変更はできない（画面で人が行う）。採点: get_scoring_setup で仕組みと今の基準を読み、list_news_scores・evaluate_news_scores・evaluate_judgments で採点と判定がその後の値動きと合っていたかを調べ、trial_scoring で基準の案を過去のニュースに試し、add_scoring_criteria で版として保存し、set_active_scoring_criteria で使い始める。切り替えると次に採点するニュースから効き、自動取引の判定にも効くので、切り替える前に利用者に確認を取る。",
+				"BTC/JPY の自動売買アプリ trading-studio。戦略の条件と、ニュースの AI 採点の基準を相談して改良するための道具。戦略: まず get_guide で条件セットの書き方を読む。戦略の新規作成・運用中でない戦略の条件変更・バックテストの実行ができる。自動取引のオンオフや運用する戦略の切替・変更はできない（画面で人が行う）。採点: get_scoring_setup で仕組みと今の基準を読み、list_news_scores・evaluate_news_scores・evaluate_judgments で採点と判定がその後の値動きと合っていたかを調べ、trial_scoring で基準の案を過去のニュースに試し、add_scoring_criteria で版として保存し、rescore_news と run_backtest の criteriaVersion でその版の成績を確かめ、set_active_scoring_criteria で使い始める。切り替えると次に採点するニュースから効き、自動取引の判定にも効くので、切り替える前に利用者に確認を取る。",
 		},
 	);
 	const activeId = () => strategies.active()?.id ?? null;
@@ -409,6 +415,13 @@ function createServer({
 					.boolean()
 					.default(false)
 					.describe("期間内の欠損を承知で実行する"),
+				criteriaVersion: z
+					.number()
+					.int()
+					.optional()
+					.describe(
+						"市場評価に使う採点の基準の版。省けば運用どおり（記事ごとに運用で採点した版）。指定すると期間の記事がすべてその版で採点されている必要がある（rescore_news）",
+					),
 			},
 			annotations: { destructiveHint: false, openWorldHint: false },
 		},
@@ -441,6 +454,7 @@ function createServer({
 				initialCash: a.initialCash,
 				fees: { limitPpm: a.limitFeePpm, marketPpm: a.marketFeePpm },
 				skipGaps: a.skipGaps,
+				criteriaVersion: a.criteriaVersion ?? null,
 			});
 			if (!started.ok) return startFailure(started.error);
 			const id = started.run.id;
@@ -483,7 +497,7 @@ function createServer({
 					pending: st.pending,
 				},
 				rules:
-					"採点は1記事1回で、採点済みは基準や版を変えても採点し直さない。使用する版を切り替えると次に採点するニュースから使う。採点時刻より前の判定には使わない",
+					"運用の採点は1記事1回で、採点済みは基準や版を変えても採点し直さない。使用する版を切り替えると次に採点するニュースから使う。採点時刻より前の判定には使わない。過去の記事を別の版で試すには rescore_news で採点し直し、run_backtest の criteriaVersion で版を指定する（採点し直した記事も、判定に使い始める時刻は運用の採点時刻のまま）",
 			});
 		},
 	);
@@ -603,6 +617,41 @@ function createServer({
 					trial: x.trial,
 				})),
 			);
+		},
+	);
+
+	server.registerTool(
+		"rescore_news",
+		{
+			description:
+				"バックテストの期間の市場評価に使うニュースを、保存済みの基準の版で採点し直して保存する（運用の採点は変えない）。run_backtest で criteriaVersion を指定するのに使う。採点は裏で1件5秒ほどかけて進むので、同じ引数で呼び直して進み具合（coverage）を見る。失敗したものは呼び直すと再び採点する",
+			inputSchema: {
+				version: z.number().int(),
+				from: z
+					.string()
+					.describe(
+						"バックテストの開始。ISO 8601（タイムゾーン付き）か YYYY-MM-DD（JST）",
+					),
+				to: z
+					.string()
+					.describe("バックテストの終了（含まない）。書き方は from と同じ"),
+			},
+			annotations: { destructiveHint: false, openWorldHint: true },
+		},
+		(a) => {
+			const from = parseTime(a.from);
+			const to = parseTime(a.to);
+			if (from === null || to === null) {
+				return fail(
+					"from・to はタイムゾーン付きの ISO 8601 か YYYY-MM-DD で書く",
+				);
+			}
+			const r = scoring.requestRescore(from, to, a.version);
+			if (!r.ok) return fail(r.message);
+			return text({
+				coverage: r.coverage,
+				note: "done + failed = total になれば run_backtest で criteriaVersion を指定できる。failed の記事は除いて実行する",
+			});
 		},
 	);
 

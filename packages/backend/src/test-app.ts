@@ -109,6 +109,7 @@ export function createTestApp(
 		strategies,
 		runner,
 		judgments,
+		scoring,
 		now: () => 3_000,
 	});
 	const adviceRepo = new AdviceRepository(db);

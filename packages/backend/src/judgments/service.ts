@@ -29,7 +29,13 @@ export function createJudgmentService({
 				firstScoredAt: repo.firstScoredAt(),
 			};
 		},
-		series(from, to, step, rule = repo.aggregationRule()): JudgmentSeries {
+		series(
+			from,
+			to,
+			step,
+			rule = repo.aggregationRule(),
+			version = null,
+		): JudgmentSeries {
 			const t = now();
 			const firstScoredAt = repo.firstScoredAt();
 			const count = Math.max(0, Math.ceil((to - from) / step));
@@ -46,7 +52,11 @@ export function createJudgmentService({
 					? []
 					: judgmentSeries(
 							// 期間内のニュースは採点時刻も期間内にある（current と同じ理由）
-							repo.scoredNews(from - rule.windowHours * 3_600_000, to + 1),
+							repo.scoredNews(
+								from - rule.windowHours * 3_600_000,
+								to + 1,
+								version,
+							),
 							times,
 							rule,
 						);
@@ -64,7 +74,7 @@ export function createJudgmentService({
 		},
 		rule: () => repo.aggregationRule(),
 		firstScoredAt: () => repo.firstScoredAt(),
-		scoredNews: (from, to) => repo.scoredNews(from, to),
+		scoredNews: (from, to, version) => repo.scoredNews(from, to, version),
 		saveRule(rule) {
 			const errors = validateAggregationRule(rule);
 			if (errors.length) return { ok: false, errors };

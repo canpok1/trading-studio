@@ -3,7 +3,7 @@ import { PROMPT_TEMPLATE } from "./prompt";
 import type { NewsRepository } from "./repository";
 import type { ScoreRepository } from "./score-repository";
 import type { Scorer } from "./scorer";
-import type { ScoringService, TrialItem } from "./types";
+import type { RescoreResult, ScoringService, TrialItem } from "./types";
 import { TRIAL_MAX_NEWS } from "./types";
 
 export const CRITERIA_MAX = 4000;
@@ -22,6 +22,22 @@ export function createScoringService({
 	now?: () => number;
 }): ScoringService {
 	const isModel = (id: string) => SCORING_MODELS.some((m) => m.id === id);
+	const checkRescore = (
+		from: number,
+		to: number,
+		version: number,
+	): RescoreResult | null => {
+		if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from >= to)
+			return { ok: false, status: 400, message: "期間の形が違う" };
+		if (!Number.isSafeInteger(version) || !repo.getCriteria(version))
+			return { ok: false, status: 404, message: "版が見つからない" };
+		return null;
+	};
+	/** 期間 [from, to) の市場評価に使う記事の採点時刻の範囲。期間の頭では評価ルールの集計の期間だけ前までの記事を使う */
+	const usedBy = (from: number, to: number): [number, number] => [
+		from - repo.aggregationRule().windowHours * 3_600_000,
+		to,
+	];
 	return {
 		status() {
 			const p = scorer.problem();
@@ -91,6 +107,25 @@ export function createScoringService({
 		},
 
 		retry: (newsId) => repo.requestRetry(newsId, now()),
+
+		rescoreCoverage(from, to, version) {
+			const bad = checkRescore(from, to, version);
+			if (bad) return bad;
+			return {
+				ok: true,
+				coverage: repo.rescoreCoverage(...usedBy(from, to), version),
+			};
+		},
+
+		requestRescore(from, to, version) {
+			const bad = checkRescore(from, to, version);
+			if (bad) return bad;
+			repo.queueRescore(...usedBy(from, to), version, now());
+			return {
+				ok: true,
+				coverage: repo.rescoreCoverage(...usedBy(from, to), version),
+			};
+		},
 
 		async trial(criteria, newsIds) {
 			const t = criteria.trim();

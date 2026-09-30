@@ -147,6 +147,7 @@ function rerunState(run: BacktestRun): Partial<BacktestDraft> {
 		toDate: toDateInputValue(run.to - 1),
 		initialCash: run.initialCash,
 		fees: run.fees,
+		criteriaVersion: run.criteriaVersion,
 	};
 }
 
@@ -202,6 +203,9 @@ function RunHeader({ run }: { run: BacktestRun }) {
 		`手数料 指値${pct(run.fees.limitPpm)}/成行${pct(run.fees.marketPpm)}`,
 		// チャートの判定もこのルールで出すので、判定の条件が無い戦略でも出す
 		...(run.aggregationRule ? [ruleText(run.aggregationRule)] : []),
+		...(run.criteriaVersion !== null
+			? [`採点の版 v${run.criteriaVersion}`]
+			: []),
 	];
 	return (
 		<section

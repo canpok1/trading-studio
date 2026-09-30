@@ -80,6 +80,39 @@ export function scoringRoutes(service: ScoringService) {
 				? c.json({ ok: true as const }, 200)
 				: c.json({ message: "採点に失敗したニュースではない" }, 409),
 		)
+		.get(
+			"/rescore",
+			validator("query", (q) => ({
+				from: Number(q.from),
+				to: Number(q.to),
+				version: Number(q.version),
+			})),
+			(c) => {
+				const { from, to, version } = c.req.valid("query");
+				const r = service.rescoreCoverage(from, to, version);
+				return r.ok
+					? c.json({ coverage: r.coverage }, 200)
+					: c.json({ message: r.message }, r.status);
+			},
+		)
+		.post(
+			"/rescore",
+			validator("json", (v, c) => {
+				if (!isObj(v)) return c.json({ message: "形が違う" }, 400);
+				return {
+					from: Number(v.from),
+					to: Number(v.to),
+					version: Number(v.version),
+				};
+			}),
+			(c) => {
+				const { from, to, version } = c.req.valid("json");
+				const r = service.requestRescore(from, to, version);
+				return r.ok
+					? c.json({ coverage: r.coverage }, 200)
+					: c.json({ message: r.message }, r.status);
+			},
+		)
 		.post(
 			"/trial",
 			validator("json", (v, c) => {
