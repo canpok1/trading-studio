@@ -17,6 +17,7 @@ import {
 import { Help } from "../Help";
 import { Skeleton } from "../States";
 import { Button } from "../ui";
+import { ExternalAdviceModal } from "./ExternalAdviceModal";
 
 /** 生成中に状態を問い合わせる間隔 */
 const POLL_MS = 3_000;
@@ -47,6 +48,7 @@ export function AdviceSection({
 	const [error, setError] = useState<string | null>(null);
 	const [startError, setStartError] = useState<string | null>(null);
 	const [starting, setStarting] = useState(false);
+	const [external, setExternal] = useState(false);
 	// 生成を始めた直後と定期の問い合わせが重なると応答の順が入れ替わりうるので、最後に出したものだけ使う
 	const seq = useRef(0);
 
@@ -91,25 +93,41 @@ export function AdviceSection({
 			aria-label="AI アドバイス"
 			className="flex flex-col gap-3 rounded-xl border border-line bg-surface px-4 py-3.5"
 		>
-			<div className="flex items-center justify-between gap-2">
+			<div className="flex flex-wrap items-center justify-between gap-2">
 				<div className="flex items-center gap-1.5">
-					<h2 className="text-[15px] font-bold">AI アドバイス</h2>
+					<h2 className="text-[15px] font-bold whitespace-nowrap">
+						AI アドバイス
+					</h2>
 					<Help label="AI アドバイス">
 						<p>
 							結果の分析と改善案を AI
 							が作る。使うモデルと指示は設定の「バックテスト」で変える。
 						</p>
+						<p>
+							「別の AI で作る」は、ChatGPT などのチャット型の AI
+							に渡す文をコピーし、返ってきた答えを貼って取り込む。Gemini
+							が混雑して作れないときや、別の AI と比べたいときに使う。
+						</p>
 					</Help>
 				</div>
 				{advice !== undefined && (
-					<Button
-						size="sm"
-						variant={content ? "default" : "primary"}
-						disabled={starting || running}
-						onClick={start}
-					>
-						{running ? "作成中" : content ? "作り直す" : "アドバイスを作る"}
-					</Button>
+					<div className="ml-auto flex gap-2">
+						<Button
+							size="sm"
+							disabled={running}
+							onClick={() => setExternal(true)}
+						>
+							別の AI で作る
+						</Button>
+						<Button
+							size="sm"
+							variant={content ? "default" : "primary"}
+							disabled={starting || running}
+							onClick={start}
+						>
+							{running ? "作成中" : content ? "作り直す" : "アドバイスを作る"}
+						</Button>
+					</div>
 				)}
 			</div>
 			{advice === undefined && !error && <Skeleton className="h-10 w-full" />}
@@ -168,6 +186,18 @@ export function AdviceSection({
 						{formatVersion(advice.appBuiltAt, "開発版")}
 					</span>
 				</div>
+			)}
+			{external && (
+				<ExternalAdviceModal
+					runId={runId}
+					onClose={() => setExternal(false)}
+					onImported={(a) => {
+						seq.current++;
+						setAdvice(a);
+						setStartError(null);
+						setExternal(false);
+					}}
+				/>
 			)}
 		</section>
 	);

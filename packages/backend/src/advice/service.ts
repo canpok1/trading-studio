@@ -9,10 +9,12 @@ import {
 	ADVICE_RESPONSE_SCHEMA,
 	ADVICE_TEMPLATE,
 	buildAdvicePrompt,
+	buildExternalAdvicePrompt,
+	extractAdviceJson,
 	parseAdviceResponse,
 } from "./prompt";
 import type { AdviceGeneration, AdviceRepository } from "./repository";
-import type { AdviceService, BacktestAdvice } from "./types";
+import type { AdviceContent, AdviceService, BacktestAdvice } from "./types";
 
 /** 選べるモデルは採点と同じ。分析は採点より重いので、既定は Flash にする */
 export const ADVICE_MODELS = SCORING_MODELS;
@@ -20,6 +22,10 @@ export const DEFAULT_ADVICE_MODEL = "gemini-3.8-flash";
 
 export const INSTRUCTIONS_MAX = 4000;
 const NOTE_MAX = 100;
+
+/** 取り込んだアドバイスのモデル欄。名前が入っていなければこれ */
+export const EXTERNAL_MODEL = "外部の AI";
+const EXTERNAL_MODEL_MAX = 40;
 
 export function createAdviceService({
 	repo,
@@ -39,30 +45,38 @@ export function createAdviceService({
 	const isModel = (id: string) => ADVICE_MODELS.some((m) => m.id === id);
 	const jobs = new Map<number, Promise<void>>();
 
-	const generate = async (runId: number, g: AdviceGeneration, text: string) => {
-		try {
-			const run = backtests.get(runId);
-			const chart = backtests.chart(runId);
-			const orders = backtestRepo.orders(runId);
-			if (!run || !chart || !orders)
-				throw new Error("バックテストの結果が無い");
-			const usesJudgments =
-				conditionStrategy.requiredJudges(run.params).length > 0;
-			const source = buildAdviceSource({
+	/** AI に渡す資料。結果が無ければ null */
+	const sourceOf = (runId: number) => {
+		const run = backtests.get(runId);
+		const chart = backtests.chart(runId);
+		const orders = backtestRepo.orders(runId);
+		if (!run || !chart || !orders) return null;
+		const usesJudgments =
+			conditionStrategy.requiredJudges(run.params).length > 0;
+		return {
+			run,
+			text: buildAdviceSource({
 				run,
 				bars: chart.bars,
 				orders,
 				judgments: usesJudgments ? chart.judgments : null,
-			});
+			}),
+		};
+	};
+
+	const generate = async (runId: number, g: AdviceGeneration, text: string) => {
+		try {
+			const source = sourceOf(runId);
+			if (!source) throw new Error("バックテストの結果が無い");
 			const raw = await model.generate(
 				g.model,
-				buildAdvicePrompt(source, text),
+				buildAdvicePrompt(source.text, text),
 				ADVICE_RESPONSE_SCHEMA,
 			);
 			const body = parseAdviceResponse(raw);
 			const improved = readImprovedStrategy(
 				(raw as Record<string, unknown>).improvedStrategy,
-				run.params,
+				source.run.params,
 			);
 			repo.finishDone(runId, { ...body, improved }, g, now());
 		} catch (e) {
@@ -72,37 +86,35 @@ export function createAdviceService({
 		}
 	};
 
+	/** 終わったバックテストでなければ、始められない理由 */
+	const notReady = (runId: number) => {
+		const run = backtests.get(runId);
+		if (!run)
+			return { status: 404 as const, message: "バックテストが見つからない" };
+		if (run.status !== "done")
+			return {
+				status: 409 as const,
+				message: "終わったバックテストだけアドバイスを作れる",
+			};
+		if (jobs.has(runId))
+			return { status: 409 as const, message: "アドバイスを作っている途中" };
+		return null;
+	};
+
+	const activeInstructions = () => {
+		const version = repo.activeInstructionsVersion();
+		return version === null ? null : repo.getInstructions(version);
+	};
+
 	return {
 		get: (runId) => repo.get(runId),
 
 		start(runId) {
-			const run = backtests.get(runId);
-			if (!run) {
-				return {
-					ok: false,
-					status: 404,
-					message: "バックテストが見つからない",
-				};
-			}
-			if (run.status !== "done") {
-				return {
-					ok: false,
-					status: 409,
-					message: "終わったバックテストだけアドバイスを作れる",
-				};
-			}
-			if (jobs.has(runId)) {
-				return {
-					ok: false,
-					status: 409,
-					message: "アドバイスを作っている途中",
-				};
-			}
+			const blocked = notReady(runId);
+			if (blocked) return { ok: false, ...blocked };
 			const unavailable = model.unavailable();
 			if (unavailable) return { ok: false, status: 503, message: unavailable };
-			const version = repo.activeInstructionsVersion();
-			const instructions =
-				version === null ? null : repo.getInstructions(version);
+			const instructions = activeInstructions();
 			if (!instructions) {
 				return { ok: false, status: 409, message: "使用中の指示が無い" };
 			}
@@ -116,6 +128,65 @@ export function createAdviceService({
 				jobs.delete(runId);
 			});
 			jobs.set(runId, job);
+			return { ok: true, advice: repo.get(runId) as BacktestAdvice };
+		},
+
+		externalPrompt(runId) {
+			const blocked = notReady(runId);
+			if (blocked) return { ok: false, ...blocked };
+			const instructions = activeInstructions();
+			if (!instructions) {
+				return { ok: false, status: 409, message: "使用中の指示が無い" };
+			}
+			const source = sourceOf(runId);
+			if (!source) {
+				return { ok: false, status: 404, message: "バックテストの結果が無い" };
+			}
+			return {
+				ok: true,
+				prompt: buildExternalAdvicePrompt(source.text, instructions.text),
+				instructionsVersion: instructions.version,
+			};
+		},
+
+		importExternal(runId, input) {
+			const blocked = notReady(runId);
+			if (blocked) return { ok: false, ...blocked };
+			const run = backtests.get(runId);
+			if (!run) {
+				return {
+					ok: false,
+					status: 404,
+					message: "バックテストが見つからない",
+				};
+			}
+			if (!repo.getInstructions(input.instructionsVersion)) {
+				return { ok: false, status: 400, message: "指示の版が見つからない" };
+			}
+			let content: AdviceContent;
+			try {
+				const raw = extractAdviceJson(input.text);
+				content = {
+					...parseAdviceResponse(raw),
+					improved: readImprovedStrategy(
+						(raw as Record<string, unknown>).improvedStrategy,
+						run.params,
+					),
+				};
+			} catch (e) {
+				return {
+					ok: false,
+					status: 400,
+					message: e instanceof Error ? e.message : String(e),
+				};
+			}
+			const g: AdviceGeneration = {
+				model:
+					input.model.trim().slice(0, EXTERNAL_MODEL_MAX) || EXTERNAL_MODEL,
+				instructionsVersion: input.instructionsVersion,
+				appBuiltAt,
+			};
+			repo.saveImported(runId, content, g, now());
 			return { ok: true, advice: repo.get(runId) as BacktestAdvice };
 		},
 
