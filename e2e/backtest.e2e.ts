@@ -328,6 +328,43 @@ test("結果画面でボタンを押すと AI アドバイスができ、作り�
 	await expect(changes).toBeHidden();
 });
 
+test("別の AI の答えを貼ると、アドバイスとして取り込める", async ({
+	page,
+	request,
+}, info) => {
+	const name = `外の助言 ${info.project.name}`;
+	await prepare(request, name);
+	await choose(page, name, "2026-05-03", "2026-05-10");
+	await page.getByRole("button", { name: "バックテストを実行" }).click();
+	await expect(page).toHaveURL(/\/backtest\/runs\/\d+$/);
+
+	const advice = page.getByRole("region", { name: "AI アドバイス" });
+	await advice.getByRole("button", { name: "別の AI で作る" }).click();
+	const dialog = page.getByRole("dialog", { name: "別の AI で作る" });
+	await expect(dialog.getByText(/文字 · 指示 v\d+/)).toBeVisible();
+
+	await dialog.getByLabel("返ってきた答え").fill("答えではない");
+	await dialog.getByRole("button", { name: "取り込む" }).click();
+	await expect(dialog.getByRole("alert")).toContainText("JSON が無い");
+
+	await dialog.getByLabel("返ってきた答え").fill(
+		`\`\`\`json\n${JSON.stringify({
+			analysis: "外の AI の分析",
+			good: "- 良い",
+			bad: "- 悪い",
+			improvements: "- 変える",
+			improvedStrategy: null,
+		})}\n\`\`\``,
+	);
+	await dialog.getByLabel("使った AI の名前（任意）").fill("ChatGPT");
+	await dialog.getByRole("button", { name: "取り込む" }).click();
+	await expect(dialog).toBeHidden();
+	const content = advice.getByTestId("advice-content");
+	await expect(content).toContainText("外の AI の分析");
+	await expect(content).toContainText("ChatGPT");
+	await expect(content).toContainText("AI の応答に改善版の戦略が無い");
+});
+
 test("設定の「バックテスト」でアドバイスのモデルと指示の版を変えられる", async ({
 	page,
 }, info) => {
