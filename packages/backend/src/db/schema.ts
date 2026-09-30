@@ -177,8 +177,10 @@ export const newsScores = sqliteTable(
 		risk: integer("risk"),
 		sentiment: integer("sentiment"),
 		comment: text("comment"),
-		/** 採点した時刻。これより前の判定には使わない */
+		/** 採点した時刻。これより前の判定には使わない。採点し直して置き換えても変えない */
 		scoredAt: integer("scored_at"),
+		/** 採点し直して点数を置き換えた時刻（記録用）。置き換えていなければ null */
+		rescoredAt: integer("rescored_at"),
 		criteriaVersion: integer("criteria_version"),
 		model: text("model"),
 		/** 採点したアプリのバージョン（ビルド日時）。開発版と記録前の採点は null */
@@ -197,7 +199,8 @@ export const newsScores = sqliteTable(
 
 /**
  * 過去のニュースを採点の基準の版を指定して採点し直した結果。1件のニュースと版の組に1行。
- * 運用の採点（news_scores）は上書きしない。判定に使い始める時刻は運用の採点時刻を引き継ぐ
+ * バックテスト用に頼んだものは運用の採点（news_scores）を上書きしない。ニュース画面から頼んだもの（replace_live）は、
+ * 採点し直したら運用の採点を置き換え、元の採点をその版の行としてここへ残す。判定に使い始める時刻は運用の採点時刻を引き継ぐ
  */
 export const newsRescores = sqliteTable(
 	"news_rescores",
@@ -220,6 +223,8 @@ export const newsRescores = sqliteTable(
 		nextAttemptAt: integer("next_attempt_at"),
 		/** 採点し直しを頼んだ時刻。この順に採点する */
 		requestedAt: integer("requested_at").notNull(),
+		/** 1: 採点し直したら運用の採点（news_scores）をこの結果で置き換える（ニュース画面から頼んだもの） */
+		replaceLive: integer("replace_live").notNull().default(0),
 	},
 	(t) => [
 		primaryKey({ columns: [t.newsId, t.criteriaVersion] }),

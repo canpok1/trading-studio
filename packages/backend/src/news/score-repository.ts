@@ -15,6 +15,7 @@ type ScoreRow = {
 	sentiment: number | null;
 	comment: string | null;
 	scored_at: number | null;
+	rescored_at: number | null;
 	criteria_version: number | null;
 	model: string | null;
 	app_built_at: number | null;
@@ -28,6 +29,7 @@ export const toNewsScore = (r: ScoreRow): NewsScore => ({
 	scores: r.status === "done" ? { sentiment: r.sentiment, risk: r.risk } : null,
 	comment: r.comment,
 	scoredAt: r.scored_at,
+	rescoredAt: r.rescored_at,
 	criteriaVersion: r.criteria_version,
 	model: r.model,
 	appBuiltAt: r.app_built_at,
@@ -412,21 +414,148 @@ export class ScoreRepository {
 			attempts: number;
 		},
 	) {
+		this.sql.transaction(() => {
+			this.sql.run(
+				`update news_rescores set status = 'done', sentiment = ?, risk = ?, comment = ?, scored_at = ?,
+				   model = ?, app_built_at = ?, error = null, attempts = ?, next_attempt_at = null
+				 where news_id = ? and criteria_version = ?`,
+				[
+					r.scores.sentiment,
+					r.scores.risk,
+					r.comment,
+					meta.scoredAt,
+					meta.model,
+					meta.appBuiltAt,
+					meta.attempts,
+					newsId,
+					version,
+				],
+			);
+			const row = this.sql
+				.query<{ replace_live: number }, [number, number]>(
+					"select replace_live from news_rescores where news_id = ? and criteria_version = ?",
+				)
+				.get(newsId, version);
+			if (row?.replace_live === 1) this.replaceLive(newsId, version);
+		})();
+	}
+
+	/**
+	 * 運用の採点を指定した版の採点で置き換えるよう頼む（ニュース画面から）。運用で採点済みで、別の版で採点したものだけ。
+	 * その版の採点が既にあればすぐ置き換える。頼んだか置き換えた件数を返す
+	 */
+	requestReplace(
+		newsIds: readonly number[],
+		version: number,
+		now: number,
+	): number {
+		let n = 0;
+		this.sql.transaction(() => {
+			for (const id of newsIds) {
+				const s = this.sql
+					.query<{ status: string; criteria_version: number | null }, [number]>(
+						"select status, criteria_version from news_scores where news_id = ?",
+					)
+					.get(id);
+				if (s?.status !== "done" || s.criteria_version === version) continue;
+				const r = this.sql
+					.query<{ status: string }, [number, number]>(
+						"select status from news_rescores where news_id = ? and criteria_version = ?",
+					)
+					.get(id, version);
+				if (r?.status === "done") {
+					this.replaceLive(id, version);
+				} else if (r) {
+					// 待っているものは順番を変えずに印だけ付ける。失敗して止まっているものは頼み直す
+					this.sql.run(
+						`update news_rescores set replace_live = 1,
+						   status = case when status = 'failed' then 'queued' else status end,
+						   attempts = case when status = 'failed' then 0 else attempts end,
+						   next_attempt_at = case when status = 'failed' then null else next_attempt_at end,
+						   error = case when status = 'failed' then null else error end,
+						   requested_at = case when status = 'failed' then ? else requested_at end
+						 where news_id = ? and criteria_version = ?`,
+						[now, id, version],
+					);
+				} else {
+					this.sql.run(
+						`insert into news_rescores (news_id, criteria_version, status, attempts, requested_at, replace_live)
+						 values (?, ?, 'queued', 0, ?, 1)`,
+						[id, version, now],
+					);
+				}
+				n++;
+			}
+		})();
+		return n;
+	}
+
+	/**
+	 * 運用の採点を、採点し直したその版の採点で置き換える。判定に使い始める時刻（scored_at）は変えない。
+	 * 元の採点は、版ごとのバックテストで使えるようにその版の行として残す（版の記録が無い採点は残せない）
+	 */
+	private replaceLive(newsId: number, version: number) {
+		const r = this.sql
+			.query<ScoreRow, [number, number]>(
+				"select * from news_rescores where news_id = ? and criteria_version = ? and status = 'done'",
+			)
+			.get(newsId, version);
+		const s = this.sql
+			.query<ScoreRow, [number]>("select * from news_scores where news_id = ?")
+			.get(newsId);
+		if (r && s?.status === "done" && s.criteria_version !== version) {
+			if (s.criteria_version !== null) {
+				const at = s.rescored_at ?? s.scored_at ?? 0;
+				this.sql.run(
+					`insert into news_rescores (news_id, criteria_version, status, sentiment, risk, comment, scored_at, model, app_built_at, attempts, requested_at)
+					 values (?, ?, 'done', ?, ?, ?, ?, ?, ?, 0, ?)
+					 on conflict (news_id, criteria_version) do update set status = 'done', sentiment = excluded.sentiment,
+					   risk = excluded.risk, comment = excluded.comment, scored_at = excluded.scored_at, model = excluded.model,
+					   app_built_at = excluded.app_built_at, error = null, next_attempt_at = null
+					 where news_rescores.status != 'done'`,
+					[
+						newsId,
+						s.criteria_version,
+						s.sentiment,
+						s.risk,
+						s.comment,
+						at,
+						s.model,
+						s.app_built_at,
+						at,
+					],
+				);
+			}
+			this.sql.run(
+				`update news_scores set sentiment = ?, risk = ?, comment = ?, criteria_version = ?, model = ?,
+				   app_built_at = ?, rescored_at = ? where news_id = ?`,
+				[
+					r.sentiment,
+					r.risk,
+					r.comment,
+					version,
+					r.model,
+					r.app_built_at,
+					r.scored_at,
+					newsId,
+				],
+			);
+		}
+		// 置き換えたら、前に頼んで失敗したままのものの印も外す（古い失敗を出し続けないため）
 		this.sql.run(
-			`update news_rescores set status = 'done', sentiment = ?, risk = ?, comment = ?, scored_at = ?,
-			   model = ?, app_built_at = ?, error = null, attempts = ?, next_attempt_at = null
-			 where news_id = ? and criteria_version = ?`,
-			[
-				r.scores.sentiment,
-				r.scores.risk,
-				r.comment,
-				meta.scoredAt,
-				meta.model,
-				meta.appBuiltAt,
-				meta.attempts,
-				newsId,
-				version,
-			],
+			"update news_rescores set replace_live = 0 where news_id = ? and (criteria_version = ? or status = 'failed')",
+			[newsId, version],
+		);
+	}
+
+	/** 運用の採点を置き換える採点し直しを待っている件数（再試行待ちを含む） */
+	liveRescorePending(): number {
+		return (
+			this.sql
+				.query<{ c: number }, []>(
+					"select count(*) as c from news_rescores where replace_live = 1 and status in ('queued', 'retry')",
+				)
+				.get()?.c ?? 0
 		);
 	}
 

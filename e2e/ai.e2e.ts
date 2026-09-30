@@ -307,3 +307,48 @@ test("ニュースをキーワード・影響の大きさ・日付で絞り込�
 	).toBeVisible();
 	await expect(page).toHaveURL(new RegExp(`/news\\?q=${name}$`));
 });
+
+test("使用中の版で1件ずつ・絞り込んだものをまとめて採点し直せる", async ({
+	page,
+}, info) => {
+	// 取得・採点・採点し直しを順に待つので長めにとる
+	test.setTimeout(90_000);
+	const name = `rescore-${info.project.name}`;
+	await addSource(page, name);
+	await page.goto(`/news?q=${name}`);
+	const cards = page
+		.getByTestId("news-card")
+		.filter({ hasText: "デモの採点。" });
+	await expect(cards).toHaveCount(3, { timeout: 20_000 });
+
+	// 新しい版を使用中にする
+	const added = await page.request.post("/api/scoring/criteria", {
+		data: { text: `- 採点し直しの基準 ${info.project.name}`, note: "E2E" },
+	});
+	const { version } = (await added.json()) as { version: { version: number } };
+	const v = version.version;
+	expect(
+		(
+			await page.request.put("/api/scoring/criteria/active", {
+				data: { version: v },
+			})
+		).ok(),
+	).toBe(true);
+
+	const card = cards.first();
+	await card.getByRole("button", { name: /詳しく/ }).click();
+	await card.getByRole("button", { name: `v${v} で採点し直す` }).click();
+	await expect(card).toContainText(`プロンプト v${v}`, { timeout: 20_000 });
+	await expect(card).toContainText("採点し直し");
+
+	await page.getByRole("button", { name: "この 3 件を採点し直す" }).click();
+	const dialog = page.getByRole("dialog", { name: "まとめて採点し直す" });
+	await dialog.getByRole("button", { name: "採点し直す" }).click();
+	await expect(
+		page.getByRole("status").filter({ hasText: `2 件を v${v} で採点し直す` }),
+	).toBeVisible();
+	for (const c of (await cards.all()).slice(1)) {
+		await c.getByRole("button", { name: /詳しく/ }).click();
+		await expect(c).toContainText(`プロンプト v${v}`, { timeout: 20_000 });
+	}
+});
