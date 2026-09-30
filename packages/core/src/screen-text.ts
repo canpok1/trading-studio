@@ -37,7 +37,7 @@ export function conditionScreenText(c: Condition): string {
 		case "entryChange":
 			return `買値から ${c.percent}% ${c.direction === "up" ? "上がった" : "下がった"}`;
 		case "trailingStop":
-			return `買ってからの最高値から ${c.percent}% 下がった`;
+			return `買ってからの最高値から ${c.percent}% 下がった${c.activatePercent > 0 ? `（最高値が買値から ${c.activatePercent}% 以上になってから発動）` : ""}`;
 		case "holdingBars":
 			return `買ってから ${c.bars} 本経った`;
 		case "judgment":
@@ -67,6 +67,12 @@ export function conditionSetScreenText(p: ConditionSet): string[] {
 		g.conditions.forEach((c, i) => {
 			lines.push(`${i + 1}. ${conditionScreenText(c)}`);
 		});
+		if (key === "partialTakeProfit" && g.conditions.length > 0) {
+			lines.push(
+				`- 売る割合: ロットの ${p.partialSell.percent}%。1ロットにつき1回だけ`,
+				`- 一部利確の後、買値を下回ったら残りを損切り: ${p.partialSell.breakevenStop ? "する" : "しない"}`,
+			);
+		}
 		if (key === "buy") {
 			const o = p.buyOrder;
 			o.lines.forEach((l, i) => {

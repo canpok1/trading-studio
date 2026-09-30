@@ -388,3 +388,47 @@ test("終値と EMA の位置・ボリンジャーバンド・最高値からの
 			.getByLabel("買ってからの本数", { exact: true }),
 	).toHaveValue("24");
 });
+
+test("一部利確の条件と売り方、トレーリングストップの発動を保存でき、残りが下限を下回る割合は保存できない", async ({
+	page,
+}, info) => {
+	await page.goto("/strategies");
+	await createFromTemplate(
+		page,
+		`一部利確 ${info.project.name}`,
+		/^トレンド追随/,
+	);
+	const ptp = page.getByRole("region", {
+		name: "売り注文（一部利確）する条件",
+	});
+	await expect(ptp.getByLabel("一部利確で売る割合")).toHaveCount(0);
+	await ptp.getByRole("button", { name: "＋ 条件を追加" }).click();
+	await page
+		.getByRole("dialog")
+		.getByRole("button", { name: /トレーリングストップ/ })
+		.click();
+	await expect(ptp.getByLabel("一部利確で売る割合")).toHaveValue("50");
+	await expect(ptp.getByRole("checkbox")).toBeChecked();
+	await expect(ptp).toContainText("0.010 BTC を売り、0.010 BTC を残す");
+
+	await page.getByLabel("1回の注文量（BTC）").fill("0.0015");
+	await expect(ptp).toContainText("どちらも 0.001 BTC 以上になるようにする");
+	await expect(
+		page.getByRole("button", { name: "入力を直すと保存できる" }),
+	).toBeDisabled();
+	await page.getByLabel("1回の注文量（BTC）").fill("0.0025");
+	await ptp.getByLabel("発動する最高値の買値からの %").fill("3");
+	await ptp.getByRole("checkbox").uncheck();
+	await page.getByRole("button", { name: "保存", exact: true }).click();
+	await expect(page.getByRole("status")).toHaveText("保存した");
+
+	await page.reload();
+	const again = page.getByRole("region", {
+		name: "売り注文（一部利確）する条件",
+	});
+	await expect(again.getByLabel("発動する最高値の買値からの %")).toHaveValue(
+		"3",
+	);
+	await expect(again.getByRole("checkbox")).not.toBeChecked();
+	await expect(again).toContainText("0.00125 BTC を売り、0.00125 BTC を残す");
+});

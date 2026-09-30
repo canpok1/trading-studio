@@ -46,7 +46,7 @@ export function conditionText(c: Condition): string {
 		case "entryChange":
 			return `${c.direction === "up" ? "+" : "−"}${c.percent}%`;
 		case "trailingStop":
-			return `最高値−${c.percent}%`;
+			return `最高値−${c.percent}%${c.activatePercent > 0 ? `（+${c.activatePercent}%で発動）` : ""}`;
 		case "holdingBars":
 			return `${c.bars}本保有`;
 		case "judgment":

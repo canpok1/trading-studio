@@ -193,6 +193,11 @@ function RunHeader({ run }: { run: BacktestRun }) {
 		frequencyText(p),
 		`買: ${groupText(p.buy)}`,
 		`買いの注文: ${buyOrderText(p.buyOrder)}`,
+		...(p.partialTakeProfit.conditions.length > 0
+			? [
+					`一部利確: ${groupText(p.partialTakeProfit)}・${p.partialSell.percent}%${p.partialSell.breakevenStop ? "・後は建値で損切り" : ""}`,
+				]
+			: []),
 		`利確: ${groupText(p.takeProfit)}`,
 		`損切り: ${groupText(p.stopLoss)}`,
 		`${formatBtc(p.orderSize)} BTC`,

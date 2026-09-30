@@ -15,8 +15,8 @@ export type Candle = {
 export type Side = "buy" | "sell";
 export type OrderType = "limit" | "market";
 
-/** 売りを出した条件のグループ。利確（takeProfit）か損切り（stopLoss）か */
-export type ExitKind = "takeProfit" | "stopLoss";
+/** 売りを出した条件のグループ。利確（takeProfit）・損切り（stopLoss）・一部利確（partialTakeProfit） */
+export type ExitKind = "takeProfit" | "stopLoss" | "partialTakeProfit";
 
 /** 戦略が出す注文の意図。発注・取消は呼び出し側（エンジン・取引所への橋渡し）が行う */
 export type OrderIntent =
@@ -29,7 +29,7 @@ export type OrderIntent =
 			quantity: number;
 			/** この本数（戦略の粒度の足）のあいだ約定しなければ取り消す。未指定なら取り消さない */
 			expireAfterBars?: number;
-			/** 売りで、どのロットを売るか（ロットの id）。売りでは必須 */
+			/** 売りで、どのロットを売るか（ロットの id）。売りでは必須。数量がロットより少なければ一部だけ売る */
 			lotId?: string;
 			/** 売りで、どちらの条件のグループで売るか */
 			exitKind?: ExitKind;
@@ -72,15 +72,18 @@ export type Position = {
 	openedAt: number | null;
 };
 
-/** ロット。約定した買い注文1件ぶんの保有。売りはロットごとに判定し、ロット全量を売る */
+/** ロット。約定した買い注文1件ぶんの保有。売りはロットごとに判定し、ロット全量（一部利確だけは一部）を売る */
 export type Lot = {
 	/** 買い注文の id */
 	id: string;
+	/** 今の保有量。一部利確の後は残りの量 */
 	quantity: number;
 	/** 買いの約定価格（手数料を含めない） */
 	entryPrice: number;
 	/** 買いが約定した時刻 */
 	openedAt: number;
+	/** 一部だけ売ったことがあるか。持たない保存済みのロットは false として読む */
+	partialExitDone?: boolean;
 };
 
 export const EMPTY_POSITION: Position = {

@@ -11,6 +11,7 @@ import type {
 	JudgmentConditionValue,
 	JudgmentValue,
 	OrderType,
+	PartialSell,
 	Timeframe,
 	ValidationError,
 } from "@trading-studio/core";
@@ -27,6 +28,7 @@ import {
 	JUDGMENT_VALUE_LABELS,
 	LIMITS,
 	ORDER_TYPE_LABELS,
+	partialSellQuantity,
 	SATOSHI_PER_BTC,
 	TIMEFRAME_LABELS,
 	TIMEFRAMES,
@@ -279,6 +281,7 @@ function parseBtc(s: string): number {
 
 const GROUP_BORDER: Record<ConditionGroupKey, string> = {
 	buy: "border-l-buy",
+	partialTakeProfit: "border-l-profit",
 	takeProfit: "border-l-profit",
 	stopLoss: "border-l-loss",
 };
@@ -302,30 +305,23 @@ const CONDITION_NAMES: Record<ConditionKind, string> = {
 	"judgment:risk": "リスクが指定のどれか",
 };
 
+const SELL_KINDS: ConditionKind[] = [
+	"emaCross",
+	"emaPosition",
+	"emaSlope",
+	"breakout",
+	"rsi",
+	"bollinger",
+	"entryChange",
+	"trailingStop",
+	"holdingBars",
+];
+
 const PRICE_KINDS: Record<ConditionGroupKey, ConditionKind[]> = {
 	buy: ["emaCross", "emaPosition", "emaSlope", "breakout", "rsi", "bollinger"],
-	takeProfit: [
-		"emaCross",
-		"emaPosition",
-		"emaSlope",
-		"breakout",
-		"rsi",
-		"bollinger",
-		"entryChange",
-		"trailingStop",
-		"holdingBars",
-	],
-	stopLoss: [
-		"emaCross",
-		"emaPosition",
-		"emaSlope",
-		"breakout",
-		"rsi",
-		"bollinger",
-		"entryChange",
-		"trailingStop",
-		"holdingBars",
-	],
+	partialTakeProfit: SELL_KINDS,
+	takeProfit: SELL_KINDS,
+	stopLoss: SELL_KINDS,
 };
 
 const JUDGMENT_KINDS = JUDGES.map((j) => `judgment:${j}` as const);
@@ -379,7 +375,7 @@ function defaultCondition(
 				? { type: kind, percent: 2, direction: "down" }
 				: { type: kind, percent: 4, direction: "up" };
 		case "trailingStop":
-			return { type: kind, percent: 3 };
+			return { type: kind, percent: 3, activatePercent: 0 };
 		case "holdingBars":
 			return { type: kind, bars: 24 };
 		default: {
@@ -634,6 +630,19 @@ function ConditionRow({
 						className="w-16"
 					/>
 					<span>% 下がった</span>
+					<span className="flex basis-full flex-wrap items-center gap-1.5">
+						<span>発動: 最高値が買値から</span>
+						<NumberInput
+							value={c.activatePercent}
+							onChange={(activatePercent) =>
+								onChange({ ...c, activatePercent })
+							}
+							invalid={bad("activatePercent")}
+							aria-label="発動する最高値の買値からの %"
+							className="w-16"
+						/>
+						<span>% 以上になってから（0 は買った直後から）</span>
+					</span>
 				</>
 			);
 			break;
@@ -908,7 +917,58 @@ function BuyOrderLines({
 	);
 }
 
-/** 買い・利確・損切りの3グループ */
+/** 一部利確の売り方。一部利確の条件があるときだけ出す */
+function PartialSellFields({
+	params,
+	onChange,
+	errors,
+}: {
+	params: ConditionSet;
+	onChange: (v: PartialSell) => void;
+	errors: ValidationError[];
+}) {
+	const ps = params.partialSell;
+	const percentErrs = errorsAt(errors, "partialSell.percent");
+	const sold = Number.isInteger(ps.percent)
+		? partialSellQuantity(params.orderSize, ps.percent)
+		: null;
+	return (
+		<div className="flex flex-col gap-2 border-t border-line pt-2.5">
+			<div className="flex flex-col gap-1">
+				<div className="flex flex-wrap items-center gap-1.5 text-sm">
+					<span>成立したらロットの</span>
+					<NumberInput
+						value={ps.percent}
+						onChange={(percent) => onChange({ ...ps, percent })}
+						invalid={percentErrs.length > 0}
+						inputMode="numeric"
+						aria-label="一部利確で売る割合"
+						className="w-16"
+					/>
+					<span>% を売る</span>
+				</div>
+				{sold !== null && Number.isFinite(params.orderSize) && (
+					<p className="text-xs text-text-2">
+						1ロットにつき1回だけ。1回の注文量なら {formatBtc(sold)} BTC を売り、
+						{formatBtc(params.orderSize - sold)} BTC を残す
+					</p>
+				)}
+				<ErrorText messages={percentErrs} />
+			</div>
+			<label className="flex cursor-pointer items-center gap-2 text-sm">
+				<input
+					type="checkbox"
+					className="h-4 w-4 accent-accent"
+					checked={ps.breakevenStop}
+					onChange={(e) => onChange({ ...ps, breakevenStop: e.target.checked })}
+				/>
+				一部利確の後、買値を下回ったら残りを損切りとして売る
+			</label>
+		</div>
+	);
+}
+
+/** 買い・一部利確・利確・損切りの4グループ */
 export function ConditionGroups({ params, onChange, errors }: Props) {
 	const [adding, setAdding] = useState<ConditionGroupKey | null>(null);
 	const setGroup = (
@@ -986,6 +1046,13 @@ export function ConditionGroups({ params, onChange, errors }: Props) {
 						>
 							＋ 条件を追加
 						</Button>
+						{g === "partialTakeProfit" && group.conditions.length > 0 && (
+							<PartialSellFields
+								params={params}
+								onChange={(partialSell) => onChange({ ...params, partialSell })}
+								errors={errors}
+							/>
+						)}
 						{g === "buy" && (
 							<BuyOrderLines
 								order={params.buyOrder}

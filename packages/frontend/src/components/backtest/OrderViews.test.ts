@@ -88,6 +88,26 @@ describe("売りのバッジ", () => {
 		).toEqual({ kind: null, text: "EMA12/48下抜け" });
 	});
 
+	test("一部利確と、発動の条件つきのトレーリングストップ", () => {
+		expect(
+			exitBadge({
+				...sell(
+					"現在値 10,800,000 は買値 10,000,000 から +8.0%（+8% 以上）。買値 10,000,000 のロット 0.010 BTC のうち 0.005 BTC を売却（一部利確の条件）",
+				),
+				lotPrice: 10_000_000,
+				exitKind: "partialTakeProfit",
+			}),
+		).toEqual({ kind: "partialTakeProfit", text: "一部利確: +8%" });
+		expect(
+			exitBadge({
+				...sell(
+					"現在値 10,300,000 は買ってからの最高値 10,700,000 から −3.7%（−3% 以上）。最高値が買値から +5% 以上になってから発動。保有中の 0.005 BTC を売却（利確の条件）",
+				),
+				exitKind: "takeProfit",
+			})?.text,
+		).toBe("利確: 最高値−3%");
+	});
+
 	test("買いには付けない", () => {
 		expect(exitBadge({ ...sell("買い"), side: "buy" })).toBeNull();
 	});

@@ -5,6 +5,7 @@ import {
 	DEFAULT_BUY_ORDER,
 	DEFAULT_DAILY_LOSS_LIMIT,
 	DEFAULT_MAX_POSITIONS,
+	DEFAULT_PARTIAL_SELL,
 	MARKET_BUY_ORDER,
 } from "./condition-strategy";
 
@@ -32,6 +33,8 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 			dailyLossLimit: DEFAULT_DAILY_LOSS_LIMIT,
 			buy: { match: "all", conditions: [] },
 			buyOrder: DEFAULT_BUY_ORDER,
+			partialTakeProfit: { match: "all", conditions: [] },
+			partialSell: DEFAULT_PARTIAL_SELL,
 			takeProfit: { match: "any", conditions: [] },
 			stopLoss: {
 				match: "any",
@@ -57,6 +60,8 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 			},
 			// 上抜けで買うので、指値だと約定せず取り逃がしやすい
 			buyOrder: MARKET_BUY_ORDER,
+			partialTakeProfit: { match: "all", conditions: [] },
+			partialSell: DEFAULT_PARTIAL_SELL,
 			takeProfit: {
 				match: "any",
 				conditions: [
@@ -87,6 +92,8 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 				conditions: [{ type: "breakout", lookback: 24, direction: "low" }],
 			},
 			buyOrder: DEFAULT_BUY_ORDER,
+			partialTakeProfit: { match: "all", conditions: [] },
+			partialSell: DEFAULT_PARTIAL_SELL,
 			takeProfit: {
 				match: "any",
 				conditions: [

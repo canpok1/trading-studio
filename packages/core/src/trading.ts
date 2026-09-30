@@ -65,7 +65,7 @@ export function withSellDetails<T extends TradeOrder>(
 }
 
 /** 判断の理由のうち、ロットの売却を述べる文（「…を売却（損切りの条件）」） */
-const SELL_SENTENCE = /を売却（(損切り|利確)の条件）$/;
+const SELL_SENTENCE = /を売却（(損切り|一部利確|利確)の条件）$/;
 
 /**
  * 判断の理由から、この売りの部分を文の配列で取り出す。成り立った条件の文が続き、最後が売却の文。
@@ -102,7 +102,10 @@ export function inferExitKind(
 	if (order.exitKind != null) return order.exitKind;
 	const last = sellReasonPart(order.reason, lotPrice)?.at(-1);
 	if (last === undefined) return null;
-	return last.endsWith("（損切りの条件）") ? "stopLoss" : "takeProfit";
+	if (last.endsWith("（損切りの条件）")) return "stopLoss";
+	return last.endsWith("（一部利確の条件）")
+		? "partialTakeProfit"
+		: "takeProfit";
 }
 
 /** 判断の記録。評価のたびに1件 */
@@ -121,14 +124,16 @@ export type DecisionLog = {
 	state: JsonValue;
 };
 
-/** 往復の取引 */
+/** 往復の取引。ロット1件の買いから最後の売りまでで1件（一部利確の売りは含めて1件にまとめる） */
 export type Trade = {
 	buyOrderId: string;
 	sellOrderId: string;
 	entryTime: number;
+	/** 最後の売りの約定時刻 */
 	exitTime: number;
+	/** 買いの数量 */
 	quantity: number;
-	/** 手数料込みの損益 */
+	/** 手数料込みの損益。一部利確の売りの損益を含む */
 	pnl: number;
 };
 
@@ -137,8 +142,10 @@ export type OpenOrder = { order: Order; record: TradeOrder };
 
 /** 口座のロット。往復の損益を出すため、買いの記録と支払い（手数料込み）も持つ */
 export type AccountLot = Lot & {
-	/** 買いの支払い（手数料込み） */
+	/** 買いの支払い（手数料込み）。一部利確の後は残りの量のぶん */
 	cost: number;
+	/** 一部利確の売りで確定した損益（手数料込み）。最後の売りで往復の損益に足す */
+	realizedPnl?: number;
 	/** 買いの記録。売りで往復が閉じたら売りの注文と対応づける */
 	record: TradeOrder;
 };
@@ -182,11 +189,12 @@ export function positionOfLots(lots: readonly Lot[]): Position {
 
 /** 戦略へ渡すロット（支払いと記録を除く） */
 export const publicLots = (lots: readonly AccountLot[]): Lot[] =>
-	lots.map(({ id, quantity, entryPrice, openedAt }) => ({
+	lots.map(({ id, quantity, entryPrice, openedAt, partialExitDone }) => ({
 		id,
 		quantity,
 		entryPrice,
 		openedAt,
+		partialExitDone: partialExitDone ?? false,
 	}));
 
 type LegacyAccount = Partial<Account> & {
@@ -346,7 +354,7 @@ export function settleFills(
 			withChanged(changed, record);
 		} else {
 			const lot = lots.find((l) => l.id === order.lotId);
-			if (!lot || lot.quantity !== order.quantity) {
+			if (!lot || order.quantity > lot.quantity) {
 				withChanged(
 					changed,
 					cancelRecord(item.record, time, "売るロットが無いため取消"),
@@ -355,23 +363,43 @@ export function settleFills(
 			}
 			const proceeds = notionalYen(price, order.quantity, "floor");
 			cash += proceeds - fee;
-			lots = lots.filter((l) => l !== lot);
-			// 往復の損益は、売りの受け取り − 買いの支払い（どちらも手数料込み）
-			const pnl = proceeds - fee - lot.cost;
-			trades.push({
-				buyOrderId: lot.id,
-				sellOrderId: order.id,
-				entryTime: lot.openedAt,
-				exitTime: time,
-				quantity: order.quantity,
-				pnl,
-			});
+			const partial = order.quantity < lot.quantity;
+			// 一部だけ売るときは、買いの支払いを売った量のぶんだけ按分する
+			const cost = partial
+				? Math.round((lot.cost * order.quantity) / lot.quantity)
+				: lot.cost;
+			// 売りの損益は、売りの受け取り − 買いの支払い（どちらも手数料込み）
+			const pnl = proceeds - fee - cost;
+			if (partial) {
+				lots = lots.map((l) =>
+					l === lot
+						? {
+								...l,
+								quantity: l.quantity - order.quantity,
+								cost: l.cost - cost,
+								realizedPnl: (l.realizedPnl ?? 0) + pnl,
+								partialExitDone: true,
+							}
+						: l,
+				);
+			} else {
+				lots = lots.filter((l) => l !== lot);
+				trades.push({
+					buyOrderId: lot.id,
+					sellOrderId: order.id,
+					entryTime: lot.openedAt,
+					exitTime: time,
+					quantity: lot.record.quantity,
+					pnl: pnl + (lot.realizedPnl ?? 0),
+				});
+			}
 			const day = jstDayStart(time);
 			today = {
 				dayStart: day,
 				pnl: (today.dayStart === day ? today.pnl : 0) + pnl,
 			};
-			withChanged(changed, { ...lot.record, pairId: order.id });
+			// 買いの記録は、ロットを閉じた売りと対応づける
+			if (!partial) withChanged(changed, { ...lot.record, pairId: order.id });
 			withChanged(changed, {
 				...item.record,
 				status: "filled",
@@ -535,8 +563,8 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 			if (!lot) {
 				return "売るロットが無いため注文しない";
 			}
-			if (intent.quantity !== lot.quantity) {
-				return `ロットの ${formatBtc(lot.quantity)} BTC と違う数量は売れないため注文しない`;
+			if (intent.quantity <= 0 || intent.quantity > lot.quantity) {
+				return `ロットの ${formatBtc(lot.quantity)} BTC を超える数量は売れないため注文しない`;
 			}
 			if (open.some((x) => x.order.lotId === lot.id)) {
 				return "このロットの売りが約定待ちのため注文しない";

@@ -397,7 +397,59 @@ describe("ロット", () => {
 		expect(sold.account.position.entryPrice).toBe(10_000_000);
 	});
 
-	test("ロットが無い・数量が違う・売りが約定待ちなら売りを出さない", () => {
+	test("ロットの一部だけの売りは、支払いを按分してロットを残し、最後の売りで往復を1件にまとめる", () => {
+		const placed = decideWith(buys, newAccount(1_000_000));
+		const bought = settleFills(placed.account, (o) => o.price, 11 * H, FEES);
+		const sellOf = (quantity: number) =>
+			fixed([
+				{ kind: "place", side: "sell", type: "market", quantity, lotId: "p2" },
+			]);
+		const half = settleFills(
+			decideWith(sellOf(500_000), bought.account).account,
+			() => 9_500_000,
+			12 * H,
+			FEES,
+		);
+		const firstPnl = 47_500 - 48 - 45_045;
+		expect(half.trades).toEqual([]);
+		expect(half.account.lots.find((l) => l.id === "p2")).toMatchObject({
+			quantity: 500_000,
+			cost: 90_090 - 45_045,
+			realizedPnl: firstPnl,
+			partialExitDone: true,
+		});
+		expect(half.changed.find((r) => r.id === "p3")).toMatchObject({
+			status: "filled",
+			pnl: firstPnl,
+			pairId: "p2",
+		});
+		// 買いの記録はロットを閉じるまで売りと対応づけない
+		expect(half.changed.map((r) => r.id)).toEqual(["p3"]);
+		expect(half.account.today.pnl).toBe(firstPnl);
+
+		const rest = settleFills(
+			decideWith(sellOf(500_000), half.account).account,
+			() => 10_000_000,
+			13 * H,
+			FEES,
+		);
+		const secondPnl = 50_000 - 50 - 45_045;
+		expect(rest.trades).toEqual([
+			{
+				buyOrderId: "p2",
+				sellOrderId: "p4",
+				entryTime: 11 * H,
+				exitTime: 13 * H,
+				quantity: 1_000_000,
+				pnl: firstPnl + secondPnl,
+			},
+		]);
+		expect(rest.changed.find((r) => r.id === "p4")?.pnl).toBe(secondPnl);
+		expect(rest.changed.find((r) => r.id === "p2")?.pairId).toBe("p4");
+		expect(rest.account.lots.map((l) => l.id)).toEqual(["p1"]);
+	});
+
+	test("ロットが無い・数量が多すぎる・売りが約定待ちなら売りを出さない", () => {
 		const placed = decideWith(buys, newAccount(1_000_000));
 		const bought = settleFills(placed.account, (o) => o.price, 11 * H, FEES);
 		const sellOf = (lotId: string, quantity = 1_000_000) =>
@@ -405,9 +457,9 @@ describe("ロット", () => {
 		expect(decideWith(sellOf("x"), bought.account).decision.note).toContain(
 			"売るロットが無い",
 		);
-		expect(decideWith(sellOf("p1", 1), bought.account).decision.note).toContain(
-			"違う数量は売れない",
-		);
+		expect(
+			decideWith(sellOf("p1", 2_000_000), bought.account).decision.note,
+		).toContain("を超える数量は売れない");
 		const once = decideWith(sellOf("p1"), bought.account);
 		expect(decideWith(sellOf("p1"), once.account).decision.note).toContain(
 			"約定待ち",
@@ -522,6 +574,13 @@ describe("inferExitKind", () => {
 		expect(inferExitKind(sell(reason), 10_000_000)).toBe("takeProfit");
 		expect(inferExitKind(sell(reason), 9_500_000)).toBe("stopLoss");
 		expect(inferExitKind(sell(reason), null)).toBeNull();
+	});
+
+	test("一部利確の文も、ロットの買値で自分の文を選べる", () => {
+		const reason =
+			"A のため買値 10,000,000 のロット 0.010 BTC のうち 0.005 BTC を売却（一部利確の条件）。B のため買値 9,500,000 のロット 0.010 BTC を売却（利確の条件）";
+		expect(inferExitKind(sell(reason), 10_000_000)).toBe("partialTakeProfit");
+		expect(inferExitKind(sell(reason), 9_500_000)).toBe("takeProfit");
 	});
 
 	test("読めなければ null", () => {

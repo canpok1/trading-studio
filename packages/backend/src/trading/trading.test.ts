@@ -606,7 +606,13 @@ describe("複数ポジション", () => {
 			"paper",
 		]);
 		expect(t.status().account.lots).toEqual([
-			{ id: "p1", quantity: 1_000_000, entryPrice: P, openedAt: T0 },
+			{
+				id: "p1",
+				quantity: 1_000_000,
+				entryPrice: P,
+				openedAt: T0,
+				partialExitDone: false,
+			},
 		]);
 	});
 });
