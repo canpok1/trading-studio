@@ -4,12 +4,13 @@ import type { ResponseSchema } from "../news/gemini";
 import { IMPROVED_STRATEGY_SCHEMA } from "./improved";
 import type { AdviceContent } from "./types";
 
-/** ひな形。{backtest} と {instructions} を差し込む。長い資料を先頭に、指示を最後に置く */
-export const ADVICE_TEMPLATE = `<backtest>
+/** 資料の囲み。別の AI へはこれだけを添付ファイルで渡す */
+const BACKTEST_BLOCK = `<backtest>
 {backtest}
-</backtest>
+</backtest>`;
 
-<instructions>
+/** ひな形のうち資料より後ろ。別の AI へはこれをコピーして渡す */
+const TEMPLATE_BODY = `<instructions>
 {instructions}
 </instructions>
 
@@ -28,35 +29,53 @@ improvements の文章では、設定の変更を利用者が画面でそのま�
 
 JSON のみを出力: {"analysis": 文字列, "good": 文字列, "bad": 文字列, "improvements": 文字列, "improvedStrategy": 戦略設定}`;
 
+/** ひな形。{backtest} と {instructions} を差し込む。長い資料を先頭に、指示を最後に置く */
+export const ADVICE_TEMPLATE = `${BACKTEST_BLOCK}
+
+${TEMPLATE_BODY}`;
+
 /** 指示の初版 */
 export const DEFAULT_INSTRUCTIONS = `- 損益だけでなく、最大ドローダウン・取引回数も踏まえて評価する
 - 負けた取引は、注文の前後の値動きから原因を考える
 - 取引回数が少なく偶然の可能性が高いときは、そう書く
 - 改善案は効果が大きそうな順に 3 つまで`;
 
-export function buildAdvicePrompt(backtest: string, instructions: string) {
-	// 差し込む値に {instructions} などが含まれていても二重に置き換えないよう、1回で置き換える
-	return ADVICE_TEMPLATE.replace(
-		/\{(backtest|instructions)\}/g,
-		(_, k: string) => (k === "backtest" ? backtest : instructions),
+/** 差し込む値に {instructions} などが含まれていても二重に置き換えないよう、1回で置き換える */
+function fill(template: string, backtest: string, instructions: string) {
+	return template.replace(/\{(backtest|instructions)\}/g, (_, k: string) =>
+		k === "backtest" ? backtest : instructions,
 	);
 }
 
+export function buildAdvicePrompt(backtest: string, instructions: string) {
+	return fill(ADVICE_TEMPLATE, backtest, instructions);
+}
+
+/** 別の AI へ添付する資料のファイル名 */
+export const externalAdviceFileName = (runId: number) => `backtest-${runId}.md`;
+
 /**
- * チャット型の AI へコピペで渡すときに足す説明。Gemini には構造化出力で渡している
- * 改善版の戦略設定の形を、文章で伝える
+ * チャット型の AI へ渡すもの。資料は文字数が多く入力欄に貼れないため、添付するファイルに分け、
+ * 指示だけをコピーさせる。Gemini には構造化出力で渡している改善版の戦略設定の形を、文章で足す
  */
-export function buildExternalAdvicePrompt(
+export function buildExternalAdvice(
+	runId: number,
 	backtest: string,
 	instructions: string,
 ) {
-	return `${buildAdvicePrompt(backtest, instructions)}
+	const fileName = externalAdviceFileName(runId);
+	return {
+		file: { name: fileName, content: fill(BACKTEST_BLOCK, backtest, "") },
+		prompt: `添付した ${fileName} の <backtest> 〜 </backtest> がバックテストの資料です。
+
+${fill(TEMPLATE_BODY, "", instructions)}
 
 # improvedStrategy の形
 次の JSON Schema に従う。description が画面の項目との対応。使わない項目は null にする。
 ${JSON.stringify(IMPROVED_STRATEGY_SCHEMA)}
 
-回答は JSON だけにする。前後に説明文を付けない。`;
+回答は JSON だけにする。前後に説明文を付けない。`,
+	};
 }
 
 /**

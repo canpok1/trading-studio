@@ -9,7 +9,7 @@ import {
 	ADVICE_RESPONSE_SCHEMA,
 	ADVICE_TEMPLATE,
 	buildAdvicePrompt,
-	buildExternalAdvicePrompt,
+	buildExternalAdvice,
 	extractAdviceJson,
 	parseAdviceResponse,
 } from "./prompt";
@@ -144,7 +144,7 @@ export function createAdviceService({
 			}
 			return {
 				ok: true,
-				prompt: buildExternalAdvicePrompt(source.text, instructions.text),
+				...buildExternalAdvice(runId, source.text, instructions.text),
 				instructionsVersion: instructions.version,
 			};
 		},
