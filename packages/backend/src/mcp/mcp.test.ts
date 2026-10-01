@@ -72,6 +72,7 @@ async function setup() {
 			scoring: t.scoring,
 			judgments: t.judgments,
 			scoringAnalysis: t.scoringAnalysis,
+			inUse: (id) => t.trading.runs().some((r) => r.strategy?.id === id),
 			sleep: async () => {},
 		}),
 	);
@@ -179,14 +180,14 @@ describe("MCP", () => {
 		);
 	});
 
-	test("運用する戦略は変えられない", async () => {
+	test("タブで運用する戦略に選んでいる戦略は変えられない", async () => {
 		const { t, call } = await setup();
 		const created = await call("create_strategy", {
 			name: "運用中",
 			params: PARAMS,
 		});
 		const { id } = created.json as { id: number };
-		t.strategies.setActive(id);
+		t.trading.update(1, { strategyId: id });
 		const r = await call("update_strategy", {
 			id,
 			params: { ...PARAMS, maxPositions: 3 },

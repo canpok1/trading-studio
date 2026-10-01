@@ -139,39 +139,3 @@ describe("チャートの足の API", () => {
 		).toBe(400);
 	});
 });
-
-describe("運用する戦略", () => {
-	const put = (t: ReturnType<typeof createTestApp>, id: number | null) =>
-		t.app.request("/api/strategies/active", {
-			method: "PUT",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ id }),
-		});
-	const get = async (t: ReturnType<typeof createTestApp>) =>
-		(
-			(await (await t.app.request("/api/strategies/active")).json()) as {
-				strategy: { id: number } | null;
-			}
-		).strategy;
-
-	test("保存・取得でき、戦略を削除すると未選択に戻る", async () => {
-		const t = createTestApp();
-		expect(await get(t)).toBeNull();
-		const r = t.strategies.create({ name: "a", from: { template: "trend" } });
-		if (!r.ok) throw new Error("作れない");
-		expect((await put(t, r.strategy.id)).status).toBe(200);
-		expect((await get(t))?.id).toBe(r.strategy.id);
-		expect((await put(t, 999)).status).toBe(404);
-		t.strategies.remove(r.strategy.id);
-		expect(await get(t)).toBeNull();
-	});
-
-	test("null で未選択にできる", async () => {
-		const t = createTestApp();
-		const r = t.strategies.create({ name: "a", from: { template: "trend" } });
-		if (!r.ok) throw new Error("作れない");
-		await put(t, r.strategy.id);
-		expect((await put(t, null)).status).toBe(200);
-		expect(await get(t)).toBeNull();
-	});
-});

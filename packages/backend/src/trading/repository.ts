@@ -1,7 +1,6 @@
 // 自動取引の口座・注文・判断の記録・実行状態の読み書き
 
 import type {
-	Account,
 	DecisionLog,
 	ExitKind,
 	JsonValue,
@@ -14,15 +13,52 @@ import {
 } from "@trading-studio/core";
 import type { Db } from "../db/open";
 import type {
-	AutoTradingRow,
 	OrderFilter,
 	OrderSummary,
 	StoredDecision,
 	StoredOrder,
 	TradingMode,
+	TradingRunRow,
 } from "./types";
 
+type RunRow = {
+	id: number;
+	name: string;
+	mode: TradingMode;
+	strategy_id: number | null;
+	created_at: number;
+	enabled: number;
+	state: string;
+	next_eval_at: number | null;
+	reevaluate: number;
+	started_at: number | null;
+	initial_cash: number;
+	account: string | null;
+	reset_at: number;
+};
+
+const toRun = (r: RunRow): TradingRunRow => ({
+	id: r.id,
+	name: r.name,
+	mode: r.mode,
+	strategyId: r.strategy_id,
+	createdAt: r.created_at,
+	enabled: r.enabled === 1,
+	state: JSON.parse(r.state) as JsonValue,
+	nextEvalAt: r.next_eval_at,
+	reevaluate: r.reevaluate === 1,
+	startedAt: r.started_at,
+	initialCash: r.initial_cash,
+	// 1日の確定損益・ロットを持つ前に保存した口座も読めるようにする。まだ保存していなければ開始時の資金だけ
+	account:
+		r.account === null
+			? newAccount(r.initial_cash)
+			: normalizeAccount(JSON.parse(r.account)),
+	resetAt: r.reset_at,
+});
+
 type OrderRow = {
+	run_id: number;
 	mode: TradingMode;
 	id: string;
 	side: TradeOrder["side"];
@@ -48,9 +84,10 @@ type OrderRow = {
 
 /** 売りが売るロットの買値を添えて注文を読む列 */
 const ORDER_COLUMNS = `*, (select p.fill_price from trading_orders p
-	where trading_orders.side = 'sell' and p.mode = trading_orders.mode and p.id = trading_orders.pair_id) as lot_price`;
+	where trading_orders.side = 'sell' and p.run_id = trading_orders.run_id and p.id = trading_orders.pair_id) as lot_price`;
 
 const toOrder = (r: OrderRow): StoredOrder => ({
+	runId: r.run_id,
 	mode: r.mode,
 	id: r.id,
 	side: r.side,
@@ -84,9 +121,9 @@ function orderWhere(filter: OrderFilter): {
 } {
 	const where: string[] = [];
 	const args: (string | number)[] = [];
-	if (filter.mode) {
-		where.push("mode = ?");
-		args.push(filter.mode);
+	if (filter.runId !== undefined) {
+		where.push("run_id = ?");
+		args.push(filter.runId);
 	}
 	if (filter.status) {
 		where.push("status = ?");
@@ -113,57 +150,94 @@ export class TradingRepository {
 		return this.sql.transaction(fn)();
 	}
 
-	/** 口座。まだ無ければ既定の資金で作る */
-	account(
-		mode: TradingMode,
-		now: number,
-	): { initialCash: number; account: Account; resetAt: number } {
-		const row = this.sql
-			.query<
-				{ initial_cash: number; account: string; reset_at: number },
-				[string]
-			>(
-				"select initial_cash, account, reset_at from trading_accounts where mode = ?",
+	/** 削除していない運用（作った順） */
+	runs(): TradingRunRow[] {
+		return this.sql
+			.query<RunRow, []>(
+				"select * from trading_runs where deleted_at is null order by id",
 			)
-			.get(mode);
-		if (row) {
-			return {
-				initialCash: row.initial_cash,
-				// 1日の確定損益・ロットを持つ前に保存した口座も読めるようにする
-				account: normalizeAccount(JSON.parse(row.account)),
-				resetAt: row.reset_at,
-			};
-		}
-		const account = newAccount(DEFAULT_INITIAL_CASH);
-		this.sql.run(
-			"insert into trading_accounts (mode, initial_cash, account, reset_at) values (?, ?, ?, ?)",
-			[mode, DEFAULT_INITIAL_CASH, JSON.stringify(account), now],
-		);
-		return { initialCash: DEFAULT_INITIAL_CASH, account, resetAt: now };
+			.all()
+			.map(toRun);
 	}
 
-	saveAccount(mode: TradingMode, account: Account): void {
-		this.sql.run("update trading_accounts set account = ? where mode = ?", [
-			JSON.stringify(account),
-			mode,
-		]);
+	/** 削除していない運用 */
+	run(id: number): TradingRunRow | null {
+		const r = this.sql
+			.query<RunRow, [number]>(
+				"select * from trading_runs where id = ? and deleted_at is null",
+			)
+			.get(id);
+		return r ? toRun(r) : null;
 	}
 
-	resetAccount(
-		mode: TradingMode,
-		initialCash: number,
-		account: Account,
+	/** 運用を足す。口座は開始時の資金だけで作る */
+	createRun(
+		input: { name: string; mode: TradingMode; strategyId: number | null },
 		now: number,
-	): void {
-		this.sql.run(
-			"update trading_accounts set initial_cash = ?, account = ?, reset_at = ? where mode = ?",
-			[initialCash, JSON.stringify(account), now, mode],
+	): number {
+		return Number(
+			this.sql.run(
+				`insert into trading_runs (name, mode, strategy_id, created_at, enabled, state, reevaluate, initial_cash, account, reset_at)
+				values (?, ?, ?, ?, 0, 'null', 0, ?, null, ?)`,
+				[
+					input.name,
+					input.mode,
+					input.strategyId,
+					now,
+					DEFAULT_INITIAL_CASH,
+					now,
+				],
+			).lastInsertRowid,
 		);
+	}
+
+	/** 運用を1つも持っていなければ、既定の資金のペーパーを1つ作る（タブは最低1つ） */
+	ensureRun(now: number): void {
+		const r = this.sql
+			.query<{ n: number }, []>(
+				"select count(*) as n from trading_runs where deleted_at is null",
+			)
+			.get();
+		if ((r?.n ?? 0) === 0) {
+			this.createRun(
+				{ name: "ペーパー", mode: "paper", strategyId: null },
+				now,
+			);
+		}
+	}
+
+	/** 実行状態・名前・戦略・口座を保存する */
+	saveRun(row: TradingRunRow): void {
+		this.sql.run(
+			`update trading_runs set name = ?, strategy_id = ?, enabled = ?, state = ?, next_eval_at = ?, reevaluate = ?, started_at = ?,
+			initial_cash = ?, account = ?, reset_at = ? where id = ?`,
+			[
+				row.name,
+				row.strategyId,
+				row.enabled ? 1 : 0,
+				JSON.stringify(row.state),
+				row.nextEvalAt,
+				row.reevaluate ? 1 : 0,
+				row.startedAt,
+				row.initialCash,
+				JSON.stringify(row.account),
+				row.resetAt,
+				row.id,
+			],
+		);
+	}
+
+	/** 運用を消す。注文・判断の記録から名前を引けるよう、行は残す */
+	deleteRun(id: number, now: number): void {
+		this.sql.run("update trading_runs set deleted_at = ? where id = ?", [
+			now,
+			id,
+		]);
 	}
 
 	/** 注文の記録を最新の内容にする。新しい注文なら発注した判断と戦略を付けて足す */
 	saveOrders(
-		mode: TradingMode,
+		run: { id: number; mode: TradingMode },
 		orders: readonly TradeOrder[],
 		origin: {
 			decisionId: number | null;
@@ -172,14 +246,15 @@ export class TradingRepository {
 		},
 	): void {
 		const stmt = this.sql.prepare(
-			`insert into trading_orders (mode, id, side, type, price, quantity, placed_at, status, filled_at, fill_price, fee, canceled_at, cancel_reason, reason, pair_id, pnl, exit_kind, decision_id, strategy_id, strategy_name)
-			values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			on conflict (mode, id) do update set status = excluded.status, filled_at = excluded.filled_at, fill_price = excluded.fill_price, fee = excluded.fee,
+			`insert into trading_orders (run_id, mode, id, side, type, price, quantity, placed_at, status, filled_at, fill_price, fee, canceled_at, cancel_reason, reason, pair_id, pnl, exit_kind, decision_id, strategy_id, strategy_name)
+			values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			on conflict (run_id, id) do update set status = excluded.status, filled_at = excluded.filled_at, fill_price = excluded.fill_price, fee = excluded.fee,
 			canceled_at = excluded.canceled_at, cancel_reason = excluded.cancel_reason, pair_id = excluded.pair_id, pnl = excluded.pnl`,
 		);
 		for (const o of orders) {
 			stmt.run(
-				mode,
+				run.id,
+				run.mode,
 				o.id,
 				o.side,
 				o.type,
@@ -203,12 +278,12 @@ export class TradingRepository {
 		}
 	}
 
-	order(mode: TradingMode, id: string): StoredOrder | null {
+	order(runId: number, id: string): StoredOrder | null {
 		const r = this.sql
-			.query<OrderRow, [string, string]>(
-				`select ${ORDER_COLUMNS} from trading_orders where mode = ? and id = ?`,
+			.query<OrderRow, [number, string]>(
+				`select ${ORDER_COLUMNS} from trading_orders where run_id = ? and id = ?`,
 			)
-			.get(mode, id);
+			.get(runId, id);
 		return r ? toOrder(r) : null;
 	}
 
@@ -225,12 +300,12 @@ export class TradingRepository {
 	}
 
 	/** from より後に約定した注文を約定の古い順に。リセットと同じ時刻の約定はリセット前の口座のもの */
-	filledSince(mode: TradingMode, from: number): StoredOrder[] {
+	filledSince(runId: number, from: number): StoredOrder[] {
 		return this.sql
-			.query<OrderRow, [string, number]>(
-				`select ${ORDER_COLUMNS} from trading_orders where mode = ? and status = 'filled' and filled_at > ? order by filled_at, placed_at, id`,
+			.query<OrderRow, [number, number]>(
+				`select ${ORDER_COLUMNS} from trading_orders where run_id = ? and status = 'filled' and filled_at > ? order by filled_at, placed_at, id`,
 			)
-			.all(mode, from)
+			.all(runId, from)
 			.map(toOrder);
 	}
 
@@ -246,16 +321,17 @@ export class TradingRepository {
 	}
 
 	addDecision(
-		mode: TradingMode,
+		run: { id: number; mode: TradingMode },
 		strategy: { id: number | null; name: string },
 		decision: DecisionLog,
 		judgments: Record<string, string>,
 	): number {
 		return Number(
 			this.sql.run(
-				"insert into trading_decisions (mode, strategy_id, strategy_name, time, decision, judgments) values (?, ?, ?, ?, ?, ?)",
+				"insert into trading_decisions (run_id, mode, strategy_id, strategy_name, time, decision, judgments) values (?, ?, ?, ?, ?, ?, ?)",
 				[
-					mode,
+					run.id,
+					run.mode,
 					strategy.id,
 					strategy.name,
 					decision.time,
@@ -271,6 +347,7 @@ export class TradingRepository {
 			.query<
 				{
 					id: number;
+					run_id: number;
 					mode: TradingMode;
 					strategy_id: number | null;
 					strategy_name: string;
@@ -283,6 +360,7 @@ export class TradingRepository {
 		return r
 			? {
 					id: r.id,
+					runId: r.run_id,
 					mode: r.mode,
 					strategyId: r.strategy_id,
 					strategyName: r.strategy_name,
@@ -290,62 +368,5 @@ export class TradingRepository {
 					judgments: JSON.parse(r.judgments) as Record<string, string>,
 				}
 			: null;
-	}
-
-	/** 自動取引の実行状態。まだ無ければオフで作る */
-	autoTrading(): AutoTradingRow {
-		const r = this.sql
-			.query<
-				{
-					enabled: number;
-					mode: TradingMode;
-					strategy_id: number | null;
-					state: string;
-					next_eval_at: number | null;
-					reevaluate: number;
-					started_at: number | null;
-				},
-				[]
-			>("select * from auto_trading where id = 1")
-			.get();
-		if (!r) {
-			const row: AutoTradingRow = {
-				enabled: false,
-				mode: "paper",
-				strategyId: null,
-				state: null,
-				nextEvalAt: null,
-				reevaluate: false,
-				startedAt: null,
-			};
-			this.saveAutoTrading(row);
-			return row;
-		}
-		return {
-			enabled: r.enabled === 1,
-			mode: r.mode,
-			strategyId: r.strategy_id,
-			state: JSON.parse(r.state) as JsonValue,
-			nextEvalAt: r.next_eval_at,
-			reevaluate: r.reevaluate === 1,
-			startedAt: r.started_at,
-		};
-	}
-
-	saveAutoTrading(row: AutoTradingRow): void {
-		this.sql.run(
-			`insert into auto_trading (id, enabled, mode, strategy_id, state, next_eval_at, reevaluate, started_at) values (1, ?, ?, ?, ?, ?, ?, ?)
-			on conflict (id) do update set enabled = excluded.enabled, mode = excluded.mode, strategy_id = excluded.strategy_id, state = excluded.state,
-			next_eval_at = excluded.next_eval_at, reevaluate = excluded.reevaluate, started_at = excluded.started_at`,
-			[
-				row.enabled ? 1 : 0,
-				row.mode,
-				row.strategyId,
-				JSON.stringify(row.state),
-				row.nextEvalAt,
-				row.reevaluate ? 1 : 0,
-				row.startedAt,
-			],
-		);
 	}
 }

@@ -235,14 +235,31 @@ export const newsRescores = sqliteTable(
 	],
 );
 
-/** 自動取引の口座。モードごとに1行（フェーズ4ではペーパーだけ） */
-export const tradingAccounts = sqliteTable("trading_accounts", {
+/**
+ * 自動取引の運用。ホームのタブ1つ。モード・戦略・口座・実行状態を運用ごとに持つ。
+ * 削除しても注文・判断の記録から名前を引けるよう、行は消さずに deleted_at を入れる
+ */
+export const tradingRuns = sqliteTable("trading_runs", {
+	id: integer("id").primaryKey({ autoIncrement: true }),
+	name: text("name").notNull(),
 	/** paper / live */
-	mode: text("mode").primaryKey(),
+	mode: text("mode").notNull(),
+	/** 運用する戦略。オン中は動かしている戦略。戦略を削除しても残るので外部キーにしない */
+	strategyId: integer("strategy_id"),
+	createdAt: integer("created_at").notNull(),
+	deletedAt: integer("deleted_at"),
+	enabled: integer("enabled", { mode: "boolean" }).notNull(),
+	/** 戦略の state（JSON） */
+	state: text("state").notNull(),
+	/** 次の判定時刻。オフなら null */
+	nextEvalAt: integer("next_eval_at"),
+	/** 約定があったので次の見回りで評価し直す */
+	reevaluate: integer("reevaluate", { mode: "boolean" }).notNull(),
+	startedAt: integer("started_at"),
 	/** 開始時の資金（リセットで戻す額） */
 	initialCash: integer("initial_cash").notNull(),
-	/** 口座（JSON: core の Account。現金・保有・未約定の注文） */
-	account: text("account").notNull(),
+	/** 口座（JSON: core の Account。現金・保有・未約定の注文）。null は開始時の資金だけの口座 */
+	account: text("account"),
 	/** 最後にリセットした時刻。作ったときは作った時刻 */
 	resetAt: integer("reset_at").notNull(),
 });
@@ -251,6 +268,8 @@ export const tradingAccounts = sqliteTable("trading_accounts", {
 export const tradingOrders = sqliteTable(
 	"trading_orders",
 	{
+		/** 運用（trading_runs）の id */
+		runId: integer("run_id").notNull(),
 		mode: text("mode").notNull(),
 		id: text("id").notNull(),
 		side: text("side").notNull(),
@@ -276,7 +295,7 @@ export const tradingOrders = sqliteTable(
 		strategyName: text("strategy_name").notNull(),
 	},
 	(t) => [
-		primaryKey({ columns: [t.mode, t.id] }),
+		primaryKey({ columns: [t.runId, t.id] }),
 		index("trading_orders_placed_at").on(t.placedAt),
 	],
 );
@@ -286,6 +305,7 @@ export const tradingDecisions = sqliteTable(
 	"trading_decisions",
 	{
 		id: integer("id").primaryKey({ autoIncrement: true }),
+		runId: integer("run_id").notNull(),
 		mode: text("mode").notNull(),
 		strategyId: integer("strategy_id"),
 		strategyName: text("strategy_name").notNull(),
@@ -297,23 +317,6 @@ export const tradingDecisions = sqliteTable(
 	},
 	(t) => [index("trading_decisions_time").on(t.time)],
 );
-
-/** 自動取引の実行状態。1行だけ持つ */
-export const autoTrading = sqliteTable("auto_trading", {
-	id: integer("id").primaryKey(),
-	enabled: integer("enabled", { mode: "boolean" }).notNull(),
-	/** paper / live */
-	mode: text("mode").notNull(),
-	/** 動かしている戦略。オンにしたときの運用する戦略 */
-	strategyId: integer("strategy_id"),
-	/** 戦略の state（JSON） */
-	state: text("state").notNull(),
-	/** 次の判定時刻。オフなら null */
-	nextEvalAt: integer("next_eval_at"),
-	/** 約定があったので次の見回りで評価し直す */
-	reevaluate: integer("reevaluate", { mode: "boolean" }).notNull(),
-	startedAt: integer("started_at"),
-});
 
 /** バックテストのアドバイスの指示の版。上書きせず、版を足していく */
 export const adviceInstructions = sqliteTable("advice_instructions", {

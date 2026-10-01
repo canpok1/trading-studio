@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { validator } from "hono/validator";
 import type {
 	OrderFilter,
+	TradingFailure,
 	TradingMode,
 	TradingResult,
 	TradingService,
@@ -15,13 +16,15 @@ const isObj = (v: unknown): v is Record<string, unknown> =>
 	typeof v === "object" && v !== null;
 const isMode = (v: unknown): v is TradingMode => v === "paper" || v === "live";
 
-function respond(c: Context, r: TradingResult) {
-	if (r.ok) return c.json({ status: r.status }, 200);
-	const e = r.error;
+function failure(c: Context, e: TradingFailure) {
 	switch (e.kind) {
 		case "running":
 		case "not_running":
+		case "limit":
+		case "locked":
 			return c.json({ kind: e.kind, message: e.message }, 409);
+		case "not_found":
+			return c.json({ kind: e.kind, message: e.message }, 404);
 		case "invalid_strategy":
 			return c.json(
 				{ kind: e.kind, message: e.message, errors: e.errors },
@@ -30,27 +33,70 @@ function respond(c: Context, r: TradingResult) {
 		case "no_strategy":
 		case "unsupported_mode":
 		case "invalid_cash":
+		case "invalid_name":
 			return c.json({ kind: e.kind, message: e.message }, 400);
 	}
 }
 
+function respond(c: Context, r: TradingResult) {
+	return r.ok ? c.json({ status: r.status }, 200) : failure(c, r.error);
+}
+
+const runId = (c: Context) => Number(c.req.param("id"));
+
 export function tradingRoutes(service: TradingService) {
 	return new Hono()
-		.get("/status", (c) => c.json({ status: service.status() }))
+		.get("/runs", (c) => c.json({ runs: service.runs() }))
 		.post(
-			"/start",
+			"/runs",
 			validator("json", (v, c) => {
-				const mode = isObj(v) ? v.mode : undefined;
+				if (!isObj(v)) return c.json({ message: "形が違う" }, 400);
+				const { name, mode, strategyId } = v;
+				if (typeof name !== "string") {
+					return c.json({ message: "name は文字列" }, 400);
+				}
 				if (!isMode(mode)) {
 					return c.json({ message: "mode は paper か live" }, 400);
 				}
-				return { mode };
+				if (strategyId !== null && typeof strategyId !== "number") {
+					return c.json({ message: "strategyId は戦略の id か null" }, 400);
+				}
+				return { name, mode, strategyId };
 			}),
-			(c) => respond(c, service.start(c.req.valid("json").mode)),
+			(c) => {
+				const r = service.create(c.req.valid("json"));
+				return r.ok ? c.json({ status: r.status }, 201) : failure(c, r.error);
+			},
 		)
-		.post("/stop", (c) => respond(c, service.stop()))
+		.patch(
+			"/runs/:id",
+			validator("json", (v, c) => {
+				if (!isObj(v)) return c.json({ message: "形が違う" }, 400);
+				const out: { name?: string; strategyId?: number | null } = {};
+				if (v.name !== undefined) {
+					if (typeof v.name !== "string") {
+						return c.json({ message: "name は文字列" }, 400);
+					}
+					out.name = v.name;
+				}
+				if (v.strategyId !== undefined) {
+					if (v.strategyId !== null && typeof v.strategyId !== "number") {
+						return c.json({ message: "strategyId は戦略の id か null" }, 400);
+					}
+					out.strategyId = v.strategyId;
+				}
+				return out;
+			}),
+			(c) => respond(c, service.update(runId(c), c.req.valid("json"))),
+		)
+		.delete("/runs/:id", (c) => {
+			const r = service.remove(runId(c));
+			return r.ok ? c.json({ ok: true as const }, 200) : failure(c, r.error);
+		})
+		.post("/runs/:id/start", (c) => respond(c, service.start(runId(c))))
+		.post("/runs/:id/stop", (c) => respond(c, service.stop(runId(c))))
 		.post(
-			"/reset",
+			"/runs/:id/reset",
 			validator("json", (v, c) => {
 				const cash = isObj(v) ? v.initialCash : undefined;
 				if (typeof cash !== "number") {
@@ -58,19 +104,23 @@ export function tradingRoutes(service: TradingService) {
 				}
 				return { initialCash: cash };
 			}),
-			(c) => respond(c, service.reset(c.req.valid("json").initialCash)),
+			(c) =>
+				respond(c, service.reset(runId(c), c.req.valid("json").initialCash)),
 		)
-		.get("/performance", (c) => {
-			const mode = c.req.query("mode") ?? "paper";
-			return isMode(mode)
-				? c.json({ performance: service.performance(mode) }, 200)
-				: c.json({ message: "mode は paper か live" }, 400);
+		.get("/runs/:id/performance", (c) => {
+			const performance = service.performance(runId(c));
+			return performance
+				? c.json({ performance }, 200)
+				: c.json({ message: "運用が見つからない" }, 404);
 		})
 		.get(
 			"/orders",
 			validator("query", (q) => {
 				const filter: OrderFilter = {};
-				if (isMode(q.mode)) filter.mode = q.mode;
+				const run = Number(q.run);
+				if (typeof q.run === "string" && Number.isSafeInteger(run)) {
+					filter.runId = run;
+				}
 				if (
 					q.status === "open" ||
 					q.status === "filled" ||
@@ -98,11 +148,11 @@ export function tradingRoutes(service: TradingService) {
 				});
 			},
 		)
-		.get("/orders/:mode/:id", (c) => {
-			const mode = c.req.param("mode");
-			const found = isMode(mode)
-				? service.order(mode, c.req.param("id"))
-				: null;
+		.get("/orders/:run/:id", (c) => {
+			const found = service.order(
+				Number(c.req.param("run")),
+				c.req.param("id"),
+			);
 			// 画面が使うのは判断の記録のうちそのときの判定だけ。state は形が決まっていないので返さない
 			return found
 				? c.json(

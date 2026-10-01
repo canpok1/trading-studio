@@ -43,6 +43,7 @@ export type {
 	OrderSummary,
 	StoredDecision,
 	StoredOrder,
+	StrategyLock,
 	TradingMode,
 	TradingPerformance,
 } from "./trading/types";
