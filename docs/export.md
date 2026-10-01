@@ -34,8 +34,8 @@
 | ファイル | 中身 | 期間の絞り方 |
 |---|---|---|
 | `strategies.csv` | 今ある戦略の条件 | 全部 |
-| `paper_decisions.csv` | 自動取引の判断の記録と、そのときの市場評価 | 判断した時刻が期間内 |
-| `paper_orders.csv` | 自動取引の注文（約定・損益） | 発注した時刻が期間内 |
+| `paper_decisions.csv` | 自動取引の判断の記録と、そのときの市場評価。どのタブ（運用）の判断か | 判断した時刻が期間内 |
+| `paper_orders.csv` | 自動取引の注文（約定・損益）。どのタブ（運用）の注文か | 発注した時刻が期間内 |
 | `backtest_runs.csv` | 選んだ実行の条件・評価ルール・成績 | 選んだもの |
 | `backtest_orders.csv` `backtest_trades.csv` `backtest_decisions.csv` | 選んだ実行の注文・往復の取引・判断ログ | 選んだもの |
 
