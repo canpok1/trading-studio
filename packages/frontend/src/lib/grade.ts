@@ -14,13 +14,18 @@ const LABEL: Record<Grade, string> = {
 
 const of = (grade: Grade): GradeBadgeValue => ({ grade, label: LABEL[grade] });
 
-/** 損益を、同じ期間ただ買って持っていた場合（ガチホ）の損益率と比べる。ガチホが分からなければ null */
+/**
+ * 損益を、同じ期間ただ買って持っていた場合（ガチホ）の損益率と比べる。ガチホが分からなければ null。
+ * 取引も保有も無い（何もしていない）なら普通に固定する。比べると、下げ相場で何もしなかっただけで良く出るため
+ */
 export function gradePnl(
 	pnlPercent: number | null,
 	buyHoldPercent: number | null,
+	idle: boolean,
 ): GradeBadgeValue | null {
 	if (pnlPercent === null || buyHoldPercent === null) return null;
-	if (pnlPercent > 0) {
+	if (idle) return of("fair");
+	if (pnlPercent >= 0) {
 		if (pnlPercent - buyHoldPercent >= 5) return of("excellent");
 		return of(pnlPercent >= buyHoldPercent ? "good" : "fair");
 	}

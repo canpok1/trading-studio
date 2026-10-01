@@ -11,17 +11,24 @@ import {
 const label = (v: { label: string } | null) => v?.label ?? null;
 
 describe("成績の評価", () => {
-	test("損益はガチホと比べる", () => {
-		expect(label(gradePnl(12, 6))).toBe("優秀");
-		expect(label(gradePnl(10, 6))).toBe("良い");
-		expect(label(gradePnl(6, 6))).toBe("良い");
-		expect(label(gradePnl(3, 6))).toBe("普通");
+	test("損益はガチホと比べる。0% はプラス側に入れる", () => {
+		expect(label(gradePnl(12, 6, false))).toBe("優秀");
+		expect(label(gradePnl(10, 6, false))).toBe("良い");
+		expect(label(gradePnl(6, 6, false))).toBe("良い");
+		expect(label(gradePnl(3, 6, false))).toBe("普通");
+		expect(label(gradePnl(0, 3, false))).toBe("普通");
+		expect(label(gradePnl(0, -2, false))).toBe("良い");
 		// 下げ相場で損を抑えた
-		expect(label(gradePnl(-2, -8))).toBe("悪い");
-		expect(label(gradePnl(0, 3))).toBe("非常に悪い");
-		expect(label(gradePnl(-5, 3))).toBe("非常に悪い");
-		expect(gradePnl(5, null)).toBeNull();
-		expect(gradePnl(null, 5)).toBeNull();
+		expect(label(gradePnl(-2, -8, false))).toBe("悪い");
+		expect(label(gradePnl(-5, 3, false))).toBe("非常に悪い");
+		expect(gradePnl(5, null, false)).toBeNull();
+		expect(gradePnl(null, 5, false)).toBeNull();
+	});
+
+	test("取引も保有も無ければ、相場に関わらず損益は普通", () => {
+		expect(label(gradePnl(0, -10, true))).toBe("普通");
+		expect(label(gradePnl(0, 10, true))).toBe("普通");
+		expect(gradePnl(0, null, true)).toBeNull();
 	});
 
 	test("PF は境目を上の段に含める。損失が無ければ優秀、取引が無ければ出さない", () => {

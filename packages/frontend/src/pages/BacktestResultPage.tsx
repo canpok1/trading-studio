@@ -404,7 +404,13 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 				<div className="flex flex-col gap-0.5">
 					<span className="flex items-center gap-1.5 text-xs text-text-2">
 						損益
-						<GradeBadge value={gradePnl(s.pnlPercent, buyHold)} />
+						<GradeBadge
+							value={gradePnl(
+								s.pnlPercent,
+								buyHold,
+								s.trades === 0 && s.openPositionQuantity === 0,
+							)}
+						/>
 					</span>
 					<div className="flex items-baseline gap-2.5">
 						<span

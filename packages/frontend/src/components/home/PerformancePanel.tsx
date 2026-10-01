@@ -44,7 +44,13 @@ export function PerformancePanel({
 					<div className="flex flex-col gap-0.5">
 						<span className="flex items-center gap-1.5 text-xs text-text-2">
 							開始からの損益
-							<GradeBadge value={gradePnl(p.pnlPercent, p.buyHoldPercent)} />
+							<GradeBadge
+								value={gradePnl(
+									p.pnlPercent,
+									p.buyHoldPercent,
+									p.trades === 0 && p.position.quantity === 0,
+								)}
+							/>
 						</span>
 						<div className="flex items-baseline gap-2.5">
 							<span
