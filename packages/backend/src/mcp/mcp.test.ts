@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { Candle, ConditionSet } from "@trading-studio/core";
+import type { Candle, SingleBuyConditionSet } from "@trading-studio/core";
 import {
 	DEFAULT_BUY_ORDER,
 	DEFAULT_PARTIAL_SELL,
+	singleBuy,
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
 import { Hono } from "hono";
@@ -15,7 +16,8 @@ const H = TIMEFRAME_MS["1h"];
 // JST 2026-08-01 00:00
 const START = Date.UTC(2026, 6, 31, 15);
 
-const PARAMS: ConditionSet = {
+// 買いを持つ前の平らな形。MCP は JSON で受け取り、買い1つとして読む
+const PARAMS: SingleBuyConditionSet = {
 	frequency: {
 		flat: { value: 1, unit: "h" },
 		holding: { value: 1, unit: "h" },
@@ -173,7 +175,9 @@ describe("MCP", () => {
 		});
 		expect(updated.isError).toBe(false);
 		const got = await call("get_strategy", { id });
-		expect(got.json).toMatchObject({ params: { maxPositions: 3 } });
+		expect(got.json).toMatchObject({
+			params: { buys: [{ maxPositions: 3 }] },
+		});
 		expect((got.json as { screenText: string }).screenText).toContain(
 			"買値から 1% 下がった",
 		);
@@ -192,7 +196,7 @@ describe("MCP", () => {
 			params: { ...PARAMS, maxPositions: 3 },
 		});
 		expect(r.isError).toBe(true);
-		expect(t.strategies.get(id)?.params.maxPositions).toBe(1);
+		expect(t.strategies.get(id)?.params.buys[0]?.maxPositions).toBe(1);
 	});
 
 	test("条件の誤りと形の誤りはエラーで返す", async () => {
@@ -246,7 +250,7 @@ describe("MCP", () => {
 		const orders = await call("get_backtest_orders", { id: r.id });
 		expect((orders.json as { total: number }).total).toBeGreaterThan(0);
 		const detail = await call("get_backtest", { id: r.id });
-		expect(detail.json).toMatchObject({ id: r.id, params: PARAMS });
+		expect(detail.json).toMatchObject({ id: r.id, params: singleBuy(PARAMS) });
 		const list = await call("list_backtests");
 		expect(list.json).toMatchObject([{ id: r.id }]);
 	});

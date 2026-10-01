@@ -49,9 +49,8 @@ import { NumberInput } from "../components/NumberInput";
 import { Page } from "../components/Page";
 import { EmptyState, ErrorState, LoadingCard } from "../components/States";
 import {
-	ConditionGroups,
+	BuyRulesEditor,
 	FrequencyCard,
-	OrderSizeCard,
 	RiskLimitCard,
 } from "../components/strategy/ConditionEditor";
 import {
@@ -900,12 +899,11 @@ function RunForm({
 					<div className="contents lg:flex lg:flex-col lg:gap-3.5">
 						<FrequencyCard {...editor} />
 						<div className="order-1 flex flex-col gap-3.5 lg:order-none">
-							<OrderSizeCard {...editor} latestPrice={latest} />
 							<RiskLimitCard {...editor} />
 						</div>
 					</div>
 					<div className="contents lg:flex lg:flex-col lg:gap-3.5">
-						<ConditionGroups {...editor} />
+						<BuyRulesEditor {...editor} latestPrice={latest} />
 					</div>
 					<div className="order-2 flex flex-col gap-3.5 lg:col-span-2 lg:order-none">
 						{running && (

@@ -12,6 +12,7 @@ import {
 	jstDayStart,
 	newAccount,
 	normalizeAccount,
+	publicLots,
 	settleFills,
 	tradeFillPrice,
 	tradingStep,
@@ -367,6 +368,27 @@ describe("ロット", () => {
 			entryPrice: 9_500_000,
 			openedAt: 11 * H,
 		});
+	});
+
+	test("買いの id を持つ買いは、約定したロットと戦略へ渡すロットに買いの id を持ち、記録に買いの名前を残す", () => {
+		const placed = decideWith(
+			fixed([
+				{
+					kind: "place",
+					side: "buy",
+					type: "limit",
+					price: 10_000_000,
+					quantity: 1_000_000,
+					buyId: "b2",
+					buyName: "突破",
+				},
+			]),
+			newAccount(1_000_000),
+		);
+		expect(placed.changed[0]?.buyName).toBe("突破");
+		const filled = settleFills(placed.account, (o) => o.price, 11 * H, FEES);
+		expect(filled.account.lots[0]?.buyId).toBe("b2");
+		expect(publicLots(filled.account.lots)[0]?.buyId).toBe("b2");
 	});
 
 	test("ロットを指定した売りは、そのロットだけで往復を閉じる", () => {

@@ -1,9 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import type { BacktestOrder, Candle, ConditionSet } from "@trading-studio/core";
+import type {
+	BacktestOrder,
+	Candle,
+	ConditionSet,
+	SingleBuyConditionSet,
+} from "@trading-studio/core";
 import {
 	conditionScreenText,
 	DEFAULT_BUY_ORDER,
 	DEFAULT_PARTIAL_SELL,
+	singleBuy,
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
 import type { BacktestRun } from "../backtests/types";
@@ -124,7 +130,7 @@ describe("応答の検証", () => {
 	});
 });
 
-const PARAMS: ConditionSet = {
+const FLAT: SingleBuyConditionSet = {
 	frequency: {
 		flat: { value: 1, unit: "h" },
 		holding: { value: 1, unit: "h" },
@@ -152,6 +158,7 @@ const PARAMS: ConditionSet = {
 		conditions: [{ type: "entryChange", percent: 1, direction: "down" }],
 	},
 };
+const PARAMS: ConditionSet = singleBuy(FLAT);
 
 function candles(bars: number): Candle[] {
 	return Array.from({ length: bars }, (_, i) => {
@@ -246,7 +253,7 @@ describe("アドバイスの生成", () => {
 		// 改善案を反映した戦略も一緒に持つ
 		expect(a?.content?.improved).toMatchObject({
 			ok: true,
-			params: { orderSize: 100_000, dailyLossLimit: 100_000 },
+			params: { buys: [{ orderSize: 100_000 }], dailyLossLimit: 100_000 },
 		});
 	});
 
@@ -417,44 +424,50 @@ describe("別の AI で作る", () => {
 });
 
 describe("改善版の戦略", () => {
-	// PARAMS を AI の出す形にしたもの。使わない項目は null で埋めてくる
+	// PARAMS を AI の出す形にしたもの。使わない項目は null で埋めてくる。patch は買い1つめに当てる
 	const ai = (patch: Record<string, unknown> = {}) => ({
 		frequency: PARAMS.frequency,
-		orderSizeBtc: 0.01,
-		maxPositions: 1,
 		dailyLossLimitYen: 30_000,
-		buy: {
-			match: "all",
-			conditions: [
-				{
-					type: "breakout",
-					timeframe: "1h",
-					lookback: 5,
-					direction: "high",
-					fast: null,
-					values: null,
-				},
-			],
-		},
 		stopLossCooldownBars: 0,
 		stopLossCooldownTimeframe: "1h",
-		buyOrder: {
-			lines: [{ type: "limit", belowPercent: 0.1 }],
-			expireBars: 3,
-			expireTimeframe: "1h",
-		},
-		partialTakeProfit: { match: "all", conditions: [] },
-		partialSell: DEFAULT_PARTIAL_SELL,
-		takeProfit: PARAMS.takeProfit,
-		stopLoss: PARAMS.stopLoss,
-		...patch,
+		buys: [
+			{
+				id: "b1",
+				name: "買い1",
+				orderSizeBtc: 0.01,
+				maxPositions: 1,
+				buy: {
+					match: "all",
+					conditions: [
+						{
+							type: "breakout",
+							timeframe: "1h",
+							lookback: 5,
+							direction: "high",
+							fast: null,
+							values: null,
+						},
+					],
+				},
+				buyOrder: {
+					lines: [{ type: "limit", belowPercent: 0.1 }],
+					expireBars: 3,
+					expireTimeframe: "1h",
+				},
+				partialTakeProfit: { match: "all", conditions: [] },
+				partialSell: DEFAULT_PARTIAL_SELL,
+				takeProfit: FLAT.takeProfit,
+				stopLoss: FLAT.stopLoss,
+				...patch,
+			},
+		],
 	});
 
 	test("null の項目を落とし、注文量は BTC から satoshi に直して読む", () => {
 		const r = readImprovedStrategy(ai({ orderSizeBtc: 0.02 }), PARAMS);
 		expect(r).toEqual({
 			ok: true,
-			params: { ...PARAMS, orderSize: 2_000_000 },
+			params: singleBuy({ ...FLAT, orderSize: 2_000_000 }),
 		});
 	});
 

@@ -9,22 +9,28 @@ export const DEMO_IMPROVED_STRATEGY = {
 		flat: { value: 1, unit: "h" },
 		holding: { value: 1, unit: "h" },
 	},
-	orderSizeBtc: 0.001,
-	maxPositions: 1,
 	dailyLossLimitYen: 100000,
-	buy: {
-		match: "all",
-		conditions: [{ type: "emaCross", fast: 12, slow: 48, direction: "up" }],
-	},
-	buyOrder: { lines: [{ type: "market" }], expireBars: 3 },
-	takeProfit: {
-		match: "any",
-		conditions: [{ type: "entryChange", percent: 5, direction: "up" }],
-	},
-	stopLoss: {
-		match: "any",
-		conditions: [{ type: "entryChange", percent: 3, direction: "down" }],
-	},
+	buys: [
+		{
+			id: "b1",
+			name: "買い1",
+			orderSizeBtc: 0.001,
+			maxPositions: 1,
+			buy: {
+				match: "all",
+				conditions: [{ type: "emaCross", fast: 12, slow: 48, direction: "up" }],
+			},
+			buyOrder: { lines: [{ type: "market" }], expireBars: 3 },
+			takeProfit: {
+				match: "any",
+				conditions: [{ type: "entryChange", percent: 5, direction: "up" }],
+			},
+			stopLoss: {
+				match: "any",
+				conditions: [{ type: "entryChange", percent: 3, direction: "down" }],
+			},
+		},
+	],
 };
 
 /** プロンプトの注文の件数を書き込んだアドバイスを返す。isDown が true の間は失敗する */

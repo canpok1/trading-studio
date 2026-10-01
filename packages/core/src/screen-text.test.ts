@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { ConditionSet } from "./condition-strategy";
-import { DEFAULT_BUY_ORDER, DEFAULT_PARTIAL_SELL } from "./condition-strategy";
+import {
+	DEFAULT_BUY_ORDER,
+	DEFAULT_PARTIAL_SELL,
+	singleBuy,
+} from "./condition-strategy";
 import { conditionSetChanges } from "./screen-text";
 
-const BASE: ConditionSet = {
+const BASE: ConditionSet = singleBuy({
 	frequency: {
 		flat: { value: 1, unit: "h" },
 		holding: { value: 1, unit: "h" },
@@ -33,7 +37,8 @@ const BASE: ConditionSet = {
 		conditions: [{ type: "entryChange", percent: 5, direction: "up" }],
 	},
 	stopLoss: { match: "any", conditions: [] },
-};
+});
+const rule = (p: ConditionSet) => p.buys[0] as ConditionSet["buys"][number];
 
 describe("戦略設定の変更点", () => {
 	test("同じなら無い", () => {
@@ -42,14 +47,14 @@ describe("戦略設定の変更点", () => {
 
 	test("値を変えた条件は、変える前と後の行で出す", () => {
 		const after = structuredClone(BASE);
-		after.buy.conditions[0] = {
+		rule(after).buy.conditions[0] = {
 			type: "emaCross",
 			timeframe: "1h",
 			fast: 20,
 			slow: 48,
 			direction: "up",
 		};
-		after.maxPositions = 3;
+		rule(after).maxPositions = 3;
 		expect(conditionSetChanges(BASE, after)).toEqual([
 			{
 				section: "注文量とロット数",
@@ -66,7 +71,7 @@ describe("戦略設定の変更点", () => {
 
 	test("先頭に条件を足しても、残りの条件は変わったことにしない。組み合わせ方の変更も出す", () => {
 		const after = structuredClone(BASE);
-		after.takeProfit = {
+		rule(after).takeProfit = {
 			match: "all",
 			conditions: [
 				{
@@ -76,10 +81,10 @@ describe("戦略設定の変更点", () => {
 					threshold: 70,
 					direction: "above",
 				},
-				...BASE.takeProfit.conditions,
+				...rule(BASE).takeProfit.conditions,
 			],
 		};
-		after.stopLoss.conditions = [
+		rule(after).stopLoss.conditions = [
 			{ type: "trailingStop", percent: 3, activatePercent: 0 },
 		];
 		expect(conditionSetChanges(BASE, after)).toEqual([

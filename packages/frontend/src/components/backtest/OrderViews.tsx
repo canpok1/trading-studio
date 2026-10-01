@@ -96,7 +96,10 @@ export function exitBadge(
 	return text ? { kind, text } : null;
 }
 
-/** 売りのバッジ。一覧の行では1行に収めて省略し、詳細（wrap）では折り返して全部出す */
+/**
+ * 売りのバッジ。一覧の行では1行に収めて省略し、詳細（wrap）では折り返して全部出す。
+ * 買いは、買いを複数持つ戦略で出した買いだけ、買いの名前を出す
+ */
 export function ExitBadge({
 	order,
 	wrap = false,
@@ -104,6 +107,16 @@ export function ExitBadge({
 	order: ListedOrder;
 	wrap?: boolean;
 }) {
+	if (order.side === "buy" && order.buyName) {
+		return (
+			<span
+				data-testid="buy-badge"
+				className={`inline-block max-w-full rounded-full bg-surface-2 px-2 py-0.5 align-middle text-xs font-semibold text-text-2 ${wrap ? "" : "truncate"}`}
+			>
+				{order.buyName}
+			</span>
+		);
+	}
 	const b = exitBadge(order);
 	if (!b) return null;
 	const tone =

@@ -53,43 +53,56 @@ function conditionBody(c: Condition): string {
 	}
 }
 
-/** 戦略設定。戦略画面の見出しと項目の並びどおりに書く */
+/**
+ * 戦略設定。戦略画面の見出しと項目の並びどおりに書く。
+ * 買いごとの見出しは、買いが2つ以上なら頭に【買いの名前】を付ける
+ */
 export function conditionSetScreenText(p: ConditionSet): string[] {
 	const lines = [
 		"### 判定の間隔",
 		`- 保有なしのとき: ${freq(p.frequency.flat)}ごとに買いの条件を判定`,
 		`- 保有中のとき: ${freq(p.frequency.holding)}ごとに売りの条件を判定`,
-		"### 注文量とロット数",
-		`- 1回の注文量: ${formatBtc(p.orderSize)} BTC`,
-		`- 最大ロット数: ${p.maxPositions}`,
 		"### リスク上限",
 		`- 1日の損失上限（円）: ${formatYen(p.dailyLossLimit)}`,
 		`- 損切り後に買わない本数: ${p.stopLossCooldownBars > 0 ? `${TIMEFRAME_LABELS[p.stopLossCooldownTimeframe]}で ${p.stopLossCooldownBars} 本` : "0（止めない）"}`,
 	];
-	for (const key of CONDITION_GROUPS) {
-		const g = p[key];
+	if (p.buys.length >= 2) {
 		lines.push(
-			`### ${CONDITION_GROUP_LABELS[key]}（組み合わせ方: ${g.match === "all" ? "すべて満たす" : "どれか1つ"}）`,
+			`- 買いは上から ${p.buys.map((b) => `「${b.name}」`).join("→")} の順。同じ判定で複数成立したら上の1つだけ注文する。ロットは買った買いの売りの条件で売る`,
 		);
-		if (g.conditions.length === 0) lines.push("- 条件なし");
-		g.conditions.forEach((c, i) => {
-			lines.push(`${i + 1}. ${conditionScreenText(c)}`);
-		});
-		if (key === "partialTakeProfit" && g.conditions.length > 0) {
+	}
+	for (const b of p.buys) {
+		const tag = p.buys.length >= 2 ? `【${b.name}】` : "";
+		lines.push(
+			`### ${tag}注文量とロット数`,
+			`- 1回の注文量: ${formatBtc(b.orderSize)} BTC`,
+			`- 最大ロット数: ${b.maxPositions}`,
+		);
+		for (const key of CONDITION_GROUPS) {
+			const g = b[key];
 			lines.push(
-				`- 売る割合: ロットの ${p.partialSell.percent}%。1ロットにつき1回だけ`,
-				`- 一部利確の後、買値を下回ったら残りを損切り: ${p.partialSell.breakevenStop ? "する" : "しない"}`,
+				`### ${tag}${CONDITION_GROUP_LABELS[key]}（組み合わせ方: ${g.match === "all" ? "すべて満たす" : "どれか1つ"}）`,
 			);
-		}
-		if (key === "buy") {
-			const o = p.buyOrder;
-			o.lines.forEach((l, i) => {
-				lines.push(
-					l.type === "limit"
-						? `- 注文${i + 1}: 指値。現在値から ${l.belowPercent}% 下に指値。${TIMEFRAME_LABELS[o.expireTimeframe]}で ${o.expireBars} 本のあいだ約定しなければ取消`
-						: `- 注文${i + 1}: 成行`,
-				);
+			if (g.conditions.length === 0) lines.push("- 条件なし");
+			g.conditions.forEach((c, i) => {
+				lines.push(`${i + 1}. ${conditionScreenText(c)}`);
 			});
+			if (key === "partialTakeProfit" && g.conditions.length > 0) {
+				lines.push(
+					`- 売る割合: ロットの ${b.partialSell.percent}%。1ロットにつき1回だけ`,
+					`- 一部利確の後、買値を下回ったら残りを損切り: ${b.partialSell.breakevenStop ? "する" : "しない"}`,
+				);
+			}
+			if (key === "buy") {
+				const o = b.buyOrder;
+				o.lines.forEach((l, i) => {
+					lines.push(
+						l.type === "limit"
+							? `- 注文${i + 1}: 指値。現在値から ${l.belowPercent}% 下に指値。${TIMEFRAME_LABELS[o.expireTimeframe]}で ${o.expireBars} 本のあいだ約定しなければ取消`
+							: `- 注文${i + 1}: 成行`,
+					);
+				});
+			}
 		}
 	}
 	return lines;
