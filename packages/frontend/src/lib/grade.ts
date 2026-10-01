@@ -59,11 +59,13 @@ export function gradeWinRate(winRate: number | null): GradeBadgeValue | null {
 	return of("bad");
 }
 
-/** 取引回数は良し悪しではなく、成績が偶然でないと言えるかの目安として3段階で出す */
-export function gradeTrades(trades: number): GradeBadgeValue {
-	if (trades >= 30) return { grade: "good", label: "十分" };
-	if (trades >= 10) return { grade: "fair", label: "やや少ない" };
-	return { grade: "poor", label: "少なすぎ" };
+/**
+ * 取引が少なく、勝率・PF の評価が偶然の可能性があるときの注意文。無ければ null。
+ * 適切な回数は戦略ごとに違うので、回数そのものは評価しない
+ */
+export function fewTradesNote(trades: number): string | null {
+	if (trades === 0 || trades >= 30) return null;
+	return `取引が${trades}回しかないため、勝率・PF の評価は偶然の可能性があります`;
 }
 
 /** 期間の最初の足の始値から最後の足の終値まで、ただ持っていた場合の損益率（%）。足が無ければ null */

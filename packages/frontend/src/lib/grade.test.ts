@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
 	buyHoldPercentOf,
+	fewTradesNote,
 	gradeMaxDrawdown,
 	gradePnl,
 	gradeProfitFactor,
-	gradeTrades,
 	gradeWinRate,
 } from "./grade";
 
@@ -51,10 +51,14 @@ describe("成績の評価", () => {
 		expect(gradeWinRate(null)).toBeNull();
 	});
 
-	test("取引回数は3段階", () => {
-		expect(label(gradeTrades(30))).toBe("十分");
-		expect(label(gradeTrades(10))).toBe("やや少ない");
-		expect(label(gradeTrades(9))).toBe("少なすぎ");
+	test("取引が1〜29回のときだけ、勝率・PF が偶然の可能性があると知らせる", () => {
+		expect(fewTradesNote(12)).toBe(
+			"取引が12回しかないため、勝率・PF の評価は偶然の可能性があります",
+		);
+		expect(fewTradesNote(29)).not.toBeNull();
+		expect(fewTradesNote(30)).toBeNull();
+		// 取引が無ければ勝率・PF の評価も出ない
+		expect(fewTradesNote(0)).toBeNull();
 	});
 
 	test("ガチホの損益率は最初の足の始値から最後の足の終値。始値が無い足は終値を使う", () => {
