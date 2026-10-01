@@ -18,7 +18,7 @@ import {
 	RiskLimitCard,
 } from "../components/strategy/ConditionEditor";
 import { Button, Card } from "../components/ui";
-import { useTradingStatus } from "../lib/trading";
+import { strategyLockOf, useTradingStatus } from "../lib/trading";
 import { errorMessage, readJson, useAsync } from "../lib/useAsync";
 
 type Data = { strategies: StoredStrategy[]; latest: number | null };
@@ -35,7 +35,7 @@ export function StrategiesPage() {
 	const [dialog, setDialog] = useState<Dialog>(null);
 	const [notice, setNotice] = useState<string | null>(null);
 	const selectId = useId();
-	const { status: trading } = useTradingStatus();
+	const { runs } = useTradingStatus();
 
 	const load = useCallback(async (): Promise<Data> => {
 		const [list, latest] = await Promise.all([
@@ -136,9 +136,7 @@ export function StrategiesPage() {
 		);
 	}
 
-	// 運用する戦略は、自動取引がオンの間と保有がある間は条件を変えられない（サーバーも 409 で止める）
-	const lock =
-		trading?.strategy?.id === current.id ? trading.strategyLock : null;
+	const lock = strategyLockOf(runs, current.id);
 	const dirty = !sameParams(params, current.params);
 	const hasErr = errors.length > 0;
 	const setParams = (p: ConditionSet) => {
@@ -219,8 +217,8 @@ export function StrategiesPage() {
 						{lock && (
 							<p role="status" className="text-[13px] font-semibold">
 								{lock === "running"
-									? "自動取引で稼働中のため、条件を変えられない。"
-									: "運用する戦略で保有か未約定の注文があるため、条件を変えられない。"}
+									? "この戦略を使うタブが自動取引で稼働中のため、条件を変えられない。"
+									: "この戦略を使うタブに保有か未約定の注文があるため、条件を変えられない。"}
 								変えるときは「＋ 新しい戦略」でコピーして編集する
 							</p>
 						)}

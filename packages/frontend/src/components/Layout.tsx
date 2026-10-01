@@ -174,24 +174,36 @@ export function Layout({ badges = {} }: { badges?: Record<string, boolean> }) {
 	);
 }
 
-/** 自動取引がオンの間だけ、全画面の上部に出す帯。開始からの損益を出し、押すとホームのそのモードのタブへ */
+/**
+ * 自動取引がオンの間だけ、全画面の上部に出す帯。開始からの損益を出し、押すとホームの稼働中のタブへ。
+ * 複数のタブが稼働中なら件数と、損益の合計（開始時の資金の合計に対する %）を出す
+ */
 function TradingBand() {
-	const { status } = useTradingStatus();
-	if (!status?.enabled) return null;
-	const { equity, initialCash } = status.account;
-	const pnl = equity === null ? null : equity - initialCash;
+	const { runs } = useTradingStatus();
+	const running = runs?.filter((r) => r.enabled) ?? [];
+	const first = running[0];
+	if (!first) return null;
+	const initialCash = running.reduce((n, r) => n + r.account.initialCash, 0);
+	const pnl = running.every((r) => r.account.equity !== null)
+		? running.reduce(
+				(n, r) => n + (r.account.equity ?? 0) - r.account.initialCash,
+				0,
+			)
+		: null;
 	return (
 		<aside
 			aria-label="稼働中の自動取引"
 			className="sticky top-0 z-30 border-b-[3px] border-dashed border-paper-ink bg-paper text-xs text-paper-ink"
 		>
 			<Link
-				to={`/home?mode=${status.mode}`}
+				to={`/home?run=${first.id}`}
 				className="flex min-h-10 items-center gap-2 px-4"
 			>
 				<PaperIcon />
 				<strong className="text-[13px] whitespace-nowrap">
-					ペーパー稼働中
+					{running.length > 1
+						? `ペーパー ${running.length}件稼働中`
+						: "ペーパー稼働中"}
 				</strong>
 				<span className="hidden xl:inline">最新の実データで模擬売買</span>
 				<span
@@ -207,7 +219,9 @@ function TradingBand() {
 					data-testid="band-strategy"
 					className="ml-auto min-w-0 truncate font-bold"
 				>
-					{status.strategy?.name ?? ""}
+					{running.length > 1
+						? running.map((r) => r.name).join("・")
+						: (first.strategy?.name ?? "")}
 				</span>
 			</Link>
 		</aside>

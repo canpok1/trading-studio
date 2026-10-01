@@ -71,10 +71,12 @@ test("旧名「AI判定」の URL はニュース画面へ移る", async ({ page
 	).toBeVisible();
 });
 
-test("取引画面の URL はホームの同じモードのタブへ移る", async ({ page }) => {
-	await page.goto("/trades?mode=live");
-	await expect(page).toHaveURL(/\/home\?mode=live$/);
-	await expect(page.getByRole("tab", { name: "ライブ" })).toHaveAttribute(
+test("取引画面の URL はホームの同じモードの最初のタブへ移る", async ({
+	page,
+}) => {
+	await page.goto("/trades?mode=paper");
+	await expect(page).toHaveURL(/\/home\?mode=paper$/);
+	await expect(page.getByRole("tab", { name: "ペーパー" })).toHaveAttribute(
 		"aria-selected",
 		"true",
 	);

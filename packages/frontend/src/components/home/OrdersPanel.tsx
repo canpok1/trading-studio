@@ -1,13 +1,12 @@
 // ホームの注文・約定。状態と売買で絞り込み、日ごとにまとめて10件ずつ出す
 
-import type { StoredOrder, TradingMode } from "@trading-studio/backend";
+import type { StoredOrder } from "@trading-studio/backend";
 import { useMemo, useState } from "react";
 import { formatDate, formatDateWeekday } from "../../format";
 import { formatSignedInt } from "../../lib/number";
 import { useTradingOrders } from "../../lib/trading";
 import { OrderRow, orderTime } from "../backtest/OrderViews";
 import { EmptyState, ErrorState, Skeleton } from "../States";
-import { MODE_LABELS } from "../trading/TradeViews";
 import { Button } from "../ui";
 import { PANEL, PanelHeader } from "./Panel";
 
@@ -33,12 +32,12 @@ const SIDE_OPTIONS: readonly (readonly [SideFilter, string])[] = [
 
 /** 選んだ注文の詳細は、チャートの印と共通なのでホームが出す */
 export function OrdersPanel({
-	mode,
+	runId,
 	active,
 	selectedId,
 	onSelect,
 }: {
-	mode: TradingMode;
+	runId: number;
 	active: boolean;
 	selectedId: string | null;
 	onSelect: (id: string) => void;
@@ -48,7 +47,7 @@ export function OrdersPanel({
 	const [limit, setLimit] = useState(ORDERS_PAGE);
 	const loaded = useTradingOrders(
 		{
-			mode,
+			runId,
 			...(kind !== "all" && { status: kind }),
 			...(side !== "all" && { side }),
 			limit,
@@ -149,7 +148,7 @@ export function OrdersPanel({
 							/>
 						) : (
 							<p className="rounded-xl border border-line px-4 py-6 text-center text-sm text-text-2">
-								{MODE_LABELS[mode]}の注文はまだ無い
+								このタブの注文はまだ無い
 							</p>
 						)
 					) : (

@@ -42,13 +42,13 @@ type Detail = {
  * 対応する売買へ移るときは onSelect で id を渡す
  */
 export function TradeOrderSheet({
-	mode,
+	runId,
 	id,
 	initial,
 	onSelect,
 	onClose,
 }: {
-	mode: TradingMode;
+	runId: number;
 	id: string;
 	initial: StoredOrder | null;
 	onSelect: (id: string) => void;
@@ -61,8 +61,8 @@ export function TradeOrderSheet({
 		let alive = true;
 		setDetail(null);
 		setError(null);
-		api.api.trading.orders[":mode"][":id"]
-			.$get({ param: { mode, id } })
+		api.api.trading.orders[":run"][":id"]
+			.$get({ param: { run: String(runId), id } })
 			.then((res) => readJson<Detail>(res))
 			.then((d) => {
 				if (alive) setDetail(d);
@@ -73,7 +73,7 @@ export function TradeOrderSheet({
 		return () => {
 			alive = false;
 		};
-	}, [api, mode, id]);
+	}, [api, runId, id]);
 
 	const order = detail?.order ?? (initial?.id === id ? initial : null);
 	if (!order) {

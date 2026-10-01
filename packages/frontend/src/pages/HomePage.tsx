@@ -1,11 +1,11 @@
 import type {
+	AutoTradingStatus,
 	CurrentJudgment,
 	JudgmentSeries,
 	LatestMarket,
 	StoredOrder,
 	StoredStrategy,
 	TimeframeCoverage,
-	TradingMode,
 } from "@trading-studio/backend";
 import type { Timeframe } from "@trading-studio/core";
 import {
@@ -28,14 +28,15 @@ import { AutoTradingCard } from "../components/home/AutoTradingCard";
 import { OrdersPanel } from "../components/home/OrdersPanel";
 import { PANEL, PanelHeader } from "../components/home/Panel";
 import { PerformancePanel } from "../components/home/PerformancePanel";
+import { AddRunDialog } from "../components/home/RunDialogs";
 import { JudgmentBadge } from "../components/judgment/JudgmentBadge";
 import { EmptyState, ErrorState, Skeleton } from "../components/States";
 import {
 	LIVE_AVAILABLE,
-	MODE_LABELS,
+	ModeTag,
 	TradeOrderSheet,
 } from "../components/trading/TradeViews";
-import { Button, Tabs } from "../components/ui";
+import { Button } from "../components/ui";
 import { useChartBg } from "../lib/chart-bg";
 import { useChartIndicators } from "../lib/chart-indicators";
 import { initialSpanMs, useChartTimeframe } from "../lib/chart-timeframe";
@@ -48,6 +49,7 @@ import {
 } from "../lib/home";
 import { formatSignedPercent } from "../lib/number";
 import {
+	MAX_RUNS,
 	useTradingOrders,
 	useTradingPerformance,
 	useTradingStatus,
@@ -69,15 +71,6 @@ const EMA_HISTORY_FACTOR = 3;
 const MAX_HISTORY = 1_000;
 /** チャートの印に読む注文の数 */
 const MARKER_ORDERS = 300;
-
-const MODE_TABS: readonly (readonly [TradingMode, string])[] = [
-	["paper", MODE_LABELS.paper],
-	["live", MODE_LABELS.live],
-];
-const isMode = (v: string | null): v is TradingMode =>
-	v === "paper" || v === "live";
-
-type Strategies = { list: StoredStrategy[]; active: StoredStrategy | null };
 
 export function HomePage() {
 	const api = useApi();
@@ -104,23 +97,17 @@ export function HomePage() {
 
 	// 戦略と、全期間の足の数（選べる粒度の判定に使う）
 	const loadSetup = useCallback(async () => {
-		const [list, active, coverage] = await Promise.all([
+		const [list, coverage] = await Promise.all([
 			api.api.strategies
 				.$get()
 				.then((r) => readJson<{ strategies: StoredStrategy[] }>(r)),
-			api.api.strategies.active
-				.$get()
-				.then((r) => readJson<{ strategy: StoredStrategy | null }>(r)),
 			api.api.data.coverage
 				.$get()
 				.then((r) => readJson<{ timeframes: TimeframeCoverage[] }>(r)),
 		]);
 		const counts: Partial<Record<Timeframe, number>> = {};
 		for (const c of coverage.timeframes) counts[c.timeframe] = c.count;
-		return {
-			strategies: { list: list.strategies, active: active.strategy },
-			counts,
-		};
+		return { strategies: list.strategies, counts };
 	}, [api]);
 	const setup = useAsync(loadSetup);
 
@@ -175,27 +162,35 @@ function HomeBody({
 	latest,
 	latestError,
 	onRetryLatest,
-	strategies: initial,
+	strategies,
 	counts,
 	visible,
 }: {
 	latest: LatestMarket | null;
 	latestError: string | null;
 	onRetryLatest: () => void;
-	strategies: Strategies;
+	strategies: StoredStrategy[];
 	counts: Partial<Record<Timeframe, number>>;
 	visible: boolean;
 }) {
 	const api = useApi();
-	const { status: trading, refresh: refreshTrading } = useTradingStatus();
-	// タブはクエリの mode で持つ。無ければ運用中のモード（止まっていれば最後に運用したモード）
+	const { runs, set } = useTradingStatus();
+	// タブはクエリの run で持つ。無ければ稼働中の最初のタブ、どれも止まっていれば先頭。
+	// 以前の ?mode= のリンクは、そのモードの最初のタブで開く
 	const [params, setParams] = useSearchParams();
-	const param = params.get("mode");
-	const mode: TradingMode = isMode(param) ? param : (trading?.mode ?? "paper");
+	const runParam = Number(params.get("run"));
+	const modeParam = params.get("mode");
+	const run =
+		runs?.find((r) => r.id === runParam) ??
+		runs?.find((r) => r.mode === modeParam) ??
+		runs?.find((r) => r.enabled) ??
+		runs?.[0] ??
+		null;
+	const runId = run?.id ?? 0;
+	const [adding, setAdding] = useState(false);
 	// ライブが使えない間、ライブのタブは口座・成績・注文を出さない
-	const hasAccount = !(mode === "live" && !LIVE_AVAILABLE);
-	// 状態が持つ口座は運用中のモードのものだけ
-	const account = trading?.mode === mode ? trading.account : null;
+	const hasAccount = run !== null && !(run.mode === "live" && !LIVE_AVAILABLE);
+	const account = run?.account ?? null;
 	// 状態は定期的に取り直すので、買値が変わったときだけ線を引き直す
 	const entryKey = account?.lots.map((l) => l.entryPrice).join(",") ?? "";
 	const entryPrices = useMemo(
@@ -203,10 +198,10 @@ function HomeBody({
 		[entryKey],
 	);
 	const { orders, reload: reloadOrders } = useTradingOrders(
-		{ mode, limit: MARKER_ORDERS },
+		{ runId, limit: MARKER_ORDERS },
 		visible && hasAccount,
 	);
-	const perf = useTradingPerformance(mode, visible && hasAccount);
+	const perf = useTradingPerformance(runId, visible && hasAccount);
 	const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
 	const [toast, setToast] = useState<string | null>(null);
 	const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -221,10 +216,7 @@ function HomeBody({
 		},
 		[],
 	);
-	const [strategies, setStrategies] = useState(initial);
-	const [saving, setSaving] = useState(false);
-	const [saveError, setSaveError] = useState<string | null>(null);
-	const active = strategies.active;
+	const active = strategies.find((x) => x.id === run?.strategy?.id) ?? null;
 
 	const [timeframe, setTimeframe] = useChartTimeframe();
 	const range = loadRange(timeframe, counts);
@@ -315,21 +307,9 @@ function HomeBody({
 		);
 	}, [bars, fresh, timeframe, latest]);
 
-	const choose = async (id: number | null) => {
-		setSaving(true);
-		setSaveError(null);
-		try {
-			const r = await api.api.strategies.active
-				.$put({ json: { id } })
-				.then((res) => readJson<{ strategy: StoredStrategy | null }>(res));
-			setStrategies((s) => ({ ...s, active: r.strategy }));
-			// オフ中に出す「次の判定」は運用する戦略の粒度で決まる
-			refreshTrading();
-		} catch (e) {
-			setSaveError(errorMessage(e));
-		} finally {
-			setSaving(false);
-		}
+	const selectRun = (id: number) => {
+		setSelectedOrder(null);
+		setParams({ run: String(id) }, { replace: true });
 	};
 
 	const barJudgments = useMemo(
@@ -356,17 +336,12 @@ function HomeBody({
 
 	return (
 		<HomeFrame>
-			<div className="lg:col-span-2">
-				<Tabs
-					label="モード"
-					items={MODE_TABS}
-					current={mode}
-					onSelect={(m) => {
-						setSelectedOrder(null);
-						setParams({ mode: m }, { replace: true });
-					}}
-				/>
-			</div>
+			<RunTabs
+				runs={runs}
+				current={run?.id ?? null}
+				onSelect={selectRun}
+				onAdd={() => setAdding(true)}
+			/>
 			<CollectorAlert latest={latest} />
 			{latestError && (
 				<div
@@ -382,24 +357,25 @@ function HomeBody({
 					</Button>
 				</div>
 			)}
-			<div className="flex min-w-0 flex-col gap-2">
+			{run ? (
 				<AutoTradingCard
-					mode={mode}
-					strategies={strategies.list}
-					active={active}
-					saving={saving}
-					onChoose={choose}
+					key={`card-${run.id}`}
+					run={run}
+					strategies={strategies}
+					canDelete={(runs?.length ?? 0) > 1}
 					onToast={showToast}
+					onDeleted={() => {
+						setSelectedOrder(null);
+						setParams({}, { replace: true });
+					}}
 				/>
-				{saveError && (
-					<p role="alert" className="text-xs font-semibold text-loss">
-						保存できなかった: {saveError}
-					</p>
-				)}
-			</div>
-			{!hasAccount ? null : trading?.mode === mode ? (
+			) : (
+				<Skeleton className="h-32 rounded-xl" />
+			)}
+			{!hasAccount ? null : run ? (
 				<AccountPanel
-					status={trading}
+					key={`account-${run.id}`}
+					status={run}
 					performance={perf.performance}
 					price={latest?.price ?? null}
 					onToast={showToast}
@@ -467,8 +443,8 @@ function HomeBody({
 			)}
 			{hasAccount && (
 				<OrdersPanel
-					key={mode}
-					mode={mode}
+					key={runId}
+					runId={runId}
 					active={visible}
 					selectedId={selectedOrder}
 					onSelect={setSelectedOrder}
@@ -476,11 +452,24 @@ function HomeBody({
 			)}
 			{selectedOrder && (
 				<TradeOrderSheet
-					mode={mode}
+					runId={runId}
 					id={selectedOrder}
 					initial={orders?.find((o) => o.id === selectedOrder) ?? null}
 					onSelect={setSelectedOrder}
 					onClose={() => setSelectedOrder(null)}
+				/>
+			)}
+			{adding && runs && (
+				<AddRunDialog
+					strategies={strategies}
+					hasLive={runs.some((r) => r.mode === "live")}
+					onClose={() => setAdding(false)}
+					onCreated={(s) => {
+						setAdding(false);
+						set(s);
+						selectRun(s.id);
+						showToast(`「${s.name}」のタブを追加した`);
+					}}
 				/>
 			)}
 			{toast && (
@@ -492,6 +481,61 @@ function HomeBody({
 				</div>
 			)}
 		</HomeFrame>
+	);
+}
+
+/** タブ（運用）の並びと追加のボタン。並びきらなければ横にスクロールする */
+function RunTabs({
+	runs,
+	current,
+	onSelect,
+	onAdd,
+}: {
+	runs: AutoTradingStatus[] | null;
+	current: number | null;
+	onSelect: (id: number) => void;
+	onAdd: () => void;
+}) {
+	if (!runs)
+		return <Skeleton className="h-[42px] rounded-[10px] lg:col-span-2" />;
+	return (
+		<div className="flex min-w-0 items-center gap-2 lg:col-span-2">
+			<div
+				role="tablist"
+				aria-label="タブ"
+				className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto rounded-[10px] bg-surface-2 p-[3px]"
+			>
+				{runs.map((r) => (
+					<button
+						key={r.id}
+						type="button"
+						role="tab"
+						aria-selected={current === r.id}
+						onClick={() => onSelect(r.id)}
+						className={`flex h-9 min-w-[6.5rem] flex-1 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-xs whitespace-nowrap sm:text-[13px] ${current === r.id ? "bg-surface font-bold text-text shadow-sm" : "text-text-2"}`}
+					>
+						{r.enabled && (
+							<span
+								role="img"
+								aria-label="稼働中"
+								className="h-2 w-2 shrink-0 rounded-full bg-profit"
+							/>
+						)}
+						<span className="max-w-[10rem] truncate">{r.name}</span>
+						{r.mode === "live" && <ModeTag mode="live" />}
+					</button>
+				))}
+			</div>
+			<button
+				type="button"
+				aria-label="タブを追加"
+				disabled={runs.length >= MAX_RUNS}
+				onClick={onAdd}
+				className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[10px] bg-surface-2 text-xl font-bold text-text-2 disabled:opacity-40"
+			>
+				＋
+			</button>
+		</div>
 	);
 }
 
