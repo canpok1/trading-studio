@@ -428,6 +428,13 @@ export function createTradingService({
 				price: currentPrice(market()),
 				fills: repo.filledSince(m, a.resetAt),
 				prices,
+				// ガチホの起点は、リセットした時刻を含む1分足（まだ無ければ1時間以内で最初の1分足）の始値
+				basePrice:
+					marketData.loadCandles(
+						"1m",
+						candleStart(a.resetAt, "1m"),
+						Math.min(t, candleStart(a.resetAt, "1m") + hour),
+					)[0]?.open ?? null,
 			});
 		},
 

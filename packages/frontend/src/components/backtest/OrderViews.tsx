@@ -4,7 +4,9 @@ import type { BacktestOrder, ExitKind } from "@trading-studio/core";
 import { formatBtc, sellReasonPart } from "@trading-studio/core";
 import type { ReactNode } from "react";
 import { formatDateTime } from "../../format";
+import type { GradeBadgeValue } from "../../lib/grade";
 import { formatInt, formatSignedInt } from "../../lib/number";
+import { GradeBadge } from "../Grade";
 import { Modal } from "../Modal";
 import { Button } from "../ui";
 
@@ -284,15 +286,21 @@ export function Stat({
 	value,
 	sub,
 	tone = "",
+	grade = null,
 }: {
 	label: string;
 	value: string;
 	sub?: string;
 	tone?: string;
+	/** 値の評価。ラベルの横にバッジで出す */
+	grade?: GradeBadgeValue | null;
 }) {
 	return (
 		<div className="flex min-w-0 flex-col gap-0.5">
-			<span className="text-xs text-text-2">{label}</span>
+			<span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-text-2">
+				{label}
+				<GradeBadge value={grade} />
+			</span>
 			<span className={`num text-[15px] font-semibold ${tone}`}>{value}</span>
 			{sub && <span className="num text-[11px] text-text-2">{sub}</span>}
 		</div>

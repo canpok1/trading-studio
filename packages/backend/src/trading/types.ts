@@ -85,6 +85,8 @@ export type TradingPerformance = {
 	/** 開始時の資金からの損益（保有の評価を含む） */
 	pnl: number | null;
 	pnlPercent: number | null;
+	/** リセットした時点で買って今まで持っていた場合（ガチホ）の損益率（%、手数料は含めない）。価格が分からなければ null */
+	buyHoldPercent: number | null;
 	/** 確定した損益（往復の手数料込みの損益の合計） */
 	realizedPnl: number;
 	/** 往復の回数（未決済は含めない） */

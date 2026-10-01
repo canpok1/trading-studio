@@ -41,6 +41,17 @@
 	--color-stop-loss: #7d5a00;
 	--color-stop-loss-bg: rgba(214, 150, 20, 0.22);
 	--color-scrim: rgba(15, 17, 19, 0.45);
+	/* 成績の評価のバッジ。優秀→非常に悪い の5段階 */
+	--color-grade-excellent: #ffffff;
+	--color-grade-excellent-bg: #0e7a45;
+	--color-grade-good: #0e7a45;
+	--color-grade-good-bg: rgba(14, 122, 69, 0.14);
+	--color-grade-fair: #5c6268;
+	--color-grade-fair-bg: rgba(120, 125, 130, 0.14);
+	--color-grade-poor: #a14a00;
+	--color-grade-poor-bg: rgba(214, 120, 20, 0.18);
+	--color-grade-bad: #ffffff;
+	--color-grade-bad-bg: #c1262e;
 
 	/* AI 判定。-bg は背景の塗り、名前だけのものは記号・帯の色 */
 	--color-up-bg: rgba(22, 150, 80, 0.14);
@@ -97,6 +108,16 @@
 	--color-stop-loss: #e8c060;
 	--color-stop-loss-bg: rgba(214, 150, 20, 0.22);
 	--color-scrim: rgba(0, 0, 0, 0.6);
+	--color-grade-excellent: #0e1012;
+	--color-grade-excellent-bg: #3fc57e;
+	--color-grade-good: #3fc57e;
+	--color-grade-good-bg: rgba(63, 197, 126, 0.16);
+	--color-grade-fair: #a5acb3;
+	--color-grade-fair-bg: rgba(170, 175, 180, 0.12);
+	--color-grade-poor: #f0a050;
+	--color-grade-poor-bg: rgba(240, 150, 60, 0.18);
+	--color-grade-bad: #0e1012;
+	--color-grade-bad-bg: #f2646c;
 
 	--color-up-bg: rgba(60, 200, 120, 0.15);
 	--color-down-bg: rgba(240, 90, 100, 0.15);

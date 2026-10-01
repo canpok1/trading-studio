@@ -57,6 +57,7 @@ describe("tradingPerformance", () => {
 			fills,
 			// 1本目の保有中に 20% 下がった
 			prices: [{ time: 2 * H, price: 0.8 * P }],
+			basePrice: P,
 		});
 		expect(r).toMatchObject({
 			equity: 1_010_000,
@@ -72,6 +73,8 @@ describe("tradingPerformance", () => {
 			maxDrawdownTo: 2 * H,
 			averageHoldingMs: 1.5 * H,
 		});
+		// ガチホはリセット時の価格から今の価格まで
+		expect(r.buyHoldPercent).toBeCloseTo(10);
 	});
 
 	test("保有があって価格が分からなければ資産と損益は null", () => {
@@ -84,8 +87,14 @@ describe("tradingPerformance", () => {
 			price: null,
 			fills: [order({})],
 			prices: [],
+			basePrice: P,
 		});
-		expect(r).toMatchObject({ equity: null, pnl: null, pnlPercent: null });
+		expect(r).toMatchObject({
+			equity: null,
+			pnl: null,
+			pnlPercent: null,
+			buyHoldPercent: null,
+		});
 	});
 
 	test("一部利確の売りは、ロットを閉じた売りと1往復にまとめる。残っている間は確定損益にだけ数える", () => {
@@ -129,6 +138,7 @@ describe("tradingPerformance", () => {
 			price: P,
 			fills,
 			prices: [],
+			basePrice: null,
 		});
 		expect(r).toMatchObject({
 			realizedPnl: 2_500,
