@@ -512,7 +512,7 @@ function RunTabs({
 						role="tab"
 						aria-selected={current === r.id}
 						onClick={() => onSelect(r.id)}
-						className={`flex h-9 min-w-[6.5rem] flex-1 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-xs whitespace-nowrap sm:text-[13px] ${current === r.id ? "bg-surface font-bold text-text shadow-sm" : "text-text-2"}`}
+						className={`flex h-9 min-w-[6.5rem] flex-auto shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-xs whitespace-nowrap sm:text-[13px] ${current === r.id ? "bg-surface font-bold text-text shadow-sm" : "text-text-2"}`}
 					>
 						{r.enabled && (
 							<span
