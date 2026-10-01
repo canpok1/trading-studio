@@ -716,7 +716,11 @@ export function idealStepTimeframe(params: ConditionSet): Timeframe | null {
 		frequencyMs(params.frequency.flat),
 		frequencyMs(params.frequency.holding),
 	);
-	const cap = TIMEFRAME_MS[candleTimeframes(params)[0] ?? "1d"];
+	// 指値の取消も進める足の単位でしか見られないので、取消を数える足より粗くしない
+	const caps = candleTimeframes(params).map((t) => TIMEFRAME_MS[t]);
+	if (params.buyOrder.lines.some((l) => l.type === "limit"))
+		caps.push(TIMEFRAME_MS[params.buyOrder.expireTimeframe]);
+	const cap = Math.min(TIMEFRAME_MS["1d"], ...caps);
 	const fits = TIMEFRAMES.filter(
 		(t) => TIMEFRAME_MS[t] <= cap && g % TIMEFRAME_MS[t] === 0,
 	);

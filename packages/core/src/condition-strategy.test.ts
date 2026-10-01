@@ -735,6 +735,23 @@ describe("判定に使う足の粒度", () => {
 			});
 		},
 	);
+
+	test("指値があれば、取消を数える足より粗い足で進めない", () => {
+		const p = withFreq("1h", "1h", "1h");
+		const limit = {
+			lines: [{ type: "limit" as const, belowPercent: 0.1 }],
+			expireBars: 3,
+			expireTimeframe: "5m" as const,
+		};
+		expect(chooseStepTimeframe({ ...p, buyOrder: limit }, "1m")).toEqual({
+			timeframe: "5m",
+			limited: false,
+		});
+		// 成行だけなら取消の足は見ない
+		expect(
+			chooseStepTimeframe({ ...p, buyOrder: MARKET_BUY_ORDER }, "1m"),
+		).toEqual({ timeframe: "1h", limited: false });
+	});
 });
 
 describe("市場評価の条件", () => {
