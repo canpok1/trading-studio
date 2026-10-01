@@ -157,6 +157,12 @@ export function conditionSetChanges(
 		if (removed.length > 0 || added.length > 0)
 			out.push({ section, removed, added });
 	}
+	// 変える前にしかない見出し（消した買い・名前を変えた買いなど）
+	for (const [section, lines] of a) {
+		if (b.has(section)) continue;
+		const removed = lines.length > 0 ? lines : ["（見出しごと削除）"];
+		out.push({ section, removed, added: [] });
+	}
 	return out;
 }
 

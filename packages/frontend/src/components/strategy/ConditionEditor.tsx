@@ -1440,6 +1440,7 @@ export function BuyRulesEditor({
 									<Button
 										size="sm"
 										className="text-loss"
+										aria-label={`「${rule.name}」を削除`}
 										onClick={() =>
 											setBuys(params.buys.filter((_, j) => j !== i))
 										}

@@ -100,4 +100,21 @@ describe("戦略設定の変更点", () => {
 			},
 		]);
 	});
+	test("消した買いの見出しは、その行を消したものとして出す", () => {
+		const two = structuredClone(BASE);
+		two.buys.push({ ...structuredClone(rule(BASE)), id: "b2", name: "買い2" });
+		const one = structuredClone(two);
+		one.buys.pop();
+		one.buys[0] = { ...rule(one), name: "押し目" };
+		two.buys[0] = { ...rule(two), name: "押し目" };
+		const changes = conditionSetChanges(two, one);
+		const sections = changes.map((c) => c.section);
+		expect(sections).toContain("【買い2】注文量とロット数");
+		expect(
+			changes.find((c) => c.section === "【買い2】注文量とロット数")?.added,
+		).toEqual([]);
+		expect(
+			changes.every((c) => c.removed.length > 0 || c.added.length > 0),
+		).toBe(true);
+	});
 });

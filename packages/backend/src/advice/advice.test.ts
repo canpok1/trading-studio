@@ -13,6 +13,7 @@ import {
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
 import type { BacktestRun } from "../backtests/types";
+import { createTestDb } from "../db/test-db";
 import { createTestApp } from "../test-app";
 import { DEMO_IMPROVED_STRATEGY } from "./fake-model";
 import { readImprovedStrategy } from "./improved";
@@ -494,6 +495,34 @@ describe("改善版の戦略", () => {
 
 	test("偽物の AI の出す戦略は設定として正しい", () => {
 		expect(readImprovedStrategy(DEMO_IMPROVED_STRATEGY, PARAMS).ok).toBe(true);
+	});
+});
+
+describe("保存済みの改善版", () => {
+	test("買いを複数持つ前の形で保存した改善版は、買い1つの形で読む", async () => {
+		const db = createTestDb();
+		const t = createTestApp({}, db);
+		const run = await doneRun(t);
+		await start(t, run.id);
+		await t.advice.running(run.id);
+		const content = JSON.parse(
+			db.$client
+				.query<{ content: string }, [number]>(
+					"select content from backtest_advice where run_id = ?",
+				)
+				.get(run.id)?.content as string,
+		);
+		const { buys, ...rest } = content.improved.params;
+		content.improved.params = { ...rest, ...buys[0] };
+		db.$client.run("update backtest_advice set content = ? where run_id = ?", [
+			JSON.stringify(content),
+			run.id,
+		]);
+		const a = await read(t, run.id);
+		expect(a?.content?.improved).toMatchObject({
+			ok: true,
+			params: { buys: [{ id: "b1", orderSize: 100_000 }] },
+		});
 	});
 });
 

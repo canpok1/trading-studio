@@ -132,22 +132,30 @@ test("RSI の条件を持つ戦略を選ぶと RSI の小窓と値が出て、�
 		},
 	});
 	const { strategy } = (await created.json()) as {
-		strategy: { id: number; params: Record<string, unknown> };
+		strategy: {
+			id: number;
+			params: { buys: Record<string, unknown>[] } & Record<string, unknown>;
+		};
 	};
 	const params = {
 		...strategy.params,
-		buy: {
-			match: "all",
-			conditions: [
-				{
-					type: "rsi",
-					timeframe: "1m",
-					period: 2,
-					threshold: 30,
-					direction: "below",
+		buys: [
+			{
+				...strategy.params.buys[0],
+				buy: {
+					match: "all",
+					conditions: [
+						{
+							type: "rsi",
+							timeframe: "1m",
+							period: 2,
+							threshold: 30,
+							direction: "below",
+						},
+					],
 				},
-			],
-		},
+			},
+		],
 	};
 	expect(
 		(
