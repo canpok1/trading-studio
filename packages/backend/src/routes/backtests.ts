@@ -1,4 +1,4 @@
-import { parseConditionSet } from "@trading-studio/core";
+import { isTimeframe, parseConditionSet } from "@trading-studio/core";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import { validator } from "hono/validator";
@@ -121,10 +121,30 @@ export function backtestRoutes(service: BacktestService) {
 				return run ? c.json({ run }, 200) : c.json(NOT_FOUND, 404);
 			})
 			// 1分足で数か月分だと数 MB になるため圧縮して返す
-			.get("/:id/chart", compress(), (c) => {
-				const chart = service.chart(Number(c.req.param("id")));
-				return chart ? c.json(chart, 200) : c.json(NOT_FOUND, 404);
-			})
+			.get(
+				"/:id/chart",
+				compress(),
+				validator("query", (q, c) => {
+					if (!isTimeframe(q.timeframe)) {
+						return c.json({ message: "足の粒度を選ぶ" }, 400);
+					}
+					return { timeframe: q.timeframe };
+				}),
+				(c) => {
+					const r = service.chart(
+						Number(c.req.param("id")),
+						c.req.valid("query").timeframe,
+					);
+					if (r.ok) return c.json(r.chart, 200);
+					if (r.kind === "not_found") return c.json(NOT_FOUND, 404);
+					return c.json(
+						{
+							message: `足が ${r.count.toLocaleString("ja-JP")} 本あり、${r.max.toLocaleString("ja-JP")} 本を超えるため出せない。粗い足を選ぶ`,
+						},
+						400,
+					);
+				},
+			)
 			.get(
 				"/:id/orders",
 				validator("query", (q) => {

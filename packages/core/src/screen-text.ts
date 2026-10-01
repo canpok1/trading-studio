@@ -5,6 +5,7 @@ import {
 	CONDITION_GROUP_LABELS,
 	CONDITION_GROUPS,
 	FREQUENCY_UNIT_LABELS,
+	hasTimeframe,
 } from "./condition-strategy";
 import { formatBtc, formatYen } from "./format";
 import type { AggregationRule, Judge } from "./news-judgment";
@@ -19,8 +20,13 @@ import type { FeeRates } from "./trading";
 const freq = (f: Frequency) => `${f.value}${FREQUENCY_UNIT_LABELS[f.unit]}`;
 const pct = (ppm: number) => `${ppm / 10_000}%`;
 
-/** 条件1つ。戦略画面の条件の文言に揃える */
+/** 条件1つ。戦略画面の条件の文言に揃える。足を持つ条件は頭に「1時間足で」のように足を付ける */
 export function conditionScreenText(c: Condition): string {
+	const body = conditionBody(c);
+	return hasTimeframe(c) ? `${TIMEFRAME_LABELS[c.timeframe]}で ${body}` : body;
+}
+
+function conditionBody(c: Condition): string {
 	switch (c.type) {
 		case "emaCross":
 			return `短期EMA ${c.fast} 本が 長期EMA ${c.slow} 本を${c.direction === "up" ? "上抜けた" : "下抜けた"}`;
@@ -50,8 +56,7 @@ export function conditionScreenText(c: Condition): string {
 /** 戦略設定。戦略画面の見出しと項目の並びどおりに書く */
 export function conditionSetScreenText(p: ConditionSet): string[] {
 	const lines = [
-		"### 足と判定の間隔",
-		`- 足の粒度: ${TIMEFRAME_LABELS[p.timeframe]}`,
+		"### 判定の間隔",
 		`- 保有なしのとき: ${freq(p.frequency.flat)}ごとに買いの条件を判定`,
 		`- 保有中のとき: ${freq(p.frequency.holding)}ごとに売りの条件を判定`,
 		"### 注文量とロット数",
@@ -59,7 +64,7 @@ export function conditionSetScreenText(p: ConditionSet): string[] {
 		`- 最大ロット数: ${p.maxPositions}`,
 		"### リスク上限",
 		`- 1日の損失上限（円）: ${formatYen(p.dailyLossLimit)}`,
-		`- 損切り後に買わない本数: ${p.stopLossCooldownBars > 0 ? `${p.stopLossCooldownBars} 本` : "0（止めない）"}`,
+		`- 損切り後に買わない本数: ${p.stopLossCooldownBars > 0 ? `${TIMEFRAME_LABELS[p.stopLossCooldownTimeframe]}で ${p.stopLossCooldownBars} 本` : "0（止めない）"}`,
 	];
 	for (const key of CONDITION_GROUPS) {
 		const g = p[key];
@@ -81,7 +86,7 @@ export function conditionSetScreenText(p: ConditionSet): string[] {
 			o.lines.forEach((l, i) => {
 				lines.push(
 					l.type === "limit"
-						? `- 注文${i + 1}: 指値。現在値から ${l.belowPercent}% 下に指値。${o.expireBars} 本のあいだ約定しなければ取消`
+						? `- 注文${i + 1}: 指値。現在値から ${l.belowPercent}% 下に指値。${TIMEFRAME_LABELS[o.expireTimeframe]}で ${o.expireBars} 本のあいだ約定しなければ取消`
 						: `- 注文${i + 1}: 成行`,
 				);
 			});

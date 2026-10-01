@@ -36,6 +36,10 @@ export type BacktestRun = {
 	/** バックテスト名。名前を入れる前の実行は、実行したときの戦略名 */
 	name: string;
 	params: ConditionSet;
+	/**
+	 * 条件で使う足のうち最も細かいもの（足を使う条件が無ければ判定に使った足）。AI アドバイスで注文の前後を見せる足に使う。
+	 * 条件ごとに足を持つ前の実行は戦略の足の粒度
+	 */
 	timeframe: Timeframe;
 	from: number;
 	to: number;
@@ -75,6 +79,8 @@ export type BacktestMarker = {
 
 /** チャートに出す足と注文 */
 export type BacktestChart = {
+	/** bars の粒度。頼んだ粒度の足が期間に無ければ、結果に残した足の粒度 */
+	timeframe: Timeframe;
 	/** 始値・高値・安値は、4本値を保存する前の実行には無い */
 	bars: {
 		time: number;
@@ -125,7 +131,15 @@ export interface BacktestService {
 	/** 実行中なら中止を求める。中止は計算の区切りで効く */
 	cancel(id: number): BacktestRun | null;
 	list(): BacktestRun[];
-	chart(id: number): BacktestChart | null;
+	/** timeframe の足で返す。足が maxBars（既定はチャートの上限）より多ければ too_many */
+	chart(
+		id: number,
+		timeframe: Timeframe,
+		maxBars?: number,
+	):
+		| { ok: true; chart: BacktestChart }
+		| { ok: false; kind: "not_found" }
+		| { ok: false; kind: "too_many"; count: number; max: number };
 	orders(
 		id: number,
 		filter: OrderFilter,

@@ -26,8 +26,14 @@ describe("チャートの EMA・RSI の設定", () => {
 
 	test("EMA は戦略の本数を短い方から2本まで使う", () => {
 		const p = withBuy([
-			{ type: "emaCross", fast: 10, slow: 50, direction: "up" },
-			{ type: "emaCross", fast: 5, slow: 20, direction: "up" },
+			{
+				type: "emaCross",
+				timeframe: "1h",
+				fast: 10,
+				slow: 50,
+				direction: "up",
+			},
+			{ type: "emaCross", timeframe: "1h", fast: 5, slow: 20, direction: "up" },
 		]);
 		expect(strategyEma(p)).toEqual([5, 10]);
 	});
@@ -36,14 +42,26 @@ describe("チャートの EMA・RSI の設定", () => {
 		expect(
 			strategyRsi(
 				withBuy([
-					{ type: "rsi", period: 9, threshold: 25, direction: "below" },
+					{
+						type: "rsi",
+						timeframe: "1h",
+						period: 9,
+						threshold: 25,
+						direction: "below",
+					},
 				]),
 			),
 		).toEqual({ period: 9, lower: 25, upper: 70 });
 		expect(
 			strategyRsi(
 				withBuy([
-					{ type: "rsi", period: 9, threshold: 80, direction: "above" },
+					{
+						type: "rsi",
+						timeframe: "1h",
+						period: 9,
+						threshold: 80,
+						direction: "above",
+					},
 				]),
 			),
 		).toEqual({ period: 9, lower: 30, upper: 80 });
@@ -52,13 +70,20 @@ describe("チャートの EMA・RSI の設定", () => {
 	test("RSI のしきい値が2つ以上なら最小と最大を使う", () => {
 		const p = {
 			...withBuy([
-				{ type: "rsi", period: 14, threshold: 20, direction: "below" },
+				{
+					type: "rsi",
+					timeframe: "1h",
+					period: 14,
+					threshold: 20,
+					direction: "below",
+				},
 			]),
 			takeProfit: {
 				match: "all" as const,
 				conditions: [
 					{
 						type: "rsi" as const,
+						timeframe: "1h" as const,
 						period: 14,
 						threshold: 75,
 						direction: "above" as const,
@@ -104,8 +129,20 @@ describe("チャートの EMA・RSI の設定", () => {
 		expect(
 			strategyBb(
 				withBuy([
-					{ type: "bollinger", period: 30, sigma: 2, band: "lower" },
-					{ type: "bollinger", period: 20, sigma: 2.5, band: "lower" },
+					{
+						type: "bollinger",
+						timeframe: "1h",
+						period: 30,
+						sigma: 2,
+						band: "lower",
+					},
+					{
+						type: "bollinger",
+						timeframe: "1h",
+						period: 20,
+						sigma: 2.5,
+						band: "lower",
+					},
 				]),
 			),
 		).toEqual({ period: 20, sigma: 2.5 });

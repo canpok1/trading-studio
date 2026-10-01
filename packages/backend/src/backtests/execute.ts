@@ -22,7 +22,7 @@ export function execute(
 			params: job.params,
 			candles: job.candles,
 			dataTimeframe: job.dataTimeframe,
-			stepCandles: job.stepCandles ?? undefined,
+			stepCandles: job.stepCandles,
 			stepTimeframe: job.stepTimeframe,
 			from: job.from,
 			to: job.to,
@@ -39,6 +39,7 @@ export function execute(
 				orderCount: r.orders.length,
 				filledCount: r.orders.filter((o) => o.status === "filled").length,
 				bars: pack({
+					timeframe: "1d",
 					times: r.candles.map((c) => c.time),
 					closes: r.candles.map((c) => c.close),
 					opens: r.candles.map((c) => c.open),

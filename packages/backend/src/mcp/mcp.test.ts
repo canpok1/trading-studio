@@ -16,7 +16,6 @@ const H = TIMEFRAME_MS["1h"];
 const START = Date.UTC(2026, 6, 31, 15);
 
 const PARAMS: ConditionSet = {
-	timeframe: "1h",
 	frequency: {
 		flat: { value: 1, unit: "h" },
 		holding: { value: 1, unit: "h" },
@@ -25,9 +24,12 @@ const PARAMS: ConditionSet = {
 	maxPositions: 1,
 	dailyLossLimit: 30_000,
 	stopLossCooldownBars: 0,
+	stopLossCooldownTimeframe: "1h",
 	buy: {
 		match: "all",
-		conditions: [{ type: "breakout", lookback: 5, direction: "high" }],
+		conditions: [
+			{ type: "breakout", timeframe: "1h", lookback: 5, direction: "high" },
+		],
 	},
 	buyOrder: DEFAULT_BUY_ORDER,
 	partialTakeProfit: { match: "all", conditions: [] },

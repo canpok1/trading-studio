@@ -4,7 +4,6 @@ import { DEFAULT_BUY_ORDER, DEFAULT_PARTIAL_SELL } from "./condition-strategy";
 import { conditionSetChanges } from "./screen-text";
 
 const BASE: ConditionSet = {
-	timeframe: "1h",
 	frequency: {
 		flat: { value: 1, unit: "h" },
 		holding: { value: 1, unit: "h" },
@@ -13,9 +12,18 @@ const BASE: ConditionSet = {
 	maxPositions: 1,
 	dailyLossLimit: 30_000,
 	stopLossCooldownBars: 0,
+	stopLossCooldownTimeframe: "1h",
 	buy: {
 		match: "all",
-		conditions: [{ type: "emaCross", fast: 12, slow: 48, direction: "up" }],
+		conditions: [
+			{
+				type: "emaCross",
+				timeframe: "1h",
+				fast: 12,
+				slow: 48,
+				direction: "up",
+			},
+		],
 	},
 	buyOrder: DEFAULT_BUY_ORDER,
 	partialTakeProfit: { match: "all", conditions: [] },
@@ -36,6 +44,7 @@ describe("戦略設定の変更点", () => {
 		const after = structuredClone(BASE);
 		after.buy.conditions[0] = {
 			type: "emaCross",
+			timeframe: "1h",
 			fast: 20,
 			slow: 48,
 			direction: "up",
@@ -49,8 +58,8 @@ describe("戦略設定の変更点", () => {
 			},
 			{
 				section: "買い注文する条件",
-				removed: ["短期EMA 12 本が 長期EMA 48 本を上抜けた"],
-				added: ["短期EMA 20 本が 長期EMA 48 本を上抜けた"],
+				removed: ["1時間足で 短期EMA 12 本が 長期EMA 48 本を上抜けた"],
+				added: ["1時間足で 短期EMA 20 本が 長期EMA 48 本を上抜けた"],
 			},
 		]);
 	});
@@ -60,7 +69,13 @@ describe("戦略設定の変更点", () => {
 		after.takeProfit = {
 			match: "all",
 			conditions: [
-				{ type: "rsi", period: 14, threshold: 70, direction: "above" },
+				{
+					type: "rsi",
+					timeframe: "1h",
+					period: 14,
+					threshold: 70,
+					direction: "above",
+				},
 				...BASE.takeProfit.conditions,
 			],
 		};
@@ -71,7 +86,7 @@ describe("戦略設定の変更点", () => {
 			{
 				section: "売り注文（利確）する条件",
 				removed: ["組み合わせ方: どれか1つ"],
-				added: ["組み合わせ方: すべて満たす", "RSI 14 本が 70 以上"],
+				added: ["組み合わせ方: すべて満たす", "1時間足で RSI 14 本が 70 以上"],
 			},
 			{
 				section: "売り注文（損切り）する条件",

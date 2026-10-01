@@ -448,7 +448,11 @@ const backtestRunsTable: Table<BacktestRun> = {
 		col("run_id", "実行の ID", (r) => r.id),
 		col("name", "バックテスト名", (r) => r.name),
 		...time<BacktestRun>("started_at", "実行した時刻", (r) => r.startedAt),
-		col("timeframe", "戦略の足の粒度", (r) => r.timeframe),
+		col(
+			"timeframe",
+			"条件で使う最も細かい足の粒度（足を使う条件が無ければ判定と約定に使った足。条件ごとに足を持つ前の実行は戦略の足の粒度）",
+			(r) => r.timeframe,
+		),
 		col("step_timeframe", "判定と約定に使った足の粒度", (r) => r.stepTimeframe),
 		col(
 			"step_limited",

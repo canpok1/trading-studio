@@ -50,7 +50,7 @@ const CONDITION: ResponseSchema = {
 				"bollinger=終値がボリンジャーバンド period 本・sigma σ の上限以上(band=upper)/下限以下(lower)。",
 				"entryChange=買値から percent % 上がった(direction=up)/下がった(down)。売りの条件だけ。",
 				"trailingStop=買ってからの最高値から percent % 下がった。最高値が買値から activatePercent % 以上になってから発動（0 は買った直後から）。売りの条件だけ。",
-				"holdingBars=買ってから bars 本経った。売りの条件だけ。",
+				"holdingBars=買ってから timeframe の足で bars 本経った。売りの条件だけ。",
 				"judgment=judge の判定が values のどれか",
 			].join(""),
 			[
@@ -66,6 +66,12 @@ const CONDITION: ResponseSchema = {
 				"holdingBars",
 				"judgment",
 			],
+		),
+		timeframe: opt(
+			str(
+				`条件の足。emaCross・breakout・rsi・rsiCross・emaPosition・emaSlope・bollinger・holdingBars では必須で、本数はこの足で数える。${TIMEFRAMES.map((t) => `${t}=${TIMEFRAME_LABELS[t]}`).join("・")}`,
+				TIMEFRAMES,
+			),
 		),
 		fast: opt(int("短期EMAの本数")),
 		slow: opt(int("長期EMAの本数")),
@@ -114,13 +120,9 @@ const group = (label: string): ResponseSchema => ({
 export const IMPROVED_STRATEGY_SCHEMA: ResponseSchema = {
 	type: "OBJECT",
 	properties: {
-		timeframe: str(
-			`足の粒度。${TIMEFRAMES.map((t) => `${t}=${TIMEFRAME_LABELS[t]}`).join("・")}`,
-			TIMEFRAMES,
-		),
 		frequency: {
 			type: "OBJECT",
-			description: "足と判定の間隔",
+			description: "判定の間隔",
 			properties: {
 				flat: { ...FREQUENCY, description: "保有なしのとき" },
 				holding: { ...FREQUENCY, description: "保有中のとき" },
@@ -131,7 +133,11 @@ export const IMPROVED_STRATEGY_SCHEMA: ResponseSchema = {
 		maxPositions: int("最大ロット数"),
 		dailyLossLimitYen: int("1日の損失上限（円）"),
 		stopLossCooldownBars: int(
-			"損切り後に買わない本数。損切り（建値ストップを含む）の売りを出してから、足の粒度でこの本数のあいだ新しい買いを出さない。0 は止めない",
+			"損切り後に買わない本数。損切り（建値ストップを含む）の売りを出してから、stopLossCooldownTimeframe の足でこの本数ぶんの時間は新しい買いを出さない。0 は止めない",
+		),
+		stopLossCooldownTimeframe: str(
+			"損切り後に買わない本数を数える足",
+			TIMEFRAMES,
 		),
 		...Object.fromEntries(
 			CONDITION_GROUPS.map((k) => [k, group(CONDITION_GROUP_LABELS[k])]),
@@ -166,17 +172,18 @@ export const IMPROVED_STRATEGY_SCHEMA: ResponseSchema = {
 					},
 				},
 				expireBars: int("指値を取り消すまでの本数"),
+				expireTimeframe: str("指値を取り消すまでの本数を数える足", TIMEFRAMES),
 			},
-			required: ["lines", "expireBars"],
+			required: ["lines", "expireBars", "expireTimeframe"],
 		},
 	},
 	required: [
-		"timeframe",
 		"frequency",
 		"orderSizeBtc",
 		"maxPositions",
 		"dailyLossLimitYen",
 		"stopLossCooldownBars",
+		"stopLossCooldownTimeframe",
 		...CONDITION_GROUPS,
 		"partialSell",
 		"buyOrder",

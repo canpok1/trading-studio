@@ -1,10 +1,15 @@
 import type { BacktestChart, BacktestRun } from "@trading-studio/backend";
-import type { BacktestOrder, ConditionSet } from "@trading-studio/core";
+import type {
+	BacktestOrder,
+	ConditionSet,
+	Timeframe,
+} from "@trading-studio/core";
 import {
 	conditionSetChanges,
 	formatBtc,
 	ppmToPercent,
 	TIMEFRAME_LABELS,
+	TIMEFRAMES,
 } from "@trading-studio/core";
 import {
 	useCallback,
@@ -29,6 +34,10 @@ import { formatDate, toDateInputValue } from "../format";
 import { useBacktestJob } from "../lib/backtest-job";
 import { useChartBg } from "../lib/chart-bg";
 import { useChartIndicators } from "../lib/chart-indicators";
+import {
+	DEFAULT_CHART_TIMEFRAME,
+	useChartTimeframe,
+} from "../lib/chart-timeframe";
 import {
 	buyOrderText,
 	frequencyText,
@@ -57,7 +66,6 @@ const PAGE = 20;
 
 type Data = {
 	run: BacktestRun;
-	chart: BacktestChart | null;
 };
 
 /** 「履歴」のタブへ戻る */
@@ -72,13 +80,7 @@ export function BacktestResultPage() {
 		const { run } = await api.api.backtests[":id"]
 			.$get({ param: { id } })
 			.then((r) => readJson<{ run: BacktestRun }>(r));
-		const chart =
-			run.status === "done"
-				? await api.api.backtests[":id"].chart
-						.$get({ param: { id } })
-						.then((r) => readJson<BacktestChart>(r))
-				: null;
-		return { run, chart };
+		return { run };
 	}, [api, id]);
 	const { state, reload } = useAsync(load);
 
@@ -111,8 +113,8 @@ export function BacktestResultPage() {
 			</Page>
 		);
 	}
-	const { run, chart } = state.data;
-	const done = run.status === "done" && run.summary !== null && chart !== null;
+	const { run } = state.data;
+	const done = run.status === "done" && run.summary !== null;
 	return (
 		<Page title={title} back={BACK} actions={<RerunButton run={run} />}>
 			{/* 結果があれば、条件は成績と並べて結果の中に出す */}
@@ -141,7 +143,7 @@ export function BacktestResultPage() {
 					/>
 				</Card>
 			)}
-			{done && chart && <Result run={run} chart={chart} />}
+			{done && <Result run={run} />}
 		</Page>
 	);
 }
@@ -228,16 +230,13 @@ function RunHeader({ run }: { run: BacktestRun }) {
 			aria-label="実行の条件"
 			className="flex flex-col gap-1.5 rounded-xl border border-line bg-surface px-4 py-3.5"
 		>
-			<strong className="text-[15px]">
-				{run.name} · {TIMEFRAME_LABELS[run.timeframe]}
-			</strong>
+			<strong className="text-[15px]">{run.name}</strong>
 			<span className="num text-xs text-text-2">
 				{formatDate(run.from)}〜{formatDate(run.to - 1)} · 初期資金{" "}
 				{formatInt(run.initialCash)}円
 				{run.skipGaps ? " · 欠損を飛ばして実行" : ""}
-				{run.stepTimeframe !== run.timeframe
-					? ` · ${TIMEFRAME_LABELS[run.stepTimeframe]}で判定`
-					: ""}
+				{" · "}
+				{TIMEFRAME_LABELS[run.stepTimeframe]}で判定
 			</span>
 			<ul aria-label="実行条件" className="flex flex-wrap gap-1.5">
 				{chips.map((c) => (
@@ -331,8 +330,43 @@ function SaveDialog({
 	);
 }
 
-function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
+/** チャートの足。選んだ粒度で読み直す */
+function useResultChart(runId: number, timeframe: Timeframe) {
 	const api = useApi();
+	const [state, setState] = useState<
+		| { key: string; chart: BacktestChart; error: null }
+		| { key: string; chart: null; error: string }
+		| null
+	>(null);
+	const key = `${runId}:${timeframe}`;
+	useEffect(() => {
+		let alive = true;
+		api.api.backtests[":id"].chart
+			.$get({ param: { id: String(runId) }, query: { timeframe } })
+			.then((r) => readJson<BacktestChart>(r))
+			.then((chart) => {
+				if (alive) setState({ key, chart, error: null });
+			})
+			.catch((e) => {
+				if (alive) setState({ key, chart: null, error: errorMessage(e) });
+			});
+		return () => {
+			alive = false;
+		};
+	}, [api, runId, timeframe, key]);
+	return state?.key === key ? state : null;
+}
+
+function Result({ run }: { run: BacktestRun }) {
+	const api = useApi();
+	const [timeframe, setTimeframe] = useChartTimeframe();
+	const loaded = useResultChart(run.id, timeframe);
+	// 粒度を切り替えている間は前の足を出したままにする
+	const [lastChart, setLastChart] = useState<BacktestChart | null>(null);
+	useEffect(() => {
+		if (loaded?.chart) setLastChart(loaded.chart);
+	}, [loaded]);
+	const chart = loaded?.chart ?? lastChart;
 	const navigate = useNavigate();
 	const s = run.summary as NonNullable<BacktestRun["summary"]>;
 	const [filter, setFilter] = useState<"filled" | "all">("filled");
@@ -343,7 +377,7 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 	const [bg, setBg] = useChartBg();
 	const judgments = useMemo(
 		() =>
-			chart.judgments
+			chart?.judgments
 				? alignJudgments(
 						chart.judgments,
 						chart.bars.map((b) => b.time),
@@ -390,7 +424,9 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 	const indicators = useChartIndicators(run.params);
 	const noOrders = run.orderCount === 0;
 	const tone = (n: number) => (n >= 0 ? "text-profit" : "text-loss");
-	const buyHold = buyHoldPercentOf(chart.bars);
+	// 実行時に判定の足で求めた値。持たない実行はチャートの足から求める
+	const buyHold =
+		s.buyHoldPercent ?? (chart ? buyHoldPercentOf(chart.bars) : null);
 
 	return (
 		// 広い画面は上段に条件と成績を並べ、チャート以下は2列幅で縦に積む
@@ -484,16 +520,50 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 				)}
 			</section>
 			<div className="rounded-xl border border-line bg-surface px-3 py-3.5 lg:col-span-2">
-				<PriceChart
-					bars={chart.bars}
-					markers={chart.markers}
-					indicators={indicators}
-					selectedId={selected?.id ?? null}
-					onMarker={(m) => pick(m.id)}
-					judgments={judgments}
-					bg={bg}
-					onBgChange={setBg}
-				/>
+				{chart ? (
+					<PriceChart
+						bars={chart.bars}
+						markers={chart.markers}
+						indicators={indicators}
+						selectedId={selected?.id ?? null}
+						onMarker={(m) => pick(m.id)}
+						judgments={judgments}
+						bg={bg}
+						onBgChange={setBg}
+						viewKey={`${chart.timeframe}`}
+						toolbar={
+							<select
+								aria-label="足の粒度"
+								value={timeframe}
+								onChange={(e) => setTimeframe(e.target.value as Timeframe)}
+								className="h-8 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold"
+							>
+								{TIMEFRAMES.map((t) => (
+									<option key={t} value={t}>
+										{TIMEFRAME_LABELS[t]}
+									</option>
+								))}
+							</select>
+						}
+					/>
+				) : (
+					!loaded?.error && <LoadingCard />
+				)}
+				{loaded?.error && (
+					<div className="mt-2 flex flex-wrap items-center gap-2">
+						<span role="alert" className="text-xs font-semibold text-loss">
+							チャートを読み込めなかった（{loaded.error}）
+						</span>
+						{timeframe !== DEFAULT_CHART_TIMEFRAME && (
+							<Button
+								size="sm"
+								onClick={() => setTimeframe(DEFAULT_CHART_TIMEFRAME)}
+							>
+								{TIMEFRAME_LABELS[DEFAULT_CHART_TIMEFRAME]}で見る
+							</Button>
+						)}
+					</div>
+				)}
 			</div>
 			<div className="lg:col-span-2">
 				<AdviceSection

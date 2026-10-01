@@ -15,7 +15,6 @@ type Json = Record<string, unknown>;
 /** 1分ごとに評価し、いつでも買い、買値から1%動いたら売る戦略 */
 const always = (over: Partial<ConditionSet> = {}): ConditionSet => ({
 	...strategyTemplate("trend").params,
-	timeframe: "1m",
 	frequency: {
 		flat: { value: 1, unit: "m" },
 		holding: { value: 1, unit: "m" },
@@ -217,6 +216,7 @@ describe("自動取引のオンオフ", () => {
 				buyOrder: {
 					lines: [{ type: "limit", belowPercent: 1 }],
 					expireBars: 10,
+					expireTimeframe: "1m",
 				},
 			}),
 		);
@@ -288,6 +288,7 @@ describe("仮想の約定", () => {
 				buyOrder: {
 					lines: [{ type: "limit", belowPercent: 1 }],
 					expireBars: 3,
+					expireTimeframe: "1m",
 				},
 			}),
 		);
@@ -304,12 +305,13 @@ describe("仮想の約定", () => {
 		});
 	});
 
-	test("指値は戦略の粒度の足 M 本ぶんの時間が過ぎたら取り消す", async () => {
+	test("指値は指値の足 M 本ぶんの時間が過ぎたら取り消す", async () => {
 		const t = setup(
 			always({
 				buyOrder: {
 					lines: [{ type: "limit", belowPercent: 1 }],
 					expireBars: 3,
+					expireTimeframe: "1m",
 				},
 			}),
 		);
@@ -321,7 +323,7 @@ describe("仮想の約定", () => {
 		t.at(T0 + 4 * M);
 		expect(t.orders()[0]).toMatchObject({
 			status: "canceled",
-			cancelReason: "指値 9,900,000 が 3 本のあいだ約定しなかったため取消",
+			cancelReason: "指値 9,900,000 が 3分のあいだ約定しなかったため取消",
 		});
 	});
 
@@ -347,6 +349,7 @@ describe("止まっていた間と再起動", () => {
 				buyOrder: {
 					lines: [{ type: "limit", belowPercent: 1 }],
 					expireBars: 100,
+					expireTimeframe: "1m",
 				},
 			}),
 		);
@@ -373,6 +376,7 @@ describe("止まっていた間と再起動", () => {
 				buyOrder: {
 					lines: [{ type: "limit", belowPercent: 1 }],
 					expireBars: 100,
+					expireTimeframe: "1m",
 				},
 			}),
 		);
@@ -414,6 +418,7 @@ describe("口座のリセット", () => {
 				buyOrder: {
 					lines: [{ type: "limit", belowPercent: 1 }],
 					expireBars: 100,
+					expireTimeframe: "1m",
 				},
 			}),
 		);
@@ -556,6 +561,7 @@ describe("複数ポジション", () => {
 				buyOrder: {
 					lines: [{ type: "market" }, { type: "limit", belowPercent: 0.5 }],
 					expireBars: 10,
+					expireTimeframe: "1m",
 				},
 			}),
 		);

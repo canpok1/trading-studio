@@ -13,8 +13,11 @@ import type {
 } from "@trading-studio/core";
 import {
 	acceptsNoJudgment,
+	candleTimeframes,
 	chooseStepTimeframe,
 	conditionStrategy,
+	DEFAULT_CONDITION_TIMEFRAME,
+	historyShortfalls,
 	isCoarser,
 	parseConditionSet,
 	percentToPpm,
@@ -398,8 +401,16 @@ function RunForm({
 	};
 
 	const p = draft.params;
-	const tf = p.timeframe;
-	const tfMs = TIMEFRAME_MS[tf];
+	// 条件で使う足（細かい順）。期間・本数・取り込み済みの範囲は最も細かい足で見る。
+	// 足を使う条件が無ければ、期間の既定は最も古くからある足で決め、本数は期間に使える最も細かい足で数える
+	const needed = candleTimeframes(p);
+	const periodTf =
+		needed[0] ??
+		coverage
+			.filter((c) => c.firstTime !== null)
+			.sort((a, b) => (a.firstTime as number) - (b.firstTime as number))[0]
+			?.timeframe ??
+		DEFAULT_CONDITION_TIMEFRAME;
 	const choices = templates(strategies);
 	// 保存済みの戦略は、選んだ後に編集されていれば今の条件へ戻す
 	const template =
@@ -410,9 +421,12 @@ function RunForm({
 	const nameError = checkName(draft.name);
 	const errors = useMemo(() => validateConditionSet(p), [p]);
 
-	// 期間。未指定ならこの粒度のデータの最後から1か月
-	const cov = coverage.find((c) => c.timeframe === tf);
-	const dataEnd = cov?.lastTime != null ? cov.lastTime + tfMs : null;
+	// 期間。未指定ならその足のデータの最後から1か月
+	const periodCov = coverage.find((c) => c.timeframe === periodTf);
+	const dataEnd =
+		periodCov?.lastTime != null
+			? periodCov.lastTime + TIMEFRAME_MS[periodTf]
+			: null;
 	const defaultTo =
 		dataEnd !== null
 			? toDateInputValue(dataEnd - 1)
@@ -421,6 +435,15 @@ function RunForm({
 	const toMs = (fromDateInputValue(toDate) ?? 0) + DAY;
 	const fromDate = draft.fromDate ?? toDateInputValue(toMs - 30 * DAY);
 	const fromMs = fromDateInputValue(fromDate) ?? 0;
+	const shortfalls = useMemo(
+		() =>
+			historyShortfalls(
+				p,
+				fromMs,
+				Object.fromEntries(coverage.map((c) => [c.timeframe, c.firstTime])),
+			),
+		[p, fromMs, coverage],
+	);
 
 	// 判定に使う足。期間に取り込んだ最も細かい足までしか細かくできない。選び方はサーバーに合わせるため問い合わせる
 	const [usable, setUsable] = useState<{
@@ -444,6 +467,9 @@ function RunForm({
 	}, [usableKey]);
 	const finest =
 		usable?.key === usableKey ? (usable.timeframes[0] ?? null) : null;
+	const tf = needed[0] ?? finest ?? periodTf;
+	const tfMs = TIMEFRAME_MS[tf];
+	const cov = coverage.find((c) => c.timeframe === tf);
 	const step =
 		finest && !isCoarser(finest, tf) ? chooseStepTimeframe(p, finest) : null;
 
@@ -751,12 +777,13 @@ function RunForm({
 						)}
 						<CoverageBar cov={cov} from={fromMs} to={toMs} />
 						<div className="flex flex-col gap-1">
-							<span className="text-[13px] font-semibold">足の粒度</span>
+							<span className="text-[13px] font-semibold">足</span>
 							<span className="num text-sm">
-								{TIMEFRAME_LABELS[tf]} · {formatInt(bars)} 本
-								{step && step.timeframe !== tf
-									? ` · ${TIMEFRAME_LABELS[step.timeframe]}で判定`
+								{needed.length > 0
+									? `条件 ${needed.map((t) => TIMEFRAME_LABELS[t]).join("・")} · `
 									: ""}
+								{TIMEFRAME_LABELS[tf]} {formatInt(bars)} 本
+								{step ? ` · ${TIMEFRAME_LABELS[step.timeframe]}で判定` : ""}
 								{usesJudgments && " · 市場評価の履歴を使う"}
 							</span>
 							{usesJudgments && firstScoredAt !== null && (
@@ -822,6 +849,11 @@ function RunForm({
 							</div>
 						)}
 						{step?.limited && <Note>{stepLimitedText(step.timeframe)}</Note>}
+						{shortfalls.length > 0 && (
+							<Note>
+								{`期間より前の${shortfalls.map((x) => `${TIMEFRAME_LABELS[x.timeframe]}が ${formatInt(x.missing)} 本`).join("・")}足りないため、期間の初めはその足の条件を判定しない`}
+							</Note>
+						)}
 						{judgmentError && (
 							<span role="alert" className="text-xs font-semibold text-loss">
 								{judgmentError}
@@ -1196,9 +1228,7 @@ function PastRuns({ runs }: { runs: BacktestRun[] }) {
 							className="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0 hover:bg-surface-2"
 						>
 							<span className="flex min-w-0 flex-1 flex-col gap-0.5">
-								<strong className="truncate text-sm">
-									{r.name} · {TIMEFRAME_LABELS[r.timeframe]}
-								</strong>
+								<strong className="truncate text-sm">{r.name}</strong>
 								<span className="num text-xs text-text-2">
 									{formatDate(r.from)}〜{formatDate(r.to - 1)} ·{" "}
 									{formatDateTime(r.startedAt)} 実行

@@ -6,6 +6,7 @@ import type {
 	Candle,
 	FeeRates,
 	MarketTrade,
+	Timeframe,
 	TradeOrder,
 } from "@trading-studio/core";
 import {
@@ -17,6 +18,7 @@ import {
 	dailyLossBlock,
 	decide,
 	expireOrders,
+	idealStepTimeframe,
 	JUDGES,
 	newAccount,
 	publicLots,
@@ -72,16 +74,16 @@ export function createTradingService({
 	// フェーズ4ではペーパーだけ動かす
 	const mode: TradingMode = "paper";
 
-	const timeframeMsOf = (strategyId: number | null) => {
-		const s = strategyId === null ? null : strategies.get(strategyId);
-		return TIMEFRAME_MS[s?.params.timeframe ?? "1m"];
+	/**
+	 * オンにしたときの最初の判定時刻。バックテストで判定に使う足の次の足の終わり（バックテストで足の終わりに判定するのと揃える）。
+	 * 秒単位の判定頻度でどの足でも割り切れなければ1分足
+	 */
+	const firstEvalAt = (s: StoredStrategy, t: number) => {
+		const tf = idealStepTimeframe(s.params) ?? "1m";
+		return candleStart(t, tf) + TIMEFRAME_MS[tf];
 	};
 
-	/** オンにしたときの最初の判定時刻。戦略の粒度の次の足の終わり（バックテストで足の終わりに判定するのと揃える） */
-	const firstEvalAt = (s: StoredStrategy, t: number) =>
-		candleStart(t, s.params.timeframe) + TIMEFRAME_MS[s.params.timeframe];
-
-	/** 注文の記録の変化を保存する。取消の本数の表示は注文を出した戦略の粒度で数える */
+	/** 注文の記録の変化を保存する */
 	const saveChanges = (
 		changed: readonly TradeOrder[],
 		origin: { decisionId: number | null; strategy: StoredStrategy | null },
@@ -93,46 +95,50 @@ export function createTradingService({
 		});
 	};
 
-	const expire = (account: Account, t: number) => {
-		// 期限切れの取消は注文ごとに、注文を出した戦略の粒度で本数を数える
-		let current = account;
-		const changed: TradeOrder[] = [];
-		for (const item of account.openOrders) {
-			if (item.order.expiresAt === null || t < item.order.expiresAt) continue;
-			const stored = repo.order(mode, item.order.id);
-			const one = expireOrders(
-				{ ...current, openOrders: [item] },
-				t,
-				timeframeMsOf(stored?.strategyId ?? null),
-			);
-			current = {
-				...current,
-				openOrders: current.openOrders.filter((x) => x !== item),
-			};
-			changed.push(...one.changed);
-		}
-		return { account: current, changed };
-	};
-
-	/** 今の戦略の粒度の足。確定した足に、途中の足（保存済みの1分足と形成中の1分足から作る）を足す */
+	/**
+	 * 戦略が頼む粒度ごとの足と、直近の細かい足（1分足）。確定した足に、途中の足（保存済みの1分足と形成中の1分足から作る）を足す
+	 */
 	const candlesAt = (s: StoredStrategy, t: number, live: LiveMarket) => {
-		const tf = s.params.timeframe;
+		const needs = conditionStrategy.candleNeeds(s.params);
+		const timeframes = Object.keys(needs) as Timeframe[];
+		const recentMs = conditionStrategy.recentMs(s.params);
 		// 足の終わりちょうどに評価したときは、終わったばかりの足を今の足とする（バックテストで足の終わりに判定するのと揃える）
-		const start = candleStart(t - 1, tf);
-		const history = Math.max(1, conditionStrategy.historyBars(s.params));
-		const done = marketData.candlesBefore(tf, start, history - 1);
+		const starts = timeframes.map((tf) => candleStart(t - 1, tf));
+		const earliest = Math.min(candleStart(t - 1 - recentMs, "1m"), ...starts);
 		// 保存済みの1分足に、収集がまだ保存していない1分足（確定待ち・形成中）を重ねる
 		const byTime = new Map<number, Candle>();
 		for (const c of [
-			...marketData.loadCandles("1m", start, t),
+			...marketData.loadCandles("1m", earliest, t),
 			...live.unsaved,
 			...(live.forming ? [live.forming] : []),
 		]) {
-			if (c.time >= start && c.time < t) byTime.set(c.time, c);
+			if (c.time >= earliest && c.time < t) byTime.set(c.time, c);
 		}
 		const minutes = [...byTime.values()].sort((a, b) => a.time - b.time);
-		const current = aggregateCandles(minutes, tf)[0];
-		return current ? [...done, current] : done;
+		const candles: Partial<Record<Timeframe, Candle[]>> = {};
+		timeframes.forEach((tf, i) => {
+			const start = starts[i] as number;
+			const done = marketData.candlesBefore(
+				tf,
+				start,
+				Math.max(1, needs[tf] ?? 1) - 1,
+			);
+			const current = aggregateCandles(
+				minutes.filter((c) => c.time >= start),
+				tf,
+			)[0];
+			candles[tf] = current ? [...done, current] : done;
+		});
+		return {
+			candles,
+			recent: {
+				timeframeMs: TIMEFRAME_MS["1m"],
+				candles:
+					recentMs > 0
+						? minutes.filter((c) => c.time >= t - recentMs - TIMEFRAME_MS["1m"])
+						: [],
+			},
+		};
 	};
 
 	const evaluate = (t: number) => {
@@ -164,16 +170,15 @@ export function createTradingService({
 		) {
 			for (const j of JUDGES) values[j] = current.results[j].value;
 		}
-		const tfMs = TIMEFRAME_MS[s.params.timeframe];
 		repo.transaction(() => {
-			const expired = expire(repo.account(mode, t).account, t);
+			const expired = expireOrders(repo.account(mode, t).account, t);
 			saveChanges(expired.changed, { decisionId: null, strategy: null });
 			const out = decide({
 				strategy: conditionStrategy,
 				params: s.params,
 				now: t,
 				price: (live.latestTrade as MarketTrade).price,
-				candles: candlesAt(s, t, live),
+				...candlesAt(s, t, live),
 				judgments: Object.fromEntries(
 					Object.entries(values).map(([judge, label]) => [
 						judge,
@@ -183,7 +188,6 @@ export function createTradingService({
 				account: expired.account,
 				state: row.state,
 				fees,
-				timeframeMs: tfMs,
 				idPrefix: PAPER_ID_PREFIX,
 			});
 			const decisionId = repo.addDecision(
@@ -266,7 +270,7 @@ export function createTradingService({
 				for (const trade of sorted) {
 					if (account.openOrders.length === 0) break;
 					// 期限を過ぎてから届いた約定では約定させない
-					const expired = expire(account, trade.time);
+					const expired = expireOrders(account, trade.time);
 					saveChanges(expired.changed, { decisionId: null, strategy: null });
 					const out = settleFills(
 						expired.account,
@@ -292,7 +296,7 @@ export function createTradingService({
 			try {
 				repo.transaction(() => {
 					const { account } = repo.account(mode, t);
-					const expired = expire(account, t);
+					const expired = expireOrders(account, t);
 					if (expired.changed.length === 0) return;
 					saveChanges(expired.changed, { decisionId: null, strategy: null });
 					repo.saveAccount(mode, expired.account);

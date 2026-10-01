@@ -12,12 +12,6 @@ import { formatDateTime } from "../format";
  */
 export const HOME_LOAD_BARS = 20_000;
 
-/** 最初に見せる長さ（最新から遡る）。読み込んだ足のうちこの分を画面に収め、残りは縮小・スクロールで見る */
-export const HOME_INITIAL_SPAN_MS = TIMEFRAME_MS["1d"];
-
-/** 戦略が無いときの粒度 */
-export const HOME_DEFAULT_TIMEFRAME: Timeframe = "1m";
-
 const RANGE_MS: Record<Exclude<ChartRange, "all">, number> = {
 	"1d": TIMEFRAME_MS["1d"],
 	"1w": 7 * TIMEFRAME_MS["1d"],

@@ -38,11 +38,10 @@ import {
 import { Button, Tabs } from "../components/ui";
 import { useChartBg } from "../lib/chart-bg";
 import { useChartIndicators } from "../lib/chart-indicators";
+import { initialSpanMs, useChartTimeframe } from "../lib/chart-timeframe";
 import {
 	changePercent,
 	collectorTrouble,
-	HOME_DEFAULT_TIMEFRAME,
-	HOME_INITIAL_SPAN_MS,
 	judgmentsFrom,
 	loadRange,
 	withLatestPrice,
@@ -227,10 +226,7 @@ function HomeBody({
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const active = strategies.active;
 
-	// null は「おまかせ」（戦略の粒度、戦略が無ければ既定の粒度）
-	const [chosenTf, setChosenTf] = useState<Timeframe | null>(null);
-	const timeframe =
-		chosenTf ?? active?.params.timeframe ?? HOME_DEFAULT_TIMEFRAME;
+	const [timeframe, setTimeframe] = useChartTimeframe();
 	const range = loadRange(timeframe, counts);
 
 	// EMA・RSI の本数は、選んでいる粒度の足で数える
@@ -327,7 +323,6 @@ function HomeBody({
 				.$put({ json: { id } })
 				.then((res) => readJson<{ strategy: StoredStrategy | null }>(res));
 			setStrategies((s) => ({ ...s, active: r.strategy }));
-			setChosenTf(null);
 			// オフ中に出す「次の判定」は運用する戦略の粒度で決まる
 			refreshTrading();
 		} catch (e) {
@@ -442,7 +437,7 @@ function HomeBody({
 					bars={shownBars}
 					indicators={indicators}
 					hideIndicators={!fresh}
-					initialSpanMs={HOME_INITIAL_SPAN_MS}
+					initialSpanMs={initialSpanMs(timeframe)}
 					viewKey={bars?.key ?? ""}
 					currentPrice={latest?.price ?? null}
 					entryPrices={entryPrices}
@@ -458,7 +453,7 @@ function HomeBody({
 						<select
 							aria-label="足の粒度"
 							value={timeframe}
-							onChange={(e) => setChosenTf(e.target.value as Timeframe)}
+							onChange={(e) => setTimeframe(e.target.value as Timeframe)}
 							className="h-8 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold"
 						>
 							{TIMEFRAMES.map((t) => (

@@ -12,11 +12,11 @@ import type {
 
 export type RunnerJob = {
 	params: ConditionSet;
-	/** 戦略の粒度の足。指標の計算に使うため期間より前の足も含む */
-	candles: Candle[];
+	/** 条件で使う粒度ごとの足。指標の計算に使うため期間より前の足も含む */
+	candles: Partial<Record<Timeframe, Candle[]>>;
 	dataTimeframe: Timeframe;
-	/** 判定と約定に使う期間内の足と粒度。戦略の粒度と同じなら candles を使う */
-	stepCandles: Candle[] | null;
+	/** 判定と約定に使う期間内の足と粒度 */
+	stepCandles: Candle[];
 	stepTimeframe: Timeframe;
 	from: number;
 	to: number;

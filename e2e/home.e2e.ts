@@ -69,20 +69,22 @@ test("EMA は戦略で使っていれば表示して始まり、どの粒度で�
 	const select = page.getByLabel("運用する戦略");
 	const ema = page.getByRole("button", { name: "EMA", exact: true });
 
-	await select.selectOption({ label: `${trend}（1時間足）` });
+	await select.selectOption({ label: `${trend}` });
 	await openDisplay(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "true");
-	// 戦略の粒度（トレンド追随は1時間足）が選ばれている
+	// 既定は日足。戦略の条件の足（トレンド追随は1時間足）は見ない
 	const tf = page.getByLabel("足の粒度");
-	await expect(tf).toHaveValue("1h");
+	await expect(tf).toHaveValue("1d");
 
-	// 戦略の粒度以外でも出す
+	// 選んだ足は再読み込みしても保たれ、どの足でも出す
 	await tf.selectOption("5m");
+	await page.reload();
+	await expect(tf).toHaveValue("5m");
 	await openDisplay(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "true");
 
 	// EMA を使わない戦略では隠して始まる
-	await select.selectOption({ label: `${range}（1時間足）` });
+	await select.selectOption({ label: `${range}` });
 	await openDisplay(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "false");
 
@@ -134,11 +136,16 @@ test("RSI の条件を持つ戦略を選ぶと RSI の小窓と値が出て、�
 	};
 	const params = {
 		...strategy.params,
-		timeframe: "1m",
 		buy: {
 			match: "all",
 			conditions: [
-				{ type: "rsi", period: 2, threshold: 30, direction: "below" },
+				{
+					type: "rsi",
+					timeframe: "1m",
+					period: 2,
+					threshold: 30,
+					direction: "below",
+				},
 			],
 		},
 	};
@@ -166,7 +173,7 @@ test("RSI の条件を持つ戦略を選ぶと RSI の小窓と値が出て、�
 		await toggle.click();
 		await expect(value).toBeVisible();
 
-		// 戦略の粒度以外でも出す
+		// 条件の足以外でも出す
 		await page.getByLabel("足の粒度").selectOption("5m");
 		await openDisplay(page);
 		await expect(toggle).toHaveAttribute("aria-pressed", "true");
