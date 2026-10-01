@@ -154,7 +154,7 @@ type ListedOrder = BacktestOrder & { lotPrice?: number | null };
 /** 売りが売るロットの説明。ロットの買値が分からなければ空 */
 const lotText = (o: ListedOrder) =>
 	o.side === "sell" && o.lotPrice != null
-		? ` · 買値 ${formatInt(o.lotPrice)} のロット`
+		? ` · 買値 ${formatInt(o.lotPrice)}円 のロット`
 		: "";
 
 export function OrderRow({
@@ -183,20 +183,20 @@ export function OrderRow({
 					<span className="shrink-0">
 						<SideText order={o} />{" "}
 						{o.type === "limit" && o.status !== "filled" ? "指値 " : ""}
-						{formatBtc(o.quantity)} · {STATUS_LABEL[o.status]}
+						{formatBtc(o.quantity)} BTC · {STATUS_LABEL[o.status]}
 					</span>
 					<ExitBadge order={o} />
 				</span>
 				<span className="num text-xs text-text-2">
 					{formatDateTime(orderTime(o))}
-					{price !== null ? ` · @${formatInt(price)}` : ""}
+					{price !== null ? ` · @${formatInt(price)}円` : ""}
 					{lotText(o)}
 				</span>
 			</span>
 			<span className="num text-right text-[13px] font-semibold">
 				{o.pnl !== null ? (
 					<span className={o.pnl >= 0 ? "text-profit" : "text-loss"}>
-						{formatSignedInt(o.pnl)}
+						{formatSignedInt(o.pnl)}円
 					</span>
 				) : (
 					(tag ?? (
@@ -244,9 +244,9 @@ export function OrderSheet({
 			<div className="grid grid-cols-3 gap-2 rounded-[10px] bg-bg p-3">
 				<Stat
 					label={o.status === "filled" ? "約定価格" : "指値"}
-					value={price !== null ? formatInt(price) : "—"}
+					value={price !== null ? `${formatInt(price)}円` : "—"}
 				/>
-				<Stat label="数量" value={formatBtc(o.quantity)} />
+				<Stat label="数量" value={`${formatBtc(o.quantity)} BTC`} />
 				{o.pnl !== null ? (
 					<Stat
 						label="損益"

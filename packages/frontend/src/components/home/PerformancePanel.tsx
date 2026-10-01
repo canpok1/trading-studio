@@ -74,7 +74,7 @@ export function PerformancePanel({
 					<div className="grid grid-cols-3 gap-x-2 gap-y-3">
 						<Stat
 							label="確定損益"
-							value={formatSignedInt(p.realizedPnl)}
+							value={`${formatSignedInt(p.realizedPnl)}円`}
 							tone={tone(p.realizedPnl)}
 						/>
 						<Stat

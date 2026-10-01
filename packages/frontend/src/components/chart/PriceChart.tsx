@@ -862,7 +862,7 @@ export function PriceChart({
 								</span>
 							)}
 							<span data-testid="chart-close" className="font-semibold">
-								¥{formatInt(bar.close)}
+								{formatInt(bar.close)}円
 							</span>
 							{atLastSlot && latestNote}
 							{judgments &&
