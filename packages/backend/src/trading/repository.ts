@@ -160,6 +160,26 @@ export class TradingRepository {
 			.map(toRun);
 	}
 
+	/** 削除していない運用の id（作った順）。口座を読まずに済ませる */
+	runIds(): number[] {
+		return this.sql
+			.query<{ id: number }, []>(
+				"select id from trading_runs where deleted_at is null order by id",
+			)
+			.all()
+			.map((r) => r.id);
+	}
+
+	/** 削除していない運用が選んでいる戦略の id */
+	strategyIds(): number[] {
+		return this.sql
+			.query<{ strategy_id: number }, []>(
+				"select distinct strategy_id from trading_runs where deleted_at is null and strategy_id is not null",
+			)
+			.all()
+			.map((r) => r.strategy_id);
+	}
+
 	/** 削除していない運用 */
 	run(id: number): TradingRunRow | null {
 		const r = this.sql

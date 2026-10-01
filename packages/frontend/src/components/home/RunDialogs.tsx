@@ -5,7 +5,7 @@ import type {
 	StoredStrategy,
 	TradingMode,
 } from "@trading-studio/backend";
-import { validateConditionSet } from "@trading-studio/core";
+import { TRADING_RUN_LIMITS, validateConditionSet } from "@trading-studio/core";
 import { useId, useState } from "react";
 import { useApi } from "../../api";
 import { errorMessage, readJson } from "../../lib/useAsync";
@@ -35,6 +35,7 @@ function NameField({
 				id={id}
 				value={value}
 				onChange={(e) => onChange(e.target.value)}
+				maxLength={TRADING_RUN_LIMITS.name}
 				className="h-12 rounded-[10px] border border-line bg-surface px-3 text-[15px]"
 			/>
 		</div>
@@ -67,7 +68,10 @@ export function AddRunDialog({
 	const [name, setName] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
-	const shownName = name ?? strategy?.name ?? MODE_LABELS[mode];
+	// 戦略の名前はタブの名前より長くてよいので、収まる長さに切る
+	const shownName =
+		name ??
+		(strategy?.name ?? MODE_LABELS[mode]).slice(0, TRADING_RUN_LIMITS.name);
 	const add = async () => {
 		setBusy(true);
 		setError(null);

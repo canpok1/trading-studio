@@ -718,6 +718,23 @@ describe("複数のタブ", () => {
 		]);
 	});
 
+	test("1つのタブの口座が読めなくても、ほかのタブは約定・評価を続ける", async () => {
+		const t = setup();
+		const broken = t.trading.create({
+			name: "壊れた",
+			mode: "paper",
+			strategyId: t.strategy.id,
+		});
+		if (!broken.ok) throw new Error();
+		t.db.$client.run("update trading_runs set account = '{' where id = ?", [
+			broken.status.id,
+		]);
+		await t.call("POST", "/start");
+		t.at(T0 + M);
+		t.fill(P);
+		expect(t.orders().map((o) => [o.runId, o.status])).toEqual([[1, "filled"]]);
+	});
+
 	test("タブは5つまで、ライブは1つまで。名前は必須", async () => {
 		const t = setup();
 		const add = (mode: "paper" | "live", name = "x") =>

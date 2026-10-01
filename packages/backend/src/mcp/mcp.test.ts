@@ -72,7 +72,7 @@ async function setup() {
 			scoring: t.scoring,
 			judgments: t.judgments,
 			scoringAnalysis: t.scoringAnalysis,
-			inUse: (id) => t.trading.runs().some((r) => r.strategy?.id === id),
+			inUse: (id) => t.trading.inUse(id),
 			sleep: async () => {},
 		}),
 	);

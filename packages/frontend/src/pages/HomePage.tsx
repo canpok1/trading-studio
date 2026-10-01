@@ -14,6 +14,7 @@ import {
 	TIMEFRAME_LABELS,
 	TIMEFRAME_MS,
 	TIMEFRAMES,
+	TRADING_RUN_LIMITS,
 } from "@trading-studio/core";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -49,7 +50,6 @@ import {
 } from "../lib/home";
 import { formatSignedPercent } from "../lib/number";
 import {
-	MAX_RUNS,
 	useTradingOrders,
 	useTradingPerformance,
 	useTradingStatus,
@@ -529,7 +529,7 @@ function RunTabs({
 			<button
 				type="button"
 				aria-label="タブを追加"
-				disabled={runs.length >= MAX_RUNS}
+				disabled={runs.length >= TRADING_RUN_LIMITS.runs}
 				onClick={onAdd}
 				className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[10px] bg-surface-2 text-xl font-bold text-text-2 disabled:opacity-40"
 			>

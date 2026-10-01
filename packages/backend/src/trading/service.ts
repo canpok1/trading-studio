@@ -24,6 +24,7 @@ import {
 	realizedPnlOn,
 	settleFills,
 	TIMEFRAME_MS,
+	TRADING_RUN_LIMITS,
 	tradeFillPrice,
 	validateConditionSet,
 } from "@trading-studio/core";
@@ -41,7 +42,6 @@ import type {
 	TradingRunRow,
 	TradingService,
 } from "./types";
-import { MAX_RUNS, RUN_NAME_MAX } from "./types";
 
 /** ペーパーの注文の id の頭につける文字 */
 const PAPER_ID_PREFIX = "p";
@@ -256,13 +256,12 @@ export function createTradingService({
 	};
 
 	const fail = (
-		kind: TradingFailure["kind"],
+		kind: Exclude<TradingFailure, { errors: unknown }>["kind"],
 		message: string,
-	): { ok: false; error: TradingFailure } =>
-		({ ok: false, error: { kind, message } }) as {
-			ok: false;
-			error: TradingFailure;
-		};
+	): { ok: false; error: TradingFailure } => ({
+		ok: false,
+		error: { kind, message },
+	});
 
 	const okRun = (id: number): TradingResult => {
 		const row = repo.run(id);
@@ -273,10 +272,22 @@ export function createTradingService({
 
 	const notFound = () => fail("not_found", "運用が見つからない");
 
+	/** 運用の id。読めなければ空にし、見回りを例外で止めない */
+	const runIds = (): number[] => {
+		try {
+			return repo.runIds();
+		} catch (e) {
+			console.error("trading: runs unreadable", e);
+			return [];
+		}
+	};
+
 	const nameError = (name: string): string | null => {
 		const n = name.trim();
 		if (!n) return "名前を入れる";
-		if (n.length > RUN_NAME_MAX) return `${RUN_NAME_MAX} 文字以内にする`;
+		if (n.length > TRADING_RUN_LIMITS.name) {
+			return `${TRADING_RUN_LIMITS.name} 文字以内にする`;
+		}
 		return null;
 	};
 
@@ -288,43 +299,52 @@ export function createTradingService({
 		onTrades(trades) {
 			if (trades.length === 0) return;
 			const sorted = [...trades].sort((a, b) => a.time - b.time || a.id - b.id);
-			repo.transaction(() => {
-				for (const row of repo.runs()) {
-					if (row.mode !== "paper") continue;
-					let { account } = row;
-					if (account.openOrders.length === 0) continue;
-					let filled = false;
-					for (const trade of sorted) {
-						if (account.openOrders.length === 0) break;
-						// 期限を過ぎてから届いた約定では約定させない
-						const expired = expireOrders(account, trade.time);
-						saveChanges(row, expired.changed, {
-							decisionId: null,
-							strategy: null,
+			// 1つの運用の失敗で、ほかの運用の約定を巻き戻さない
+			for (const id of runIds()) {
+				try {
+					repo.transaction(() => {
+						const row = repo.run(id);
+						if (row?.mode !== "paper") return;
+						let { account } = row;
+						if (account.openOrders.length === 0) return;
+						let filled = false;
+						for (const trade of sorted) {
+							if (account.openOrders.length === 0) break;
+							// 期限を過ぎてから届いた約定では約定させない
+							const expired = expireOrders(account, trade.time);
+							saveChanges(row, expired.changed, {
+								decisionId: null,
+								strategy: null,
+							});
+							const out = settleFills(
+								expired.account,
+								(o) => tradeFillPrice(o, trade),
+								trade.time,
+								fees,
+							);
+							saveChanges(row, out.changed, {
+								decisionId: null,
+								strategy: null,
+							});
+							account = out.account;
+							filled ||= out.filled;
+						}
+						// 自分の注文が約定したら、次の見回りで評価し直す（バックテストで約定した足の終わりに判定するのと揃える）
+						repo.saveRun({
+							...row,
+							account,
+							reevaluate: row.reevaluate || (filled && row.enabled),
 						});
-						const out = settleFills(
-							expired.account,
-							(o) => tradeFillPrice(o, trade),
-							trade.time,
-							fees,
-						);
-						saveChanges(row, out.changed, { decisionId: null, strategy: null });
-						account = out.account;
-						filled ||= out.filled;
-					}
-					// 自分の注文が約定したら、次の見回りで評価し直す（バックテストで約定した足の終わりに判定するのと揃える）
-					repo.saveRun({
-						...row,
-						account,
-						reevaluate: row.reevaluate || (filled && row.enabled),
 					});
+				} catch (e) {
+					console.error("trading: settle failed", id, e);
 				}
-			});
+			}
 		},
 
 		tick() {
 			const t = now();
-			for (const { id } of repo.runs()) {
+			for (const id of runIds()) {
 				// 1つの運用の失敗で、ほかの運用を止めない
 				try {
 					repo.transaction(() => {
@@ -366,8 +386,8 @@ export function createTradingService({
 			const noStrategy = strategyError(input.strategyId);
 			if (noStrategy) return fail("not_found", noStrategy);
 			const runs = repo.runs();
-			if (runs.length >= MAX_RUNS) {
-				return fail("limit", `タブは ${MAX_RUNS} つまで`);
+			if (runs.length >= TRADING_RUN_LIMITS.runs) {
+				return fail("limit", `タブは ${TRADING_RUN_LIMITS.runs} つまで`);
 			}
 			if (input.mode === "live" && runs.some((r) => r.mode === "live")) {
 				return fail("limit", "ライブのタブは1つまで（実口座は1つのため）");
@@ -545,6 +565,8 @@ export function createTradingService({
 					order.decisionId === null ? null : repo.decision(order.decisionId),
 			};
 		},
+
+		inUse: (strategyId) => repo.strategyIds().includes(strategyId),
 
 		strategyLock(strategyId) {
 			let lock: StrategyLock | null = null;

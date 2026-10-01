@@ -149,6 +149,14 @@ export type AccountLot = Lot & {
 	record: TradeOrder;
 };
 
+/** 自動取引の運用（ホームのタブ）の上限。サーバーの検証と画面で共有する */
+export const TRADING_RUN_LIMITS = {
+	/** 運用の数 */
+	runs: 5,
+	/** 名前の文字数 */
+	name: 20,
+} as const;
+
 /** 口座。現金・保有（ロット）・未約定の注文 */
 export type Account = {
 	cash: number;

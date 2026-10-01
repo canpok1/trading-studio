@@ -27,9 +27,6 @@ import {
 /** 状態と注文を問い合わせる間隔（ホームの最新価格と同じ） */
 const STATUS_MS = 5_000;
 
-/** タブの上限（サーバーの MAX_RUNS と同じ） */
-export const MAX_RUNS = 5;
-
 type TradingStatusValue = {
 	/** タブの状態（作った順）。まだ読めていなければ null */
 	runs: AutoTradingStatus[] | null;
@@ -179,7 +176,10 @@ export function useTradingPerformance(runId: number, active: boolean) {
 		runId: number;
 		performance: TradingPerformance;
 	} | null>(null);
-	const [error, setError] = useState<string | null>(null);
+	const [error, setError] = useState<{
+		runId: number;
+		message: string;
+	} | null>(null);
 	const seq = useRef(0);
 	const load = useCallback(async () => {
 		const my = ++seq.current;
@@ -192,7 +192,7 @@ export function useTradingPerformance(runId: number, active: boolean) {
 				setError(null);
 			}
 		} catch (e) {
-			if (my === seq.current) setError(errorMessage(e));
+			if (my === seq.current) setError({ runId, message: errorMessage(e) });
 		}
 	}, [api, runId]);
 	useEffect(() => {
@@ -201,7 +201,7 @@ export function useTradingPerformance(runId: number, active: boolean) {
 	useInterval(load, STATUS_MS, active);
 	return {
 		performance: loaded?.runId === runId ? loaded.performance : null,
-		error,
+		error: error?.runId === runId ? error.message : null,
 		reload: load,
 	};
 }

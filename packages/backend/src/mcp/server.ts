@@ -39,7 +39,7 @@ export type McpDeps = {
 	judgments: Pick<JudgmentService, "rule">;
 	scoringAnalysis: ScoringAnalysisService;
 	/** ホームのタブのどれかが運用する戦略に選んでいるか。選ばれている戦略は条件を変えさせない */
-	inUse?: (strategyId: number) => boolean;
+	inUse: (strategyId: number) => boolean;
 	/** run_backtest が終わりを待つ時間。過ぎたら実行中のまま返し、get_backtest で続きを見てもらう */
 	backtestWaitMs?: number;
 	sleep?: (ms: number) => Promise<void>;
@@ -216,7 +216,7 @@ function createServer({
 	scoring,
 	judgments,
 	scoringAnalysis,
-	inUse = () => false,
+	inUse,
 	backtestWaitMs = BACKTEST_WAIT_MS,
 	sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
 }: McpDeps) {

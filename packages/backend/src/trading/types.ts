@@ -153,11 +153,6 @@ export type TradingResult =
 	| { ok: true; status: AutoTradingStatus }
 	| { ok: false; error: TradingFailure };
 
-/** 運用（ホームのタブ）の上限 */
-export const MAX_RUNS = 5;
-/** 運用の名前の長さの上限 */
-export const RUN_NAME_MAX = 20;
-
 /** 運用を足す・変えるときの値 */
 export type RunInput = {
 	name: string;
@@ -169,7 +164,7 @@ export interface TradingService {
 	/** 運用の一覧（作った順） */
 	runs(): AutoTradingStatus[];
 	run(id: number): AutoTradingStatus | null;
-	/** 運用を足す。上限は MAX_RUNS、ライブは1つまで */
+	/** 運用を足す。数は core の TRADING_RUN_LIMITS まで、ライブは1つまで */
 	create(input: RunInput): TradingResult;
 	/** 名前と運用する戦略を変える。戦略はオン中と保有がある間は変えられない */
 	update(
@@ -199,4 +194,6 @@ export interface TradingService {
 	 * どれかに保有か未約定の注文があれば holding。止めていなければ null
 	 */
 	strategyLock(strategyId: number): StrategyLock | null;
+	/** どれかの運用が運用する戦略に選んでいるか */
+	inUse(strategyId: number): boolean;
 }
