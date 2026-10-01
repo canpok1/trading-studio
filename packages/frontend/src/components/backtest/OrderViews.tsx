@@ -3,6 +3,7 @@
 import type { BacktestOrder, ExitKind } from "@trading-studio/core";
 import { formatBtc, sellReasonPart } from "@trading-studio/core";
 import type { ReactNode } from "react";
+import { Fragment } from "react";
 import { formatDateTime } from "../../format";
 import type { GradeBadgeValue } from "../../lib/grade";
 import { formatInt, formatSignedInt } from "../../lib/number";
@@ -301,7 +302,18 @@ export function Stat({
 				{label}
 				<GradeBadge value={grade} />
 			</span>
-			<span className={`num text-[15px] font-semibold ${tone}`}>{value}</span>
+			{/* 列の幅に収まらない桁数でも隣の列へはみ出さないよう、桁区切りの後ろで折り返す。区切りの無い値はどこでも折り返す */}
+			<span
+				className={`num text-[15px] font-semibold [overflow-wrap:anywhere] ${tone}`}
+			>
+				{value.split(/(?<=,)/).map((part, i) => (
+					// biome-ignore lint/suspicious/noArrayIndexKey: 値を区切っただけで、並びは変わらない
+					<Fragment key={i}>
+						{i > 0 && <wbr />}
+						{part}
+					</Fragment>
+				))}
+			</span>
 			{sub && <span className="num text-[11px] text-text-2">{sub}</span>}
 		</div>
 	);

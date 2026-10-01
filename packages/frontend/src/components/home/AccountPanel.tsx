@@ -73,7 +73,7 @@ export function AccountPanel({
 	};
 
 	return (
-		<section aria-label="口座情報" className={PANEL}>
+		<section aria-label="口座情報" className={`${PANEL} @container`}>
 			<PanelHeader title="口座情報" tag={<ModeTag mode={account.mode} />} />
 			<div className="flex flex-col gap-0.5">
 				<span className="text-xs text-text-2">総資産</span>
@@ -86,7 +86,8 @@ export function AccountPanel({
 						: `${formatInt(performance.equity)}円`}
 				</span>
 			</div>
-			<div className="grid grid-cols-2 gap-x-2 gap-y-3 min-[400px]:grid-cols-4">
+			{/* 4 列は、8 桁の価格と評価損益が横に並んでも重ならないパネル幅があるときだけにする */}
+			<div className="grid grid-cols-2 gap-x-2 gap-y-3 @min-[28rem]:grid-cols-4">
 				<Stat
 					label="現金"
 					value={performance ? formatInt(performance.cash) : "—"}
