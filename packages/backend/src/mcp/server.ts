@@ -101,7 +101,6 @@ function runView(r: BacktestRun) {
 		progress: r.progress,
 		from: jst(r.from),
 		to: jst(r.to),
-		timeframe: r.timeframe,
 		stepTimeframe: r.stepTimeframe,
 		stepLimited: r.stepLimited,
 		initialCash: r.initialCash,

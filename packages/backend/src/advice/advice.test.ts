@@ -125,7 +125,6 @@ describe("応答の検証", () => {
 });
 
 const PARAMS: ConditionSet = {
-	timeframe: "1h",
 	frequency: {
 		flat: { value: 1, unit: "h" },
 		holding: { value: 1, unit: "h" },
@@ -134,9 +133,12 @@ const PARAMS: ConditionSet = {
 	maxPositions: 1,
 	dailyLossLimit: 30_000,
 	stopLossCooldownBars: 0,
+	stopLossCooldownTimeframe: "1h",
 	buy: {
 		match: "all",
-		conditions: [{ type: "breakout", lookback: 5, direction: "high" }],
+		conditions: [
+			{ type: "breakout", timeframe: "1h", lookback: 5, direction: "high" },
+		],
 	},
 	buyOrder: DEFAULT_BUY_ORDER,
 	partialTakeProfit: { match: "all", conditions: [] },
@@ -231,12 +233,12 @@ describe("アドバイスの生成", () => {
 			appBuiltAt: null,
 		});
 		expect(a?.content?.analysis).toContain("デモの分析");
-		// 戦略の足（1時間足）で期間の足をすべて渡す
-		expect(prompts[0]).toContain("## 値動き（足の粒度の 1時間足、192 本）");
+		// 条件の足（1時間足）で期間の足をすべて渡す
+		expect(prompts[0]).toContain("## 値動き（1時間足、192 本）");
 		expect(prompts[0]).toContain("## 成績");
 		// 戦略の条件は画面の見出しと項目名で渡し、プログラムの項目名は渡さない
 		expect(prompts[0]).toContain(
-			"### 買い注文する条件（組み合わせ方: すべて満たす）\n1. 終値が直近 5 本の最高値を上抜けた",
+			"### 買い注文する条件（組み合わせ方: すべて満たす）\n1. 1時間足で 終値が直近 5 本の最高値を上抜けた",
 		);
 		expect(prompts[0]).toContain("- 1日の損失上限（円）: 30,000");
 		expect(prompts[0]).toContain("- 最大ロット数: 1");
@@ -417,7 +419,6 @@ describe("別の AI で作る", () => {
 describe("改善版の戦略", () => {
 	// PARAMS を AI の出す形にしたもの。使わない項目は null で埋めてくる
 	const ai = (patch: Record<string, unknown> = {}) => ({
-		timeframe: "1h",
 		frequency: PARAMS.frequency,
 		orderSizeBtc: 0.01,
 		maxPositions: 1,
@@ -427,6 +428,7 @@ describe("改善版の戦略", () => {
 			conditions: [
 				{
 					type: "breakout",
+					timeframe: "1h",
 					lookback: 5,
 					direction: "high",
 					fast: null,
@@ -434,9 +436,12 @@ describe("改善版の戦略", () => {
 				},
 			],
 		},
+		stopLossCooldownBars: 0,
+		stopLossCooldownTimeframe: "1h",
 		buyOrder: {
 			lines: [{ type: "limit", belowPercent: 0.1 }],
 			expireBars: 3,
+			expireTimeframe: "1h",
 		},
 		partialTakeProfit: { match: "all", conditions: [] },
 		partialSell: DEFAULT_PARTIAL_SELL,
@@ -528,7 +533,7 @@ describe("AI に渡す資料", () => {
 		};
 		const text = buildAdviceSource({
 			run: {
-				params: { ...PARAMS, timeframe: "1m" },
+				params: PARAMS,
 				timeframe: "1m",
 				stepTimeframe: "1m",
 				stepLimited: false,
@@ -556,7 +561,7 @@ describe("AI に渡す資料", () => {
 		const text = buildAdviceSource(
 			{
 				run: {
-					params: { ...PARAMS, timeframe: "1m" },
+					params: PARAMS,
 					timeframe: "1m",
 					stepTimeframe: "1m",
 					stepLimited: false,
@@ -592,11 +597,12 @@ describe("画面の表記", () => {
 		expect(
 			conditionScreenText({
 				type: "emaCross",
+				timeframe: "1h",
 				fast: 12,
 				slow: 48,
 				direction: "up",
 			}),
-		).toBe("短期EMA 12 本が 長期EMA 48 本を上抜けた");
+		).toBe("1時間足で 短期EMA 12 本が 長期EMA 48 本を上抜けた");
 		expect(
 			conditionScreenText({
 				type: "judgment",
@@ -607,10 +613,11 @@ describe("画面の表記", () => {
 		expect(
 			conditionScreenText({
 				type: "rsi",
+				timeframe: "1h",
 				period: 14,
 				threshold: 30,
 				direction: "below",
 			}),
-		).toBe("RSI 14 本が 30 以下");
+		).toBe("1時間足で RSI 14 本が 30 以下");
 	});
 });

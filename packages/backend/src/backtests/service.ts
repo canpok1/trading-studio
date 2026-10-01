@@ -1,8 +1,10 @@
 // バックテストの実行ジョブ。同時に動かすのは1つだけで、画面は進捗を定期的に問い合わせる
 
+import type { Candle, Timeframe } from "@trading-studio/core";
 import {
 	acceptsNoJudgment,
 	BacktestError,
+	candleTimeframes,
 	checkDataResolution,
 	chooseStepTimeframe,
 	conditionStrategy,
@@ -11,6 +13,7 @@ import {
 	withSellDetails,
 } from "@trading-studio/core";
 import type { JudgmentService } from "../judgments/types";
+import { MAX_CHART_BARS } from "../market/service";
 import type { MarketDataRepository } from "../market-data/repository";
 import type { ScoringService } from "../news/types";
 import { checkName } from "../strategies/service";
@@ -108,8 +111,8 @@ export function createBacktestService({
 			if (invalid) return fail(invalid);
 
 			const { params, from, to } = input;
-			const tf = params.timeframe;
-			// 戦略の粒度より細かいデータがあれば、戦略の粒度の足は自動で作られている
+			const needed = candleTimeframes(params);
+			// 条件の足より細かいデータがあれば、条件の足は自動で作られている
 			const finest = marketData.importedTimeframes(from, to)[0];
 			if (!finest) {
 				return fail({
@@ -119,7 +122,7 @@ export function createBacktestService({
 				});
 			}
 			try {
-				checkDataResolution(finest, tf);
+				checkDataResolution(finest, needed[0] ?? null);
 			} catch (e) {
 				if (e instanceof BacktestError) {
 					return fail({ kind: "no_data", message: e.message });
@@ -178,22 +181,27 @@ export function createBacktestService({
 					missingBars: gaps.reduce((n, g) => n + g.missing, 0),
 				});
 			}
-			const tfMs = TIMEFRAME_MS[tf];
-			const history = conditionStrategy.historyBars(params);
-			const candles = marketData.loadCandles(tf, from - history * tfMs, to);
-			const barCount = candles.filter((c) => c.time >= from).length;
-			const stepCandles =
-				step.timeframe === tf
-					? null
-					: marketData.loadCandles(step.timeframe, from, to);
-			if (barCount === 0 || stepCandles?.length === 0) {
+			const needs = conditionStrategy.candleNeeds(params);
+			const candles: Partial<Record<Timeframe, Candle[]>> = {};
+			for (const tf of needed) {
+				const history = needs[tf] ?? 1;
+				candles[tf] = marketData.loadCandles(
+					tf,
+					from - history * TIMEFRAME_MS[tf],
+					to,
+				);
+			}
+			const stepCandles = marketData.loadCandles(step.timeframe, from, to);
+			const barCount = stepCandles.length;
+			if (barCount === 0) {
 				return fail({ kind: "no_data", message: "期間に足が無い" });
 			}
 
 			const id = repo.create({
 				name: input.name.trim(),
 				params,
-				timeframe: tf,
+				// 条件で使う最も細かい足。AI アドバイスで注文の前後を見せる足に使う
+				timeframe: needed[0] ?? step.timeframe,
 				from,
 				to,
 				initialCash: input.initialCash,
@@ -269,26 +277,49 @@ export function createBacktestService({
 			return repo.list().map(withProgress);
 		},
 
-		chart(id) {
+		chart(id, timeframe, maxBars = MAX_CHART_BARS) {
 			const chart = repo.chart(id);
 			const run = repo.get(id);
-			if (!chart || !run) return null;
+			if (!chart || !run) return { ok: false, kind: "not_found" };
+			const count = marketData.countCandles(timeframe, run.from, run.to);
+			if (count > maxBars) {
+				return { ok: false, kind: "too_many", count, max: maxBars };
+			}
+			// チャートの足は画面で選んだ粒度で、期間の足をそのときのデータから読む。
+			// データが消えていれば、結果に残した足（日足。戦略が足の粒度を持っていた頃の実行はその粒度）を出す
+			const loaded = marketData.loadCandles(timeframe, run.from, run.to);
+			const bars = loaded.length > 0 ? loaded : chart.bars;
+			const tf = loaded.length > 0 ? timeframe : chart.timeframe;
 			const rule = run.aggregationRule;
-			const first = chart.bars[0];
-			const last = chart.bars.at(-1);
-			const tfMs = TIMEFRAME_MS[run.timeframe];
+			const first = bars[0];
+			const last = bars.at(-1);
+			const tfMs = TIMEFRAME_MS[tf];
 			return {
-				...chart,
-				judgments:
-					rule && first && last
-						? judgments.series(
-								first.time,
-								last.time + tfMs,
-								tfMs,
-								rule,
-								run.criteriaVersion,
-							)
-						: null,
+				ok: true,
+				chart: {
+					...chart,
+					timeframe: tf,
+					bars:
+						loaded.length > 0
+							? loaded.map(({ time, open, high, low, close }) => ({
+									time,
+									open,
+									high,
+									low,
+									close,
+								}))
+							: chart.bars,
+					judgments:
+						rule && first && last
+							? judgments.series(
+									first.time,
+									last.time + tfMs,
+									tfMs,
+									rule,
+									run.criteriaVersion,
+								)
+							: null,
+				},
 			};
 		},
 

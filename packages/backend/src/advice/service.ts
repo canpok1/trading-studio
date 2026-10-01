@@ -48,7 +48,11 @@ export function createAdviceService({
 	/** AI に渡す資料。結果が無ければ null */
 	const sourceOf = (runId: number) => {
 		const run = backtests.get(runId);
-		const chart = backtests.chart(runId);
+		// 注文の前後は条件で使う最も細かい足で見せる。多すぎれば input 側で粗い足にまとめる
+		const r = run
+			? backtests.chart(runId, run.timeframe, Number.POSITIVE_INFINITY)
+			: null;
+		const chart = r?.ok ? r.chart : null;
 		const orders = backtestRepo.orders(runId);
 		if (!run || !chart || !orders) return null;
 		const usesJudgments =
@@ -58,6 +62,7 @@ export function createAdviceService({
 			text: buildAdviceSource({
 				run,
 				bars: chart.bars,
+				timeframe: chart.timeframe,
 				orders,
 				judgments: usesJudgments ? chart.judgments : null,
 			}),

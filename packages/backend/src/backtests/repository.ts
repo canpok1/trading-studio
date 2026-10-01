@@ -196,11 +196,14 @@ export class BacktestRepository {
 	}
 
 	chart(id: number): Omit<BacktestChart, "judgments"> | null {
+		const run = this.get(id);
 		const bars = this.blob(id, "bars");
 		const orders = this.orders(id);
 		if (!bars || !orders) return null;
 		// opens・highs・lows は4本値を保存する前の実行には無い
 		const b = unpack<{
+			/** 残した足の粒度。持たない実行は戦略の足の粒度（run.timeframe） */
+			timeframe?: Timeframe;
 			times: number[];
 			closes: number[];
 			opens?: number[];
@@ -212,6 +215,7 @@ export class BacktestRepository {
 			return b.closes[Math.max(0, i)] as number;
 		};
 		return {
+			timeframe: b.timeframe ?? (run?.timeframe as Timeframe),
 			bars: b.times.map((time, i) => {
 				const close = b.closes[i] as number;
 				if (!b.opens || !b.highs || !b.lows) return { time, close };

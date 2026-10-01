@@ -27,6 +27,8 @@ type Bar = BacktestChart["bars"][number];
 export type AdviceSource = {
 	run: BacktestRun;
 	bars: Bar[];
+	/** bars の粒度。省くと run.timeframe */
+	timeframe?: Timeframe;
 	orders: BacktestOrder[];
 	/** 判定の条件を使う戦略だけ渡す */
 	judgments: JudgmentSeries | null;
@@ -239,11 +241,11 @@ function orderTable(orders: BacktestOrder[]): string {
 
 /** AI に渡す資料 */
 export function buildAdviceSource(
-	{ run, bars, orders, judgments }: AdviceSource,
+	{ run, bars, timeframe, orders, judgments }: AdviceSource,
 	maxBars = MAX_BARS,
 ): string {
 	const s = run.summary;
-	const tf = run.timeframe;
+	const tf = timeframe ?? run.timeframe;
 	const step = TIMEFRAME_MS[tf];
 	const lines: string[] = [];
 	lines.push("## バックテストの実行画面");
@@ -297,16 +299,14 @@ export function buildAdviceSource(
 	const sel = selectBars(bars, tf, orders, maxBars);
 	lines.push("");
 	if (sel.kind === "all") {
-		lines.push(
-			`## 値動き（足の粒度の ${TIMEFRAME_LABELS[tf]}、${sel.bars.length} 本）`,
-		);
+		lines.push(`## 値動き（${TIMEFRAME_LABELS[tf]}、${sel.bars.length} 本）`);
 		lines.push(barTable(sel.bars, step, judgments));
 	} else {
 		lines.push(
 			`## 値動きの全体（${TIMEFRAME_LABELS[sel.overviewTimeframe]}、${sel.overview.length} 本）`,
 		);
 		lines.push(
-			`足の粒度（${TIMEFRAME_LABELS[tf]}）では ${bars.length} 本あり多すぎるため、全体は粗い足にまとめ、注文の前後だけ足の粒度の足で下に載せる`,
+			`条件で使う最も細かい足（${TIMEFRAME_LABELS[tf]}）では ${bars.length} 本あり多すぎるため、全体は粗い足にまとめ、注文の前後だけ${TIMEFRAME_LABELS[tf]}で下に載せる`,
 		);
 		lines.push(
 			barTable(sel.overview, TIMEFRAME_MS[sel.overviewTimeframe], judgments),

@@ -242,7 +242,13 @@ describe("0012 トレンドをセンチメントへ統合", () => {
 		},
 	};
 	const { trend: _, ...RULE } = RULE_WITH_TREND.thresholds;
-	const ema = { type: "emaCross", fast: 5, slow: 20, direction: "up" };
+	const ema = {
+		type: "emaCross",
+		timeframe: "1h",
+		fast: 5,
+		slow: 20,
+		direction: "up",
+	};
 	const OLD_PARAMS = {
 		timeframe: "1h",
 		buy: {

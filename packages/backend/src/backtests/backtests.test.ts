@@ -16,7 +16,6 @@ const START = Date.UTC(2026, 6, 31, 15);
 const DAYS = 20;
 
 const PARAMS: ConditionSet = {
-	timeframe: "1h",
 	frequency: {
 		flat: { value: 1, unit: "h" },
 		holding: { value: 1, unit: "h" },
@@ -25,9 +24,12 @@ const PARAMS: ConditionSet = {
 	maxPositions: 1,
 	dailyLossLimit: 30_000,
 	stopLossCooldownBars: 0,
+	stopLossCooldownTimeframe: "1h",
 	buy: {
 		match: "all",
-		conditions: [{ type: "breakout", lookback: 5, direction: "high" }],
+		conditions: [
+			{ type: "breakout", timeframe: "1h", lookback: 5, direction: "high" },
+		],
 	},
 	buyOrder: DEFAULT_BUY_ORDER,
 	partialTakeProfit: { match: "all", conditions: [] },
@@ -129,12 +131,26 @@ describe("判定に使う足", () => {
 			await getJson<{ run: BacktestRun }>(t, `/api/backtests/${run.id}`)
 		).run;
 		expect(done.status).toBe("done");
-		// チャートは戦略の粒度の足
+		// チャートは選んだ粒度の足
 		const chart = await getJson<{ bars: unknown[] }>(
 			t,
-			`/api/backtests/${run.id}/chart`,
+			`/api/backtests/${run.id}/chart?timeframe=1h`,
 		);
 		expect(chart.bars).toHaveLength(18 * 24);
+		const daily = await getJson<{ bars: unknown[]; timeframe: string }>(
+			t,
+			`/api/backtests/${run.id}/chart?timeframe=1d`,
+		);
+		expect(daily.timeframe).toBe("1d");
+		expect(daily.bars.length).toBeLessThanOrEqual(19);
+		const res = await t.app.request(
+			`/api/backtests/${run.id}/chart?timeframe=1m`,
+		);
+		expect(res.status).toBe(200);
+		expect(
+			(await t.app.request(`/api/backtests/${run.id}/chart?timeframe=2h`))
+				.status,
+		).toBe(400);
 	});
 
 	test("細かい足が無ければ、戦略の粒度で判定し、不足として残す", async () => {
@@ -177,7 +193,7 @@ describe("バックテストの実行", () => {
 		const chart = await getJson<{
 			bars: { time: number }[];
 			markers: { id: string; time: number }[];
-		}>(t, `/api/backtests/${run.id}/chart`);
+		}>(t, `/api/backtests/${run.id}/chart?timeframe=1h`);
 		expect(chart.bars).toHaveLength(18 * 24);
 		expect(chart.markers).toHaveLength(done.orderCount);
 
@@ -427,7 +443,7 @@ describe("チャートの AI 判定", () => {
 		const chart = await getJson<{
 			bars: { time: number }[];
 			judgments: { values: { sentiment: (string | null)[] } };
-		}>(t, `/api/backtests/${run.id}/chart`);
+		}>(t, `/api/backtests/${run.id}/chart?timeframe=1h`);
 		const sentiment = chart.judgments.values.sentiment;
 		expect(sentiment).toHaveLength(chart.bars.length);
 		const i = chart.bars.findIndex((b) => b.time + H >= at);
@@ -624,7 +640,7 @@ describe("AI 判定の条件", () => {
 		const chart = await getJson<{
 			bars: { time: number }[];
 			judgments: { values: { sentiment: (string | null)[] } };
-		}>(t, `/api/backtests/${run.id}/chart`);
+		}>(t, `/api/backtests/${run.id}/chart?timeframe=1h`);
 		const i = chart.bars.findIndex((x) => x.time + H >= later);
 		expect(chart.judgments.values.sentiment[i]).toBe("0");
 
