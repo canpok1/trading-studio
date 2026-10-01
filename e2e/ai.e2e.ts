@@ -41,11 +41,11 @@ test("取得して採点したニュースが一覧に出て、市場評価が�
 		.filter({ hasText: "デモの採点。" })
 		.first();
 	await expect(scored).toBeVisible({ timeout: 20_000 });
-	// 版・モデル・重みは「詳しく」で開く
+	// 重みは閉じたままでも見える。版・モデルは「詳しく」で開く
+	await expect(scored).toContainText(/重み \d+%/);
 	await expect(scored).not.toContainText("プロンプト v");
 	await scored.getByRole("button", { name: /詳しく/ }).click();
 	await expect(scored).toContainText("プロンプト v");
-	await expect(scored).toContainText(/重み \d+%/);
 	await expect(page.getByTestId("judge-sentiment")).toContainText(
 		/\d+点 · \d+件から算出/,
 	);
