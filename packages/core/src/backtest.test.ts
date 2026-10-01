@@ -316,6 +316,7 @@ describe("判定頻度が戦略の粒度より短い", () => {
 		orderSize: Q,
 		maxPositions: 1,
 		dailyLossLimit: 30_000,
+		stopLossCooldownBars: 0,
 		buy: {
 			match: "all",
 			conditions: [{ type: "breakout", lookback: 2, direction: "high" }],
@@ -584,6 +585,7 @@ describe("複数ポジション", () => {
 		orderSize: Q,
 		maxPositions: 3,
 		dailyLossLimit: 30_000,
+		stopLossCooldownBars: 0,
 		buy: {
 			match: "all",
 			conditions: [{ type: "breakout", lookback: 1, direction: "high" }],

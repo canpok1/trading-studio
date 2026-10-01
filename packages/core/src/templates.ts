@@ -6,6 +6,7 @@ import {
 	DEFAULT_DAILY_LOSS_LIMIT,
 	DEFAULT_MAX_POSITIONS,
 	DEFAULT_PARTIAL_SELL,
+	DEFAULT_STOP_LOSS_COOLDOWN_BARS,
 	MARKET_BUY_ORDER,
 } from "./condition-strategy";
 
@@ -31,6 +32,7 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 			orderSize: 1_000_000,
 			maxPositions: DEFAULT_MAX_POSITIONS,
 			dailyLossLimit: DEFAULT_DAILY_LOSS_LIMIT,
+			stopLossCooldownBars: DEFAULT_STOP_LOSS_COOLDOWN_BARS,
 			buy: { match: "all", conditions: [] },
 			buyOrder: DEFAULT_BUY_ORDER,
 			partialTakeProfit: { match: "all", conditions: [] },
@@ -54,6 +56,7 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 			orderSize: 2_000_000,
 			maxPositions: DEFAULT_MAX_POSITIONS,
 			dailyLossLimit: DEFAULT_DAILY_LOSS_LIMIT,
+			stopLossCooldownBars: DEFAULT_STOP_LOSS_COOLDOWN_BARS,
 			buy: {
 				match: "all",
 				conditions: [{ type: "emaCross", fast: 12, slow: 48, direction: "up" }],
@@ -87,6 +90,7 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 			orderSize: 1_000_000,
 			maxPositions: DEFAULT_MAX_POSITIONS,
 			dailyLossLimit: DEFAULT_DAILY_LOSS_LIMIT,
+			stopLossCooldownBars: DEFAULT_STOP_LOSS_COOLDOWN_BARS,
 			buy: {
 				match: "all",
 				conditions: [{ type: "breakout", lookback: 24, direction: "low" }],

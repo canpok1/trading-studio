@@ -47,6 +47,12 @@ describe("売りのバッジ", () => {
 				exitKind: "stopLoss",
 			})?.text;
 		expect(text("RSI(14) 72.3 が 70 以上")).toBe("損切り: RSI14 70以上");
+		expect(text("RSI(14) が 70 を下抜け（前の足 72.1 → 今 68.0）")).toBe(
+			"損切り: RSI14 70下抜け",
+		);
+		expect(text("RSI(14) が 2 本前に 70 を下抜け（今 65.0）")).toBe(
+			"損切り: RSI14 70下抜け",
+		);
 		expect(text("終値 10,000,000 が EMA(50) 10,100,000 より下")).toBe(
 			"損切り: EMA50より下",
 		);

@@ -213,6 +213,9 @@ function RunHeader({ run }: { run: BacktestRun }) {
 		...(run.dailyLossLimitApplied
 			? [`1日の損失上限 ${formatInt(p.dailyLossLimit)}円`]
 			: []),
+		...(p.stopLossCooldownBars > 0
+			? [`損切り後 ${p.stopLossCooldownBars}本は買わない`]
+			: []),
 		`手数料 指値${pct(run.fees.limitPpm)}/成行${pct(run.fees.marketPpm)}`,
 		// チャートの判定もこのルールで出すので、判定の条件が無い戦略でも出す
 		...(run.aggregationRule ? [ruleText(run.aggregationRule)] : []),

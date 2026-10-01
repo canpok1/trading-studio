@@ -240,16 +240,25 @@ export function OrderSizeCard({
 /** 1日の損失上限。戦略の条件とは別に、注文を出す手前で検査する */
 export function RiskLimitCard({ params, onChange, errors }: Props) {
 	const errs = errorsAt(errors, "dailyLossLimit");
+	const cooldownErrs = errorsAt(errors, "stopLossCooldownBars");
 	const id = useId();
+	const cooldownId = useId();
 	return (
 		<Card className="flex flex-col gap-2.5">
 			<div className="flex items-center gap-1.5">
 				<h2 className="text-[15px] font-bold">リスク上限</h2>
 				<Help label="リスク上限">
-					<p>達したら新しい買い注文を止める（翌 0 時に再開）。</p>
+					<p>
+						1日の損失上限: 達したら新しい買い注文を止める（翌 0 時に再開）。
+					</p>
 					<p>
 						その日（0
 						時区切り）に売って確定した損益（手数料込み）で数える。含み損は数えない。売り（利確・損切り）は止めない。バックテストにも効く。
+					</p>
+					<p>
+						損切り後に買わない本数:
+						損切り（建値ストップを含む）の売りを出してから、足の粒度でこの本数のあいだ新しい買いを出さない。0
+						なら止めない。自動取引をオンにし直すと、損切りした時刻を忘れる。
 					</p>
 				</Help>
 			</div>
@@ -268,6 +277,28 @@ export function RiskLimitCard({ params, onChange, errors }: Props) {
 				/>
 			</div>
 			<ErrorText messages={errs} />
+			<div className="flex flex-col gap-1.5">
+				<label htmlFor={cooldownId} className="text-[13px] font-semibold">
+					損切り後に買わない本数
+				</label>
+				<div className="flex items-center gap-2">
+					<NumberInput
+						id={cooldownId}
+						value={params.stopLossCooldownBars}
+						onChange={(stopLossCooldownBars) =>
+							onChange({ ...params, stopLossCooldownBars })
+						}
+						inputMode="numeric"
+						invalid={cooldownErrs.length > 0}
+						className="h-11 w-24 text-[15px]"
+					/>
+					<span className="text-xs text-text-2">
+						本（{LIMITS.stopLossCooldownBars.min}〜
+						{LIMITS.stopLossCooldownBars.max}、0 は止めない）
+					</span>
+				</div>
+			</div>
+			<ErrorText messages={cooldownErrs} />
 		</Card>
 	);
 }
@@ -297,6 +328,7 @@ const CONDITION_NAMES: Record<ConditionKind, string> = {
 	emaSlope: "EMA の傾き",
 	breakout: "直近の高値・安値の突破",
 	rsi: "RSI",
+	rsiCross: "RSI のクロス",
 	bollinger: "ボリンジャーバンド",
 	entryChange: "買値からの %",
 	trailingStop: "買ってからの最高値からの %（トレーリングストップ）",
@@ -311,6 +343,7 @@ const SELL_KINDS: ConditionKind[] = [
 	"emaSlope",
 	"breakout",
 	"rsi",
+	"rsiCross",
 	"bollinger",
 	"entryChange",
 	"trailingStop",
@@ -318,7 +351,15 @@ const SELL_KINDS: ConditionKind[] = [
 ];
 
 const PRICE_KINDS: Record<ConditionGroupKey, ConditionKind[]> = {
-	buy: ["emaCross", "emaPosition", "emaSlope", "breakout", "rsi", "bollinger"],
+	buy: [
+		"emaCross",
+		"emaPosition",
+		"emaSlope",
+		"breakout",
+		"rsi",
+		"rsiCross",
+		"bollinger",
+	],
 	partialTakeProfit: SELL_KINDS,
 	takeProfit: SELL_KINDS,
 	stopLoss: SELL_KINDS,
@@ -353,6 +394,14 @@ function defaultCondition(
 			return sell
 				? { type: kind, period: 14, threshold: 70, direction: "above" }
 				: { type: kind, period: 14, threshold: 30, direction: "below" };
+		case "rsiCross":
+			return {
+				type: kind,
+				period: 14,
+				threshold: sell ? 70 : 30,
+				bars: 1,
+				direction: sell ? "down" : "up",
+			};
 		case "emaPosition":
 			return { type: kind, period: 200, direction: sell ? "below" : "above" };
 		case "emaSlope":
@@ -504,6 +553,52 @@ function ConditionRow({
 						<option value="above">以上</option>
 						<option value="below">以下</option>
 					</select>
+				</>
+			);
+			break;
+		case "rsiCross":
+			body = (
+				<>
+					<span>RSI</span>
+					<NumberInput
+						value={c.period}
+						onChange={(period) => onChange({ ...c, period })}
+						invalid={bad("period")}
+						inputMode="numeric"
+						aria-label="RSI の本数"
+						className="w-16"
+					/>
+					<span>本が</span>
+					<NumberInput
+						value={c.threshold}
+						onChange={(threshold) => onChange({ ...c, threshold })}
+						invalid={bad("threshold")}
+						inputMode="numeric"
+						aria-label="RSI のしきい値"
+						className="w-16"
+					/>
+					<span>を</span>
+					<select
+						aria-label="クロスの向き"
+						value={c.direction}
+						onChange={(e) =>
+							onChange({ ...c, direction: e.target.value as "up" | "down" })
+						}
+						className={selectClass}
+					>
+						<option value="up">上抜けた</option>
+						<option value="down">下抜けた</option>
+					</select>
+					<span>（直近</span>
+					<NumberInput
+						value={c.bars}
+						onChange={(bars) => onChange({ ...c, bars })}
+						invalid={bad("bars")}
+						inputMode="numeric"
+						aria-label="何本以内に抜けたか"
+						className="w-16"
+					/>
+					<span>本以内）</span>
 				</>
 			);
 			break;

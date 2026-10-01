@@ -56,6 +56,17 @@ export type Condition =
 			threshold: number;
 			direction: "above" | "below";
 	  }
+	/**
+	 * RSI(period) が直近 bars 本以内に threshold を上抜けた（up: 前の足 < threshold ≦ その足）/
+	 * 下抜けた（down: 前の足 > threshold ≧ その足）。bars が 1 なら今の足だけ。どのグループでも使える
+	 */
+	| {
+			type: "rsiCross";
+			period: number;
+			threshold: number;
+			bars: number;
+			direction: "up" | "down";
+	  }
 	/** 終値が EMA(period) より上（above）/ 下（below）。どのグループでも使える */
 	| { type: "emaPosition"; period: number; direction: "above" | "below" }
 	/** EMA(period) が bars 本前から percent % 以上 上がった（up）/ 下がった（down）。percent が 0 なら向きだけを見る。どのグループでも使える */
@@ -180,6 +191,8 @@ export type ConditionSet = {
 	maxPositions: number;
 	/** 1日の損失上限（円）。その日の確定損失がこれに達したら新しい買いを止める */
 	dailyLossLimit: number;
+	/** 損切り（建値ストップを含む）の売りを出してから、戦略の粒度の足でこの本数のあいだは買わない。0 は止めない */
+	stopLossCooldownBars: number;
 	buy: ConditionGroup;
 	buyOrder: BuyOrder;
 	/** 空なら一部利確しない。持たない保存済みの戦略は空として読む */
@@ -194,6 +207,8 @@ export const LIMITS = {
 	lookback: { min: 2, max: 1000 },
 	rsiPeriod: { min: 2, max: 100 },
 	rsiThreshold: { min: 1, max: 99 },
+	/** RSI のクロスを何本以内で見るか */
+	rsiCrossBars: { min: 1, max: 100 },
 	bollingerPeriod: { min: 2, max: 500 },
 	/** ボリンジャーバンドの σ。0.1 刻み */
 	bollingerSigma: { min: 0.1, max: 5 },
@@ -218,10 +233,15 @@ export const LIMITS = {
 	orderSize: { min: 100_000, max: SATOSHI_PER_BTC },
 	/** 1日の損失上限（円） */
 	dailyLossLimit: { min: 1, max: 100_000_000 },
+	/** 損切り後に買わない本数。0 は止めない */
+	stopLossCooldownBars: { min: 0, max: 1000 },
 } as const;
 
 /** 1日の損失上限の既定（仮置き）。これを持たない保存済みの戦略もこの上限で読む */
 export const DEFAULT_DAILY_LOSS_LIMIT = 30_000;
+
+/** 損切り後に買わない本数の既定。これを持たない保存済みの戦略もこの本数（止めない）で読む */
+export const DEFAULT_STOP_LOSS_COOLDOWN_BARS = 0;
 
 /** EMA・RSI を途中から計算しても値がほぼ一致するよう、本数のこの倍の足を渡してもらう */
 const EMA_HISTORY_FACTOR = 10;
@@ -335,6 +355,35 @@ function checkCondition(c: Condition, ctx: Ctx): Hit {
 						why: `RSI(${c.period}) ${formatRsi(v)} が ${c.threshold} ${c.direction === "above" ? "以上" : "以下"}`,
 					}
 				: { ok: false };
+		}
+		case "rsiCross": {
+			// 最も古い足でのクロスに、その前の足の RSI が要る
+			const need = c.period + c.bars + 1;
+			if (n < need) {
+				return {
+					insufficient: `RSI(${c.period}) のクロスに ${need} 本必要、現在 ${n} 本`,
+				};
+			}
+			const r = rsiOf(ctx, c.period);
+			const up = c.direction === "up";
+			for (let k = 0; k < c.bars; k++) {
+				const prev = r[n - 2 - k] as number;
+				const cur = r[n - 1 - k] as number;
+				const crossed = up
+					? prev < c.threshold && cur >= c.threshold
+					: prev > c.threshold && cur <= c.threshold;
+				if (!crossed) continue;
+				const now = r[n - 1] as number;
+				const verb = up ? "上抜け" : "下抜け";
+				return {
+					ok: true,
+					why:
+						k === 0
+							? `RSI(${c.period}) が ${c.threshold} を${verb}（前の足 ${formatRsi(prev)} → 今 ${formatRsi(cur)}）`
+							: `RSI(${c.period}) が ${k} 本前に ${c.threshold} を${verb}（今 ${formatRsi(now)}）`,
+				};
+			}
+			return { ok: false };
 		}
 		case "emaPosition": {
 			if (n < c.period) {
@@ -560,7 +609,7 @@ export function rsiLines(
 	const map = new Map<number, Set<number>>();
 	for (const key of CONDITION_GROUPS) {
 		for (const c of params[key].conditions) {
-			if (c.type === "rsi") {
+			if (c.type === "rsi" || c.type === "rsiCross") {
 				const set = map.get(c.period) ?? new Set<number>();
 				set.add(c.threshold);
 				map.set(c.period, set);
@@ -605,7 +654,7 @@ export function historyBars(params: ConditionSet): number {
 				n = Math.max(n, c.slow * EMA_HISTORY_FACTOR + 1);
 			} else if (c.type === "emaPosition" || c.type === "rsi") {
 				n = Math.max(n, c.period * EMA_HISTORY_FACTOR + 1);
-			} else if (c.type === "emaSlope") {
+			} else if (c.type === "emaSlope" || c.type === "rsiCross") {
 				n = Math.max(n, c.period * EMA_HISTORY_FACTOR + c.bars + 1);
 			} else if (c.type === "breakout") {
 				n = Math.max(n, c.lookback + 1);
@@ -650,6 +699,10 @@ export function validateConditionSet(p: ConditionSet): ValidationError[] {
 			"orderSize",
 			`${formatBtc(size.min)}〜${formatBtc(size.max)} BTC の範囲で入れる（最小単位 0.00000001）`,
 		);
+	}
+	if (!isIntIn(p.stopLossCooldownBars, LIMITS.stopLossCooldownBars)) {
+		const r = LIMITS.stopLossCooldownBars;
+		err("stopLossCooldownBars", `${r.min}〜${r.max} の整数で入れる`);
 	}
 	if (!isIntIn(p.dailyLossLimit, LIMITS.dailyLossLimit)) {
 		err(
@@ -699,6 +752,20 @@ export function validateConditionSet(p: ConditionSet): ValidationError[] {
 							`${at}.threshold`,
 							`${range(LIMITS.rsiThreshold)} の整数で入れる`,
 						);
+					}
+					break;
+				case "rsiCross":
+					if (!isIntIn(c.period, LIMITS.rsiPeriod)) {
+						err(`${at}.period`, `${range(LIMITS.rsiPeriod)} の整数で入れる`);
+					}
+					if (!isIntIn(c.threshold, LIMITS.rsiThreshold)) {
+						err(
+							`${at}.threshold`,
+							`${range(LIMITS.rsiThreshold)} の整数で入れる`,
+						);
+					}
+					if (!isIntIn(c.bars, LIMITS.rsiCrossBars)) {
+						err(`${at}.bars`, `${range(LIMITS.rsiCrossBars)} の整数で入れる`);
 					}
 					break;
 				case "judgment": {
@@ -897,6 +964,15 @@ function prevBuyHit(state: JsonValue): boolean | null {
 		: null;
 }
 
+/** 最後に損切りの売りを出した判定の時刻。無ければ null */
+function prevStopLossAt(state: JsonValue): number | null {
+	return isObj(state) &&
+		typeof state.stopLossAt === "number" &&
+		Number.isFinite(state.stopLossAt)
+		? state.stopLossAt
+		: null;
+}
+
 function usesCondition(p: ConditionSet, type: ConditionType): boolean {
 	return CONDITION_GROUPS.some((k) =>
 		p[k].conditions.some((c) => c.type === type),
@@ -971,6 +1047,8 @@ export function evaluateConditionSet(
 	const intents: OrderIntent[] = [];
 	const notes: string[] = [];
 	let buyHit = prevBuyHit(state);
+	const cooldown = p.stopLossCooldownBars > 0;
+	let stopLossAt = cooldown ? prevStopLossAt(state) : null;
 	const peaks = usesCondition(p, "trailingStop")
 		? lotPeaks(lots, candles, timeframeMs, state)
 		: null;
@@ -1037,6 +1115,7 @@ export function evaluateConditionSet(
 			const part =
 				quantity < lot.quantity ? ` のうち ${formatBtc(quantity)} BTC` : "";
 			sells.push(`${hit.why}${what}${part} を売却（${hit.label}の条件）`);
+			if (cooldown && hit.exitKind === "stopLoss") stopLossAt = now;
 			intents.push({
 				kind: "place",
 				side: "sell",
@@ -1048,6 +1127,7 @@ export function evaluateConditionSet(
 		}
 		if (lacking !== null) {
 			intents.length = 0;
+			stopLossAt = cooldown ? prevStopLossAt(state) : null;
 			notes.push(`指標の本数が足りないため判定しない（${lacking}）`);
 		} else if (targets.length === 0) {
 			notes.push("売り注文の約定待ち");
@@ -1079,6 +1159,17 @@ export function evaluateConditionSet(
 			buyCheck();
 			notes.push(`最大ロット数 ${p.maxPositions} に達しているため買わない`);
 		}
+	} else if (
+		stopLossAt !== null &&
+		now < stopLossAt + p.stopLossCooldownBars * timeframeMs
+	) {
+		if (edge) buyCheck();
+		const left = Math.ceil(
+			(stopLossAt + p.stopLossCooldownBars * timeframeMs - now) / timeframeMs,
+		);
+		notes.push(
+			`損切りから ${p.stopLossCooldownBars} 本経っていないため買わない（あと ${left} 本）`,
+		);
 	} else {
 		const wasHit = buyHit;
 		const r = buyCheck();
@@ -1096,11 +1187,12 @@ export function evaluateConditionSet(
 	}
 
 	const nextState: JsonValue =
-		buyHit === null && peaks === null
+		buyHit === null && peaks === null && stopLossAt === null
 			? null
 			: {
 					...(buyHit === null ? {} : { buyHit }),
 					...(peaks === null ? {} : { peaks }),
+					...(stopLossAt === null ? {} : { stopLossAt }),
 				};
 	return { intents, nextEvalAt, state: nextState, note: notes.join("。") };
 }
@@ -1202,6 +1294,15 @@ function parseCondition(v: unknown): Condition | null {
 				type: "rsi",
 				period: num(v.period),
 				threshold: num(v.threshold),
+				direction: v.direction,
+			};
+		case "rsiCross":
+			if (v.direction !== "up" && v.direction !== "down") return null;
+			return {
+				type: "rsiCross",
+				period: num(v.period),
+				threshold: num(v.threshold),
+				bars: num(v.bars),
 				direction: v.direction,
 			};
 		case "judgment":
@@ -1377,6 +1478,12 @@ export function parseConditionSet(v: unknown): ConditionSet | null {
 				? DEFAULT_DAILY_LOSS_LIMIT
 				: typeof v.dailyLossLimit === "number"
 					? v.dailyLossLimit
+					: Number.NaN,
+		stopLossCooldownBars:
+			v.stopLossCooldownBars === undefined
+				? DEFAULT_STOP_LOSS_COOLDOWN_BARS
+				: typeof v.stopLossCooldownBars === "number"
+					? v.stopLossCooldownBars
 					: Number.NaN,
 		buy,
 		buyOrder,

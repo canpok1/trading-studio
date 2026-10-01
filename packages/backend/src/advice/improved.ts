@@ -44,6 +44,7 @@ const CONDITION: ResponseSchema = {
 				"emaCross=短期EMA fast 本が長期EMA slow 本を上抜けた(direction=up)/下抜けた(down)。",
 				"breakout=終値が直近 lookback 本の最高値を上抜けた(direction=high)/最安値を下抜けた(low)。",
 				"rsi=RSI period 本が threshold 以上(direction=above)/以下(below)。",
+				"rsiCross=RSI period 本が直近 bars 本以内に threshold を上抜けた(direction=up)/下抜けた(down)。bars=1 なら今の足だけ。",
 				"emaPosition=終値が EMA period 本より上(direction=above)/下(below)。",
 				"emaSlope=EMA period 本が bars 本前より percent % 以上上がっている(direction=up)/下がっている(down)。percent=0 なら向きだけ。",
 				"bollinger=終値がボリンジャーバンド period 本・sigma σ の上限以上(band=upper)/下限以下(lower)。",
@@ -56,6 +57,7 @@ const CONDITION: ResponseSchema = {
 				"emaCross",
 				"breakout",
 				"rsi",
+				"rsiCross",
 				"emaPosition",
 				"emaSlope",
 				"bollinger",
@@ -77,7 +79,9 @@ const CONDITION: ResponseSchema = {
 			num("trailingStop を発動する、最高値の買値からの %。0 は買った直後から"),
 		),
 		bars: opt(
-			int("本数（holdingBars の保有本数・emaSlope の何本前と比べるか）"),
+			int(
+				"本数（holdingBars の保有本数・emaSlope の何本前と比べるか・rsiCross の何本以内か）",
+			),
 		),
 		direction: opt(
 			str("向き", ["up", "down", "high", "low", "above", "below"]),
@@ -126,6 +130,9 @@ export const IMPROVED_STRATEGY_SCHEMA: ResponseSchema = {
 		orderSizeBtc: num("1回の注文量（BTC）"),
 		maxPositions: int("最大ロット数"),
 		dailyLossLimitYen: int("1日の損失上限（円）"),
+		stopLossCooldownBars: int(
+			"損切り後に買わない本数。損切り（建値ストップを含む）の売りを出してから、足の粒度でこの本数のあいだ新しい買いを出さない。0 は止めない",
+		),
 		...Object.fromEntries(
 			CONDITION_GROUPS.map((k) => [k, group(CONDITION_GROUP_LABELS[k])]),
 		),
@@ -169,6 +176,7 @@ export const IMPROVED_STRATEGY_SCHEMA: ResponseSchema = {
 		"orderSizeBtc",
 		"maxPositions",
 		"dailyLossLimitYen",
+		"stopLossCooldownBars",
 		...CONDITION_GROUPS,
 		"partialSell",
 		"buyOrder",

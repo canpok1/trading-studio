@@ -48,6 +48,7 @@ function params(over: Partial<ConditionSet> = {}): ConditionSet {
 		orderSize: 1_000_000,
 		maxPositions: 1,
 		dailyLossLimit: 30_000,
+		stopLossCooldownBars: 0,
 		buy: { match: "all", conditions: [] },
 		buyOrder: DEFAULT_BUY_ORDER,
 		partialTakeProfit: { match: "all", conditions: [] },
@@ -473,6 +474,7 @@ describe("validateConditionSet", () => {
 			params({
 				orderSize: 1,
 				dailyLossLimit: 30_000,
+				stopLossCooldownBars: 0,
 				frequency: {
 					flat: { value: 0, unit: "m" },
 					holding: { value: 1.5, unit: "m" },
@@ -1447,5 +1449,187 @@ describe("一部利確", () => {
 		const read = parseConditionSet(legacy);
 		expect(read?.partialTakeProfit).toEqual({ match: "all", conditions: [] });
 		expect(read?.partialSell).toEqual(DEFAULT_PARTIAL_SELL);
+	});
+});
+
+describe("RSI のクロス", () => {
+	const up: Condition = {
+		type: "rsiCross",
+		period: 2,
+		threshold: 30,
+		bars: 1,
+		direction: "up",
+	};
+
+	test("前の足でしきい値未満、今の足でしきい値以上なら上抜け", () => {
+		// RSI(2): 0 → 66.7
+		const out = evaluateConditionSet(
+			input(candles([100, 90, 80, 100]), buyWith(up)),
+		);
+		expect(out.intents).toHaveLength(1);
+		expect(out.note).toContain("RSI(2) が 30 を上抜け（前の足 0.0 → 今 66.7）");
+	});
+
+	test("前の足でもしきい値以上なら成立しない", () => {
+		// RSI(2): 100 → 100
+		const out = evaluateConditionSet(
+			input(candles([100, 110, 120, 130]), buyWith(up)),
+		);
+		expect(out.intents).toHaveLength(0);
+	});
+
+	test("直近 M 本以内に抜けていれば成立する", () => {
+		// RSI(2): 0 → 66.7 → 80。抜けたのは1本前
+		const cs = candles([100, 90, 80, 100, 110]);
+		expect(evaluateConditionSet(input(cs, buyWith(up))).intents).toHaveLength(
+			0,
+		);
+		const out = evaluateConditionSet(input(cs, buyWith({ ...up, bars: 2 })));
+		expect(out.intents).toHaveLength(1);
+		expect(out.note).toContain("RSI(2) が 1 本前に 30 を上抜け（今 80.0）");
+	});
+
+	test("下抜け", () => {
+		// RSI(2): 100 → 33.3
+		const out = evaluateConditionSet(
+			input(
+				candles([100, 110, 120, 100]),
+				buyWith({ ...up, threshold: 70, direction: "down" }),
+			),
+		);
+		expect(out.note).toContain("RSI(2) が 70 を下抜け");
+	});
+
+	test("本数が足りない間は判定しない", () => {
+		const out = evaluateConditionSet(
+			input(candles([100, 90, 80]), buyWith(up)),
+		);
+		expect(out.intents).toHaveLength(0);
+		expect(out.note).toContain("RSI(2) のクロスに 4 本必要");
+	});
+
+	test("期間・しきい値・本数の範囲", () => {
+		const errs = validateConditionSet(
+			buyWith({ ...up, period: 1, threshold: 100, bars: 0 }),
+		).map((e) => e.path);
+		expect(errs).toContain("buy.conditions.0.period");
+		expect(errs).toContain("buy.conditions.0.threshold");
+		expect(errs).toContain("buy.conditions.0.bars");
+		expect(
+			validateConditionSet(
+				buyWith({ ...up, period: 100, threshold: 99, bars: 100 }),
+			).filter((e) => e.path.startsWith("buy.conditions")),
+		).toEqual([]);
+	});
+
+	test("チャートの RSI と必要な足の本数に含め、JSON から読み戻せる", () => {
+		const p = buyWith({ ...up, period: 14, bars: 3 });
+		expect(rsiLines(p)).toEqual([{ period: 14, thresholds: [30] }]);
+		expect(historyBars(p)).toBe(144);
+		expect(parseConditionSet(JSON.parse(JSON.stringify(p)))).toEqual(p);
+	});
+});
+
+describe("損切り後に買わない本数", () => {
+	const always: Condition = {
+		type: "breakout",
+		lookback: 2,
+		direction: "high",
+	};
+	const loss: Condition = {
+		type: "entryChange",
+		percent: 2,
+		direction: "down",
+	};
+	const p = params({
+		maxPositions: 2,
+		stopLossCooldownBars: 3,
+		buy: { match: "all", conditions: [always] },
+		stopLoss: { match: "any", conditions: [loss] },
+	});
+	// 終値が直近2本の最高値を上抜け続ける並び
+	const rising = candles([90, 95, 98]);
+
+	test("損切りした判定では、空き枠があっても買わない。損切りの時刻を state に残す", () => {
+		const out = evaluateConditionSet(
+			input(rising, p, { position: holding(100) }),
+		);
+		expect(
+			out.intents.map((i) => (i.kind === "place" ? i.side : null)),
+		).toEqual(["sell"]);
+		expect(out.note).toContain(
+			"損切りから 3 本経っていないため買わない（あと 3 本）",
+		);
+		expect(out.state).toMatchObject({ stopLossAt: 3 * H });
+	});
+
+	test("N 本ぶんの時間が経つまで買わず、経ったら買う", () => {
+		const state = { stopLossAt: 0 };
+		const at = (now: number) =>
+			evaluateConditionSet(input(rising, p, { now, state }));
+		const before = at(3 * H - 1);
+		expect(before.intents).toHaveLength(0);
+		expect(before.note).toContain("（あと 1 本）");
+		expect(before.state).toMatchObject({ stopLossAt: 0 });
+		expect(at(3 * H).intents).toHaveLength(1);
+	});
+
+	test("建値ストップも損切りとして数え、利確では止めない", () => {
+		const out = evaluateConditionSet(
+			input(rising, p, {
+				lots: [
+					{
+						id: "b1",
+						quantity: 1_000_000,
+						entryPrice: 99,
+						openedAt: 0,
+						partialExitDone: true,
+					},
+				],
+			}),
+		);
+		expect(out.note).toContain("一部利確の後");
+		expect(out.state).toMatchObject({ stopLossAt: 3 * H });
+		const tp = evaluateConditionSet(
+			input(
+				rising,
+				{
+					...p,
+					takeProfit: {
+						match: "any",
+						conditions: [{ type: "entryChange", percent: 2, direction: "up" }],
+					},
+				},
+				{ position: holding(90) },
+			),
+		);
+		expect(tp.note).toContain("（利確の条件）");
+		expect(
+			tp.intents.filter((i) => i.kind === "place" && i.side === "buy"),
+		).toHaveLength(1);
+		expect(tp.state).not.toHaveProperty("stopLossAt");
+	});
+
+	test("0 なら止めず、state も変えない", () => {
+		const off = { ...p, maxPositions: 1, stopLossCooldownBars: 0 };
+		const out = evaluateConditionSet(
+			input(rising, off, { state: { stopLossAt: 0 } }),
+		);
+		expect(out.intents).toHaveLength(1);
+		expect(out.state).toBeNull();
+	});
+
+	test("0〜1000 の整数。持たない保存済みの戦略は 0 で読む", () => {
+		const errs = (n: number) =>
+			validateConditionSet({ ...p, stopLossCooldownBars: n }).map(
+				(e) => e.path,
+			);
+		expect(errs(-1)).toContain("stopLossCooldownBars");
+		expect(errs(1001)).toContain("stopLossCooldownBars");
+		expect(errs(1.5)).toContain("stopLossCooldownBars");
+		expect(errs(1000)).not.toContain("stopLossCooldownBars");
+		const legacy = JSON.parse(JSON.stringify(p));
+		delete legacy.stopLossCooldownBars;
+		expect(parseConditionSet(legacy)?.stopLossCooldownBars).toBe(0);
 	});
 });

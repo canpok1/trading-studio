@@ -32,6 +32,7 @@ const PARAMS = {
 	},
 	orderSize: 1_000_000,
 	dailyLossLimit: 30_000,
+	stopLossCooldownBars: 0,
 	buy: {
 		match: "all",
 		conditions: [{ type: "breakout", lookback: 5, direction: "high" }],
