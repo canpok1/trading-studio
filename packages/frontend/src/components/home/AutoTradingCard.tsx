@@ -5,7 +5,7 @@ import type {
 	StoredStrategy,
 	TradingMode,
 } from "@trading-studio/backend";
-import { TIMEFRAME_LABELS, validateConditionSet } from "@trading-studio/core";
+import { validateConditionSet } from "@trading-studio/core";
 import { useState } from "react";
 import { useApi } from "../../api";
 import { formatClock } from "../../format";
@@ -143,7 +143,7 @@ export function AutoTradingCard({
 				<option value="">未選択</option>
 				{strategies.map((s) => (
 					<option key={s.id} value={s.id}>
-						{s.name}（{TIMEFRAME_LABELS[s.params.timeframe]}）
+						{s.name}
 					</option>
 				))}
 			</select>

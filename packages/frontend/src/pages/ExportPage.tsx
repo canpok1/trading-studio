@@ -287,9 +287,7 @@ function PickBacktestsModal({
 								className="size-4 shrink-0 accent-accent"
 							/>
 							<span className="flex min-w-0 flex-1 flex-col gap-0.5">
-								<strong className="truncate text-sm">
-									{r.name} · {TIMEFRAME_LABELS[r.timeframe]}
-								</strong>
+								<strong className="truncate text-sm">{r.name}</strong>
 								<span className="num text-xs text-text-2">
 									{formatDate(r.from)}〜{formatDate(r.to - 1)} ·{" "}
 									{formatDateTime(r.startedAt)} 実行

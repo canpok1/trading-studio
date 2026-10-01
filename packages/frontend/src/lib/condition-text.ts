@@ -11,6 +11,7 @@ import type {
 } from "@trading-studio/core";
 import {
 	FREQUENCY_UNIT_LABELS,
+	hasTimeframe,
 	JUDGMENT_VALUE_LABELS,
 	ORDER_TYPE_LABELS,
 	TIMEFRAME_LABELS,
@@ -29,7 +30,13 @@ export function stepLimitedText(step: Timeframe): string {
 	return `判定の間隔より細かい過去データが無いため、${TIMEFRAME_LABELS[step]}の終わりごとにしか判定しない。判定の間隔どおりに試すには、より細かい足の CSV を取り込む`;
 }
 
+/** 足を持つ条件は頭に足を付ける（例: 日足 RSI14 30以下） */
 export function conditionText(c: Condition): string {
+	const body = conditionBody(c);
+	return hasTimeframe(c) ? `${TIMEFRAME_LABELS[c.timeframe]} ${body}` : body;
+}
+
+function conditionBody(c: Condition): string {
 	switch (c.type) {
 		case "emaCross":
 			return `EMA${c.fast}/${c.slow}${c.direction === "up" ? "上抜け" : "下抜け"}`;
@@ -67,7 +74,7 @@ export function buyOrderText(o: BuyOrder): string {
 		l.type === "limit" ? `指値 −${l.belowPercent}%` : ORDER_TYPE_LABELS[l.type],
 	);
 	return o.lines.some((l) => l.type === "limit")
-		? `${lines.join("・")}・${o.expireBars}本で取消`
+		? `${lines.join("・")}・${TIMEFRAME_LABELS[o.expireTimeframe]}${o.expireBars}本で取消`
 		: lines.join("・");
 }
 

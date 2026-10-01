@@ -19,9 +19,11 @@ import {
 	CONDITION_GROUP_LABELS,
 	CONDITION_GROUPS,
 	DEFAULT_BUY_BELOW_PERCENT,
+	DEFAULT_CONDITION_TIMEFRAME,
 	FREQUENCY_UNIT_LABELS,
 	FREQUENCY_UNITS,
 	formatBtc,
+	hasTimeframe,
 	JUDGE_LABELS,
 	JUDGES,
 	JUDGMENT_CONDITION_VALUES,
@@ -72,7 +74,36 @@ function ErrorText({ messages }: { messages: string[] }) {
 	);
 }
 
-/** 足の粒度と判定の間隔 */
+/** 足の粒度を選ぶ。条件・指値の取消・損切り後の本数で、本数を数える足に使う */
+function TimeframeSelect({
+	value,
+	onChange,
+	label,
+	invalid = false,
+}: {
+	value: Timeframe;
+	onChange: (t: Timeframe) => void;
+	label: string;
+	invalid?: boolean;
+}) {
+	return (
+		<select
+			aria-label={label}
+			value={value}
+			onChange={(e) => onChange(e.target.value as Timeframe)}
+			aria-invalid={invalid || undefined}
+			className={`${selectClass} ${invalid ? "border-loss" : ""}`}
+		>
+			{TIMEFRAMES.map((t) => (
+				<option key={t} value={t}>
+					{TIMEFRAME_LABELS[t]}
+				</option>
+			))}
+		</select>
+	);
+}
+
+/** 判定の間隔 */
 export function FrequencyCard({ params, onChange, errors }: Props) {
 	const freq = (k: "flat" | "holding", label: string, tail: string) => {
 		const f = params.frequency[k];
@@ -115,31 +146,16 @@ export function FrequencyCard({ params, onChange, errors }: Props) {
 	return (
 		<Card className="flex flex-col gap-2.5">
 			<div className="flex items-center gap-1.5">
-				<h2 className="text-[15px] font-bold">足と判定の間隔</h2>
-				<Help label="足と判定の間隔">
+				<h2 className="text-[15px] font-bold">判定の間隔</h2>
+				<Help label="判定の間隔">
 					<p>
-						EMA・RSI・ボリンジャーバンドの本数・直近 N
-						本・買ってからの本数・指値を取り消すまでの本数は、この粒度の足で数える。
+						条件の足は条件ごとに選ぶ。判定のたびに、確定した足と今の途中の足で計算する。
 					</p>
-					<p>バックテストでは、足より短い間隔は足ごとに判定する。</p>
+					<p>
+						バックテストでは、この間隔で判定できる足（条件で使う最も細かい足まで）で判定を進める。
+					</p>
 				</Help>
 			</div>
-			<label className="flex flex-wrap items-center gap-2">
-				<span className="text-[13px] font-semibold">足の粒度</span>
-				<select
-					value={params.timeframe}
-					onChange={(e) =>
-						onChange({ ...params, timeframe: e.target.value as Timeframe })
-					}
-					className={selectClass}
-				>
-					{TIMEFRAMES.map((t) => (
-						<option key={t} value={t}>
-							{TIMEFRAME_LABELS[t]}
-						</option>
-					))}
-				</select>
-			</label>
 			{freq("flat", "保有なしのとき", "ごとに買いの条件を判定")}
 			{freq("holding", "保有中のとき", "ごとに売りの条件を判定")}
 		</Card>
@@ -241,6 +257,7 @@ export function OrderSizeCard({
 export function RiskLimitCard({ params, onChange, errors }: Props) {
 	const errs = errorsAt(errors, "dailyLossLimit");
 	const cooldownErrs = errorsAt(errors, "stopLossCooldownBars");
+	const cooldownTfErrs = errorsAt(errors, "stopLossCooldownTimeframe");
 	const id = useId();
 	const cooldownId = useId();
 	return (
@@ -257,7 +274,7 @@ export function RiskLimitCard({ params, onChange, errors }: Props) {
 					</p>
 					<p>
 						損切り後に買わない本数:
-						損切り（建値ストップを含む）の売りを出してから、足の粒度でこの本数のあいだ新しい買いを出さない。0
+						損切り（建値ストップを含む）の売りを出してから、選んだ足でこの本数ぶんの時間は新しい買いを出さない。0
 						なら止めない。自動取引をオンにし直すと、損切りした時刻を忘れる。
 					</p>
 				</Help>
@@ -281,7 +298,16 @@ export function RiskLimitCard({ params, onChange, errors }: Props) {
 				<label htmlFor={cooldownId} className="text-[13px] font-semibold">
 					損切り後に買わない本数
 				</label>
-				<div className="flex items-center gap-2">
+				<div className="flex flex-wrap items-center gap-2">
+					<TimeframeSelect
+						value={params.stopLossCooldownTimeframe}
+						onChange={(stopLossCooldownTimeframe) =>
+							onChange({ ...params, stopLossCooldownTimeframe })
+						}
+						label="損切り後に買わない本数を数える足"
+						invalid={cooldownTfErrs.length > 0}
+					/>
+					<span className="text-sm">で</span>
 					<NumberInput
 						id={cooldownId}
 						value={params.stopLossCooldownBars}
@@ -298,7 +324,7 @@ export function RiskLimitCard({ params, onChange, errors }: Props) {
 					</span>
 				</div>
 			</div>
-			<ErrorText messages={cooldownErrs} />
+			<ErrorText messages={[...cooldownTfErrs, ...cooldownErrs]} />
 		</Card>
 	);
 }
@@ -380,33 +406,59 @@ function defaultCondition(
 	group: ConditionGroupKey,
 ): Condition {
 	const sell = group !== "buy";
+	const timeframe = DEFAULT_CONDITION_TIMEFRAME;
 	switch (kind) {
 		case "emaCross":
 			return {
 				type: kind,
+				timeframe,
 				fast: 12,
 				slow: 48,
 				direction: sell ? "down" : "up",
 			};
 		case "breakout":
-			return { type: kind, lookback: 24, direction: sell ? "low" : "high" };
+			return {
+				type: kind,
+				timeframe,
+				lookback: 24,
+				direction: sell ? "low" : "high",
+			};
 		case "rsi":
 			return sell
-				? { type: kind, period: 14, threshold: 70, direction: "above" }
-				: { type: kind, period: 14, threshold: 30, direction: "below" };
+				? {
+						type: kind,
+						timeframe,
+						period: 14,
+						threshold: 70,
+						direction: "above",
+					}
+				: {
+						type: kind,
+						timeframe,
+						period: 14,
+						threshold: 30,
+						direction: "below",
+					};
 		case "rsiCross":
 			return {
 				type: kind,
+				timeframe,
 				period: 14,
 				threshold: sell ? 70 : 30,
 				bars: 1,
 				direction: sell ? "down" : "up",
 			};
 		case "emaPosition":
-			return { type: kind, period: 200, direction: sell ? "below" : "above" };
+			return {
+				type: kind,
+				timeframe,
+				period: 200,
+				direction: sell ? "below" : "above",
+			};
 		case "emaSlope":
 			return {
 				type: kind,
+				timeframe,
 				period: 50,
 				bars: 5,
 				percent: 0,
@@ -415,6 +467,7 @@ function defaultCondition(
 		case "bollinger":
 			return {
 				type: kind,
+				timeframe,
 				period: 20,
 				sigma: 2,
 				band: sell ? "upper" : "lower",
@@ -426,7 +479,7 @@ function defaultCondition(
 		case "trailingStop":
 			return { type: kind, percent: 3, activatePercent: 0 };
 		case "holdingBars":
-			return { type: kind, bars: 24 };
+			return { type: kind, timeframe, bars: 24 };
 		default: {
 			const judge = kind.slice("judgment:".length) as Judge;
 			return {
@@ -823,6 +876,17 @@ function ConditionRow({
 		<fieldset className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-1.5 gap-y-1 rounded-[10px] bg-bg py-2 pr-1 pl-3">
 			<legend className="sr-only">{label}</legend>
 			<div className="flex flex-wrap items-center gap-1.5 text-sm leading-normal">
+				{hasTimeframe(c) && (
+					<>
+						<TimeframeSelect
+							value={c.timeframe}
+							onChange={(timeframe) => onChange({ ...c, timeframe })}
+							label="条件の足"
+							invalid={bad("timeframe")}
+						/>
+						<span>で</span>
+					</>
+				)}
 				{body}
 			</div>
 			<button
@@ -874,7 +938,10 @@ function BuyOrderLines({
 	errors: ValidationError[];
 }) {
 	const { lines } = order;
-	const expire = errorsAt(errors, "buyOrder.expireBars");
+	const expire = [
+		...errorsAt(errors, "buyOrder.expireTimeframe"),
+		...errorsAt(errors, "buyOrder.expireBars"),
+	];
 	const setLines = (next: BuyOrderLine[]) =>
 		onChange({ ...order, lines: next });
 	const setLine = (i: number, next: BuyOrderLine) =>
@@ -995,6 +1062,17 @@ function BuyOrderLines({
 				<div className="flex flex-col gap-1">
 					<div className="flex flex-wrap items-center gap-1.5 text-sm">
 						<span>指値は</span>
+						<TimeframeSelect
+							value={order.expireTimeframe}
+							onChange={(expireTimeframe) =>
+								onChange({ ...order, expireTimeframe })
+							}
+							label="指値を取り消すまでの本数を数える足"
+							invalid={errors.some(
+								(e) => e.path === "buyOrder.expireTimeframe",
+							)}
+						/>
+						<span>で</span>
 						<NumberInput
 							value={order.expireBars}
 							onChange={(expireBars) => onChange({ ...order, expireBars })}

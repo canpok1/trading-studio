@@ -25,7 +25,6 @@ function csv(): string {
 }
 
 const PARAMS = {
-	timeframe: "1h",
 	frequency: {
 		flat: { value: 1, unit: "h" },
 		holding: { value: 1, unit: "h" },
@@ -35,7 +34,9 @@ const PARAMS = {
 	stopLossCooldownBars: 0,
 	buy: {
 		match: "all",
-		conditions: [{ type: "breakout", lookback: 5, direction: "high" }],
+		conditions: [
+			{ type: "breakout", timeframe: "1h", lookback: 5, direction: "high" },
+		],
 	},
 	takeProfit: {
 		match: "any",
@@ -106,11 +107,10 @@ test("ひな形から名前を付けて実行すると結果が出て、注文�
 	const runName = page.getByLabel("バックテスト名");
 	const title = `${name} 試し`;
 	await runName.fill(title);
-	await expect(page.getByText("1時間足 · 552 本")).toBeVisible();
-	// 足の粒度も変えられる
-	const tf = page.getByLabel("足の粒度");
-	await tf.selectOption({ label: "4時間足" });
-	await expect(page.getByText("4時間足 · 138 本")).toBeVisible();
+	await expect(page.getByText("1時間足 552 本")).toBeVisible();
+	// 条件の足を変えると、使う足と本数も変わる
+	await page.getByLabel("条件の足").first().selectOption({ label: "4時間足" });
+	await expect(page.getByText("4時間足 138 本")).toBeVisible();
 	await expect(page.getByText(`${name}（変更あり）`)).toBeVisible();
 	// 条件を読み込み直すと条件は戻り、バックテスト名は変わらない
 	await page.getByRole("button", { name: "条件を読み込む" }).click();
@@ -118,7 +118,7 @@ test("ひな形から名前を付けて実行すると結果が出て、注文�
 		.getByRole("dialog", { name: "条件を読み込む" })
 		.getByRole("button", { name })
 		.click();
-	await expect(page.getByText("1時間足 · 552 本")).toBeVisible();
+	await expect(page.getByText("1時間足 552 本")).toBeVisible();
 	await expect(runName).toHaveValue(title);
 	// 読み込んだ条件から変えて試す
 	await page.getByRole("button", { name: "0.001 増やす" }).click();
@@ -126,7 +126,8 @@ test("ひな形から名前を付けて実行すると結果が出て、注文�
 	await page.getByRole("button", { name: "バックテストを実行" }).click();
 
 	await expect(page).toHaveURL(/\/backtest\/runs\/\d+$/);
-	await expect(page.getByText(`${title} · 1時間足`)).toBeVisible();
+	await expect(page.getByText(title, { exact: true })).toBeVisible();
+	await expect(page.getByText(/1時間足で判定/)).toBeVisible();
 	const summary = page.getByRole("region", { name: "成績の要約" });
 	await expect(summary).toContainText("損益");
 	await expect(summary).toContainText("取引回数");
@@ -415,19 +416,33 @@ test("RSI の条件を持つ戦略の結果では、チャートの下に RSI �
 		buy: {
 			match: "all",
 			conditions: [
-				{ type: "rsi", period: 14, threshold: 30, direction: "below" },
+				{
+					type: "rsi",
+					timeframe: "1h",
+					period: 14,
+					threshold: 30,
+					direction: "below",
+				},
 			],
 		},
 		takeProfit: {
 			match: "any",
 			conditions: [
-				{ type: "rsi", period: 14, threshold: 70, direction: "above" },
+				{
+					type: "rsi",
+					timeframe: "1h",
+					period: 14,
+					threshold: 70,
+					direction: "above",
+				},
 			],
 		},
 	});
 	await choose(page, name, "2026-05-03", "2026-05-10");
 	await page.getByRole("button", { name: "バックテストを実行" }).click();
 	await expect(page).toHaveURL(/\/backtest\/runs\/\d+$/);
+	// 既定の日足では期間（7日）が指標の本数に足りないので、条件の足に合わせる
+	await page.getByLabel("足の粒度").selectOption("1h");
 	const toggle = page.getByRole("button", { name: "RSI", exact: true });
 	await expect(toggle).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByTestId("chart-rsi-14")).toHaveText(/^RSI14 \d+\.\d$/);
@@ -444,12 +459,22 @@ test("ボリンジャーバンドの条件を持つ戦略の結果では、チ�
 		...PARAMS,
 		buy: {
 			match: "all",
-			conditions: [{ type: "bollinger", period: 20, sigma: 2, band: "lower" }],
+			conditions: [
+				{
+					type: "bollinger",
+					timeframe: "1h",
+					period: 20,
+					sigma: 2,
+					band: "lower",
+				},
+			],
 		},
 	});
 	await choose(page, name, "2026-05-03", "2026-05-10");
 	await page.getByRole("button", { name: "バックテストを実行" }).click();
 	await expect(page).toHaveURL(/\/backtest\/runs\/\d+$/);
+	// 既定の日足では期間（7日）が指標の本数に足りないので、条件の足に合わせる
+	await page.getByLabel("足の粒度").selectOption("1h");
 	const toggle = page.getByRole("button", { name: "BB", exact: true });
 	await expect(toggle).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByTestId("chart-bb")).toHaveText(

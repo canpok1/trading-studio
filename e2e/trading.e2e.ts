@@ -14,7 +14,7 @@ test("ホームで自動取引をオンにすると帯が全画面に出て、�
 	try {
 		await page.goto("/home");
 		const select = page.getByLabel("運用する戦略");
-		await select.selectOption({ label: `${name}（1時間足）` });
+		await select.selectOption({ label: `${name}` });
 		// ライブのタブはまだ開始できず、口座・成績・注文を出さない
 		await page.getByRole("tab", { name: "ライブ" }).click();
 		await expect(page).toHaveURL(/\/home\?mode=live$/);
@@ -77,7 +77,7 @@ test("条件が足りない戦略は運用する戦略に選べない", async ({
 	await page.goto("/home");
 	const select = page.getByLabel("運用する戦略");
 	const before = await select.inputValue();
-	await select.selectOption({ label: `${name}（1時間足）` });
+	await select.selectOption({ label: `${name}` });
 	await expect(page.getByRole("status")).toHaveText(
 		"この戦略は条件が足りないため選べない。「戦略」の画面で直す",
 	);
@@ -99,7 +99,6 @@ test("仮想注文が出て約定すると、ホームの保有・注文に出�
 	};
 	const params = {
 		...strategy.params,
-		timeframe: "1m",
 		frequency: {
 			flat: { value: 1, unit: "m" },
 			holding: { value: 1, unit: "m" },
