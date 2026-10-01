@@ -180,6 +180,12 @@ function NewsCard({
 								rule={rule}
 							/>
 						))}
+						<span className="inline-flex h-[26px] items-center gap-1.5 rounded-full bg-surface-2 px-2.5 text-xs whitespace-nowrap">
+							重み{" "}
+							<b className="num">
+								{weight === null ? "対象外" : `${Math.round(weight * 100)}%`}
+							</b>
+						</span>
 					</div>
 					<button
 						type="button"
@@ -207,11 +213,11 @@ function NewsCard({
 								· プロンプト v{n.score.criteriaVersion} · {n.score.model} ·{" "}
 								{formatVersion(n.score.appBuiltAt, "記録なし")}
 							</span>
-							<span className="num text-xs text-text-2">
-								{weight === null
-									? `集計の対象外（${rule.windowHours}時間より前）`
-									: `集計での重み ${Math.round(weight * 100)}%`}
-							</span>
+							{weight === null && (
+								<span className="num text-xs text-text-2">
+									集計の対象外（{rule.windowHours}時間より前）
+								</span>
+							)}
 							{canRescore && n.rescore === null && (
 								<Button
 									size="sm"
