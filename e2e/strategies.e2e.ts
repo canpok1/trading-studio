@@ -307,6 +307,42 @@ test("1日の損失上限を変えて保存でき、0 円は保存できない",
 	).toBeDisabled();
 });
 
+test("RSI のクロスの条件と損切り後に買わない本数を保存でき、範囲外は保存できない", async ({
+	page,
+}, info) => {
+	await page.goto("/strategies");
+	await createFromTemplate(page, `反発 ${info.project.name}`, /^トレンド追随/);
+	const buy = page.getByRole("region", { name: "買い注文する条件" });
+	await buy.getByRole("button", { name: "＋ 条件を追加" }).click();
+	await page
+		.getByRole("dialog")
+		.getByRole("button", { name: "RSI のクロス", exact: true })
+		.click();
+	const row = buy
+		.getByRole("group")
+		.filter({ has: page.getByLabel("何本以内に抜けたか") });
+	await expect(row.getByLabel("RSI の本数")).toHaveValue("14");
+	await expect(row.getByLabel("RSI のしきい値")).toHaveValue("30");
+	await expect(row.getByLabel("クロスの向き")).toHaveValue("up");
+	await expect(row.getByLabel("何本以内に抜けたか")).toHaveValue("1");
+	await row.getByLabel("何本以内に抜けたか").fill("3");
+
+	const cooldown = page.getByLabel("損切り後に買わない本数");
+	await expect(cooldown).toHaveValue("0");
+	await cooldown.fill("6");
+	await page.getByRole("button", { name: "保存", exact: true }).click();
+	await expect(page.getByRole("status")).toHaveText("保存した");
+	await page.reload();
+	await expect(row.getByLabel("何本以内に抜けたか")).toHaveValue("3");
+	await expect(cooldown).toHaveValue("6");
+
+	await cooldown.fill("1001");
+	await expect(cooldown).toHaveAttribute("aria-invalid", "true");
+	await expect(
+		page.getByRole("button", { name: "入力を直すと保存できる" }),
+	).toBeDisabled();
+});
+
 test("終値と EMA の位置・ボリンジャーバンド・最高値からの %・買ってからの本数を追加して保存でき、買いには売り専用の条件が出ない", async ({
 	page,
 }, info) => {

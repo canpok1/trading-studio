@@ -28,6 +28,8 @@ export function conditionScreenText(c: Condition): string {
 			return `終値が直近 ${c.lookback} 本の${c.direction === "high" ? "最高値を上抜けた" : "最安値を下抜けた"}`;
 		case "rsi":
 			return `RSI ${c.period} 本が ${c.threshold} ${c.direction === "above" ? "以上" : "以下"}`;
+		case "rsiCross":
+			return `RSI ${c.period} 本が ${c.threshold} を${c.direction === "up" ? "上抜けた" : "下抜けた"}${c.bars > 1 ? `（直近 ${c.bars} 本以内）` : ""}`;
 		case "emaPosition":
 			return `終値が EMA ${c.period} 本より${c.direction === "above" ? "上" : "下"}`;
 		case "emaSlope":
@@ -57,6 +59,7 @@ export function conditionSetScreenText(p: ConditionSet): string[] {
 		`- 最大ロット数: ${p.maxPositions}`,
 		"### リスク上限",
 		`- 1日の損失上限（円）: ${formatYen(p.dailyLossLimit)}`,
+		`- 損切り後に買わない本数: ${p.stopLossCooldownBars > 0 ? `${p.stopLossCooldownBars} 本` : "0（止めない）"}`,
 	];
 	for (const key of CONDITION_GROUPS) {
 		const g = p[key];

@@ -12,6 +12,7 @@ const BASE: ConditionSet = {
 	orderSize: 1_000_000,
 	maxPositions: 1,
 	dailyLossLimit: 30_000,
+	stopLossCooldownBars: 0,
 	buy: {
 		match: "all",
 		conditions: [{ type: "emaCross", fast: 12, slow: 48, direction: "up" }],

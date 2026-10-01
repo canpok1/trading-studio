@@ -37,6 +37,8 @@ export function conditionText(c: Condition): string {
 			return `${c.lookback}本の${c.direction === "high" ? "高値上抜け" : "安値下抜け"}`;
 		case "rsi":
 			return `RSI${c.period} ${c.threshold}${c.direction === "above" ? "以上" : "以下"}`;
+		case "rsiCross":
+			return `RSI${c.period} ${c.threshold}${c.direction === "up" ? "上抜け" : "下抜け"}${c.bars > 1 ? `（${c.bars}本以内）` : ""}`;
 		case "emaPosition":
 			return `EMA${c.period}より${c.direction === "above" ? "上" : "下"}`;
 		case "emaSlope":
