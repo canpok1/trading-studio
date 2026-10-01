@@ -401,13 +401,16 @@ function RunForm({
 	};
 
 	const p = draft.params;
-	// 条件で使う足（細かい順）。期間・本数・取り込み済みの範囲は最も細かい足で見る。足を使う条件が無ければ取り込み済みの最も細かい足
+	// 条件で使う足（細かい順）。期間・本数・取り込み済みの範囲は最も細かい足で見る。
+	// 足を使う条件が無ければ、期間の既定は最も古くからある足で決め、本数は期間に使える最も細かい足で数える
 	const needed = candleTimeframes(p);
-	const tf =
+	const periodTf =
 		needed[0] ??
-		coverage.find((c) => c.firstTime !== null)?.timeframe ??
+		coverage
+			.filter((c) => c.firstTime !== null)
+			.sort((a, b) => (a.firstTime as number) - (b.firstTime as number))[0]
+			?.timeframe ??
 		DEFAULT_CONDITION_TIMEFRAME;
-	const tfMs = TIMEFRAME_MS[tf];
 	const choices = templates(strategies);
 	// 保存済みの戦略は、選んだ後に編集されていれば今の条件へ戻す
 	const template =
@@ -419,8 +422,11 @@ function RunForm({
 	const errors = useMemo(() => validateConditionSet(p), [p]);
 
 	// 期間。未指定ならその足のデータの最後から1か月
-	const cov = coverage.find((c) => c.timeframe === tf);
-	const dataEnd = cov?.lastTime != null ? cov.lastTime + tfMs : null;
+	const periodCov = coverage.find((c) => c.timeframe === periodTf);
+	const dataEnd =
+		periodCov?.lastTime != null
+			? periodCov.lastTime + TIMEFRAME_MS[periodTf]
+			: null;
 	const defaultTo =
 		dataEnd !== null
 			? toDateInputValue(dataEnd - 1)
@@ -461,6 +467,9 @@ function RunForm({
 	}, [usableKey]);
 	const finest =
 		usable?.key === usableKey ? (usable.timeframes[0] ?? null) : null;
+	const tf = needed[0] ?? finest ?? periodTf;
+	const tfMs = TIMEFRAME_MS[tf];
+	const cov = coverage.find((c) => c.timeframe === tf);
 	const step =
 		finest && !isCoarser(finest, tf) ? chooseStepTimeframe(p, finest) : null;
 

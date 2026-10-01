@@ -323,10 +323,10 @@ test("結果画面でボタンを押すと AI アドバイスができ、作り�
 	await expect(page.getByLabel("終了")).toHaveValue("2026-05-10");
 	const changes = page.getByRole("region", { name: "AI の改善版の変更点" });
 	await expect(changes).toContainText(
-		"変更前: 終値が直近 5 本の最高値を上抜けた",
+		"変更前: 1時間足で 終値が直近 5 本の最高値を上抜けた",
 	);
 	await expect(changes).toContainText(
-		"変更後: 短期EMA 12 本が 長期EMA 48 本を上抜けた",
+		"変更後: 1時間足で 短期EMA 12 本が 長期EMA 48 本を上抜けた",
 	);
 	await changes.getByRole("button", { name: "閉じる" }).click();
 	await expect(changes).toBeHidden();

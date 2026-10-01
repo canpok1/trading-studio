@@ -234,14 +234,16 @@ test("買いの注文方法を指値に変えて値幅と本数を保存でき�
 
 	await buy.getByText("指値", { exact: true }).click();
 	await below.fill("0.5");
-	await buy.getByLabel("指値を取り消すまでの本数").fill("6");
+	await buy.getByLabel("指値を取り消すまでの本数", { exact: true }).fill("6");
 	await page.getByRole("button", { name: "保存", exact: true }).click();
 	await expect(page.getByRole("status")).toHaveText("保存した");
 
 	await page.reload();
 	await expect(buy.getByRole("radio", { name: "指値" })).toBeChecked();
 	await expect(below).toHaveValue("0.5");
-	await expect(buy.getByLabel("指値を取り消すまでの本数")).toHaveValue("6");
+	await expect(
+		buy.getByLabel("指値を取り消すまでの本数", { exact: true }),
+	).toHaveValue("6");
 
 	await below.fill("100");
 	await expect(below).toHaveAttribute("aria-invalid", "true");
@@ -327,7 +329,7 @@ test("RSI のクロスの条件と損切り後に買わない本数を保存で�
 	await expect(row.getByLabel("何本以内に抜けたか")).toHaveValue("1");
 	await row.getByLabel("何本以内に抜けたか").fill("3");
 
-	const cooldown = page.getByLabel("損切り後に買わない本数");
+	const cooldown = page.getByLabel("損切り後に買わない本数", { exact: true });
 	await expect(cooldown).toHaveValue("0");
 	await cooldown.fill("6");
 	await page.getByRole("button", { name: "保存", exact: true }).click();
