@@ -57,13 +57,13 @@ export function AccountPanel({
 		setResetting(false);
 		setBusy(true);
 		try {
-			const r = await api.api.trading.reset
-				.$post({ json: { initialCash } })
+			const r = await api.api.trading.runs[":id"].reset
+				.$post({ param: { id: String(status.id) }, json: { initialCash } })
 				.then((res) => readJson<{ status: AutoTradingStatus }>(res));
 			set(r.status);
 			onReset();
 			onToast(
-				`ペーパーの口座をリセットした。開始時の資金 ${formatInt(initialCash)}円`,
+				`「${status.name}」の口座をリセットした。開始時の資金 ${formatInt(initialCash)}円`,
 			);
 		} catch (e) {
 			onToast(errorMessage(e));
@@ -74,7 +74,7 @@ export function AccountPanel({
 
 	return (
 		<section aria-label="口座情報" className={`${PANEL} @container`}>
-			<PanelHeader title="口座情報" tag={<ModeTag mode={account.mode} />} />
+			<PanelHeader title="口座情報" tag={<ModeTag mode={status.mode} />} />
 			<div className="flex flex-col gap-0.5">
 				<span className="text-xs text-text-2">総資産</span>
 				<span
@@ -172,7 +172,7 @@ function ResetModal({
 	const [cash, setCash] = useState(DEFAULT_INITIAL_CASH);
 	const valid = Number.isSafeInteger(cash) && cash >= 1;
 	return (
-		<Modal title="ペーパーの口座をリセットする" onClose={onClose}>
+		<Modal title="口座をリセットする" onClose={onClose}>
 			<p className="leading-relaxed">
 				資金・保有・未約定の注文を開始時の状態に戻す。過去の注文と約定の記録は残る。
 			</p>

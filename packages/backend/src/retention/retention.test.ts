@@ -16,13 +16,13 @@ function setup() {
 	const addDecision = (time: number) =>
 		Number(
 			sql.run(
-				"insert into trading_decisions (mode, strategy_id, strategy_name, time, decision, judgments) values ('paper', 1, 's', ?, '{}', '{}')",
+				"insert into trading_decisions (run_id, mode, strategy_id, strategy_name, time, decision, judgments) values (1, 'paper', 1, 's', ?, '{}', '{}')",
 				[time],
 			).lastInsertRowid,
 		);
 	const addOrder = (id: string, decisionId: number) =>
 		sql.run(
-			"insert into trading_orders (mode, id, side, type, quantity, placed_at, status, reason, decision_id, strategy_name) values ('paper', ?, 'buy', 'market', 1, 0, 'filled', 'r', ?, 's')",
+			"insert into trading_orders (run_id, mode, id, side, type, quantity, placed_at, status, reason, decision_id, strategy_name) values (1, 'paper', ?, 'buy', 'market', 1, 0, 'filled', 'r', ?, 's')",
 			[id, decisionId],
 		);
 	const addRun = (startedAt: number, status = "done") => {

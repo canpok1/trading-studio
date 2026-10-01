@@ -194,6 +194,7 @@ const server = new Hono()
 			scoring,
 			judgments,
 			scoringAnalysis,
+			inUse: (id) => tradingEngine.inUse(id),
 		}),
 	)
 	.route(

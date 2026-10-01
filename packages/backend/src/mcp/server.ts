@@ -38,6 +38,8 @@ export type McpDeps = {
 	scoring: ScoringService;
 	judgments: Pick<JudgmentService, "rule">;
 	scoringAnalysis: ScoringAnalysisService;
+	/** ホームのタブのどれかが運用する戦略に選んでいるか。選ばれている戦略は条件を変えさせない */
+	inUse: (strategyId: number) => boolean;
 	/** run_backtest が終わりを待つ時間。過ぎたら実行中のまま返し、get_backtest で続きを見てもらう */
 	backtestWaitMs?: number;
 	sleep?: (ms: number) => Promise<void>;
@@ -81,11 +83,11 @@ const paramsSchema = z
 	.record(z.string(), z.unknown())
 	.describe("条件セット。形は get_guide を参照");
 
-function strategyView(s: StoredStrategy, activeId: number | null) {
+function strategyView(s: StoredStrategy, inUse: (id: number) => boolean) {
 	return {
 		id: s.id,
 		name: s.name,
-		active: s.id === activeId,
+		active: inUse(s.id),
 		updatedAt: jst(s.updatedAt),
 		screenText: conditionSetScreenText(s.params).join("\n"),
 		params: s.params,
@@ -214,6 +216,7 @@ function createServer({
 	scoring,
 	judgments,
 	scoringAnalysis,
+	inUse,
 	backtestWaitMs = BACKTEST_WAIT_MS,
 	sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
 }: McpDeps) {
@@ -224,7 +227,6 @@ function createServer({
 				"BTC/JPY の自動売買アプリ trading-studio。戦略の条件と、ニュースの AI 採点の基準を相談して改良するための道具。戦略: まず get_guide で条件セットの書き方を読む。戦略の新規作成・運用中でない戦略の条件変更・バックテストの実行ができる。自動取引のオンオフや運用する戦略の切替・変更はできない（画面で人が行う）。採点: get_scoring_setup で仕組みと今の基準を読み、list_news_scores・evaluate_news_scores・evaluate_judgments で採点と判定がその後の値動きと合っていたかを調べ、trial_scoring で基準の案を過去のニュースに試し、add_scoring_criteria で版として保存し、rescore_news と run_backtest の criteriaVersion でその版の成績を確かめ、set_active_scoring_criteria で使い始める。切り替えると次に採点するニュースから効き、自動取引の判定にも効くので、切り替える前に利用者に確認を取る。",
 		},
 	);
-	const activeId = () => strategies.active()?.id ?? null;
 	const readOnly = { readOnlyHint: true, openWorldHint: false };
 
 	server.registerTool(
@@ -241,14 +243,13 @@ function createServer({
 		"list_strategies",
 		{
 			description:
-				"保存済みの戦略の一覧。active は運用する戦略（自動取引で使う）で、条件を変えられない",
+				"保存済みの戦略の一覧。active はホームのタブのどれかが運用する戦略（自動取引で使う）に選んでいる戦略で、条件を変えられない",
 			annotations: readOnly,
 		},
 		() => {
-			const a = activeId();
 			return text(
 				strategies.list().map((s) => {
-					const { params: _, ...rest } = strategyView(s, a);
+					const { params: _, ...rest } = strategyView(s, inUse);
 					return rest;
 				}),
 			);
@@ -264,7 +265,7 @@ function createServer({
 		},
 		({ id }) => {
 			const s = strategies.get(id);
-			return s ? text(strategyView(s, activeId())) : fail("戦略が見つからない");
+			return s ? text(strategyView(s, inUse)) : fail("戦略が見つからない");
 		},
 	);
 
@@ -281,7 +282,7 @@ function createServer({
 			if (!p) return fail("条件セットの形が違う。get_guide を参照");
 			const r = strategies.create({ name, from: { params: p } });
 			if (!r.ok) return strategyFailure(r.error);
-			return text(strategyView(r.strategy, activeId()));
+			return text(strategyView(r.strategy, inUse));
 		},
 	);
 
@@ -298,7 +299,7 @@ function createServer({
 			},
 		},
 		({ id, params }) => {
-			if (id === activeId()) {
+			if (inUse(id)) {
 				return fail(
 					"運用する戦略は変えられない。create_strategy で新しい戦略として作る",
 				);
@@ -307,7 +308,7 @@ function createServer({
 			if (!p) return fail("条件セットの形が違う。get_guide を参照");
 			const r = strategies.updateParams(id, p);
 			if (!r.ok) return strategyFailure(r.error);
-			return text(strategyView(r.strategy, activeId()));
+			return text(strategyView(r.strategy, inUse));
 		},
 	);
 

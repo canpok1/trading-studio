@@ -164,8 +164,8 @@ test("RSI の条件を持つ戦略を選ぶと RSI の小窓と値が出て、�
 			})
 		).ok(),
 	).toBe(true);
-	await page.request.put("/api/strategies/active", {
-		data: { id: strategy.id },
+	await page.request.patch("/api/trading/runs/1", {
+		data: { strategyId: strategy.id },
 	});
 	try {
 		await page.goto("/home");
@@ -187,7 +187,9 @@ test("RSI の条件を持つ戦略を選ぶと RSI の小窓と値が出て、�
 		await expect(toggle).toHaveAttribute("aria-pressed", "true");
 		await expect(value).toBeVisible({ timeout: 15_000 });
 	} finally {
-		await page.request.put("/api/strategies/active", { data: { id: null } });
+		await page.request.patch("/api/trading/runs/1", {
+			data: { strategyId: null },
+		});
 	}
 });
 

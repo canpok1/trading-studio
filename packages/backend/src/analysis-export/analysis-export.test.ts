@@ -311,7 +311,7 @@ describe("分析用エクスポート", () => {
 	test("ペーパーの判断と注文を、そのときの判定付きで入れる", async () => {
 		const t = createTestApp();
 		const decisionId = t.tradingRepo.addDecision(
-			"paper",
+			{ id: 1, mode: "paper" },
 			{ id: 1, name: "戦略A" },
 			{
 				time: DAY + M,
@@ -331,6 +331,8 @@ describe("分析用エクスポート", () => {
 		expect(rows(files.get("paper_decisions.csv") as string)).toEqual([
 			expect.objectContaining({
 				decision_id: String(decisionId),
+				run_id: "1",
+				run_name: "ペーパー",
 				strategy_name: "戦略A",
 				note: "様子見",
 				judgment_sentiment: "+1",

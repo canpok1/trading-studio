@@ -2,7 +2,6 @@
 // 状態（口座・未約定の注文・戦略の state・次の判定時刻）はすべて DB に置き、再起動しても続きから動く
 
 import type {
-	Account,
 	Candle,
 	FeeRates,
 	MarketTrade,
@@ -25,6 +24,7 @@ import {
 	realizedPnlOn,
 	settleFills,
 	TIMEFRAME_MS,
+	TRADING_RUN_LIMITS,
 	tradeFillPrice,
 	validateConditionSet,
 } from "@trading-studio/core";
@@ -36,8 +36,10 @@ import { equityOf, tradingPerformance } from "./performance";
 import type { TradingRepository } from "./repository";
 import type {
 	AutoTradingStatus,
-	TradingMode,
+	StrategyLock,
+	TradingFailure,
 	TradingResult,
+	TradingRunRow,
 	TradingService,
 } from "./types";
 
@@ -61,7 +63,7 @@ export function createTradingService({
 	fees = DEFAULT_FEE_RATES,
 }: {
 	repo: TradingRepository;
-	strategies: Pick<StrategyService, "get" | "active">;
+	strategies: Pick<StrategyService, "get">;
 	judgments: Pick<JudgmentService, "current">;
 	marketData: Pick<
 		MarketDataRepository,
@@ -71,8 +73,7 @@ export function createTradingService({
 	now?: () => number;
 	fees?: FeeRates;
 }): TradingEngine {
-	// フェーズ4ではペーパーだけ動かす
-	const mode: TradingMode = "paper";
+	repo.ensureRun(now());
 
 	/**
 	 * オンにしたときの最初の判定時刻。バックテストで判定に使う足の次の足の終わり（バックテストで足の終わりに判定するのと揃える）。
@@ -85,10 +86,11 @@ export function createTradingService({
 
 	/** 注文の記録の変化を保存する */
 	const saveChanges = (
+		run: TradingRunRow,
 		changed: readonly TradeOrder[],
 		origin: { decisionId: number | null; strategy: StoredStrategy | null },
 	) => {
-		repo.saveOrders(mode, changed, {
+		repo.saveOrders(run, changed, {
 			decisionId: origin.decisionId,
 			strategyId: origin.strategy?.id ?? null,
 			strategyName: origin.strategy?.name ?? "",
@@ -141,8 +143,7 @@ export function createTradingService({
 		};
 	};
 
-	const evaluate = (t: number) => {
-		const row = repo.autoTrading();
+	const evaluate = (row: TradingRunRow, t: number) => {
 		if (!row.enabled || row.nextEvalAt === null) return;
 		if (t < row.nextEvalAt && !row.reevaluate) return;
 		const live = market();
@@ -152,7 +153,7 @@ export function createTradingService({
 		if (!s) {
 			// 動かしている戦略が消えたら続けられないので止める。未約定の注文は残す
 			console.error("trading: running strategy not found", row.strategyId);
-			repo.saveAutoTrading({
+			repo.saveRun({
 				...row,
 				enabled: false,
 				nextEvalAt: null,
@@ -170,40 +171,38 @@ export function createTradingService({
 		) {
 			for (const j of JUDGES) values[j] = current.results[j].value;
 		}
-		repo.transaction(() => {
-			const expired = expireOrders(repo.account(mode, t).account, t);
-			saveChanges(expired.changed, { decisionId: null, strategy: null });
-			const out = decide({
-				strategy: conditionStrategy,
-				params: s.params,
-				now: t,
-				price: (live.latestTrade as MarketTrade).price,
-				...candlesAt(s, t, live),
-				judgments: Object.fromEntries(
-					Object.entries(values).map(([judge, label]) => [
-						judge,
-						[{ judge, time: t, label }],
-					]),
-				),
-				account: expired.account,
-				state: row.state,
-				fees,
-				idPrefix: PAPER_ID_PREFIX,
-			});
-			const decisionId = repo.addDecision(
-				mode,
-				{ id: s.id, name: s.name },
-				out.decision,
-				values,
-			);
-			saveChanges(out.changed, { decisionId, strategy: s });
-			repo.saveAccount(mode, out.account);
-			repo.saveAutoTrading({
-				...row,
-				state: out.state,
-				nextEvalAt: out.nextEvalAt,
-				reevaluate: false,
-			});
+		const expired = expireOrders(row.account, t);
+		saveChanges(row, expired.changed, { decisionId: null, strategy: null });
+		const out = decide({
+			strategy: conditionStrategy,
+			params: s.params,
+			now: t,
+			price: (live.latestTrade as MarketTrade).price,
+			...candlesAt(s, t, live),
+			judgments: Object.fromEntries(
+				Object.entries(values).map(([judge, label]) => [
+					judge,
+					[{ judge, time: t, label }],
+				]),
+			),
+			account: expired.account,
+			state: row.state,
+			fees,
+			idPrefix: PAPER_ID_PREFIX,
+		});
+		const decisionId = repo.addDecision(
+			row,
+			{ id: s.id, name: s.name },
+			out.decision,
+			values,
+		);
+		saveChanges(row, out.changed, { decisionId, strategy: s });
+		repo.saveRun({
+			...row,
+			account: out.account,
+			state: out.state,
+			nextEvalAt: out.nextEvalAt,
+			reevaluate: false,
 		});
 	};
 
@@ -211,23 +210,24 @@ export function createTradingService({
 	const currentPrice = (live: LiveMarket): number | null =>
 		live.latestTrade?.price ?? marketData.lastCandle("1m")?.close ?? null;
 
-	const status = (): AutoTradingStatus => {
-		const t = now();
-		const row = repo.autoTrading();
-		const s = row.enabled
-			? row.strategyId === null
-				? null
-				: strategies.get(row.strategyId)
-			: strategies.active();
-		const a = repo.account(row.mode, t);
-		const live = market();
-		// 保有はオフにしても口座に残り、オンにし直すと同じ戦略で売るため、保有がある間も止める
-		const strategyLock = row.enabled
+	/** 戦略の切り替えを止めている理由。保有はオフにしても口座に残り、オンにし直すと同じ戦略で売るため、保有がある間も止める */
+	const lockOf = (row: TradingRunRow): StrategyLock | null =>
+		row.enabled
 			? "running"
-			: a.account.lots.length > 0 || a.account.openOrders.length > 0
+			: row.account.lots.length > 0 || row.account.openOrders.length > 0
 				? "holding"
 				: null;
+
+	const statusOf = (
+		row: TradingRunRow,
+		t: number,
+		live: LiveMarket,
+	): AutoTradingStatus => {
+		const s = row.strategyId === null ? null : strategies.get(row.strategyId);
+		const a = row.account;
 		return {
+			id: row.id,
+			name: row.name,
 			enabled: row.enabled,
 			mode: row.mode,
 			strategy: s ? { id: s.id, name: s.name } : null,
@@ -237,109 +237,229 @@ export function createTradingService({
 				row.enabled &&
 				(live.status.state !== "running" || live.latestTrade === null),
 			dailyLoss: {
-				loss: Math.max(0, -realizedPnlOn(a.account, t)),
+				loss: Math.max(0, -realizedPnlOn(a, t)),
 				limit: s?.params.dailyLossLimit ?? null,
 				blocked:
-					dailyLossBlock(a.account, t, s?.params.dailyLossLimit ?? null) !==
-					null,
+					dailyLossBlock(a, t, s?.params.dailyLossLimit ?? null) !== null,
 			},
-			strategyLock,
+			strategyLock: lockOf(row),
 			account: {
-				mode: row.mode,
-				initialCash: a.initialCash,
-				cash: a.account.cash,
-				position: a.account.position,
-				lots: publicLots(a.account.lots),
-				openOrderCount: a.account.openOrders.length,
-				resetAt: a.resetAt,
-				equity: equityOf(
-					a.account.cash,
-					a.account.position,
-					currentPrice(live),
-				),
+				initialCash: row.initialCash,
+				cash: a.cash,
+				position: a.position,
+				lots: publicLots(a.lots),
+				openOrderCount: a.openOrders.length,
+				resetAt: row.resetAt,
+				equity: equityOf(a.cash, a.position, currentPrice(live)),
 			},
 		};
 	};
 
-	const ok = (): TradingResult => ({ ok: true, status: status() });
+	const fail = (
+		kind: Exclude<TradingFailure, { errors: unknown }>["kind"],
+		message: string,
+	): { ok: false; error: TradingFailure } => ({
+		ok: false,
+		error: { kind, message },
+	});
+
+	const okRun = (id: number): TradingResult => {
+		const row = repo.run(id);
+		return row
+			? { ok: true, status: statusOf(row, now(), market()) }
+			: fail("not_found", "運用が見つからない");
+	};
+
+	const notFound = () => fail("not_found", "運用が見つからない");
+
+	/** 運用の id。読めなければ空にし、見回りを例外で止めない */
+	const runIds = (): number[] => {
+		try {
+			return repo.runIds();
+		} catch (e) {
+			console.error("trading: runs unreadable", e);
+			return [];
+		}
+	};
+
+	const nameError = (name: string): string | null => {
+		const n = name.trim();
+		if (!n) return "名前を入れる";
+		if (n.length > TRADING_RUN_LIMITS.name) {
+			return `${TRADING_RUN_LIMITS.name} 文字以内にする`;
+		}
+		return null;
+	};
+
+	/** 戦略が選べるか。無ければ not_found */
+	const strategyError = (id: number | null): string | null =>
+		id === null || strategies.get(id) ? null : "戦略が見つからない";
 
 	return {
 		onTrades(trades) {
 			if (trades.length === 0) return;
-			const t = now();
-			repo.transaction(() => {
-				let { account } = repo.account(mode, t);
-				if (account.openOrders.length === 0) return;
-				let filled = false;
-				const sorted = [...trades].sort(
-					(a, b) => a.time - b.time || a.id - b.id,
-				);
-				for (const trade of sorted) {
-					if (account.openOrders.length === 0) break;
-					// 期限を過ぎてから届いた約定では約定させない
-					const expired = expireOrders(account, trade.time);
-					saveChanges(expired.changed, { decisionId: null, strategy: null });
-					const out = settleFills(
-						expired.account,
-						(o) => tradeFillPrice(o, trade),
-						trade.time,
-						fees,
-					);
-					saveChanges(out.changed, { decisionId: null, strategy: null });
-					account = out.account;
-					filled ||= out.filled;
+			const sorted = [...trades].sort((a, b) => a.time - b.time || a.id - b.id);
+			// 1つの運用の失敗で、ほかの運用の約定を巻き戻さない
+			for (const id of runIds()) {
+				try {
+					repo.transaction(() => {
+						const row = repo.run(id);
+						if (row?.mode !== "paper") return;
+						let { account } = row;
+						if (account.openOrders.length === 0) return;
+						let filled = false;
+						for (const trade of sorted) {
+							if (account.openOrders.length === 0) break;
+							// 期限を過ぎてから届いた約定では約定させない
+							const expired = expireOrders(account, trade.time);
+							saveChanges(row, expired.changed, {
+								decisionId: null,
+								strategy: null,
+							});
+							const out = settleFills(
+								expired.account,
+								(o) => tradeFillPrice(o, trade),
+								trade.time,
+								fees,
+							);
+							saveChanges(row, out.changed, {
+								decisionId: null,
+								strategy: null,
+							});
+							account = out.account;
+							filled ||= out.filled;
+						}
+						// 自分の注文が約定したら、次の見回りで評価し直す（バックテストで約定した足の終わりに判定するのと揃える）
+						repo.saveRun({
+							...row,
+							account,
+							reevaluate: row.reevaluate || (filled && row.enabled),
+						});
+					});
+				} catch (e) {
+					console.error("trading: settle failed", id, e);
 				}
-				repo.saveAccount(mode, account);
-				if (filled) {
-					const row = repo.autoTrading();
-					// 自分の注文が約定したら、次の見回りで評価し直す（バックテストで約定した足の終わりに判定するのと揃える）
-					if (row.enabled) repo.saveAutoTrading({ ...row, reevaluate: true });
-				}
-			});
+			}
 		},
 
 		tick() {
 			const t = now();
-			try {
-				repo.transaction(() => {
-					const { account } = repo.account(mode, t);
-					const expired = expireOrders(account, t);
-					if (expired.changed.length === 0) return;
-					saveChanges(expired.changed, { decisionId: null, strategy: null });
-					repo.saveAccount(mode, expired.account);
-				});
-				evaluate(t);
-			} catch (e) {
-				console.error("trading: tick failed", e);
+			for (const id of runIds()) {
+				// 1つの運用の失敗で、ほかの運用を止めない
+				try {
+					repo.transaction(() => {
+						const row = repo.run(id);
+						if (!row) return;
+						const expired = expireOrders(row.account, t);
+						if (expired.changed.length === 0) {
+							evaluate(row, t);
+							return;
+						}
+						saveChanges(row, expired.changed, {
+							decisionId: null,
+							strategy: null,
+						});
+						const next = { ...row, account: expired.account };
+						repo.saveRun(next);
+						evaluate(next, t);
+					});
+				} catch (e) {
+					console.error("trading: tick failed", id, e);
+				}
 			}
 		},
 
-		status,
+		runs() {
+			const t = now();
+			const live = market();
+			return repo.runs().map((r) => statusOf(r, t, live));
+		},
 
-		start(requested) {
-			if (requested !== "paper") {
-				return {
-					ok: false,
-					error: {
-						kind: "unsupported_mode",
-						message: "ライブはまだ選べない（フェーズ5で有効にする）",
-					},
-				};
+		run(id) {
+			const row = repo.run(id);
+			return row ? statusOf(row, now(), market()) : null;
+		},
+
+		create(input) {
+			const invalid = nameError(input.name);
+			if (invalid) return fail("invalid_name", invalid);
+			const noStrategy = strategyError(input.strategyId);
+			if (noStrategy) return fail("not_found", noStrategy);
+			const runs = repo.runs();
+			if (runs.length >= TRADING_RUN_LIMITS.runs) {
+				return fail("limit", `タブは ${TRADING_RUN_LIMITS.runs} つまで`);
 			}
-			const row = repo.autoTrading();
+			if (input.mode === "live" && runs.some((r) => r.mode === "live")) {
+				return fail("limit", "ライブのタブは1つまで（実口座は1つのため）");
+			}
+			const id = repo.createRun({ ...input, name: input.name.trim() }, now());
+			return okRun(id);
+		},
+
+		update(id, input) {
+			const row = repo.run(id);
+			if (!row) return notFound();
+			const next = { ...row };
+			if (input.name !== undefined) {
+				const invalid = nameError(input.name);
+				if (invalid) return fail("invalid_name", invalid);
+				next.name = input.name.trim();
+			}
+			if (
+				input.strategyId !== undefined &&
+				input.strategyId !== row.strategyId
+			) {
+				const noStrategy = strategyError(input.strategyId);
+				if (noStrategy) return fail("not_found", noStrategy);
+				const lock = lockOf(row);
+				if (lock) {
+					return fail(
+						"locked",
+						lock === "running"
+							? "運用する戦略を変えるには先に自動取引を停止する"
+							: "保有か未約定の注文がある間は運用する戦略を変えられない。売れるのを待つか、口座をリセットする",
+					);
+				}
+				next.strategyId = input.strategyId;
+			}
+			repo.saveRun(next);
+			return okRun(id);
+		},
+
+		remove(id) {
+			const row = repo.run(id);
+			if (!row) return notFound();
 			if (row.enabled) {
-				return {
-					ok: false,
-					error: { kind: "running", message: "自動取引は既に稼働中" },
-				};
+				return fail("running", "タブを消すには先に自動取引を停止する");
 			}
-			const s = strategies.active();
-			if (!s) {
-				return {
-					ok: false,
-					error: { kind: "no_strategy", message: "運用する戦略を選ぶ" },
-				};
+			if (repo.runs().length <= 1) {
+				return fail("limit", "タブは最低1つ残す");
 			}
+			const t = now();
+			repo.transaction(() => {
+				const canceled = cancelAll(row.account, t, "タブの削除で取消");
+				saveChanges(row, canceled.changed, {
+					decisionId: null,
+					strategy: null,
+				});
+				repo.saveRun({ ...row, account: canceled.account });
+				repo.deleteRun(id, t);
+			});
+			return { ok: true };
+		},
+
+		start(id) {
+			const row = repo.run(id);
+			if (!row) return notFound();
+			if (row.mode !== "paper") {
+				return fail(
+					"unsupported_mode",
+					"ライブはまだ選べない（フェーズ5で有効にする）",
+				);
+			}
+			if (row.enabled) return fail("running", "自動取引は既に稼働中");
+			const s = row.strategyId === null ? null : strategies.get(row.strategyId);
+			if (!s) return fail("no_strategy", "運用する戦略を選ぶ");
 			const errors = validateConditionSet(s.params);
 			if (errors.length > 0) {
 				return {
@@ -353,110 +473,110 @@ export function createTradingService({
 			}
 			const t = now();
 			// 戦略の state はオンにするたびに初めから。保有と未約定の注文は口座に残っている
-			repo.saveAutoTrading({
+			repo.saveRun({
+				...row,
 				enabled: true,
-				mode: requested,
-				strategyId: s.id,
 				state: null,
 				nextEvalAt: firstEvalAt(s, t),
 				reevaluate: false,
 				startedAt: t,
 			});
-			return ok();
+			return okRun(id);
 		},
 
-		stop() {
-			const row = repo.autoTrading();
-			if (!row.enabled) {
-				return {
-					ok: false,
-					error: { kind: "not_running", message: "自動取引は既に停止中" },
-				};
-			}
-			repo.saveAutoTrading({
+		stop(id) {
+			const row = repo.run(id);
+			if (!row) return notFound();
+			if (!row.enabled) return fail("not_running", "自動取引は既に停止中");
+			repo.saveRun({
 				...row,
 				enabled: false,
 				nextEvalAt: null,
 				reevaluate: false,
 			});
-			return ok();
+			return okRun(id);
 		},
 
-		reset(initialCash) {
+		reset(id, initialCash) {
 			if (!Number.isSafeInteger(initialCash) || initialCash < 1) {
-				return {
-					ok: false,
-					error: {
-						kind: "invalid_cash",
-						message: "開始時の資金は 1 円以上の整数で入れる",
-					},
-				};
+				return fail("invalid_cash", "開始時の資金は 1 円以上の整数で入れる");
 			}
-			const row = repo.autoTrading();
+			const row = repo.run(id);
+			if (!row) return notFound();
 			if (row.enabled) {
-				return {
-					ok: false,
-					error: {
-						kind: "running",
-						message: "リセットは自動取引を停止してから行う",
-					},
-				};
+				return fail("running", "リセットは自動取引を停止してから行う");
 			}
 			const t = now();
 			repo.transaction(() => {
-				const { account } = repo.account(row.mode, t);
-				const canceled = cancelAll(account, t, "口座のリセットで取消");
-				saveChanges(canceled.changed, { decisionId: null, strategy: null });
+				const canceled = cancelAll(row.account, t, "口座のリセットで取消");
+				saveChanges(row, canceled.changed, {
+					decisionId: null,
+					strategy: null,
+				});
 				// 注文の id が過去の記録と重ならないよう、通し番号は引き継ぐ
-				repo.resetAccount(
-					row.mode,
+				repo.saveRun({
+					...row,
 					initialCash,
-					newAccount(initialCash, account.seq),
-					t,
-				);
+					account: newAccount(initialCash, row.account.seq),
+					resetAt: t,
+				});
 			});
-			return ok();
+			return okRun(id);
 		},
 
 		orders: (filter, limit) => repo.orders(filter, limit),
 
 		orderSummary: (filter) => repo.orderSummary(filter),
 
-		performance(m) {
+		performance(id) {
+			const row = repo.run(id);
+			if (!row) return null;
 			const t = now();
-			const a = repo.account(m, t);
 			// ドローダウンは1時間足の終値で追う（1分足では長く運用したときに重いため）
 			const hour = TIMEFRAME_MS["1h"];
 			const prices = marketData
-				.loadCandles("1h", candleStart(a.resetAt, "1h"), t)
+				.loadCandles("1h", candleStart(row.resetAt, "1h"), t)
 				.map((c) => ({ time: c.time + hour, price: c.close }));
 			return tradingPerformance({
-				initialCash: a.initialCash,
-				resetAt: a.resetAt,
+				initialCash: row.initialCash,
+				resetAt: row.resetAt,
 				now: t,
-				cash: a.account.cash,
-				position: a.account.position,
+				cash: row.account.cash,
+				position: row.account.position,
 				price: currentPrice(market()),
-				fills: repo.filledSince(m, a.resetAt),
+				fills: repo.filledSince(id, row.resetAt),
 				prices,
 				// ガチホの起点は、リセットした時刻を含む1分足（まだ無ければ1時間以内で最初の1分足）の始値
 				basePrice:
 					marketData.loadCandles(
 						"1m",
-						candleStart(a.resetAt, "1m"),
-						Math.min(t, candleStart(a.resetAt, "1m") + hour),
+						candleStart(row.resetAt, "1m"),
+						Math.min(t, candleStart(row.resetAt, "1m") + hour),
 					)[0]?.open ?? null,
 			});
 		},
 
-		order(m, id) {
-			const order = repo.order(m, id);
+		order(runId, id) {
+			const order = repo.order(runId, id);
 			if (!order) return null;
 			return {
 				order,
 				decision:
 					order.decisionId === null ? null : repo.decision(order.decisionId),
 			};
+		},
+
+		inUse: (strategyId) => repo.strategyIds().includes(strategyId),
+
+		strategyLock(strategyId) {
+			let lock: StrategyLock | null = null;
+			for (const r of repo.runs()) {
+				if (r.strategyId !== strategyId) continue;
+				const l = lockOf(r);
+				if (l === "running") return l;
+				lock ??= l;
+			}
+			return lock;
 		},
 	};
 }

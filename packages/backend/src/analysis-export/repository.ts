@@ -35,6 +35,8 @@ export type StrategyExportRow = {
 
 export type DecisionExportRow = {
 	id: number;
+	run_id: number;
+	run_name: string | null;
 	mode: string;
 	strategy_id: number | null;
 	strategy_name: string;
@@ -44,6 +46,8 @@ export type DecisionExportRow = {
 };
 
 export type OrderExportRow = {
+	run_id: number;
+	run_name: string | null;
 	mode: string;
 	id: string;
 	side: string;
@@ -99,7 +103,8 @@ export class AnalysisExportRepository {
 	decisions(from: number, to: number): DecisionExportRow[] {
 		return this.sql
 			.query<DecisionExportRow, [number, number]>(
-				"select * from trading_decisions where time >= ? and time < ? order by time, id",
+				`select d.*, r.name as run_name from trading_decisions d left join trading_runs r on r.id = d.run_id
+				where d.time >= ? and d.time < ? order by d.time, d.id`,
 			)
 			.all(from, to);
 	}
@@ -108,7 +113,8 @@ export class AnalysisExportRepository {
 	orders(from: number, to: number): OrderExportRow[] {
 		return this.sql
 			.query<OrderExportRow, [number, number]>(
-				"select * from trading_orders where placed_at >= ? and placed_at < ? order by placed_at, id",
+				`select o.*, r.name as run_name from trading_orders o left join trading_runs r on r.id = o.run_id
+				where o.placed_at >= ? and o.placed_at < ? order by o.placed_at, o.run_id, o.id`,
 			)
 			.all(from, to);
 	}

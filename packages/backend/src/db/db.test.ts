@@ -382,6 +382,96 @@ describe("0012 トレンドをセンチメントへ統合", () => {
 	});
 });
 
+describe("0016 運用（タブ）ごとの自動取引", () => {
+	const runs = (db: ReturnType<typeof openDb>) =>
+		db.$client
+			.query<Record<string, unknown>, []>(
+				"select id, name, mode, strategy_id, enabled, state, next_eval_at, started_at, initial_cash, account, reset_at from trading_runs",
+			)
+			.all();
+
+	test("今のペーパーの口座・実行状態・注文・判断を運用1つ「ペーパー」へ移し、運用する戦略を引き継ぐ", async () => {
+		const db = await dbUpTo(15);
+		insert(db, "settings", { key: "active_strategy_id", value: "3" });
+		insert(db, "trading_accounts", {
+			mode: "paper",
+			initial_cash: 500_000,
+			account: '{"cash":1}',
+			reset_at: 10,
+		});
+		insert(db, "auto_trading", {
+			id: 1,
+			enabled: 1,
+			mode: "paper",
+			strategy_id: 2,
+			state: '{"a":1}',
+			next_eval_at: 20,
+			reevaluate: 0,
+			started_at: 15,
+		});
+		insert(db, "trading_orders", {
+			mode: "paper",
+			id: "p1",
+			side: "buy",
+			type: "market",
+			status: "filled",
+			reason: "r",
+			strategy_name: "s",
+		});
+		insert(db, "trading_decisions", {
+			id: 7,
+			mode: "paper",
+			strategy_name: "s",
+			decision: "{}",
+			judgments: "{}",
+		});
+		migrateDb(db, { now: 1 });
+		expect(runs(db)).toEqual([
+			{
+				id: 1,
+				name: "ペーパー",
+				mode: "paper",
+				strategy_id: 2,
+				enabled: 1,
+				state: '{"a":1}',
+				next_eval_at: 20,
+				started_at: 15,
+				initial_cash: 500_000,
+				account: '{"cash":1}',
+				reset_at: 10,
+			},
+		]);
+		expect(
+			db.$client.query("select run_id, id from trading_orders").all(),
+		).toEqual([{ run_id: 1, id: "p1" }]);
+		expect(
+			db.$client.query("select run_id, id from trading_decisions").all(),
+		).toEqual([{ run_id: 1, id: 7 }]);
+		expect(
+			db.$client
+				.query("select 1 from settings where key = 'active_strategy_id'")
+				.get(),
+		).toBeNull();
+	});
+
+	test("オフなら選んでいた運用する戦略を引き継ぎ、口座が無ければ既定の資金で作る", async () => {
+		const db = await dbUpTo(15);
+		insert(db, "settings", { key: "active_strategy_id", value: "3" });
+		migrateDb(db, { now: 1 });
+		expect(runs(db)).toEqual([
+			expect.objectContaining({
+				id: 1,
+				strategy_id: 3,
+				enabled: 0,
+				state: "null",
+				next_eval_at: null,
+				initial_cash: 1_000_000,
+				account: null,
+			}),
+		]);
+	});
+});
+
 describe("createTestDb", () => {
 	test("ファイルを作らずにマイグレーション済みの DB を返す", () => {
 		const db = createTestDb();
