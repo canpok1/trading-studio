@@ -1,6 +1,7 @@
 // 成績の数値の横に出す評価のバッジと、その基準の説明
 
 import type { Grade, GradeBadgeValue } from "../lib/grade";
+import { fewTradesNote } from "../lib/grade";
 import { Help } from "./Help";
 
 const TONE: Record<Grade, string> = {
@@ -46,11 +47,22 @@ export function GradeHelp() {
 					勝率:
 					70%以上=優秀、60%以上=良い、40%以上=普通、30%以上=悪い、30%未満=非常に悪い。勝率は1回の利益と損失の大きさと組みで見るもので、単独では当てにならない
 				</li>
-				<li>
-					取引回数:
-					良し悪しではなく、成績が偶然でないと言えるかの目安。30回以上=十分、10回以上=やや少ない、10回未満=少なすぎ
-				</li>
 			</ul>
+			<p>
+				取引回数は戦略ごとに適切な数が違うので評価しない。30回未満のときは、勝率・PF
+				の評価が偶然の可能性があると成績の下に知らせる。
+			</p>
 		</Help>
+	);
+}
+
+/** 取引が少なく、勝率・PF の評価を割り引いて見るべきときの注意 */
+export function FewTradesNote({ trades }: { trades: number }) {
+	const note = fewTradesNote(trades);
+	if (!note) return null;
+	return (
+		<p data-testid="few-trades-note" className="text-xs text-text-2">
+			{note}
+		</p>
 	);
 }

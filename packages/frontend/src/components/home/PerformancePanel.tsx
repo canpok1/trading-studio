@@ -6,7 +6,6 @@ import {
 	gradeMaxDrawdown,
 	gradePnl,
 	gradeProfitFactor,
-	gradeTrades,
 	gradeWinRate,
 } from "../../lib/grade";
 import {
@@ -15,7 +14,7 @@ import {
 	holdingText,
 } from "../../lib/number";
 import { Stat } from "../backtest/OrderViews";
-import { GradeBadge, GradeHelp } from "../Grade";
+import { FewTradesNote, GradeBadge, GradeHelp } from "../Grade";
 import { Skeleton } from "../States";
 import { PANEL, PanelHeader } from "./Panel";
 
@@ -107,10 +106,10 @@ export function PerformancePanel({
 						<Stat
 							label="取引回数"
 							value={String(p.trades)}
-							grade={gradeTrades(p.trades)}
 							sub={`平均保有 ${p.averageHoldingMs !== null ? holdingText(p.averageHoldingMs) : "—"}`}
 						/>
 					</div>
+					<FewTradesNote trades={p.trades} />
 				</>
 			)}
 		</section>

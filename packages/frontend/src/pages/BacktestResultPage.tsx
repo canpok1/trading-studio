@@ -20,7 +20,7 @@ import { AdviceSection } from "../components/backtest/AdviceSection";
 import { OrderRow, OrderSheet, Stat } from "../components/backtest/OrderViews";
 import { alignJudgments } from "../components/chart/judgment-data";
 import { PriceChart } from "../components/chart/PriceChart";
-import { GradeBadge, GradeHelp } from "../components/Grade";
+import { FewTradesNote, GradeBadge, GradeHelp } from "../components/Grade";
 import { Modal } from "../components/Modal";
 import { Page } from "../components/Page";
 import { EmptyState, ErrorState, LoadingCard } from "../components/States";
@@ -41,7 +41,6 @@ import {
 	gradeMaxDrawdown,
 	gradePnl,
 	gradeProfitFactor,
-	gradeTrades,
 	gradeWinRate,
 } from "../lib/grade";
 import {
@@ -456,12 +455,7 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 						}
 						grade={gradeProfitFactor(s.profitFactor, s.trades)}
 					/>
-					<Stat
-						label="取引回数"
-						value={String(s.trades)}
-						sub="往復"
-						grade={gradeTrades(s.trades)}
-					/>
+					<Stat label="取引回数" value={String(s.trades)} sub="往復" />
 					<Stat
 						label="平均保有"
 						value={
@@ -472,6 +466,7 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 					/>
 					<Stat label="最終資金" value={formatInt(s.finalEquity)} />
 				</div>
+				<FewTradesNote trades={s.trades} />
 				{s.openPositionQuantity > 0 && (
 					<p className="text-xs text-text-2">
 						期間の終わりに {formatBtc(s.openPositionQuantity)} BTC
