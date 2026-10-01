@@ -12,9 +12,8 @@ import { Modal } from "../components/Modal";
 import { Page } from "../components/Page";
 import { EmptyState, ErrorState, LoadingCard } from "../components/States";
 import {
-	ConditionGroups,
+	BuyRulesEditor,
 	FrequencyCard,
-	OrderSizeCard,
 	RiskLimitCard,
 } from "../components/strategy/ConditionEditor";
 import { Button, Card } from "../components/ui";
@@ -164,7 +163,7 @@ export function StrategiesPage() {
 
 	return (
 		<Page title="戦略">
-			{/* PC は左に戦略・頻度・注文量・リスク上限、右に注文条件。スマホは 戦略→頻度→条件→注文量・リスク上限→保存 の順 */}
+			{/* PC は左に戦略・頻度・リスク上限、右に買い。スマホは 戦略→頻度→買い→リスク上限→保存 の順 */}
 			<div className="flex flex-col gap-3.5 lg:grid lg:grid-cols-2 lg:items-start">
 				<div className="contents lg:flex lg:flex-col lg:gap-3.5">
 					<Card className="flex flex-col gap-3">
@@ -230,7 +229,6 @@ export function StrategiesPage() {
 						disabled={lock !== null}
 						className="order-last flex min-w-0 flex-col gap-3.5 lg:order-none"
 					>
-						<OrderSizeCard {...editor} latestPrice={state.data.latest} />
 						<RiskLimitCard {...editor} />
 					</fieldset>
 				</div>
@@ -238,7 +236,7 @@ export function StrategiesPage() {
 					disabled={lock !== null}
 					className="contents min-w-0 lg:flex lg:flex-col lg:gap-3.5"
 				>
-					<ConditionGroups {...editor} />
+					<BuyRulesEditor {...editor} latestPrice={state.data.latest} />
 				</fieldset>
 				<div className="order-last flex flex-col gap-2 lg:col-span-2">
 					{notice && (

@@ -328,10 +328,13 @@ function decisionColumns<T>(get: (r: T) => DecisionLog): Column<T>[] {
 		),
 		col(
 			"lots",
-			"判断したときのロット（買いの注文の ID:買値（円）:数量（satoshi）を空白区切り）。ロットを持つ前の記録は空",
+			"判断したときのロット（買いの注文の ID:買値（円）:数量（satoshi）を空白区切り。買った戦略の買いの id を持つロットは :買いの id を続ける）。ロットを持つ前の記録は空",
 			(r) =>
 				(get(r).lots ?? [])
-					.map((l) => `${l.id}:${l.entryPrice}:${l.quantity}`)
+					.map(
+						(l) =>
+							`${l.id}:${l.entryPrice}:${l.quantity}${l.buyId ? `:${l.buyId}` : ""}`,
+					)
 					.join(" "),
 		),
 		col(
@@ -406,6 +409,11 @@ function orderColumns<T>(get: (r: T) => BacktestOrder): Column<T>[] {
 			"売りの約定で確定した、その売りの分の損益（円、手数料込み）。一部利確したロットは、一部利確の売り（reason が「（一部利確の条件）」で終わる）と残りの売りの2行に分かれ、往復の損益はその合計",
 			(r) => get(r).pnl,
 		),
+		col(
+			"buy_name",
+			"買いを出した戦略の買いの名前。売りと、買いが1つの戦略の買いは空",
+			(r) => get(r).buyName ?? null,
+		),
 	];
 }
 
@@ -425,6 +433,7 @@ const toTradeOrder = (r: OrderExportRow): BacktestOrder => ({
 	reason: r.reason,
 	pairId: r.pair_id,
 	pnl: r.pnl,
+	buyName: r.buy_name,
 });
 
 const paperOrdersTable: Table<OrderExportRow> = {

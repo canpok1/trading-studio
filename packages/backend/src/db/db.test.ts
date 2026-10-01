@@ -382,7 +382,7 @@ describe("0012 トレンドをセンチメントへ統合", () => {
 	});
 });
 
-describe("0015 運用（タブ）ごとの自動取引", () => {
+describe("0016 運用（タブ）ごとの自動取引", () => {
 	const runs = (db: ReturnType<typeof openDb>) =>
 		db.$client
 			.query<Record<string, unknown>, []>(
@@ -391,7 +391,7 @@ describe("0015 運用（タブ）ごとの自動取引", () => {
 			.all();
 
 	test("今のペーパーの口座・実行状態・注文・判断を運用1つ「ペーパー」へ移し、運用する戦略を引き継ぐ", async () => {
-		const db = await dbUpTo(14);
+		const db = await dbUpTo(15);
 		insert(db, "settings", { key: "active_strategy_id", value: "3" });
 		insert(db, "trading_accounts", {
 			mode: "paper",
@@ -455,7 +455,7 @@ describe("0015 運用（タブ）ごとの自動取引", () => {
 	});
 
 	test("オフなら選んでいた運用する戦略を引き継ぎ、口座が無ければ既定の資金で作る", async () => {
-		const db = await dbUpTo(14);
+		const db = await dbUpTo(15);
 		insert(db, "settings", { key: "active_strategy_id", value: "3" });
 		migrateDb(db, { now: 1 });
 		expect(runs(db)).toEqual([

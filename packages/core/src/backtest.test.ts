@@ -6,6 +6,7 @@ import {
 	conditionStrategy,
 	DEFAULT_BUY_ORDER,
 	DEFAULT_PARTIAL_SELL,
+	singleBuy,
 } from "./condition-strategy";
 import { DEFAULT_AGGREGATION_RULE } from "./news-judgment";
 import type { Strategy } from "./strategy";
@@ -374,7 +375,7 @@ describe("判定頻度が条件の足より短い", () => {
 	const M15 = TIMEFRAME_MS["15m"];
 	const P = 10_000_000;
 	// 1時間足の戦略。保有中は15分ごとに判定し、買値から1%下がったら損切り
-	const params: ConditionSet = {
+	const params: ConditionSet = singleBuy({
 		frequency: {
 			flat: { value: 15, unit: "m" },
 			holding: { value: 15, unit: "m" },
@@ -398,7 +399,7 @@ describe("判定頻度が条件の足より短い", () => {
 			match: "any",
 			conditions: [{ type: "entryChange", percent: 1, direction: "down" }],
 		},
-	};
+	});
 	const flat: Bar = [P, P, P, P];
 	const quarters: Bar[] = [
 		...Array<Bar>(8).fill(flat),
@@ -532,16 +533,24 @@ describe("AI 判定", () => {
 			() => [100_000, 100_000, 100_000, 100_000] as Bar,
 		),
 	);
+	const trend = strategyTemplate("trend").params;
 	const params: ConditionSet = {
-		...strategyTemplate("trend").params,
+		...trend,
 		frequency: {
 			flat: { value: 1, unit: "h" },
 			holding: { value: 1, unit: "h" },
 		},
-		buy: {
-			match: "all",
-			conditions: [{ type: "judgment", judge: "sentiment", values: ["+2"] }],
-		},
+		buys: [
+			{
+				...(trend.buys[0] as ConditionSet["buys"][number]),
+				buy: {
+					match: "all",
+					conditions: [
+						{ type: "judgment", judge: "sentiment", values: ["+2"] },
+					],
+				},
+			},
+		],
 	};
 	const run = (judgments?: BacktestConfig<ConditionSet>["judgments"]) =>
 		runBacktest({
@@ -649,7 +658,7 @@ describe("1日の損失上限", () => {
 
 describe("複数ポジション", () => {
 	const P = 10_000_000;
-	const params: ConditionSet = {
+	const params: ConditionSet = singleBuy({
 		frequency: {
 			flat: { value: 1, unit: "h" },
 			holding: { value: 1, unit: "h" },
@@ -681,7 +690,7 @@ describe("複数ポジション", () => {
 			conditions: [{ type: "entryChange", percent: 2, direction: "up" }],
 		},
 		stopLoss: { match: "any", conditions: [] },
-	};
+	});
 	const list = bars([
 		[P, P, P, P],
 		[P, P + 100_000, P, P + 100_000], // 高値を上抜け → 3件の指値

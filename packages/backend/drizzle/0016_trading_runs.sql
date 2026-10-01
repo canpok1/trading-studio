@@ -57,13 +57,14 @@ CREATE TABLE `__new_trading_orders` (
 	`pair_id` text,
 	`pnl` integer,
 	`exit_kind` text,
+	`buy_name` text,
 	`decision_id` integer,
 	`strategy_id` integer,
 	`strategy_name` text NOT NULL,
 	PRIMARY KEY(`run_id`, `id`)
 );
 --> statement-breakpoint
-INSERT INTO `__new_trading_orders`("run_id", "mode", "id", "side", "type", "price", "quantity", "placed_at", "status", "filled_at", "fill_price", "fee", "canceled_at", "cancel_reason", "reason", "pair_id", "pnl", "exit_kind", "decision_id", "strategy_id", "strategy_name") SELECT 1, "mode", "id", "side", "type", "price", "quantity", "placed_at", "status", "filled_at", "fill_price", "fee", "canceled_at", "cancel_reason", "reason", "pair_id", "pnl", "exit_kind", "decision_id", "strategy_id", "strategy_name" FROM `trading_orders`;--> statement-breakpoint
+INSERT INTO `__new_trading_orders`("run_id", "mode", "id", "side", "type", "price", "quantity", "placed_at", "status", "filled_at", "fill_price", "fee", "canceled_at", "cancel_reason", "reason", "pair_id", "pnl", "exit_kind", "buy_name", "decision_id", "strategy_id", "strategy_name") SELECT 1, "mode", "id", "side", "type", "price", "quantity", "placed_at", "status", "filled_at", "fill_price", "fee", "canceled_at", "cancel_reason", "reason", "pair_id", "pnl", "exit_kind", "buy_name", "decision_id", "strategy_id", "strategy_name" FROM `trading_orders`;--> statement-breakpoint
 DROP TABLE `trading_orders`;--> statement-breakpoint
 ALTER TABLE `__new_trading_orders` RENAME TO `trading_orders`;--> statement-breakpoint
 PRAGMA foreign_keys=ON;--> statement-breakpoint

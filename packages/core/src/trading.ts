@@ -46,6 +46,8 @@ export type TradeOrder = {
 	pnl: number | null;
 	/** 売りを出した条件のグループ。買いは null。記録を足す前の注文には無い（inferExitKind で理由から読む） */
 	exitKind?: ExitKind | null;
+	/** 買いを出した買いの名前。売りと、買いが1つの戦略の買いは null */
+	buyName?: string | null;
 };
 
 /**
@@ -196,13 +198,16 @@ export function positionOfLots(lots: readonly Lot[]): Position {
 
 /** 戦略へ渡すロット（支払いと記録を除く） */
 export const publicLots = (lots: readonly AccountLot[]): Lot[] =>
-	lots.map(({ id, quantity, entryPrice, openedAt, partialExitDone }) => ({
-		id,
-		quantity,
-		entryPrice,
-		openedAt,
-		partialExitDone: partialExitDone ?? false,
-	}));
+	lots.map(
+		({ id, quantity, entryPrice, openedAt, partialExitDone, buyId }) => ({
+			id,
+			quantity,
+			entryPrice,
+			openedAt,
+			partialExitDone: partialExitDone ?? false,
+			buyId: buyId ?? null,
+		}),
+	);
 
 type LegacyAccount = Partial<Account> & {
 	/** ロットを持つ前の口座の保有（1ポジション） */
@@ -356,6 +361,7 @@ export function settleFills(
 					openedAt: time,
 					cost: cost + fee,
 					record,
+					buyId: order.buyId ?? null,
 				},
 			];
 			withChanged(changed, record);
@@ -589,6 +595,7 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 				intent.expireAfterMs === undefined ? null : now + intent.expireAfterMs,
 			status: "open",
 			lotId: intent.side === "sell" ? (intent.lotId ?? null) : null,
+			buyId: intent.side === "buy" ? (intent.buyId ?? null) : null,
 		};
 		const record: TradeOrder = {
 			id: order.id,
@@ -608,6 +615,7 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 			pairId: order.lotId ?? null,
 			pnl: null,
 			exitKind: intent.side === "sell" ? (intent.exitKind ?? null) : null,
+			buyName: intent.side === "buy" ? (intent.buyName ?? null) : null,
 		};
 		changed.push(record);
 		open.push({ order, record });

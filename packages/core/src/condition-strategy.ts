@@ -235,6 +235,28 @@ export const MARKET_BUY_ORDER: BuyOrder = {
 /** 最大ロット数の既定。これを持たない保存済みの戦略もこの数で読む */
 export const DEFAULT_MAX_POSITIONS = 1;
 
+/**
+ * 買い1つ。買いの条件と注文の出し方に加え、この買いで買ったロットの売り方（一部利確・利確・損切り）を持つ。
+ * 条件のグループのキーは CONDITION_GROUPS
+ */
+export type BuyRule = {
+	/** ロットと注文がどの買いのものかを指す。戦略の中で重ならない */
+	id: string;
+	/** 画面と判断の理由に出す名前。戦略の中で重ならない */
+	name: string;
+	/** 1回の注文量（satoshi）。1ロットの量 */
+	orderSize: number;
+	/** この買いで同時に持てるロットの数（この買いの未約定の買い注文を含む） */
+	maxPositions: number;
+	buy: ConditionGroup;
+	buyOrder: BuyOrder;
+	/** 空なら一部利確しない */
+	partialTakeProfit: ConditionGroup;
+	partialSell: PartialSell;
+	takeProfit: ConditionGroup;
+	stopLoss: ConditionGroup;
+};
+
 export type ConditionSet = {
 	frequency: {
 		/** 保有なしのとき */
@@ -242,23 +264,60 @@ export type ConditionSet = {
 		/** 保有中のとき */
 		holding: Frequency;
 	};
-	/** 1回の注文量（satoshi）。1ロットの量 */
-	orderSize: number;
-	/** 同時に持てるロットの数（未約定の買い注文を含む） */
-	maxPositions: number;
 	/** 1日の損失上限（円）。その日の確定損失がこれに達したら新しい買いを止める */
 	dailyLossLimit: number;
-	/** 損切り（建値ストップを含む）の売りを出してから、stopLossCooldownTimeframe の足でこの本数ぶんの時間は買わない。0 は止めない */
+	/** 損切り（建値ストップを含む）の売りを出してから、stopLossCooldownTimeframe の足でこの本数ぶんの時間は買わない（どの買いも）。0 は止めない */
 	stopLossCooldownBars: number;
 	stopLossCooldownTimeframe: Timeframe;
-	buy: ConditionGroup;
-	buyOrder: BuyOrder;
-	/** 空なら一部利確しない。持たない保存済みの戦略は空として読む */
-	partialTakeProfit: ConditionGroup;
-	partialSell: PartialSell;
-	takeProfit: ConditionGroup;
-	stopLoss: ConditionGroup;
+	/** 買い。同じ判定で複数の買いが成立したら、買えるもののうち上の1つだけ注文する */
+	buys: BuyRule[];
 };
+
+/** 買いが1つの条件セットを、買いを持たない平らな形で書いたもの。買いを持つ前の保存済みの戦略とテストで使う */
+export type SingleBuyConditionSet = Omit<ConditionSet, "buys"> &
+	Omit<BuyRule, "id" | "name">;
+
+/** 新しい買いの名前の既定（「買い1」…） */
+export const buyRuleName = (n: number) => `買い${n}`;
+
+/** 平らな形（SingleBuyConditionSet）を、買い1つの条件セットにする */
+export function singleBuy(p: SingleBuyConditionSet): ConditionSet {
+	const {
+		frequency,
+		dailyLossLimit,
+		stopLossCooldownBars,
+		stopLossCooldownTimeframe,
+		...rule
+	} = p;
+	return {
+		frequency,
+		dailyLossLimit,
+		stopLossCooldownBars,
+		stopLossCooldownTimeframe,
+		buys: [{ id: "b1", name: buyRuleName(1), ...rule }],
+	};
+}
+
+/** 戦略の中で使っていない買いの id */
+export function newBuyRuleId(p: Pick<ConditionSet, "buys">): string {
+	const used = new Set(p.buys.map((b) => b.id));
+	let n = p.buys.length + 1;
+	while (used.has(`b${n}`)) n++;
+	return `b${n}`;
+}
+
+/** ロットや注文が属する買い。買いを持たない（買いを複数持つ前の）ものと、見つからないものは先頭の買い */
+export function buyRuleOf(
+	p: Pick<ConditionSet, "buys">,
+	buyId: string | null | undefined,
+): BuyRule {
+	return (p.buys.find((b) => b.id === buyId) ?? p.buys[0]) as BuyRule;
+}
+
+/** 全ての買いの、全ての条件のグループ */
+function allGroups(p: ConditionSet): ConditionGroup[] {
+	return p.buys.flatMap((b) => CONDITION_GROUPS.map((k) => b[k]));
+}
 
 export const LIMITS = {
 	emaPeriod: { min: 2, max: 500 },
@@ -293,6 +352,10 @@ export const LIMITS = {
 	dailyLossLimit: { min: 1, max: 100_000_000 },
 	/** 損切り後に買わない本数。0 は止めない */
 	stopLossCooldownBars: { min: 0, max: 1000 },
+	/** 買いの数 */
+	buys: { min: 1, max: 5 },
+	/** 買いの名前の文字数 */
+	buyName: { min: 1, max: 20 },
 } as const;
 
 /** 1日の損失上限の既定（仮置き）。これを持たない保存済みの戦略もこの上限で読む */
@@ -391,8 +454,8 @@ export function historyShortfalls(
 	firstTimes: Partial<Record<Timeframe, number | null>>,
 ): { timeframe: Timeframe; missing: number }[] {
 	const need: Partial<Record<Timeframe, number>> = {};
-	for (const key of CONDITION_GROUPS) {
-		for (const c of params[key].conditions) {
+	for (const g of allGroups(params)) {
+		for (const c of g.conditions) {
 			if (!needsCandles(c)) continue;
 			need[c.timeframe] = Math.max(need[c.timeframe] ?? 0, minBars(c));
 		}
@@ -698,8 +761,8 @@ const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
 /** 条件が足のデータを使う粒度（細かい順、重複なし） */
 export function candleTimeframes(params: ConditionSet): Timeframe[] {
 	const used = new Set<Timeframe>();
-	for (const key of CONDITION_GROUPS) {
-		for (const c of params[key].conditions) {
+	for (const g of allGroups(params)) {
+		for (const c of g.conditions) {
 			if (needsCandles(c)) used.add(c.timeframe);
 		}
 	}
@@ -718,8 +781,10 @@ export function idealStepTimeframe(params: ConditionSet): Timeframe | null {
 	);
 	// 指値の取消も進める足の単位でしか見られないので、取消を数える足より粗くしない
 	const caps = candleTimeframes(params).map((t) => TIMEFRAME_MS[t]);
-	if (params.buyOrder.lines.some((l) => l.type === "limit"))
-		caps.push(TIMEFRAME_MS[params.buyOrder.expireTimeframe]);
+	for (const b of params.buys) {
+		if (b.buyOrder.lines.some((l) => l.type === "limit"))
+			caps.push(TIMEFRAME_MS[b.buyOrder.expireTimeframe]);
+	}
 	const cap = Math.min(TIMEFRAME_MS["1d"], ...caps);
 	const fits = TIMEFRAMES.filter(
 		(t) => TIMEFRAME_MS[t] <= cap && g % TIMEFRAME_MS[t] === 0,
@@ -745,8 +810,8 @@ export function chooseStepTimeframe(
 /** 戦略が使う EMA の本数（小さい順、重複なし。足の粒度は問わない）。チャートの EMA 線に使う */
 export function emaPeriods(params: ConditionSet): number[] {
 	const set = new Set<number>();
-	for (const key of CONDITION_GROUPS) {
-		for (const c of params[key].conditions) {
+	for (const g of allGroups(params)) {
+		for (const c of g.conditions) {
 			if (c.type === "emaCross") {
 				set.add(c.fast);
 				set.add(c.slow);
@@ -763,8 +828,8 @@ export function rsiLines(
 	params: ConditionSet,
 ): { period: number; thresholds: number[] }[] {
 	const map = new Map<number, Set<number>>();
-	for (const key of CONDITION_GROUPS) {
-		for (const c of params[key].conditions) {
+	for (const g of allGroups(params)) {
+		for (const c of g.conditions) {
 			if (c.type === "rsi" || c.type === "rsiCross") {
 				const set = map.get(c.period) ?? new Set<number>();
 				set.add(c.threshold);
@@ -783,8 +848,8 @@ export function rsiLines(
 /** 戦略が使う判定器（JUDGES の並び、重複なし） */
 export function requiredJudges(params: ConditionSet): Judge[] {
 	const used = new Set<Judge>();
-	for (const key of CONDITION_GROUPS) {
-		for (const c of params[key].conditions) {
+	for (const g of allGroups(params)) {
+		for (const c of g.conditions) {
 			if (c.type === "judgment") used.add(c.judge);
 		}
 	}
@@ -793,8 +858,8 @@ export function requiredJudges(params: ConditionSet): Judge[] {
 
 /** 判定の条件のどれかで「データなし」を選んでいるか。採点の記録が始まる前を含む期間のバックテストはこれが true のときだけ実行する */
 export function acceptsNoJudgment(params: ConditionSet): boolean {
-	return CONDITION_GROUPS.some((key) =>
-		params[key].conditions.some(
+	return allGroups(params).some((g) =>
+		g.conditions.some(
 			(c) =>
 				c.type === "judgment" && (c.values as string[]).includes(NO_JUDGMENT),
 		),
@@ -806,8 +871,8 @@ export function candleNeeds(
 	params: ConditionSet,
 ): Partial<Record<Timeframe, number>> {
 	const out: Partial<Record<Timeframe, number>> = {};
-	for (const key of CONDITION_GROUPS) {
-		for (const c of params[key].conditions) {
+	for (const g of allGroups(params)) {
+		for (const c of g.conditions) {
 			if (!needsCandles(c)) continue;
 			const n =
 				c.type === "emaCross"
@@ -847,18 +912,11 @@ function isNumIn(v: unknown, r: { min: number; max: number }): v is number {
 	);
 }
 
-/** 条件セットの入力検証。path は「buy.conditions.0.fast」のようにフォームの項目を指す */
+/** 条件セットの入力検証。path は「buys.0.buy.conditions.0.fast」のようにフォームの項目を指す */
 export function validateConditionSet(p: ConditionSet): ValidationError[] {
 	const errors: ValidationError[] = [];
 	const err = (path: string, message: string) => errors.push({ path, message });
 
-	const size = LIMITS.orderSize;
-	if (!isIntIn(p.orderSize, size)) {
-		err(
-			"orderSize",
-			`${formatBtc(size.min)}〜${formatBtc(size.max)} BTC の範囲で入れる（最小単位 0.00000001）`,
-		);
-	}
 	if (!isIntIn(p.stopLossCooldownBars, LIMITS.stopLossCooldownBars)) {
 		const r = LIMITS.stopLossCooldownBars;
 		err("stopLossCooldownBars", `${r.min}〜${r.max} の整数で入れる`);
@@ -883,6 +941,47 @@ export function validateConditionSet(p: ConditionSet): ValidationError[] {
 		if (!FREQUENCY_UNITS.includes(f.unit)) {
 			err(`frequency.${k}`, "単位を選ぶ");
 		}
+	}
+	const n = LIMITS.buys;
+	if (p.buys.length < n.min || p.buys.length > n.max) {
+		err("buys", `買いは ${n.min}〜${n.max} 個にする`);
+	}
+	const ids = new Set<string>();
+	const names = new Set<string>();
+	p.buys.forEach((b, i) => {
+		const at = `buys.${i}`;
+		// id は画面が付けるので、重なりは入力の誤りでなく作りの誤り。それでも売りの判定が混ざるので保存させない
+		if (typeof b.id !== "string" || b.id === "" || ids.has(b.id)) {
+			err(at, "買いの id が重なっている");
+		}
+		ids.add(b.id);
+		const name = b.name.trim();
+		const r = LIMITS.buyName;
+		if (name.length < r.min || name.length > r.max) {
+			err(`${at}.name`, `${r.min}〜${r.max} 文字で入れる`);
+		} else if (names.has(name)) {
+			err(`${at}.name`, "ほかの買いと違う名前にする");
+		}
+		names.add(name);
+		validateBuyRule(b, at, err);
+	});
+	return errors;
+}
+
+/** 買い1つの入力検証。prefix は「buys.0」 */
+function validateBuyRule(
+	p: BuyRule,
+	prefix: string,
+	report: (path: string, message: string) => void,
+) {
+	const err = (path: string, message: string) =>
+		report(`${prefix}.${path}`, message);
+	const size = LIMITS.orderSize;
+	if (!isIntIn(p.orderSize, size)) {
+		err(
+			"orderSize",
+			`${formatBtc(size.min)}〜${formatBtc(size.max)} BTC の範囲で入れる（最小単位 0.00000001）`,
+		);
 	}
 	for (const g of CONDITION_GROUPS) {
 		p[g].conditions.forEach((c, i) => {
@@ -1096,7 +1195,6 @@ export function validateConditionSet(p: ConditionSet): ValidationError[] {
 	if (typeof ps.breakevenStop !== "boolean") {
 		err("partialSell.breakevenStop", "選ぶ");
 	}
-	return errors;
 }
 
 /** 一部利確で売る量（satoshi）。1 satoshi 未満は切り捨てる */
@@ -1125,11 +1223,25 @@ function latestJudgments(
 	return out;
 }
 
-/** 前回の判定で買いの条件が成立していたか。まだ判定していなければ null */
-function prevBuyHit(state: JsonValue): boolean | null {
-	return isObj(state) && typeof state.buyHit === "boolean"
-		? state.buyHit
-		: null;
+/**
+ * 買いごとの、前回の判定で買いの条件が成立していたか。まだ判定していない買いは持たない。
+ * 買いを複数持つ前の state（buyHit）は先頭の買いのものとして読む
+ */
+function prevBuyHits(
+	state: JsonValue,
+	p: ConditionSet,
+): Record<string, boolean> {
+	if (!isObj(state)) return {};
+	if (typeof state.buyHit === "boolean") {
+		return { [(p.buys[0] as BuyRule).id]: state.buyHit };
+	}
+	const out: Record<string, boolean> = {};
+	if (isObj(state.buyHits)) {
+		for (const [id, v] of Object.entries(state.buyHits)) {
+			if (typeof v === "boolean") out[id] = v;
+		}
+	}
+	return out;
 }
 
 /** 最後に損切りの売りを出した判定の時刻。無ければ null */
@@ -1142,9 +1254,7 @@ function prevStopLossAt(state: JsonValue): number | null {
 }
 
 function usesCondition(p: ConditionSet, type: ConditionType): boolean {
-	return CONDITION_GROUPS.some((k) =>
-		p[k].conditions.some((c) => c.type === type),
-	);
+	return allGroups(p).some((g) => g.conditions.some((c) => c.type === type));
 }
 
 /**
@@ -1211,18 +1321,20 @@ export function evaluateConditionSet(
 		lot: null,
 		judgments: latestJudgments(judgments),
 	};
+	// 買いが1つなら、理由に買いの名前を出さない（買いを複数持つ前と同じ文）
+	const multi = p.buys.length >= 2;
 	const cooldownMs =
 		p.stopLossCooldownBars * TIMEFRAME_MS[p.stopLossCooldownTimeframe];
 	const intents: OrderIntent[] = [];
 	const notes: string[] = [];
-	let buyHit = prevBuyHit(state);
+	const buyHits = prevBuyHits(state, p);
 	const cooldown = p.stopLossCooldownBars > 0;
 	let stopLossAt = cooldown ? prevStopLossAt(state) : null;
 	const peaks = usesCondition(p, "trailingStop")
 		? lotPeaks(lots, input.recent, state)
 		: null;
 
-	// 売り: ロットごとに判定する。同じ判定で利確と損切りの両方が成立したら損切りを優先する（損失を小さく見積もらないため）
+	// 売り: ロットごとに、ロットを買った買いの条件で判定する。同じ判定で利確と損切りの両方が成立したら損切りを優先する（損失を小さく見積もらないため）
 	if (holding) {
 		const selling = new Set(
 			openOrders.filter((o) => o.side === "sell").map((o) => o.lotId),
@@ -1231,6 +1343,7 @@ export function evaluateConditionSet(
 		const sells: string[] = [];
 		let lacking: string | null = null;
 		for (const lot of targets) {
+			const rule = buyRuleOf(p, lot.buyId);
 			const lotCtx: Ctx = {
 				...ctx,
 				lot: {
@@ -1240,15 +1353,15 @@ export function evaluateConditionSet(
 				},
 			};
 			const done = lot.partialExitDone ?? false;
-			const sl = evaluateGroup(p.stopLoss, lotCtx);
-			const tp = evaluateGroup(p.takeProfit, lotCtx);
+			const sl = evaluateGroup(rule.stopLoss, lotCtx);
+			const tp = evaluateGroup(rule.takeProfit, lotCtx);
 			// 一部利確は1ロットにつき1回だけ
 			const partialQty = done
 				? 0
-				: partialSellQuantity(lot.quantity, p.partialSell.percent);
+				: partialSellQuantity(lot.quantity, rule.partialSell.percent);
 			const ptp: GroupResult =
 				partialQty > 0 && partialQty < lot.quantity
-					? evaluateGroup(p.partialTakeProfit, lotCtx)
+					? evaluateGroup(rule.partialTakeProfit, lotCtx)
 					: { kind: "miss" };
 			const short = [sl, tp, ptp].find((r) => r.kind === "insufficient");
 			if (short?.kind === "insufficient") {
@@ -1257,7 +1370,7 @@ export function evaluateConditionSet(
 			}
 			// 建値ストップ: 一部利確の後、現在値が買値を下回ったら残りを損切りとして売る
 			const breakeven =
-				done && p.partialSell.breakevenStop && ctx.price < lot.entryPrice
+				done && rule.partialSell.breakevenStop && ctx.price < lot.entryPrice
 					? `一部利確の後、現在値 ${formatYen(ctx.price)} が買値 ${formatYen(lot.entryPrice)} を下回った。`
 					: null;
 			const hit =
@@ -1278,9 +1391,10 @@ export function evaluateConditionSet(
 			const quantity =
 				hit.exitKind === "partialTakeProfit" ? partialQty : lot.quantity;
 			const what =
-				lots.length === 1
+				(multi ? `「${rule.name}」で買った` : "") +
+				(lots.length === 1
 					? `保有中の ${formatBtc(lot.quantity)} BTC`
-					: `買値 ${formatYen(lot.entryPrice)} のロット ${formatBtc(lot.quantity)} BTC`;
+					: `買値 ${formatYen(lot.entryPrice)} のロット ${formatBtc(lot.quantity)} BTC`);
 			const part =
 				quantity < lot.quantity ? ` のうち ${formatBtc(quantity)} BTC` : "";
 			sells.push(`${hit.why}${what}${part} を売却（${hit.label}の条件）`);
@@ -1307,55 +1421,83 @@ export function evaluateConditionSet(
 		}
 	}
 
-	// 買い: 空き枠（最大ロット数 − 保有ロット − 未約定の買い）があり、未約定の買いが無いときだけ出す。
+	// 買い: 上の買いから順に、その買いの空き枠（最大ロット数 − その買いのロット − その買いの未約定の買い）があり、
+	// その買いの未約定の買いが無いときだけ出す。注文を出せた買いより下の買いは出さない（1回の判定で出す買いは1つ）。
 	// 空き枠は売る前の保有数で数える（売りで空く枠は次の判定から使う）
-	const openBuys = openOrders.filter((o) => o.side === "buy").length;
-	const free = p.maxPositions - lots.length - openBuys;
-	// 最大ロット数が 2 以上なら、条件が続く間の連続買いを防ぐため、前回外れていたときだけ買う（1 は今までどおり）
-	const edge = p.maxPositions >= 2;
-	const buyCheck = () => {
-		const r = evaluateGroup(p.buy, ctx);
-		if (edge && r.kind !== "insufficient") {
-			buyHit = r.kind === "hit";
-		}
-		return r;
-	};
-	if (openBuys > 0) {
-		if (edge) buyCheck();
-		notes.push("買い注文の約定待ち");
-	} else if (free <= 0) {
-		if (edge) {
-			buyCheck();
-			notes.push(`最大ロット数 ${p.maxPositions} に達しているため買わない`);
-		}
-	} else if (stopLossAt !== null && now < stopLossAt + cooldownMs) {
-		if (edge) buyCheck();
-		const tfMs = TIMEFRAME_MS[p.stopLossCooldownTimeframe];
-		const left = Math.ceil((stopLossAt + cooldownMs - now) / tfMs);
-		notes.push(
-			`損切りから${TIMEFRAME_LABELS[p.stopLossCooldownTimeframe]}で ${p.stopLossCooldownBars} 本経っていないため買わない（あと ${left} 本）`,
-		);
-	} else {
-		const wasHit = buyHit;
-		const r = buyCheck();
-		if (r.kind === "insufficient") {
-			notes.push(`指標の本数が足りないため判定しない（${r.why}）`);
-		} else if (r.kind === "miss") {
-			notes.push("買いの条件を満たさない");
-		} else if (edge && wasHit === true) {
-			notes.push("買いの条件が続いているため買わない（一度外れてから買う）");
+	const cooling = stopLossAt !== null && now < stopLossAt + cooldownMs;
+	let placedBy: BuyRule | null = null;
+	let cooldownNoted = false;
+	for (const b of p.buys) {
+		const mine = (buyId: string | null | undefined) =>
+			buyRuleOf(p, buyId).id === b.id;
+		const say = (text: string) =>
+			notes.push(multi ? `【${b.name}】${text}` : text);
+		const openBuys = openOrders.filter(
+			(o) => o.side === "buy" && mine(o.buyId),
+		).length;
+		const free =
+			b.maxPositions - lots.filter((l) => mine(l.buyId)).length - openBuys;
+		// 最大ロット数が 2 以上なら、条件が続く間の連続買いを防ぐため、前回外れていたときだけ買う（1 は今までどおり）
+		const edge = b.maxPositions >= 2;
+		const check = () => {
+			const r = evaluateGroup(b.buy, ctx);
+			if (edge && r.kind !== "insufficient") {
+				buyHits[b.id] = r.kind === "hit";
+			}
+			return r;
+		};
+		if (openBuys > 0) {
+			if (edge) check();
+			say("買い注文の約定待ち");
+		} else if (free <= 0) {
+			if (edge) {
+				check();
+				say(`最大ロット数 ${b.maxPositions} に達しているため買わない`);
+			}
+		} else if (cooling && stopLossAt !== null) {
+			if (edge) check();
+			if (!cooldownNoted) {
+				const tfMs = TIMEFRAME_MS[p.stopLossCooldownTimeframe];
+				const left = Math.ceil((stopLossAt + cooldownMs - now) / tfMs);
+				notes.push(
+					`損切りから${TIMEFRAME_LABELS[p.stopLossCooldownTimeframe]}で ${p.stopLossCooldownBars} 本経っていないため買わない（あと ${left} 本）`,
+				);
+				cooldownNoted = true;
+			}
 		} else {
-			const placed = buyIntents(p, ctx.price, cash, free);
-			intents.push(...placed.intents);
-			notes.push(`${r.why}${placed.note}`);
+			const wasHit = buyHits[b.id] ?? null;
+			const r = check();
+			if (r.kind === "insufficient") {
+				say(`指標の本数が足りないため判定しない（${r.why}）`);
+			} else if (r.kind === "miss") {
+				say("買いの条件を満たさない");
+			} else if (edge && wasHit === true) {
+				say("買いの条件が続いているため買わない（一度外れてから買う）");
+			} else if (placedBy !== null) {
+				say(
+					`買いの条件を満たすが、上の「${placedBy.name}」で注文したため買わない`,
+				);
+			} else {
+				const placed = buyIntents(b, ctx.price, cash, free);
+				for (const intent of placed.intents) {
+					intents.push({
+						...intent,
+						buyId: b.id,
+						...(multi ? { buyName: b.name } : {}),
+					});
+				}
+				if (placed.intents.length > 0) placedBy = b;
+				say(`${r.why}${placed.note}`);
+			}
 		}
 	}
 
+	const hasHits = Object.keys(buyHits).length > 0;
 	const nextState: JsonValue =
-		buyHit === null && peaks === null && stopLossAt === null
+		!hasHits && peaks === null && stopLossAt === null
 			? null
 			: {
-					...(buyHit === null ? {} : { buyHit }),
+					...(hasHits ? { buyHits } : {}),
 					...(peaks === null ? {} : { peaks }),
 					...(stopLossAt === null ? {} : { stopLossAt }),
 				};
@@ -1364,14 +1506,14 @@ export function evaluateConditionSet(
 
 /** 買い注文の行を、空き枠の数だけ先頭から注文にする。資金が足りなくなった行から先は出さない */
 function buyIntents(
-	p: ConditionSet,
+	b: BuyRule,
 	price: number,
 	cash: number,
 	free: number,
-): { intents: OrderIntent[]; note: string } {
-	const { lines, expireBars, expireTimeframe } = p.buyOrder;
-	const size = p.orderSize;
-	const intents: OrderIntent[] = [];
+): { intents: Extract<OrderIntent, { kind: "place" }>[]; note: string } {
+	const { lines, expireBars, expireTimeframe } = b.buyOrder;
+	const size = b.orderSize;
+	const intents: Extract<OrderIntent, { kind: "place" }>[] = [];
 	const texts: string[] = [];
 	let total = 0;
 	let short: string | null = null;
@@ -1629,16 +1771,11 @@ function parseFrequency(v: unknown): Frequency | null {
 	};
 }
 
-/**
- * JSON などから受け取った値を条件セットの形に読む。形が違えば null。
- * 値の範囲は見ない（validateConditionSet で検証する）
- */
-export function parseConditionSet(v: unknown): ConditionSet | null {
-	if (!isObj(v) || !isObj(v.frequency)) return null;
-	// 戦略が足の粒度を1つだけ持っていた頃の形。条件・指値・損切り後の足をこの粒度で埋める
-	const legacy = isTimeframe(v.timeframe) ? v.timeframe : null;
-	const flat = parseFrequency(v.frequency.flat);
-	const holding = parseFrequency(v.frequency.holding);
+/** 買い1つ（の売り方を含む部分）を読む。買いを持つ前の戦略は、条件セットそのものをこの形で読む */
+function parseBuyRuleBody(
+	v: Record<string, unknown>,
+	legacy: Timeframe | null,
+): Omit<BuyRule, "id" | "name"> | null {
 	const buy = parseGroup(v.buy, legacy);
 	// 一部利確の条件を持つ前の戦略は空として読む
 	const partialTakeProfit =
@@ -1650,8 +1787,6 @@ export function parseConditionSet(v: unknown): ConditionSet | null {
 	const stopLoss = parseGroup(v.stopLoss, legacy);
 	const buyOrder = parseBuyOrder(v.buyOrder, legacy);
 	if (
-		!flat ||
-		!holding ||
 		!buy ||
 		!buyOrder ||
 		!partialTakeProfit ||
@@ -1661,7 +1796,6 @@ export function parseConditionSet(v: unknown): ConditionSet | null {
 	)
 		return null;
 	return {
-		frequency: { flat, holding },
 		orderSize: typeof v.orderSize === "number" ? v.orderSize : Number.NaN,
 		maxPositions:
 			v.maxPositions === undefined
@@ -1669,6 +1803,45 @@ export function parseConditionSet(v: unknown): ConditionSet | null {
 				: typeof v.maxPositions === "number"
 					? v.maxPositions
 					: Number.NaN,
+		buy,
+		buyOrder,
+		partialTakeProfit,
+		partialSell,
+		takeProfit,
+		stopLoss,
+	};
+}
+
+/**
+ * JSON などから受け取った値を条件セットの形に読む。形が違えば null。
+ * 値の範囲は見ない（validateConditionSet で検証する）。
+ * 買いを持つ前の形（買い・売りの条件を条件セットに直接持つ）は、買い1つとして読む
+ */
+export function parseConditionSet(v: unknown): ConditionSet | null {
+	if (!isObj(v) || !isObj(v.frequency)) return null;
+	// 戦略が足の粒度を1つだけ持っていた頃の形。条件・指値・損切り後の足をこの粒度で埋める
+	const legacy = isTimeframe(v.timeframe) ? v.timeframe : null;
+	const flat = parseFrequency(v.frequency.flat);
+	const holding = parseFrequency(v.frequency.holding);
+	if (!flat || !holding) return null;
+	let buys: BuyRule[];
+	if (v.buys === undefined) {
+		const body = parseBuyRuleBody(v, legacy);
+		if (!body) return null;
+		buys = [{ id: "b1", name: buyRuleName(1), ...body }];
+	} else {
+		if (!Array.isArray(v.buys)) return null;
+		const parsed = v.buys.map((b): BuyRule | null => {
+			if (!isObj(b) || typeof b.id !== "string" || typeof b.name !== "string")
+				return null;
+			const body = parseBuyRuleBody(b, legacy);
+			return body ? { id: b.id, name: b.name, ...body } : null;
+		});
+		if (parsed.some((b) => b === null)) return null;
+		buys = parsed as BuyRule[];
+	}
+	return {
+		frequency: { flat, holding },
 		dailyLossLimit:
 			v.dailyLossLimit === undefined
 				? DEFAULT_DAILY_LOSS_LIMIT
@@ -1685,11 +1858,6 @@ export function parseConditionSet(v: unknown): ConditionSet | null {
 			v.stopLossCooldownTimeframe,
 			legacy,
 		),
-		buy,
-		buyOrder,
-		partialTakeProfit,
-		partialSell,
-		takeProfit,
-		stopLoss,
+		buys,
 	};
 }

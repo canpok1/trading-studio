@@ -76,6 +76,7 @@ type OrderRow = {
 	pair_id: string | null;
 	pnl: number | null;
 	exit_kind: ExitKind | null;
+	buy_name: string | null;
 	decision_id: number | null;
 	strategy_id: number | null;
 	strategy_name: string;
@@ -107,6 +108,7 @@ const toOrder = (r: OrderRow): StoredOrder => ({
 	decisionId: r.decision_id,
 	strategyId: r.strategy_id,
 	strategyName: r.strategy_name,
+	buyName: r.buy_name,
 	lotPrice: r.lot_price ?? null,
 	// exit_kind を足す前の売りは理由から読む
 	exitKind: inferExitKind(
@@ -266,8 +268,8 @@ export class TradingRepository {
 		},
 	): void {
 		const stmt = this.sql.prepare(
-			`insert into trading_orders (run_id, mode, id, side, type, price, quantity, placed_at, status, filled_at, fill_price, fee, canceled_at, cancel_reason, reason, pair_id, pnl, exit_kind, decision_id, strategy_id, strategy_name)
-			values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`insert into trading_orders (run_id, mode, id, side, type, price, quantity, placed_at, status, filled_at, fill_price, fee, canceled_at, cancel_reason, reason, pair_id, pnl, exit_kind, buy_name, decision_id, strategy_id, strategy_name)
+			values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			on conflict (run_id, id) do update set status = excluded.status, filled_at = excluded.filled_at, fill_price = excluded.fill_price, fee = excluded.fee,
 			canceled_at = excluded.canceled_at, cancel_reason = excluded.cancel_reason, pair_id = excluded.pair_id, pnl = excluded.pnl`,
 		);
@@ -291,6 +293,7 @@ export class TradingRepository {
 				o.pairId,
 				o.pnl,
 				o.exitKind ?? null,
+				o.buyName ?? null,
 				origin.decisionId,
 				origin.strategyId,
 				origin.strategyName,

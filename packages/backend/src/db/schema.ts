@@ -289,6 +289,8 @@ export const tradingOrders = sqliteTable(
 		pnl: integer("pnl"),
 		/** 売りを出した条件のグループ（takeProfit / stopLoss）。買いと、この列を足す前の売りは null */
 		exitKind: text("exit_kind"),
+		/** 買いを出した買いの名前。売りと、買いが1つの戦略の買いは null */
+		buyName: text("buy_name"),
 		/** 発注した判断。戦略を削除しても注文は残すので外部キーにしない */
 		decisionId: integer("decision_id"),
 		strategyId: integer("strategy_id"),

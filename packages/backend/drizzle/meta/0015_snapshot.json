@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "d087dda5-8639-47a6-943b-6b6cfd9652da",
+  "id": "596c5a39-7010-41ce-bb79-dbd93a7a46c8",
   "prevId": "a5753ea5-98a1-4ebd-a921-d094d8f27379",
   "tables": {
     "advice_instructions": {
@@ -1238,13 +1238,6 @@
           "notNull": true,
           "autoincrement": true
         },
-        "run_id": {
-          "name": "run_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "mode": {
           "name": "mode",
           "type": "text",
@@ -1305,13 +1298,6 @@
     "trading_orders": {
       "name": "trading_orders",
       "columns": {
-        "run_id": {
-          "name": "run_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "mode": {
           "name": "mode",
           "type": "text",
@@ -1431,6 +1417,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "buy_name": {
+          "name": "buy_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "decision_id": {
           "name": "decision_id",
           "type": "integer",
@@ -1464,122 +1457,14 @@
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {
-        "trading_orders_run_id_id_pk": {
+        "trading_orders_mode_id_pk": {
           "columns": [
-            "run_id",
+            "mode",
             "id"
           ],
-          "name": "trading_orders_run_id_id_pk"
+          "name": "trading_orders_mode_id_pk"
         }
       },
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "trading_runs": {
-      "name": "trading_runs",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "mode": {
-          "name": "mode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "strategy_id": {
-          "name": "strategy_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "deleted_at": {
-          "name": "deleted_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "next_eval_at": {
-          "name": "next_eval_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "reevaluate": {
-          "name": "reevaluate",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "started_at": {
-          "name": "started_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "initial_cash": {
-          "name": "initial_cash",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "account": {
-          "name": "account",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "reset_at": {
-          "name": "reset_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
     }

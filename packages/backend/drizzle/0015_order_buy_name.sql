@@ -1,0 +1,1 @@
+ALTER TABLE `trading_orders` ADD `buy_name` text;

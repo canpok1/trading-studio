@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import type { ConditionSet, MarketTrade } from "@trading-studio/core";
-import { MARKET_BUY_ORDER, strategyTemplate } from "@trading-studio/core";
+import type {
+	ConditionSet,
+	MarketTrade,
+	SingleBuyConditionSet,
+} from "@trading-studio/core";
+import {
+	DEFAULT_DAILY_LOSS_LIMIT,
+	DEFAULT_PARTIAL_SELL,
+	MARKET_BUY_ORDER,
+	singleBuy,
+} from "@trading-studio/core";
 import { createTestApp } from "../test-app";
 import { TradingRepository } from "./repository";
 import { createTradingService } from "./service";
@@ -13,35 +22,40 @@ const P = 10_000_000;
 type Json = Record<string, unknown>;
 
 /** 1分ごとに評価し、いつでも買い、買値から1%動いたら売る戦略 */
-const always = (over: Partial<ConditionSet> = {}): ConditionSet => ({
-	...strategyTemplate("trend").params,
-	frequency: {
-		flat: { value: 1, unit: "m" },
-		holding: { value: 1, unit: "m" },
-	},
-	orderSize: 1_000_000,
-	maxPositions: 1,
-	buy: {
-		match: "all",
-		conditions: [
-			{
-				type: "judgment",
-				judge: "sentiment",
-				values: ["+2", "+1", "0", "-1", "-2", "none"],
-			},
-		],
-	},
-	buyOrder: MARKET_BUY_ORDER,
-	takeProfit: {
-		match: "any",
-		conditions: [{ type: "entryChange", percent: 1, direction: "up" }],
-	},
-	stopLoss: {
-		match: "any",
-		conditions: [{ type: "entryChange", percent: 1, direction: "down" }],
-	},
-	...over,
-});
+const always = (over: Partial<SingleBuyConditionSet> = {}): ConditionSet =>
+	singleBuy({
+		dailyLossLimit: DEFAULT_DAILY_LOSS_LIMIT,
+		stopLossCooldownBars: 0,
+		stopLossCooldownTimeframe: "1h",
+		partialTakeProfit: { match: "all", conditions: [] },
+		partialSell: DEFAULT_PARTIAL_SELL,
+		frequency: {
+			flat: { value: 1, unit: "m" },
+			holding: { value: 1, unit: "m" },
+		},
+		orderSize: 1_000_000,
+		maxPositions: 1,
+		buy: {
+			match: "all",
+			conditions: [
+				{
+					type: "judgment",
+					judge: "sentiment",
+					values: ["+2", "+1", "0", "-1", "-2", "none"],
+				},
+			],
+		},
+		buyOrder: MARKET_BUY_ORDER,
+		takeProfit: {
+			match: "any",
+			conditions: [{ type: "entryChange", percent: 1, direction: "up" }],
+		},
+		stopLoss: {
+			match: "any",
+			conditions: [{ type: "entryChange", percent: 1, direction: "down" }],
+		},
+		...over,
+	});
 
 function setup(params: ConditionSet = always()) {
 	const t = createTestApp();
@@ -611,6 +625,42 @@ describe("成績", () => {
 });
 
 describe("複数ポジション", () => {
+	test("買いが複数なら、注文に買いの名前を残し、ロットは買った買いの売りの条件で売る", async () => {
+		const base = always();
+		const rule = base.buys[0] as ConditionSet["buys"][number];
+		const t = setup({
+			...base,
+			buys: [
+				{ ...rule, name: "押し目" },
+				{
+					...rule,
+					id: "b2",
+					name: "突破",
+					takeProfit: {
+						match: "any",
+						conditions: [{ type: "entryChange", percent: 5, direction: "up" }],
+					},
+				},
+			],
+		});
+		await t.call("POST", "/start", { mode: "paper" });
+		t.at(T0 + M);
+		expect(t.orders().map((o) => [o.side, o.buyName])).toEqual([
+			["buy", "押し目"],
+		]);
+		t.fill(P);
+		t.at(T0 + M + 1000);
+		expect(t.status().account.lots.map((l) => l.buyId)).toEqual(["b1"]);
+		// 押し目の利確（+1%）で売る
+		t.fill(P * 1.02);
+		t.at(T0 + 2 * M);
+		expect(t.orders().at(-1)).toMatchObject({
+			side: "sell",
+			exitKind: "takeProfit",
+			buyName: null,
+		});
+	});
+
 	test("同時に出した買いがそれぞれロットになり、ロットごとに売る。売りには売るロットの買値を添える", async () => {
 		const t = setup(
 			always({
@@ -673,6 +723,7 @@ describe("複数ポジション", () => {
 				entryPrice: P,
 				openedAt: T0,
 				partialExitDone: false,
+				buyId: null,
 			},
 		]);
 	});

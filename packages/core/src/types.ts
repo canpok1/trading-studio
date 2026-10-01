@@ -33,6 +33,10 @@ export type OrderIntent =
 			lotId?: string;
 			/** 売りで、どちらの条件のグループで売るか */
 			exitKind?: ExitKind;
+			/** 買いで、どの買い（戦略の買いの id）の注文か。約定したロットはこの買いの売り条件で売る */
+			buyId?: string;
+			/** 買いで、注文の記録に残す買いの名前。戦略が買いを1つしか持たなければ持たない */
+			buyName?: string;
 	  }
 	| { kind: "cancel"; orderId: string; reason?: string };
 
@@ -51,6 +55,8 @@ export type Order = {
 	status: OrderStatus;
 	/** 売りが売るロットの id。買いでは持たない */
 	lotId?: string | null;
+	/** 買いが属する買い（戦略の買いの id）。売りと、買いを複数持つ前の注文では持たない */
+	buyId?: string | null;
 };
 
 /** 約定。手数料は円 */
@@ -84,6 +90,8 @@ export type Lot = {
 	openedAt: number;
 	/** 一部だけ売ったことがあるか。持たない保存済みのロットは false として読む */
 	partialExitDone?: boolean;
+	/** 買った買い（戦略の買いの id）。買いを複数持つ前のロットは持たない（先頭の買いとして売る） */
+	buyId?: string | null;
 };
 
 export const EMPTY_POSITION: Position = {

@@ -12,9 +12,14 @@ import {
 } from "./chart-indicators";
 
 const base = strategyTemplate("blank").params;
-const withBuy = (conditions: ConditionSet["buy"]["conditions"]) => ({
+const withBuy = (
+	conditions: ConditionSet["buys"][number]["buy"]["conditions"],
+): ConditionSet => ({
 	...base,
-	buy: { match: "all" as const, conditions },
+	buys: base.buys.map((b) => ({
+		...b,
+		buy: { match: "all" as const, conditions },
+	})),
 });
 
 describe("チャートの EMA・RSI の設定", () => {
@@ -68,28 +73,32 @@ describe("チャートの EMA・RSI の設定", () => {
 	});
 
 	test("RSI のしきい値が2つ以上なら最小と最大を使う", () => {
-		const p = {
-			...withBuy([
-				{
-					type: "rsi",
-					timeframe: "1h",
-					period: 14,
-					threshold: 20,
-					direction: "below",
-				},
-			]),
-			takeProfit: {
-				match: "all" as const,
-				conditions: [
-					{
-						type: "rsi" as const,
-						timeframe: "1h" as const,
-						period: 14,
-						threshold: 75,
-						direction: "above" as const,
-					},
-				],
+		const buyOnly = withBuy([
+			{
+				type: "rsi",
+				timeframe: "1h",
+				period: 14,
+				threshold: 20,
+				direction: "below",
 			},
+		]);
+		const p: ConditionSet = {
+			...buyOnly,
+			buys: buyOnly.buys.map((b) => ({
+				...b,
+				takeProfit: {
+					match: "all",
+					conditions: [
+						{
+							type: "rsi",
+							timeframe: "1h",
+							period: 14,
+							threshold: 75,
+							direction: "above",
+						},
+					],
+				},
+			})),
 		};
 		expect(strategyRsi(p)).toEqual({ period: 14, lower: 20, upper: 75 });
 	});

@@ -201,17 +201,23 @@ function RunHeader({ run }: { run: BacktestRun }) {
 	const p = run.params;
 	const chips = [
 		frequencyText(p),
-		`買: ${groupText(p.buy)}`,
-		`買いの注文: ${buyOrderText(p.buyOrder)}`,
-		...(p.partialTakeProfit.conditions.length > 0
-			? [
-					`一部利確: ${groupText(p.partialTakeProfit)}・${p.partialSell.percent}%${p.partialSell.breakevenStop ? "・後は建値で損切り" : ""}`,
-				]
-			: []),
-		`利確: ${groupText(p.takeProfit)}`,
-		`損切り: ${groupText(p.stopLoss)}`,
-		`${formatBtc(p.orderSize)} BTC`,
-		`最大ロット数 ${p.maxPositions}`,
+		// 買いが複数なら、どの買いの項目か分かるよう頭に名前を付ける
+		...p.buys.flatMap((b) => {
+			const tag = p.buys.length >= 2 ? `【${b.name}】` : "";
+			return [
+				`${tag}買: ${groupText(b.buy)}`,
+				`${tag}買いの注文: ${buyOrderText(b.buyOrder)}`,
+				...(b.partialTakeProfit.conditions.length > 0
+					? [
+							`${tag}一部利確: ${groupText(b.partialTakeProfit)}・${b.partialSell.percent}%${b.partialSell.breakevenStop ? "・後は建値で損切り" : ""}`,
+						]
+					: []),
+				`${tag}利確: ${groupText(b.takeProfit)}`,
+				`${tag}損切り: ${groupText(b.stopLoss)}`,
+				`${tag}${formatBtc(b.orderSize)} BTC`,
+				`${tag}最大ロット数 ${b.maxPositions}`,
+			];
+		}),
 		...(run.dailyLossLimitApplied
 			? [`1日の損失上限 ${formatInt(p.dailyLossLimit)}円`]
 			: []),

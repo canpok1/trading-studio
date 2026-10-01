@@ -64,6 +64,7 @@ export type OrderExportRow = {
 	reason: string;
 	pair_id: string | null;
 	pnl: number | null;
+	buy_name: string | null;
 	decision_id: number | null;
 	strategy_id: number | null;
 	strategy_name: string;

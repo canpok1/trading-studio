@@ -3,6 +3,7 @@
 import type {
 	BuyOrder,
 	BuyOrderLine,
+	BuyRule,
 	Condition,
 	ConditionGroupKey,
 	ConditionSet,
@@ -16,10 +17,13 @@ import type {
 	ValidationError,
 } from "@trading-studio/core";
 import {
+	buyRuleName,
 	CONDITION_GROUP_LABELS,
 	CONDITION_GROUPS,
 	DEFAULT_BUY_BELOW_PERCENT,
+	DEFAULT_BUY_ORDER,
 	DEFAULT_CONDITION_TIMEFRAME,
+	DEFAULT_PARTIAL_SELL,
 	FREQUENCY_UNIT_LABELS,
 	FREQUENCY_UNITS,
 	formatBtc,
@@ -29,6 +33,7 @@ import {
 	JUDGMENT_CONDITION_VALUES,
 	JUDGMENT_VALUE_LABELS,
 	LIMITS,
+	newBuyRuleId,
 	ORDER_TYPE_LABELS,
 	partialSellQuantity,
 	SATOSHI_PER_BTC,
@@ -53,6 +58,17 @@ const selectClass = "h-9 rounded-lg border border-line bg-surface px-2 text-sm";
 
 function errorsIn(errors: ValidationError[], path: string): ValidationError[] {
 	return errors.filter((e) => e.path === path || e.path.startsWith(`${path}.`));
+}
+
+/** prefix（「buys.0」）の下のエラーを、prefix を外したパスで返す */
+function errorsUnder(
+	errors: ValidationError[],
+	prefix: string,
+): ValidationError[] {
+	return errorsIn(errors, prefix).map((e) => ({
+		...e,
+		path: e.path.slice(prefix.length + 1),
+	}));
 }
 
 function errorsAt(
@@ -164,17 +180,22 @@ export function FrequencyCard({ params, onChange, errors }: Props) {
 
 const SIZE_STEP = 100_000; // 0.001 BTC
 
-/** 1回の注文量。円換算は最後に取り込んだ足の終値で出す */
-export function OrderSizeCard({
-	params,
+/** 買い1つの、1回の注文量と最大ロット数。円換算は最後に取り込んだ足の終値で出す */
+function OrderSizeFields({
+	rule,
 	onChange,
 	errors,
 	latestPrice,
-}: Props & { latestPrice: number | null }) {
+}: {
+	rule: BuyRule;
+	onChange: (r: BuyRule) => void;
+	errors: ValidationError[];
+	latestPrice: number | null;
+}) {
 	const errs = errorsAt(errors, "orderSize");
 	const maxErrs = errorsAt(errors, "maxPositions");
-	const size = params.orderSize;
-	const set = (orderSize: number) => onChange({ ...params, orderSize });
+	const size = rule.orderSize;
+	const set = (orderSize: number) => onChange({ ...rule, orderSize });
 	const step = (d: number) =>
 		set(
 			Math.max(
@@ -186,13 +207,13 @@ export function OrderSizeCard({
 			),
 		);
 	return (
-		<Card className="flex flex-col gap-2.5">
+		<div className="flex flex-col gap-2.5">
 			<div className="flex items-center gap-1.5">
-				<h2 className="text-[15px] font-bold">注文量とロット数</h2>
+				<h3 className="text-[15px] font-bold">注文量とロット数</h3>
 				<Help label="注文量とロット数">
 					<p>
-						約定した買い1件がこの量の1ロットになる。最大ロット数は同時に持てるロットの数で、約定待ちの買いも数える。2
-						以上にすると保有中も買い、買いの条件が一度外れてから再び成り立ったときに次を買う。売りはロットごとに判定する。
+						約定した買い1件がこの量の1ロットになる。最大ロット数はこの買いで同時に持てるロットの数で、この買いの約定待ちの買いも数える。2
+						以上にすると保有中も買い、買いの条件が一度外れてから再び成り立ったときに次を買う。売りはロットごとに、そのロットを買った買いの条件で判定する。
 					</p>
 					<p>
 						買いの出し方は「買い注文する条件」で選ぶ。売りは成行。利確・損切りの両方が同時に成り立ったら損切りを優先する。
@@ -236,8 +257,8 @@ export function OrderSizeCard({
 				<div className="flex flex-wrap items-center gap-1.5 text-sm">
 					<span>最大ロット数</span>
 					<NumberInput
-						value={params.maxPositions}
-						onChange={(maxPositions) => onChange({ ...params, maxPositions })}
+						value={rule.maxPositions}
+						onChange={(maxPositions) => onChange({ ...rule, maxPositions })}
 						invalid={maxErrs.length > 0}
 						inputMode="numeric"
 						aria-label="最大ロット数"
@@ -249,7 +270,7 @@ export function OrderSizeCard({
 				</div>
 				<ErrorText messages={maxErrs} />
 			</div>
-		</Card>
+		</div>
 	);
 }
 
@@ -274,7 +295,7 @@ export function RiskLimitCard({ params, onChange, errors }: Props) {
 					</p>
 					<p>
 						損切り後に買わない本数:
-						損切り（建値ストップを含む）の売りを出してから、選んだ足でこの本数ぶんの時間は新しい買いを出さない。0
+						損切り（建値ストップを含む）の売りを出してから、選んだ足でこの本数ぶんの時間は、どの買いも新しい買いを出さない。0
 						なら止めない。自動取引をオンにし直すと、損切りした時刻を忘れる。
 					</p>
 				</Help>
@@ -929,10 +950,13 @@ function nextBelowPercent(lines: BuyOrderLine[]): number {
  * 取消までの本数は指値の行で共通
  */
 function BuyOrderLines({
+	scope,
 	order,
 	onChange,
 	errors,
 }: {
+	/** 同じ画面に買いが複数あってもラジオの組が混ざらないよう、name に付ける */
+	scope: string;
 	order: BuyOrder;
 	onChange: (o: BuyOrder) => void;
 	errors: ValidationError[];
@@ -973,7 +997,7 @@ function BuyOrderLines({
 								</span>
 								{i === 0 ? (
 									<Segmented<OrderType>
-										name="buy-order-type"
+										name={`buy-order-type-${scope}`}
 										label="1件目の注文方法"
 										size="sm"
 										options={(["limit", "market"] as const).map(
@@ -1092,18 +1116,18 @@ function BuyOrderLines({
 
 /** 一部利確の売り方。一部利確の条件があるときだけ出す */
 function PartialSellFields({
-	params,
+	rule,
 	onChange,
 	errors,
 }: {
-	params: ConditionSet;
+	rule: BuyRule;
 	onChange: (v: PartialSell) => void;
 	errors: ValidationError[];
 }) {
-	const ps = params.partialSell;
+	const ps = rule.partialSell;
 	const percentErrs = errorsAt(errors, "partialSell.percent");
 	const sold = Number.isInteger(ps.percent)
-		? partialSellQuantity(params.orderSize, ps.percent)
+		? partialSellQuantity(rule.orderSize, ps.percent)
 		: null;
 	return (
 		<div className="flex flex-col gap-2 border-t border-line pt-2.5">
@@ -1120,10 +1144,10 @@ function PartialSellFields({
 					/>
 					<span>% を売る</span>
 				</div>
-				{sold !== null && Number.isFinite(params.orderSize) && (
+				{sold !== null && Number.isFinite(rule.orderSize) && (
 					<p className="text-xs text-text-2">
 						1ロットにつき1回だけ。1回の注文量なら {formatBtc(sold)} BTC を売り、
-						{formatBtc(params.orderSize - sold)} BTC を残す
+						{formatBtc(rule.orderSize - sold)} BTC を残す
 					</p>
 				)}
 				<ErrorText messages={percentErrs} />
@@ -1141,13 +1165,22 @@ function PartialSellFields({
 	);
 }
 
-/** 買い・一部利確・利確・損切りの4グループ */
-export function ConditionGroups({ params, onChange, errors }: Props) {
+/** 買い1つの、買い・一部利確・利確・損切りの4グループ。labelPrefix は買いが複数のとき見出しの頭に付ける */
+function RuleGroups({
+	rule,
+	onChange,
+	errors,
+	labelPrefix,
+}: {
+	rule: BuyRule;
+	onChange: (r: BuyRule) => void;
+	errors: ValidationError[];
+	labelPrefix: string;
+}) {
 	const [adding, setAdding] = useState<ConditionGroupKey | null>(null);
-	const setGroup = (
-		g: ConditionGroupKey,
-		next: ConditionSet[ConditionGroupKey],
-	) => onChange({ ...params, [g]: next });
+	const params = rule;
+	const setGroup = (g: ConditionGroupKey, next: BuyRule[ConditionGroupKey]) =>
+		onChange({ ...rule, [g]: next });
 	return (
 		<>
 			{CONDITION_GROUPS.map((g) => {
@@ -1155,16 +1188,16 @@ export function ConditionGroups({ params, onChange, errors }: Props) {
 				return (
 					<section
 						key={g}
-						aria-label={CONDITION_GROUP_LABELS[g]}
+						aria-label={`${labelPrefix}${CONDITION_GROUP_LABELS[g]}`}
 						className={`flex flex-col gap-2.5 rounded-xl border border-l-4 border-line bg-surface px-4 py-3.5 ${GROUP_BORDER[g]}`}
 					>
 						<div className="flex flex-wrap items-center justify-between gap-2">
-							<h2 className="text-[15px] font-bold">
+							<h3 className="text-[15px] font-bold">
 								{CONDITION_GROUP_LABELS[g]}
-							</h2>
+							</h3>
 							{group.conditions.length > 1 && (
 								<Segmented
-									name={`match-${g}`}
+									name={`match-${rule.id}-${g}`}
 									label="組み合わせ方"
 									size="sm"
 									options={[
@@ -1191,7 +1224,7 @@ export function ConditionGroups({ params, onChange, errors }: Props) {
 									)}
 									<ConditionRow
 										condition={c}
-										label={`${CONDITION_GROUP_LABELS[g]} ${i + 1}`}
+										label={`${labelPrefix}${CONDITION_GROUP_LABELS[g]} ${i + 1}`}
 										errors={errorsIn(errors, `${g}.conditions.${i}`)}
 										onChange={(nc) =>
 											setGroup(g, {
@@ -1221,15 +1254,16 @@ export function ConditionGroups({ params, onChange, errors }: Props) {
 						</Button>
 						{g === "partialTakeProfit" && group.conditions.length > 0 && (
 							<PartialSellFields
-								params={params}
-								onChange={(partialSell) => onChange({ ...params, partialSell })}
+								rule={rule}
+								onChange={(partialSell) => onChange({ ...rule, partialSell })}
 								errors={errors}
 							/>
 						)}
 						{g === "buy" && (
 							<BuyOrderLines
-								order={params.buyOrder}
-								onChange={(buyOrder) => onChange({ ...params, buyOrder })}
+								scope={rule.id}
+								order={rule.buyOrder}
+								onChange={(buyOrder) => onChange({ ...rule, buyOrder })}
 								errors={errors}
 							/>
 						)}
@@ -1238,7 +1272,7 @@ export function ConditionGroups({ params, onChange, errors }: Props) {
 			})}
 			{adding && (
 				<Modal
-					title={`${CONDITION_GROUP_LABELS[adding]}を追加`}
+					title={`${labelPrefix}${CONDITION_GROUP_LABELS[adding]}を追加`}
 					onClose={() => setAdding(null)}
 				>
 					{(
@@ -1275,6 +1309,197 @@ export function ConditionGroups({ params, onChange, errors }: Props) {
 					))}
 					<Button onClick={() => setAdding(null)}>やめる</Button>
 				</Modal>
+			)}
+		</>
+	);
+}
+
+/** 新しく足す買い。損切りが無いと保存できないので、空の戦略のひな形と同じ損切りを入れておく */
+function newBuyRule(params: ConditionSet): BuyRule {
+	const names = new Set(params.buys.map((b) => b.name.trim()));
+	let n = params.buys.length + 1;
+	while (names.has(buyRuleName(n))) n++;
+	return {
+		id: newBuyRuleId(params),
+		name: buyRuleName(n),
+		orderSize: params.buys[0]?.orderSize ?? SIZE_STEP * 10,
+		maxPositions: 1,
+		buy: { match: "all", conditions: [] },
+		buyOrder: { ...DEFAULT_BUY_ORDER, lines: [...DEFAULT_BUY_ORDER.lines] },
+		partialTakeProfit: { match: "all", conditions: [] },
+		partialSell: { ...DEFAULT_PARTIAL_SELL },
+		takeProfit: { match: "any", conditions: [] },
+		stopLoss: {
+			match: "any",
+			conditions: [{ type: "entryChange", percent: 2, direction: "down" }],
+		},
+	};
+}
+
+/** 閉じたカードに出す、買いの中身の要約 */
+function ruleSummary(rule: BuyRule): string {
+	const n = (k: ConditionGroupKey) => rule[k].conditions.length;
+	return [
+		`買い ${n("buy")}`,
+		n("partialTakeProfit") > 0 ? `一部利確 ${n("partialTakeProfit")}` : null,
+		`利確 ${n("takeProfit")}`,
+		`損切り ${n("stopLoss")}`,
+	]
+		.filter((x) => x !== null)
+		.join("・");
+}
+
+/**
+ * 買いの一覧。買いごとのカードに、名前・注文量とロット数・買いの条件と注文・一部利確・利確・損切りを持つ。
+ * 上の買いほど優先する（同じ判定で複数成立したら上の1つだけ注文する）
+ */
+export function BuyRulesEditor({
+	params,
+	onChange,
+	errors,
+	latestPrice,
+}: Props & { latestPrice: number | null }) {
+	const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
+	const multi = params.buys.length >= 2;
+	const setBuys = (buys: BuyRule[]) => onChange({ ...params, buys });
+	const setRule = (i: number, r: BuyRule) =>
+		setBuys(params.buys.map((b, j) => (j === i ? r : b)));
+	const move = (i: number, d: -1 | 1) => {
+		const buys = [...params.buys];
+		const [r] = buys.splice(i, 1);
+		buys.splice(i + d, 0, r as BuyRule);
+		setBuys(buys);
+	};
+	const toggle = (id: string) =>
+		setClosed((prev) => {
+			const next = new Set(prev);
+			if (next.has(id)) next.delete(id);
+			else next.add(id);
+			return next;
+		});
+	return (
+		<>
+			{params.buys.map((rule, i) => {
+				const prefix = `buys.${i}`;
+				const ruleErrors = errorsUnder(errors, prefix);
+				const open = !closed.has(rule.id);
+				const nameErrs = errorsAt(ruleErrors, "name");
+				return (
+					<section
+						key={rule.id}
+						aria-label={`買い「${rule.name}」`}
+						className="flex flex-col gap-2.5 rounded-2xl border-2 border-line p-2.5"
+					>
+						<div className="flex items-center gap-2 px-1.5">
+							<button
+								type="button"
+								aria-expanded={open}
+								onClick={() => toggle(rule.id)}
+								className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left"
+							>
+								<span className="text-xs text-text-2" aria-hidden>
+									{open ? "▾" : "▸"}
+								</span>
+								<span className="flex min-w-0 flex-col">
+									<span className="truncate text-[15px] font-bold">
+										{multi ? `${i + 1}. ` : ""}
+										{rule.name.trim() || "（名前なし）"}
+									</span>
+									{!open && (
+										<span className="text-xs text-text-2">
+											{ruleSummary(rule)}
+										</span>
+									)}
+									{!open && ruleErrors.length > 0 && (
+										<span className="text-xs font-semibold text-loss">
+											入力の誤りがある
+										</span>
+									)}
+								</span>
+							</button>
+							{multi && (
+								<div className="flex shrink-0 gap-1">
+									<Button
+										size="sm"
+										className="w-9 px-0"
+										aria-label={`「${rule.name}」を上へ`}
+										disabled={i === 0}
+										onClick={() => move(i, -1)}
+									>
+										↑
+									</Button>
+									<Button
+										size="sm"
+										className="w-9 px-0"
+										aria-label={`「${rule.name}」を下へ`}
+										disabled={i === params.buys.length - 1}
+										onClick={() => move(i, 1)}
+									>
+										↓
+									</Button>
+									<Button
+										size="sm"
+										className="text-loss"
+										aria-label={`「${rule.name}」を削除`}
+										onClick={() =>
+											setBuys(params.buys.filter((_, j) => j !== i))
+										}
+									>
+										削除
+									</Button>
+								</div>
+							)}
+						</div>
+						{open && (
+							<>
+								<Card className="flex flex-col gap-2.5">
+									<label className="flex flex-col gap-1.5">
+										<span className="text-[13px] font-semibold">
+											買いの名前
+										</span>
+										<input
+											value={rule.name}
+											onChange={(e) =>
+												setRule(i, { ...rule, name: e.target.value })
+											}
+											aria-invalid={nameErrs.length > 0 || undefined}
+											className="h-11 rounded-[10px] border border-line bg-surface px-3 text-[15px] aria-invalid:border-2 aria-invalid:border-loss"
+										/>
+									</label>
+									<ErrorText messages={nameErrs} />
+									<OrderSizeFields
+										rule={rule}
+										onChange={(r) => setRule(i, r)}
+										errors={ruleErrors}
+										latestPrice={latestPrice}
+									/>
+								</Card>
+								<RuleGroups
+									rule={rule}
+									onChange={(r) => setRule(i, r)}
+									errors={ruleErrors}
+									labelPrefix={multi ? `「${rule.name}」の` : ""}
+								/>
+							</>
+						)}
+					</section>
+				);
+			})}
+			<ErrorText messages={errorsAt(errors, "buys", true)} />
+			{params.buys.length < LIMITS.buys.max && (
+				<div className="flex flex-col gap-1">
+					<Button
+						className="self-start"
+						onClick={() => setBuys([...params.buys, newBuyRule(params)])}
+					>
+						＋ 買いを追加
+					</Button>
+					{multi && (
+						<p className="text-xs text-text-2">
+							同じ判定で複数の買いが成り立ったら、上の買いだけ注文する。ロットは買った買いの条件で売る
+						</p>
+					)}
+				</div>
 			)}
 		</>
 	);
