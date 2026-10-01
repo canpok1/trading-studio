@@ -135,7 +135,7 @@ export function AutoTradingCard({
 				aria-label="運用する戦略"
 				className="h-11 w-full rounded-lg border border-line bg-surface px-3 text-[15px] font-semibold disabled:opacity-60"
 				value={active?.id ?? ""}
-				disabled={saving || enabled}
+				disabled={saving || enabled || status?.strategyLock === "holding"}
 				onChange={(e) =>
 					choose(e.target.value === "" ? null : Number(e.target.value))
 				}
@@ -150,6 +150,11 @@ export function AutoTradingCard({
 			{strategies.length === 0 && (
 				<p className="text-xs text-text-2">
 					戦略がまだ無い。「戦略」の画面で作ると選べる
+				</p>
+			)}
+			{!enabled && status?.strategyLock === "holding" && (
+				<p className="text-xs text-text-2">
+					保有か未約定の注文がある間は、運用する戦略を変えられない
 				</p>
 			)}
 			{on && status?.waitingForMarket && (

@@ -11,6 +11,7 @@ test("ホームで自動取引をオンにすると帯が全画面に出て、�
 		data: { name, from: { template: "trend" } },
 	});
 	expect(res.ok()).toBe(true);
+	const { strategy } = (await res.json()) as { strategy: { id: number } };
 	try {
 		await page.goto("/home");
 		const select = page.getByLabel("運用する戦略");
@@ -47,6 +48,16 @@ test("ホームで自動取引をオンにすると帯が全画面に出て、�
 		await expect(
 			page.getByRole("button", { name: "口座をリセット" }),
 		).toBeHidden();
+
+		// 稼働中の戦略は条件を変えられず、削除もできない
+		await page.goto(`/strategies/${strategy.id}`);
+		await expect(
+			page.getByText("自動取引で稼働中のため、条件を変えられない。"),
+		).toBeVisible();
+		await expect(
+			page.getByRole("button", { name: "この戦略を削除" }),
+		).toHaveCount(0);
+		await expect(page.getByLabel("1回の注文量（BTC）")).toBeDisabled();
 
 		// 帯は他の画面にも出て、押すとホームの稼働中のモードのタブへ移る
 		await page.goto("/strategies");

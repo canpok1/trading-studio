@@ -498,6 +498,51 @@ describe("オン中の制限", () => {
 		t.at(T0 + M);
 		expect(t.status().enabled).toBe(false);
 	});
+
+	test("オン中と保有がある間は、運用する戦略の切り替え・条件の変更・削除ができない。ほかの戦略は変えられる", async () => {
+		const t = setup();
+		const req = async (method: string, path: string, body?: unknown) =>
+			(
+				await t.app.request(`/api/strategies${path}`, {
+					method,
+					headers: body ? { "content-type": "application/json" } : {},
+					body: body ? JSON.stringify(body) : undefined,
+				})
+			).status;
+		const id = t.strategy.id;
+		const blocked = async () => {
+			expect(await req("PUT", "/active", { id: null })).toBe(409);
+			expect(await req("PUT", `/${id}/params`, { params: always() })).toBe(409);
+			expect(await req("DELETE", `/${id}`)).toBe(409);
+		};
+		const other = t.strategies.create({
+			name: "別",
+			from: { params: always() },
+		});
+		if (!other.ok) throw new Error();
+
+		await t.call("POST", "/start", { mode: "paper" });
+		expect(t.status().strategyLock).toBe("running");
+		await blocked();
+		// 名前の変更とほかの戦略の変更はできる
+		expect(await req("PUT", `/${id}/name`, { name: "改名" })).toBe(200);
+		expect(
+			await req("PUT", `/${other.strategy.id}/params`, { params: always() }),
+		).toBe(200);
+
+		t.at(T0 + M);
+		t.fill(P);
+		await t.call("POST", "/stop");
+		expect(t.status().strategyLock).toBe("holding");
+		await blocked();
+
+		expect(
+			(await t.call("POST", "/reset", { initialCash: 100_000_000 })).status,
+		).toBe(200);
+		expect(t.status().strategyLock).toBe(null);
+		expect(await req("PUT", `/${id}/params`, { params: always() })).toBe(200);
+		expect(await req("PUT", "/active", { id: other.strategy.id })).toBe(200);
+	});
 });
 
 describe("成績", () => {

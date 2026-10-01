@@ -18,6 +18,7 @@ import {
 	RiskLimitCard,
 } from "../components/strategy/ConditionEditor";
 import { Button, Card } from "../components/ui";
+import { useTradingStatus } from "../lib/trading";
 import { errorMessage, readJson, useAsync } from "../lib/useAsync";
 
 type Data = { strategies: StoredStrategy[]; latest: number | null };
@@ -34,6 +35,7 @@ export function StrategiesPage() {
 	const [dialog, setDialog] = useState<Dialog>(null);
 	const [notice, setNotice] = useState<string | null>(null);
 	const selectId = useId();
+	const { status: trading } = useTradingStatus();
 
 	const load = useCallback(async (): Promise<Data> => {
 		const [list, latest] = await Promise.all([
@@ -134,6 +136,9 @@ export function StrategiesPage() {
 		);
 	}
 
+	// 運用する戦略は、自動取引がオンの間と保有がある間は条件を変えられない（サーバーも 409 で止める）
+	const lock =
+		trading?.strategy?.id === current.id ? trading.strategyLock : null;
 	const dirty = !sameParams(params, current.params);
 	const hasErr = errors.length > 0;
 	const setParams = (p: ConditionSet) => {
@@ -201,31 +206,49 @@ export function StrategiesPage() {
 							<Button size="sm" onClick={() => setDialog("rename")}>
 								この戦略の名前を変える
 							</Button>
-							<Button
-								size="sm"
-								className="text-loss"
-								onClick={() => setDialog("delete")}
-							>
-								この戦略を削除
-							</Button>
+							{!lock && (
+								<Button
+									size="sm"
+									className="text-loss"
+									onClick={() => setDialog("delete")}
+								>
+									この戦略を削除
+								</Button>
+							)}
 						</div>
+						{lock && (
+							<p role="status" className="text-[13px] font-semibold">
+								{lock === "running"
+									? "自動取引で稼働中のため、条件を変えられない。"
+									: "運用する戦略で保有か未約定の注文があるため、条件を変えられない。"}
+								変えるときは「＋ 新しい戦略」でコピーして編集する
+							</p>
+						)}
 					</Card>
-					<FrequencyCard {...editor} />
-					<div className="order-last flex flex-col gap-3.5 lg:order-none">
+					<fieldset disabled={lock !== null} className="contents">
+						<FrequencyCard {...editor} />
+					</fieldset>
+					<fieldset
+						disabled={lock !== null}
+						className="order-last flex min-w-0 flex-col gap-3.5 lg:order-none"
+					>
 						<OrderSizeCard {...editor} latestPrice={state.data.latest} />
 						<RiskLimitCard {...editor} />
-					</div>
+					</fieldset>
 				</div>
-				<div className="contents lg:flex lg:flex-col lg:gap-3.5">
+				<fieldset
+					disabled={lock !== null}
+					className="contents min-w-0 lg:flex lg:flex-col lg:gap-3.5"
+				>
 					<ConditionGroups {...editor} />
-				</div>
+				</fieldset>
 				<div className="order-last flex flex-col gap-2 lg:col-span-2">
 					{notice && (
 						<p role="status" className="text-[13px] font-semibold">
 							{notice}
 						</p>
 					)}
-					<div className="flex gap-2">
+					<div className={lock ? "hidden" : "flex gap-2"}>
 						<Button
 							variant="primary"
 							className="flex-1"

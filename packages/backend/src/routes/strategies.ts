@@ -7,6 +7,7 @@ import type {
 	StrategyResult,
 	StrategyService,
 } from "../strategies/types";
+import type { StrategyLock } from "../trading/types";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
 	typeof v === "object" && v !== null;
@@ -28,11 +29,23 @@ function respond(c: Context, r: StrategyResult, okStatus: 200 | 201 = 200) {
 	}
 }
 
+const LOCK_REASONS: Record<StrategyLock, string> = {
+	running: "先に自動取引を停止する",
+	holding: "保有か未約定の注文がある。売れるのを待つか、口座をリセットする",
+};
+
 export function strategyRoutes(
 	service: StrategyService,
-	/** 自動取引がオンの間は運用する戦略を変えさせない */
-	isTradingOn: () => boolean = () => false,
+	/** 運用する戦略を変えさせない理由。自動取引がオンの間と、保有か未約定の注文がある間 */
+	strategyLock: () => StrategyLock | null = () => null,
 ) {
+	/** 運用する戦略（id を渡せばそれが運用する戦略のときだけ）を止めているなら 409 */
+	const locked = (c: Context, what: string, id?: number) => {
+		const lock = strategyLock();
+		if (lock === null) return null;
+		if (id !== undefined && service.active()?.id !== id) return null;
+		return c.json({ message: `${what}には、${LOCK_REASONS[lock]}` }, 409);
+	};
 	return (
 		new Hono()
 			.get("/", (c) => c.json({ strategies: service.list() }))
@@ -48,12 +61,8 @@ export function strategyRoutes(
 					return { id: id as number | null };
 				}),
 				(c) => {
-					if (isTradingOn()) {
-						return c.json(
-							{ message: "運用する戦略を変えるには先に自動取引を停止する" },
-							409,
-						);
-					}
+					const no = locked(c, "運用する戦略を変える");
+					if (no) return no;
 					return service.setActive(c.req.valid("json").id)
 						? c.json({ strategy: service.active() }, 200)
 						: c.json({ message: "戦略が見つからない" }, 404);
@@ -91,14 +100,15 @@ export function strategyRoutes(
 					if (!params) return c.json({ message: "条件の形が違う" }, 400);
 					return { params };
 				}),
-				(c) =>
-					respond(
+				(c) => {
+					const id = Number(c.req.param("id"));
+					const no = locked(c, "運用する戦略の条件を変える", id);
+					if (no) return no;
+					return respond(
 						c,
-						service.updateParams(
-							Number(c.req.param("id")),
-							c.req.valid("json").params,
-						),
-					),
+						service.updateParams(id, c.req.valid("json").params),
+					);
+				},
 			)
 			.put(
 				"/:id/name",
@@ -113,10 +123,13 @@ export function strategyRoutes(
 						service.rename(Number(c.req.param("id")), c.req.valid("json").name),
 					),
 			)
-			.delete("/:id", (c) =>
-				service.remove(Number(c.req.param("id")))
+			.delete("/:id", (c) => {
+				const id = Number(c.req.param("id"));
+				const no = locked(c, "運用する戦略を削除する", id);
+				if (no) return no;
+				return service.remove(id)
 					? c.json({ ok: true as const }, 200)
-					: c.json({ message: "戦略が見つからない" }, 404),
-			)
+					: c.json({ message: "戦略が見つからない" }, 404);
+			})
 	);
 }
