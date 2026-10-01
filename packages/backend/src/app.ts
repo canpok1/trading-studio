@@ -66,7 +66,7 @@ export function createApp({
 		.route("/market", marketRoutes(market))
 		.route(
 			"/strategies",
-			strategyRoutes(strategies, () => trading.status().enabled),
+			strategyRoutes(strategies, () => trading.status().strategyLock),
 		)
 		.route("/backtests", backtestRoutes(backtests))
 		.route("/advice", adviceRoutes(advice))

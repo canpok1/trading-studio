@@ -221,6 +221,12 @@ export function createTradingService({
 			: strategies.active();
 		const a = repo.account(row.mode, t);
 		const live = market();
+		// 保有はオフにしても口座に残り、オンにし直すと同じ戦略で売るため、保有がある間も止める
+		const strategyLock = row.enabled
+			? "running"
+			: a.account.lots.length > 0 || a.account.openOrders.length > 0
+				? "holding"
+				: null;
 		return {
 			enabled: row.enabled,
 			mode: row.mode,
@@ -237,6 +243,7 @@ export function createTradingService({
 					dailyLossBlock(a.account, t, s?.params.dailyLossLimit ?? null) !==
 					null,
 			},
+			strategyLock,
 			account: {
 				mode: row.mode,
 				initialCash: a.initialCash,

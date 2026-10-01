@@ -115,7 +115,14 @@ export type AutoTradingStatus = {
 	/** 今日（JST）の確定損失（円、損が無ければ 0）と、戦略の1日の損失上限。上限に達していれば新しい買いを止めている */
 	dailyLoss: { loss: number; limit: number | null; blocked: boolean };
 	account: TradingAccountView;
+	/**
+	 * strategy の条件の編集・運用する戦略の切り替え・削除を止めている理由。
+	 * running=自動取引がオン、holding=口座に保有か未約定の注文がある。止めていなければ null
+	 */
+	strategyLock: StrategyLock | null;
 };
+
+export type StrategyLock = "running" | "holding";
 
 export type TradingFailure =
 	| { kind: "running"; message: string }
