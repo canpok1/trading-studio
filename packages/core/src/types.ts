@@ -27,8 +27,8 @@ export type OrderIntent =
 			/** 指値の価格。成行では持たない */
 			price?: number;
 			quantity: number;
-			/** この本数（戦略の粒度の足）のあいだ約定しなければ取り消す。未指定なら取り消さない */
-			expireAfterBars?: number;
+			/** この時間（ミリ秒）のあいだ約定しなければ取り消す。未指定なら取り消さない */
+			expireAfterMs?: number;
 			/** 売りで、どのロットを売るか（ロットの id）。売りでは必須。数量がロットより少なければ一部だけ売る */
 			lotId?: string;
 			/** 売りで、どちらの条件のグループで売るか */

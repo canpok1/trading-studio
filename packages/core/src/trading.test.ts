@@ -43,7 +43,9 @@ describe("バックテストとの一致", () => {
 		const bt = runBacktest({
 			strategy: conditionStrategy,
 			params,
-			candles,
+			candles: { "1h": candles },
+			stepCandles: candles,
+			stepTimeframe: "1h",
 			dataTimeframe: "1m",
 			from,
 			to: candles.length * H,
@@ -52,7 +54,7 @@ describe("バックテストとの一致", () => {
 		});
 		expect(bt.summary.trades).toBeGreaterThan(0);
 
-		const history = conditionStrategy.historyBars(params);
+		const history = conditionStrategy.candleNeeds(params)["1h"] as number;
 		let account: Account = newAccount(2_000_000);
 		let state: JsonValue = null;
 		let nextEvalAt = Number.NEGATIVE_INFINITY;
@@ -68,11 +70,13 @@ describe("バックテストとの一致", () => {
 				account,
 				state,
 				fees: FEES,
-				timeframeMs: H,
 				nextEvalAt,
 				fill: { price: (o) => defaultFillModel(o, bar), time: bar.time },
 				inputs: () => ({
-					candles: candles.slice(Math.max(0, i - history + 1), i + 1),
+					candles: {
+						"1h": candles.slice(Math.max(0, i - history + 1), i + 1),
+					},
+					recent: { timeframeMs: H, candles: [bar] },
 					judgments: {},
 				}),
 			});
@@ -102,8 +106,8 @@ const fixed = (
 ): Strategy<null> => ({
 	id: "fixed",
 	requiredJudges: () => [],
-	minResolution: () => "1h",
-	historyBars: () => 1,
+	candleNeeds: () => ({}),
+	recentMs: () => 0,
 	validate: () => [],
 	evaluate: ({ now, state }) => ({
 		intents,
@@ -119,12 +123,12 @@ const decideWith = (strategy: Strategy<null>, account: Account) =>
 		params: null,
 		now: 10 * H,
 		price: 10_000_000,
-		candles: [],
+		candles: {},
+		recent: { timeframeMs: H, candles: [] },
 		judgments: {},
 		account,
 		state: null,
 		fees: FEES,
-		timeframeMs: H,
 		idPrefix: "p",
 	});
 
@@ -136,11 +140,11 @@ describe("注文の作成と約定", () => {
 			type: "limit",
 			price: 10_000_000,
 			quantity: 1_000_000,
-			expireAfterBars: 3,
+			expireAfterMs: 3 * H,
 		},
 	]);
 
-	test("指値は期限（足 M 本ぶんの時間）つきで出し、約定で現金と保有が変わる", () => {
+	test("指値は期限（戦略が決めた時間）つきで出し、約定で現金と保有が変わる", () => {
 		const placed = decideWith(buyLimit, newAccount(1_000_000));
 		const order = placed.account.openOrders[0]?.order as Order;
 		expect(order).toMatchObject({ id: "p1", expiresAt: 13 * H });
@@ -163,12 +167,12 @@ describe("注文の作成と約定", () => {
 
 	test("期限を過ぎた指値は取り消す", () => {
 		const placed = decideWith(buyLimit, newAccount(1_000_000));
-		expect(expireOrders(placed.account, 13 * H - 1, H).changed).toEqual([]);
-		const out = expireOrders(placed.account, 13 * H, H);
+		expect(expireOrders(placed.account, 13 * H - 1).changed).toEqual([]);
+		const out = expireOrders(placed.account, 13 * H);
 		expect(out.account.openOrders).toEqual([]);
 		expect(out.changed[0]).toMatchObject({
 			status: "canceled",
-			cancelReason: "指値 10,000,000 が 3 本のあいだ約定しなかったため取消",
+			cancelReason: "指値 10,000,000 が 3時間のあいだ約定しなかったため取消",
 		});
 	});
 

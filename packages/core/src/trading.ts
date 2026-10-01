@@ -1,11 +1,10 @@
 // 売買の1ステップ。バックテストとペーパー（のちにライブ）で同じ関数を使い、同じ戦略がどのモードでも同じ動きをするようにする。
 // 1ステップは「約定の反映 → 期限切れの指値の取消 → 戦略の評価 → 注文の作成」。約定の判定（足か約定データか）だけ呼び出し側が差し替える
 
-import { formatBtc, formatYen } from "./format";
+import { formatBtc, formatDuration, formatYen } from "./format";
 import { feeYen, notionalYen } from "./money";
-import type { Strategy, StrategyOutput } from "./strategy";
+import type { Strategy, StrategyInput, StrategyOutput } from "./strategy";
 import type {
-	Candle,
 	ExitKind,
 	JsonValue,
 	Judgment,
@@ -427,23 +426,21 @@ export function settleFills(
 	};
 }
 
-/** 期限切れの指値の取消。期限（発注時刻 + 戦略の粒度の足 M 本ぶんの時間）が now 以前の注文を取り消す */
+/** 期限切れの指値の取消。期限（発注時刻 + 戦略が決めた時間）が now 以前の注文を取り消す */
 export function expireOrders(
 	account: Account,
 	now: number,
-	timeframeMs: number,
 ): { account: Account; changed: TradeOrder[] } {
 	const changed: TradeOrder[] = [];
 	const remaining: OpenOrder[] = [];
 	for (const item of account.openOrders) {
 		const exp = item.order.expiresAt;
 		if (exp !== null && now >= exp) {
-			const bars = Math.round((exp - item.order.placedAt) / timeframeMs);
 			changed.push(
 				cancelRecord(
 					item.record,
 					now,
-					`指値 ${formatYen(item.order.price ?? 0)} が ${bars} 本のあいだ約定しなかったため取消`,
+					`指値 ${formatYen(item.order.price ?? 0)} が ${formatDuration(exp - item.order.placedAt)}のあいだ約定しなかったため取消`,
 				),
 			);
 		} else {
@@ -474,15 +471,15 @@ export type DecideInput<P> = {
 	now: number;
 	/** 判定時の現在値 */
 	price: number;
-	/** 戦略の粒度の足（古い順）。最後は途中の足でもよい */
-	candles: readonly Candle[];
+	/** 粒度ごとの足（古い順）。最後は途中の足でもよい */
+	candles: StrategyInput<P>["candles"];
+	/** 直近の細かい足 */
+	recent: StrategyInput<P>["recent"];
 	/** 判定器ごとの AI 判定。評価時点で今の集計ルールで計算したもの */
 	judgments: Readonly<Record<string, readonly Judgment[]>>;
 	account: Account;
 	state: JsonValue;
 	fees: FeeRates;
-	/** 戦略の粒度の足1本の長さ。指値の取消までの本数を時間に直すのに使う */
-	timeframeMs: number;
 	/** 注文の id の頭につける文字。既定は "o" */
 	idPrefix?: string;
 };
@@ -496,7 +493,7 @@ export type DecideOutput = StepChanges & {
 
 /** 戦略の評価と注文の作成 */
 export function decide<P>(input: DecideInput<P>): DecideOutput {
-	const { strategy, params, now, fees, timeframeMs } = input;
+	const { strategy, params, now, fees } = input;
 	const prefix = input.idPrefix ?? "o";
 	const { cash, position, lots } = input.account;
 	let { seq } = input.account;
@@ -512,7 +509,9 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 
 	const out: StrategyOutput = strategy.evaluate({
 		now,
+		price: input.price,
 		candles: input.candles,
+		recent: input.recent,
 		judgments: input.judgments,
 		position,
 		lots: publicLots(lots),
@@ -579,9 +578,7 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 			quantity: intent.quantity,
 			placedAt: now,
 			expiresAt:
-				intent.expireAfterBars === undefined
-					? null
-					: now + intent.expireAfterBars * timeframeMs,
+				intent.expireAfterMs === undefined ? null : now + intent.expireAfterMs,
 			status: "open",
 			lotId: intent.side === "sell" ? (intent.lotId ?? null) : null,
 		};
@@ -652,14 +649,18 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 	};
 }
 
-export type StepInput<P> = Omit<DecideInput<P>, "candles" | "judgments"> & {
+export type StepInput<P> = Omit<
+	DecideInput<P>,
+	"candles" | "recent" | "judgments"
+> & {
 	/** 前回のステップからの約定の判定。time は約定の時刻 */
 	fill: { price: (order: Order) => number | null; time: number };
 	/** 次の判定時刻。これを過ぎているか、約定があれば評価する */
 	nextEvalAt: number;
 	/** 評価するときだけ呼ぶ。足と判定を作るのが重いため */
 	inputs: () => {
-		candles: readonly Candle[];
+		candles: StrategyInput<P>["candles"];
+		recent: StrategyInput<P>["recent"];
 		judgments: Readonly<Record<string, readonly Judgment[]>>;
 	};
 };
@@ -680,7 +681,7 @@ export function tradingStep<P>(input: StepInput<P>): StepOutput {
 		input.fill.time,
 		input.fees,
 	);
-	const expired = expireOrders(settled.account, input.now, input.timeframeMs);
+	const expired = expireOrders(settled.account, input.now);
 	const changed = [...settled.changed];
 	for (const r of expired.changed) withChanged(changed, r);
 	if (!settled.filled && input.now < input.nextEvalAt) {

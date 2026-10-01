@@ -38,8 +38,8 @@ type Script = {
 const scripted: Strategy<Script> = {
 	id: "scripted",
 	requiredJudges: () => [],
-	minResolution: () => "1h",
-	historyBars: () => 1,
+	candleNeeds: () => ({ "1h": 1 }),
+	recentMs: () => 0,
 	validate: () => [],
 	evaluate: ({ now, position, lots, openOrders, params, state }) => {
 		const next = { intents: [], nextEvalAt: now + H, state };
@@ -77,7 +77,7 @@ const scripted: Strategy<Script> = {
 					type: "limit",
 					price: params.buyPrice,
 					quantity: Q,
-					expireAfterBars: params.expire ?? 3,
+					expireAfterMs: (params.expire ?? 3) * H,
 				},
 			],
 			nextEvalAt: now + H,
@@ -95,7 +95,9 @@ function config(
 	return {
 		strategy: scripted,
 		params,
-		candles,
+		candles: { "1h": candles },
+		stepCandles: candles,
+		stepTimeframe: "1h",
 		dataTimeframe: "1h",
 		from: 0,
 		to: candles.length * H,
@@ -193,7 +195,7 @@ describe("指値の取消", () => {
 		expect(r.orders[0]).toMatchObject({
 			status: "canceled",
 			canceledAt: 4 * H,
-			cancelReason: "指値 9,000,000 が 3 本のあいだ約定しなかったため取消",
+			cancelReason: "指値 9,000,000 が 3時間のあいだ約定しなかったため取消",
 		});
 	});
 
@@ -286,9 +288,9 @@ describe("期間と指標", () => {
 		const seen: number[] = [];
 		const spy: Strategy<Script> = {
 			...scripted,
-			historyBars: () => 3,
+			candleNeeds: () => ({ "1h": 3 }),
 			evaluate: (input) => {
-				seen.push(input.candles.length);
+				seen.push(input.candles["1h"]?.length ?? 0);
 				return { intents: [], nextEvalAt: input.now + H, state: null };
 			},
 		};
@@ -299,16 +301,80 @@ describe("期間と指標", () => {
 			from: 2 * H,
 		});
 		expect(seen).toEqual([3, 3]);
-		expect(r.candles).toHaveLength(2);
+		// チャートの代わりに残す足は期間内の日足
+		expect(r.candles).toHaveLength(1);
+		expect(r.summary.buyHoldPercent).toBe(0);
 	});
 });
 
-describe("判定頻度が戦略の粒度より短い", () => {
+describe("複数の足", () => {
+	test("頼まれた粒度ごとに、確定した足と判定に使う足から組み立てた途中の足を渡す", () => {
+		const seen: { h1: Candle[]; h4: Candle[] }[] = [];
+		const spy: Strategy<Script> = {
+			...scripted,
+			candleNeeds: () => ({ "1h": 2, "4h": 2 }),
+			evaluate: (input) => {
+				seen.push({
+					h1: [...(input.candles["1h"] ?? [])],
+					h4: [...(input.candles["4h"] ?? [])],
+				});
+				return { intents: [], nextEvalAt: input.now + H, state: null };
+			},
+		};
+		// 1時間足 8 本（4時間足 2 本）。終値は 1, 2, ..., 8。4時間足は JST 0:00（UTC 15:00）から区切る
+		const T = 15 * H;
+		const hours = bars(
+			Array.from({ length: 8 }, (_, i) => [i + 1, i + 1, i + 1, i + 1] as Bar),
+			T,
+		);
+		const fours = [0, 4].map((k) => ({
+			time: T + k * H,
+			open: k + 1,
+			high: k + 4,
+			low: k + 1,
+			close: k + 4,
+			volume: 0,
+		}));
+		runBacktest({
+			...config(hours, { buyPrice: 1 }),
+			strategy: spy,
+			candles: { "1h": hours, "4h": fours },
+			from: T + 4 * H,
+			to: T + 8 * H,
+		});
+		// 期間の頭（4時）: 4時間足は確定した 0時の足と、4時の1時間足だけの途中の足
+		expect(seen[0]?.h4).toEqual([
+			fours[0] as Candle,
+			{ time: T + 4 * H, open: 5, high: 5, low: 5, close: 5, volume: 0 },
+		]);
+		expect(seen[0]?.h1.map((c) => c.close)).toEqual([4, 5]);
+		// 7時: 4時間足の途中の足は 4〜7時の1時間足から作る
+		expect(seen[3]?.h4.at(-1)).toEqual({
+			time: T + 4 * H,
+			open: 5,
+			high: 8,
+			low: 5,
+			close: 8,
+			volume: 0,
+		});
+	});
+
+	test("頼まれた粒度より細かいデータが無ければ実行しない", () => {
+		const flat: Bar = [1, 1, 1, 1];
+		expect(() =>
+			runBacktest({
+				...config(bars([flat]), { buyPrice: 1 }),
+				dataTimeframe: "4h",
+			}),
+		).toThrow("条件で使う1時間足より粗い");
+	});
+});
+
+describe("判定頻度が条件の足より短い", () => {
 	const M15 = TIMEFRAME_MS["15m"];
 	const P = 10_000_000;
 	// 1時間足の戦略。保有中は15分ごとに判定し、買値から1%下がったら損切り
 	const params: ConditionSet = {
-		timeframe: "1h",
 		frequency: {
 			flat: { value: 15, unit: "m" },
 			holding: { value: 15, unit: "m" },
@@ -317,9 +383,12 @@ describe("判定頻度が戦略の粒度より短い", () => {
 		maxPositions: 1,
 		dailyLossLimit: 30_000,
 		stopLossCooldownBars: 0,
+		stopLossCooldownTimeframe: "1h",
 		buy: {
 			match: "all",
-			conditions: [{ type: "breakout", lookback: 2, direction: "high" }],
+			conditions: [
+				{ type: "breakout", timeframe: "1h", lookback: 2, direction: "high" },
+			],
 		},
 		buyOrder: DEFAULT_BUY_ORDER,
 		partialTakeProfit: { match: "all", conditions: [] },
@@ -363,7 +432,7 @@ describe("判定頻度が戦略の粒度より短い", () => {
 	const base = {
 		strategy: conditionStrategy,
 		params,
-		candles: hours,
+		candles: { "1h": hours },
 		dataTimeframe: "15m" as const,
 		from: 0,
 		to: hours.length * H,
@@ -383,18 +452,16 @@ describe("判定頻度が戦略の粒度より短い", () => {
 			fillPrice: P,
 		});
 		expect(r.decisions).toHaveLength(q.length);
-		// チャートの足は戦略の粒度のまま
-		expect(r.candles).toHaveLength(hours.length);
 	});
 
-	test("細かい足を渡さなければ、戦略の粒度の足の終わりにだけ判定する", () => {
-		const r = runBacktest(base);
+	test("条件の足で進めれば、その足の終わりにだけ判定する", () => {
+		const r = runBacktest({ ...base, stepCandles: hours, stepTimeframe: "1h" });
 		expect(r.decisions.map((d) => d.time)).toEqual(
 			hours.map((h) => h.time + H),
 		);
 	});
 
-	test("判定に使う足が戦略の粒度より粗ければ実行しない", () => {
+	test("判定に使う足が条件の足より粗ければ実行しない", () => {
 		expect(() =>
 			runBacktest({ ...base, stepCandles: hours, stepTimeframe: "4h" }),
 		).toThrow(BacktestError);
@@ -443,7 +510,9 @@ describe("決定論", () => {
 			runBacktest({
 				strategy: conditionStrategy,
 				params,
-				candles,
+				candles: { "1h": candles },
+				stepCandles: candles,
+				stepTimeframe: "1h",
 				dataTimeframe: "1m",
 				from: 500 * H,
 				to: 2000 * H,
@@ -478,7 +547,9 @@ describe("AI 判定", () => {
 		runBacktest({
 			strategy: conditionStrategy,
 			params,
-			candles: flat,
+			candles: { "1h": flat },
+			stepCandles: flat,
+			stepTimeframe: "1h",
 			dataTimeframe: "1h",
 			from: 0,
 			to: flat.length * H,
@@ -517,8 +588,8 @@ describe("1日の損失上限", () => {
 	const churn: Strategy<null> = {
 		id: "churn",
 		requiredJudges: () => [],
-		minResolution: () => "1h",
-		historyBars: () => 1,
+		candleNeeds: () => ({ "1h": 1 }),
+		recentMs: () => 0,
 		validate: () => [],
 		evaluate: ({ now, position, lots, state }) => ({
 			intents: [
@@ -555,7 +626,9 @@ describe("1日の損失上限", () => {
 		const r = runBacktest({
 			strategy: churn,
 			params: null,
-			candles,
+			candles: { "1h": candles },
+			stepCandles: candles,
+			stepTimeframe: "1h",
 			dataTimeframe: "1h",
 			from: start,
 			to: start + 30 * H,
@@ -577,7 +650,6 @@ describe("1日の損失上限", () => {
 describe("複数ポジション", () => {
 	const P = 10_000_000;
 	const params: ConditionSet = {
-		timeframe: "1h",
 		frequency: {
 			flat: { value: 1, unit: "h" },
 			holding: { value: 1, unit: "h" },
@@ -586,9 +658,12 @@ describe("複数ポジション", () => {
 		maxPositions: 3,
 		dailyLossLimit: 30_000,
 		stopLossCooldownBars: 0,
+		stopLossCooldownTimeframe: "1h",
 		buy: {
 			match: "all",
-			conditions: [{ type: "breakout", lookback: 1, direction: "high" }],
+			conditions: [
+				{ type: "breakout", timeframe: "1h", lookback: 1, direction: "high" },
+			],
 		},
 		buyOrder: {
 			lines: [
@@ -597,6 +672,7 @@ describe("複数ポジション", () => {
 				{ type: "limit", belowPercent: 1.5 },
 			],
 			expireBars: 3,
+			expireTimeframe: "1h",
 		},
 		partialTakeProfit: { match: "all", conditions: [] },
 		partialSell: DEFAULT_PARTIAL_SELL,
@@ -618,7 +694,9 @@ describe("複数ポジション", () => {
 		const r = runBacktest({
 			strategy: conditionStrategy,
 			params,
-			candles: list,
+			candles: { "1h": list },
+			stepCandles: list,
+			stepTimeframe: "1h",
 			dataTimeframe: "1h",
 			from: 0,
 			to: list.length * H,

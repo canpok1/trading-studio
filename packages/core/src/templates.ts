@@ -3,6 +3,7 @@
 import type { ConditionSet } from "./condition-strategy";
 import {
 	DEFAULT_BUY_ORDER,
+	DEFAULT_CONDITION_TIMEFRAME,
 	DEFAULT_DAILY_LOSS_LIMIT,
 	DEFAULT_MAX_POSITIONS,
 	DEFAULT_PARTIAL_SELL,
@@ -24,7 +25,6 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 		name: "空の戦略",
 		description: "損切りの条件だけ入った状態から組み立てる。",
 		params: {
-			timeframe: "1h",
 			frequency: {
 				flat: { value: 1, unit: "h" },
 				holding: { value: 15, unit: "m" },
@@ -33,6 +33,7 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 			maxPositions: DEFAULT_MAX_POSITIONS,
 			dailyLossLimit: DEFAULT_DAILY_LOSS_LIMIT,
 			stopLossCooldownBars: DEFAULT_STOP_LOSS_COOLDOWN_BARS,
+			stopLossCooldownTimeframe: DEFAULT_CONDITION_TIMEFRAME,
 			buy: { match: "all", conditions: [] },
 			buyOrder: DEFAULT_BUY_ORDER,
 			partialTakeProfit: { match: "all", conditions: [] },
@@ -48,7 +49,6 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 		name: "トレンド追随",
 		description: "上昇の流れに乗って買い、流れが変わったら売る。",
 		params: {
-			timeframe: "1h",
 			frequency: {
 				flat: { value: 1, unit: "h" },
 				holding: { value: 15, unit: "m" },
@@ -57,9 +57,18 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 			maxPositions: DEFAULT_MAX_POSITIONS,
 			dailyLossLimit: DEFAULT_DAILY_LOSS_LIMIT,
 			stopLossCooldownBars: DEFAULT_STOP_LOSS_COOLDOWN_BARS,
+			stopLossCooldownTimeframe: DEFAULT_CONDITION_TIMEFRAME,
 			buy: {
 				match: "all",
-				conditions: [{ type: "emaCross", fast: 12, slow: 48, direction: "up" }],
+				conditions: [
+					{
+						type: "emaCross",
+						timeframe: "1h",
+						fast: 12,
+						slow: 48,
+						direction: "up",
+					},
+				],
 			},
 			// 上抜けで買うので、指値だと約定せず取り逃がしやすい
 			buyOrder: MARKET_BUY_ORDER,
@@ -69,7 +78,13 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 				match: "any",
 				conditions: [
 					{ type: "entryChange", percent: 4, direction: "up" },
-					{ type: "emaCross", fast: 12, slow: 48, direction: "down" },
+					{
+						type: "emaCross",
+						timeframe: "1h",
+						fast: 12,
+						slow: 48,
+						direction: "down",
+					},
 				],
 			},
 			stopLoss: {
@@ -82,7 +97,6 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 		name: "レンジ逆張り",
 		description: "直近の安値を割ったところで買い、戻したところで売る。",
 		params: {
-			timeframe: "1h",
 			frequency: {
 				flat: { value: 30, unit: "m" },
 				holding: { value: 30, unit: "m" },
@@ -91,9 +105,12 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 			maxPositions: DEFAULT_MAX_POSITIONS,
 			dailyLossLimit: DEFAULT_DAILY_LOSS_LIMIT,
 			stopLossCooldownBars: DEFAULT_STOP_LOSS_COOLDOWN_BARS,
+			stopLossCooldownTimeframe: DEFAULT_CONDITION_TIMEFRAME,
 			buy: {
 				match: "all",
-				conditions: [{ type: "breakout", lookback: 24, direction: "low" }],
+				conditions: [
+					{ type: "breakout", timeframe: "1h", lookback: 24, direction: "low" },
+				],
 			},
 			buyOrder: DEFAULT_BUY_ORDER,
 			partialTakeProfit: { match: "all", conditions: [] },
@@ -102,7 +119,12 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 				match: "any",
 				conditions: [
 					{ type: "entryChange", percent: 2, direction: "up" },
-					{ type: "breakout", lookback: 24, direction: "high" },
+					{
+						type: "breakout",
+						timeframe: "1h",
+						lookback: 24,
+						direction: "high",
+					},
 				],
 			},
 			stopLoss: {

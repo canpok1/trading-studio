@@ -15,8 +15,15 @@ import type {
 export type StrategyInput<P> = {
 	/** 評価時刻。この時刻までに確定した足だけが candles に入る */
 	now: number;
-	/** 戦略の粒度の確定済みの足（古い順）。最大で historyBars 本 */
-	candles: readonly Candle[];
+	/** 判定時の現在値 */
+	price: number;
+	/**
+	 * candleNeeds の粒度ごとの足（古い順）。確定した足に、最後は途中の足を足したもの。最大で candleNeeds の本数。
+	 * 頼んでいない粒度は入らない
+	 */
+	candles: Readonly<Partial<Record<Timeframe, readonly Candle[]>>>;
+	/** 直近の細かい足（古い順、最後は途中の足でもよい）。少なくとも recentMs の時間ぶん。recentMs が 0 なら空でよい */
+	recent: { timeframeMs: number; candles: readonly Candle[] };
 	/** 判定器ごとの、その時点で得られていた AI 判定 */
 	judgments: Readonly<Record<string, readonly Judgment[]>>;
 	/** 保有の合計 */
@@ -47,10 +54,10 @@ export type Strategy<P> = {
 	id: string;
 	/** 使う判定器の名前。フェーズ1では空 */
 	requiredJudges(params: P): string[];
-	/** 戦略が必要とする足の粒度。データがこれより粗ければ実行できない */
-	minResolution(params: P): Timeframe;
-	/** 判定に渡してほしい足の本数（現在の足を含む）。指標をこの本数の中で計算するため、本数で結果が決まる */
-	historyBars(params: P): number;
+	/** 判定に渡してほしい足の本数（現在の足を含む）を粒度ごとに。指標をこの本数の中で計算するため、本数で結果が決まる */
+	candleNeeds(params: P): Partial<Record<Timeframe, number>>;
+	/** 判定に渡してほしい直近の細かい足の時間の長さ（ミリ秒）。要らなければ 0 */
+	recentMs(params: P): number;
 	/** パラメータの入力検証。問題が無ければ空配列 */
 	validate(params: P): ValidationError[];
 	evaluate(input: StrategyInput<P>): StrategyOutput;
