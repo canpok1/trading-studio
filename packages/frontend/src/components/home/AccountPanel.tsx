@@ -73,7 +73,7 @@ export function AccountPanel({
 	};
 
 	return (
-		<section aria-label="口座情報" className={PANEL}>
+		<section aria-label="口座情報" className={`${PANEL} @container`}>
 			<PanelHeader title="口座情報" tag={<ModeTag mode={account.mode} />} />
 			<div className="flex flex-col gap-0.5">
 				<span className="text-xs text-text-2">総資産</span>
@@ -86,27 +86,28 @@ export function AccountPanel({
 						: `${formatInt(performance.equity)}円`}
 				</span>
 			</div>
-			<div className="grid grid-cols-2 gap-x-2 gap-y-3 min-[400px]:grid-cols-4">
+			{/* 4 列は、8 桁の価格と評価損益が横に並んでも重ならないパネル幅があるときだけにする */}
+			<div className="grid grid-cols-2 gap-x-2 gap-y-3 @min-[28rem]:grid-cols-4">
 				<Stat
 					label="現金"
-					value={performance ? formatInt(performance.cash) : "—"}
+					value={performance ? `${formatInt(performance.cash)}円` : "—"}
 				/>
 				<button
 					type="button"
-					aria-label={`保有 ${formatBtc(quantity)}${lots.length > 0 ? `（${lots.length} ロット）` : ""}`}
+					aria-label={`保有 ${formatBtc(quantity)} BTC${lots.length > 0 ? `（${lots.length} ロット）` : ""}`}
 					disabled={lots.length === 0}
 					onClick={() => setLotsOpen(true)}
 					className="-m-1 rounded-lg p-1 text-left enabled:hover:bg-surface-2"
 				>
 					<Stat
-						label="保有 BTC"
-						value={formatBtc(quantity)}
+						label="保有"
+						value={`${formatBtc(quantity)} BTC`}
 						sub={lots.length > 0 ? `${lots.length} ロット ›` : undefined}
 					/>
 				</button>
 				<Stat
 					label="平均取得"
-					value={entryPrice === null ? "—" : formatInt(entryPrice)}
+					value={entryPrice === null ? "—" : `${formatInt(entryPrice)}円`}
 				/>
 				<Stat
 					label="評価損益"
@@ -139,7 +140,8 @@ export function AccountPanel({
 								>
 									<span className="flex min-w-0 flex-col gap-0.5">
 										<span className="num text-sm font-semibold">
-											買値 {formatInt(l.entryPrice)} · {formatBtc(l.quantity)}
+											買値 {formatInt(l.entryPrice)}円 · {formatBtc(l.quantity)}{" "}
+											BTC
 										</span>
 										<span className="num text-xs text-text-2">
 											{formatDateTime(l.openedAt)}

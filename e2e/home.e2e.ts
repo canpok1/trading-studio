@@ -22,7 +22,7 @@ test("アプリを開くとホームが出て、現在値が自動で更新さ�
 	await page.goto("/");
 	await expect(page).toHaveURL(/\/home$/);
 	const price = page.getByTestId("chart-close");
-	await expect(price).toHaveText(/^¥[\d,]+$/, { timeout: 15_000 });
+	await expect(price).toHaveText(/^[\d,]+円$/, { timeout: 15_000 });
 	await expect(page.getByTestId("home-change")).toHaveText(/^24h /);
 	const first = await price.textContent();
 	// 偽物の取引所は1秒ごとに価格を変える。画面は5秒ごとに問い合わせる
@@ -34,7 +34,7 @@ test("収集が止まると現在値の下にエラーが出て、直ると消�
 	page,
 }) => {
 	await page.goto("/home");
-	await expect(page.getByTestId("chart-close")).toHaveText(/^¥/, {
+	await expect(page.getByTestId("chart-close")).toHaveText(/^[\d,]+円$/, {
 		timeout: 15_000,
 	});
 	const alert = page.getByRole("alert").filter({
@@ -180,7 +180,7 @@ test("ローソク足に切り替えると4本値が出て、再読み込み後�
 	page,
 }) => {
 	await page.goto("/home");
-	await expect(page.getByTestId("chart-close")).toHaveText(/^¥[\d,]+$/, {
+	await expect(page.getByTestId("chart-close")).toHaveText(/^[\d,]+円$/, {
 		timeout: 15_000,
 	});
 	const toggle = page.getByRole("button", { name: "ローソク足", exact: true });
@@ -300,7 +300,7 @@ test("ボリンジャーバンドは戦略で使っていなければ隠して�
 	page,
 }) => {
 	await page.goto("/home");
-	await expect(page.getByTestId("chart-close")).toHaveText(/^¥/, {
+	await expect(page.getByTestId("chart-close")).toHaveText(/^[\d,]+円$/, {
 		timeout: 15_000,
 	});
 	const bb = page.getByRole("button", { name: "BB", exact: true });

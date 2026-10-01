@@ -3,6 +3,7 @@
 import type { BacktestOrder, ExitKind } from "@trading-studio/core";
 import { formatBtc, sellReasonPart } from "@trading-studio/core";
 import type { ReactNode } from "react";
+import { Fragment } from "react";
 import { formatDateTime } from "../../format";
 import type { GradeBadgeValue } from "../../lib/grade";
 import { formatInt, formatSignedInt } from "../../lib/number";
@@ -153,7 +154,7 @@ type ListedOrder = BacktestOrder & { lotPrice?: number | null };
 /** 売りが売るロットの説明。ロットの買値が分からなければ空 */
 const lotText = (o: ListedOrder) =>
 	o.side === "sell" && o.lotPrice != null
-		? ` · 買値 ${formatInt(o.lotPrice)} のロット`
+		? ` · 買値 ${formatInt(o.lotPrice)}円 のロット`
 		: "";
 
 export function OrderRow({
@@ -182,20 +183,20 @@ export function OrderRow({
 					<span className="shrink-0">
 						<SideText order={o} />{" "}
 						{o.type === "limit" && o.status !== "filled" ? "指値 " : ""}
-						{formatBtc(o.quantity)} · {STATUS_LABEL[o.status]}
+						{formatBtc(o.quantity)} BTC · {STATUS_LABEL[o.status]}
 					</span>
 					<ExitBadge order={o} />
 				</span>
 				<span className="num text-xs text-text-2">
 					{formatDateTime(orderTime(o))}
-					{price !== null ? ` · @${formatInt(price)}` : ""}
+					{price !== null ? ` · @${formatInt(price)}円` : ""}
 					{lotText(o)}
 				</span>
 			</span>
 			<span className="num text-right text-[13px] font-semibold">
 				{o.pnl !== null ? (
 					<span className={o.pnl >= 0 ? "text-profit" : "text-loss"}>
-						{formatSignedInt(o.pnl)}
+						{formatSignedInt(o.pnl)}円
 					</span>
 				) : (
 					(tag ?? (
@@ -243,9 +244,9 @@ export function OrderSheet({
 			<div className="grid grid-cols-3 gap-2 rounded-[10px] bg-bg p-3">
 				<Stat
 					label={o.status === "filled" ? "約定価格" : "指値"}
-					value={price !== null ? formatInt(price) : "—"}
+					value={price !== null ? `${formatInt(price)}円` : "—"}
 				/>
-				<Stat label="数量" value={formatBtc(o.quantity)} />
+				<Stat label="数量" value={`${formatBtc(o.quantity)} BTC`} />
 				{o.pnl !== null ? (
 					<Stat
 						label="損益"
@@ -301,7 +302,18 @@ export function Stat({
 				{label}
 				<GradeBadge value={grade} />
 			</span>
-			<span className={`num text-[15px] font-semibold ${tone}`}>{value}</span>
+			{/* 列の幅に収まらない桁数でも隣の列へはみ出さないよう、桁区切りの後ろで折り返す。区切りの無い値はどこでも折り返す */}
+			<span
+				className={`num text-[15px] font-semibold [overflow-wrap:anywhere] ${tone}`}
+			>
+				{value.split(/(?<=,)/).map((part, i) => (
+					// biome-ignore lint/suspicious/noArrayIndexKey: 値を区切っただけで、並びは変わらない
+					<Fragment key={i}>
+						{i > 0 && <wbr />}
+						{part}
+					</Fragment>
+				))}
+			</span>
 			{sub && <span className="num text-[11px] text-text-2">{sub}</span>}
 		</div>
 	);

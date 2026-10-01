@@ -470,7 +470,7 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 								: "—"
 						}
 					/>
-					<Stat label="最終資金" value={formatInt(s.finalEquity)} />
+					<Stat label="最終資金" value={`${formatInt(s.finalEquity)}円`} />
 				</div>
 				<FewTradesNote trades={s.trades} />
 				{s.openPositionQuantity > 0 && (

@@ -288,7 +288,7 @@ function JobCard({ job, onCancel }: { job: ImportJob; onCancel: () => void }) {
 				<span className="num text-xs text-text-2">
 					{job.phase ? PHASE_LABEL[job.phase] : ""} ·{" "}
 					{formatInt(job.processedRows)} / {formatInt(job.totalRows)} 行 · 重複{" "}
-					{formatInt(job.skippedRows)}
+					{formatInt(job.skippedRows)} 行
 				</span>
 				<Button
 					variant="link"

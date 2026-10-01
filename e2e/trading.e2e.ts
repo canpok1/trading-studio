@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-/** 注文の行の名前（「買 0.020 · 約定 …」） */
+/** 注文の行の名前（「買 0.020 BTC · 約定 …」） */
 const ORDER_ROW = / · (約定|注文中|取消)/;
 
 test("ホームで自動取引をオンにすると帯が全画面に出て、オン中は戦略を変えられない。オフで帯が消える", async ({
@@ -146,11 +146,11 @@ test("仮想注文が出て約定すると、ホームの保有・注文に出�
 		// 絞り込みのボタンと区別する
 		const rows = recent.getByRole("button", { name: ORDER_ROW });
 		// 次の1分足の終わりに成行で買い、次に来た約定で約定する
-		await expect(rows.first()).toContainText("買 0.020 · 約定", {
+		await expect(rows.first()).toContainText("買 0.020 BTC · 約定", {
 			timeout: 90_000,
 		});
 		const position = page.getByRole("region", { name: "口座情報" });
-		await expect(position).toContainText("保有 BTC0.020");
+		await expect(position).toContainText("保有0.020 BTC");
 		await expect(page.getByTestId("account-equity")).toHaveText(/^[\d,]+円$/);
 		await expect(page.getByRole("region", { name: "成績" })).toContainText(
 			"取引回数",
