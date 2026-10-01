@@ -470,3 +470,53 @@ test("一部利確の条件と売り方、トレーリングストップの発�
 	await expect(again.getByRole("checkbox")).not.toBeChecked();
 	await expect(again).toContainText("0.00125 BTC を売り、0.00125 BTC を残す");
 });
+
+test("買いを足して名前を付けると、買いごとに条件を持って保存でき、並べ替え・削除できる", async ({
+	page,
+}, info) => {
+	const name = `複数の買い ${info.project.name}`;
+	await page.goto("/strategies");
+	await createFromTemplate(page, name, /^トレンド追随/);
+
+	await page.getByRole("button", { name: "＋ 買いを追加" }).click();
+	const second = page.getByRole("region", { name: "買い「買い2」" });
+	await second.getByLabel("買いの名前").fill("押し目");
+	const dip = page.getByRole("region", { name: "買い「押し目」" });
+	await dip.getByLabel("最大ロット数").fill("3");
+	// 足したばかりの買いは買いの条件が無く、保存できない
+	await expect(
+		page.getByRole("button", { name: "入力を直すと保存できる" }),
+	).toBeDisabled();
+	await dip
+		.getByRole("region", { name: "「押し目」の買い注文する条件" })
+		.getByRole("button", { name: "＋ 条件を追加" })
+		.click();
+	await page
+		.getByRole("dialog")
+		.getByRole("button", { name: "RSI", exact: true })
+		.click();
+	await page.getByRole("button", { name: "保存", exact: true }).click();
+	await expect(page.getByRole("status")).toHaveText("保存した");
+
+	await page.reload();
+	await expect(dip.getByLabel("最大ロット数")).toHaveValue("3");
+	await expect(
+		page
+			.getByRole("region", { name: "買い「買い1」" })
+			.getByLabel("最大ロット数"),
+	).not.toHaveValue("3");
+
+	// 閉じると要約だけになる
+	await dip.getByRole("button", { expanded: true }).click();
+	await expect(dip.getByLabel("買いの名前")).toBeHidden();
+
+	await page.getByRole("button", { name: "「押し目」を上へ" }).click();
+	await expect(
+		page.getByRole("region", { name: /^買い「/ }).first(),
+	).toHaveAccessibleName("買い「押し目」");
+	await page.getByRole("button", { name: "「押し目」を削除" }).click();
+	await expect(page.getByRole("region", { name: /^買い「/ })).toHaveCount(1);
+	await expect(
+		page.getByRole("button", { name: "「買い1」を上へ" }),
+	).toHaveCount(0);
+});

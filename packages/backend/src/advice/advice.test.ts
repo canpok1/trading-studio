@@ -1,12 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import type { BacktestOrder, Candle, ConditionSet } from "@trading-studio/core";
+import type {
+	BacktestOrder,
+	Candle,
+	ConditionSet,
+	SingleBuyConditionSet,
+} from "@trading-studio/core";
 import {
 	conditionScreenText,
 	DEFAULT_BUY_ORDER,
 	DEFAULT_PARTIAL_SELL,
+	singleBuy,
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
 import type { BacktestRun } from "../backtests/types";
+import { createTestDb } from "../db/test-db";
 import { createTestApp } from "../test-app";
 import { DEMO_IMPROVED_STRATEGY } from "./fake-model";
 import { readImprovedStrategy } from "./improved";
@@ -124,7 +131,7 @@ describe("応答の検証", () => {
 	});
 });
 
-const PARAMS: ConditionSet = {
+const FLAT: SingleBuyConditionSet = {
 	frequency: {
 		flat: { value: 1, unit: "h" },
 		holding: { value: 1, unit: "h" },
@@ -152,6 +159,7 @@ const PARAMS: ConditionSet = {
 		conditions: [{ type: "entryChange", percent: 1, direction: "down" }],
 	},
 };
+const PARAMS: ConditionSet = singleBuy(FLAT);
 
 function candles(bars: number): Candle[] {
 	return Array.from({ length: bars }, (_, i) => {
@@ -246,7 +254,7 @@ describe("アドバイスの生成", () => {
 		// 改善案を反映した戦略も一緒に持つ
 		expect(a?.content?.improved).toMatchObject({
 			ok: true,
-			params: { orderSize: 100_000, dailyLossLimit: 100_000 },
+			params: { buys: [{ orderSize: 100_000 }], dailyLossLimit: 100_000 },
 		});
 	});
 
@@ -417,44 +425,50 @@ describe("別の AI で作る", () => {
 });
 
 describe("改善版の戦略", () => {
-	// PARAMS を AI の出す形にしたもの。使わない項目は null で埋めてくる
+	// PARAMS を AI の出す形にしたもの。使わない項目は null で埋めてくる。patch は買い1つめに当てる
 	const ai = (patch: Record<string, unknown> = {}) => ({
 		frequency: PARAMS.frequency,
-		orderSizeBtc: 0.01,
-		maxPositions: 1,
 		dailyLossLimitYen: 30_000,
-		buy: {
-			match: "all",
-			conditions: [
-				{
-					type: "breakout",
-					timeframe: "1h",
-					lookback: 5,
-					direction: "high",
-					fast: null,
-					values: null,
-				},
-			],
-		},
 		stopLossCooldownBars: 0,
 		stopLossCooldownTimeframe: "1h",
-		buyOrder: {
-			lines: [{ type: "limit", belowPercent: 0.1 }],
-			expireBars: 3,
-			expireTimeframe: "1h",
-		},
-		partialTakeProfit: { match: "all", conditions: [] },
-		partialSell: DEFAULT_PARTIAL_SELL,
-		takeProfit: PARAMS.takeProfit,
-		stopLoss: PARAMS.stopLoss,
-		...patch,
+		buys: [
+			{
+				id: "b1",
+				name: "買い1",
+				orderSizeBtc: 0.01,
+				maxPositions: 1,
+				buy: {
+					match: "all",
+					conditions: [
+						{
+							type: "breakout",
+							timeframe: "1h",
+							lookback: 5,
+							direction: "high",
+							fast: null,
+							values: null,
+						},
+					],
+				},
+				buyOrder: {
+					lines: [{ type: "limit", belowPercent: 0.1 }],
+					expireBars: 3,
+					expireTimeframe: "1h",
+				},
+				partialTakeProfit: { match: "all", conditions: [] },
+				partialSell: DEFAULT_PARTIAL_SELL,
+				takeProfit: FLAT.takeProfit,
+				stopLoss: FLAT.stopLoss,
+				...patch,
+			},
+		],
 	});
 
 	test("null の項目を落とし、注文量は BTC から satoshi に直して読む", () => {
 		const r = readImprovedStrategy(ai({ orderSizeBtc: 0.02 }), PARAMS);
 		expect(r).toEqual({
 			ok: true,
-			params: { ...PARAMS, orderSize: 2_000_000 },
+			params: singleBuy({ ...FLAT, orderSize: 2_000_000 }),
 		});
 	});
 
@@ -481,6 +495,34 @@ describe("改善版の戦略", () => {
 
 	test("偽物の AI の出す戦略は設定として正しい", () => {
 		expect(readImprovedStrategy(DEMO_IMPROVED_STRATEGY, PARAMS).ok).toBe(true);
+	});
+});
+
+describe("保存済みの改善版", () => {
+	test("買いを複数持つ前の形で保存した改善版は、買い1つの形で読む", async () => {
+		const db = createTestDb();
+		const t = createTestApp({}, db);
+		const run = await doneRun(t);
+		await start(t, run.id);
+		await t.advice.running(run.id);
+		const content = JSON.parse(
+			db.$client
+				.query<{ content: string }, [number]>(
+					"select content from backtest_advice where run_id = ?",
+				)
+				.get(run.id)?.content as string,
+		);
+		const { buys, ...rest } = content.improved.params;
+		content.improved.params = { ...rest, ...buys[0] };
+		db.$client.run("update backtest_advice set content = ? where run_id = ?", [
+			JSON.stringify(content),
+			run.id,
+		]);
+		const a = await read(t, run.id);
+		expect(a?.content?.improved).toMatchObject({
+			ok: true,
+			params: { buys: [{ id: "b1", orderSize: 100_000 }] },
+		});
 	});
 });
 

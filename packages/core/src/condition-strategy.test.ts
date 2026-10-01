@@ -3,31 +3,81 @@ import type {
 	BuyOrderLine,
 	Condition,
 	ConditionSet,
+	SingleBuyConditionSet,
 } from "./condition-strategy";
 import {
-	acceptsNoJudgment,
-	candleNeeds,
-	candleTimeframes,
-	chooseStepTimeframe,
-	conditionStrategy,
+	acceptsNoJudgment as acceptsNoJudgmentOf,
+	candleNeeds as candleNeedsOf,
+	candleTimeframes as candleTimeframesOf,
+	chooseStepTimeframe as chooseStepTimeframeOf,
+	conditionStrategy as conditionStrategyOf,
 	DEFAULT_BUY_ORDER,
 	DEFAULT_PARTIAL_SELL,
-	emaPeriods,
+	emaPeriods as emaPeriodsOf,
 	evaluateConditionSet,
-	historyShortfalls,
+	historyShortfalls as historyShortfallsOf,
 	MARKET_BUY_ORDER,
-	parseConditionSet,
-	recentMs,
-	rsiLines,
-	validateConditionSet,
+	parseConditionSet as parseConditionSetOf,
+	recentMs as recentMsOf,
+	rsiLines as rsiLinesOf,
+	singleBuy,
+	validateConditionSet as validateConditionSetOf,
 } from "./condition-strategy";
 import type { StrategyInput } from "./strategy";
 import type { TemplateId } from "./templates";
-import { strategyTemplate, TEMPLATE_IDS } from "./templates";
+import {
+	strategyTemplate as strategyTemplateOf,
+	TEMPLATE_IDS,
+} from "./templates";
 import type { Timeframe } from "./timeframe";
 import { TIMEFRAME_MS } from "./timeframe";
 import type { Candle, Order, Position } from "./types";
 import { EMPTY_POSITION } from "./types";
+
+// このファイルの多くのテストは買い1つの戦略を平らな形（Flat）で書き、関数に渡すときに買い1つの条件セットにする。
+// 入力検証のパスは先頭の「buys.0.」を外して比べる。買いを複数持つ動きは「複数の買い」で確かめる
+type Flat = SingleBuyConditionSet;
+const toSet = (p: Flat | ConditionSet): ConditionSet =>
+	"buys" in p ? p : singleBuy(p);
+function flat(p: ConditionSet): Flat {
+	const { buys, ...rest } = p;
+	const {
+		id: _id,
+		name: _name,
+		...rule
+	} = buys[0] as ConditionSet["buys"][number];
+	return { ...rest, ...rule };
+}
+const acceptsNoJudgment = (p: Flat) => acceptsNoJudgmentOf(toSet(p));
+const candleNeeds = (p: Flat) => candleNeedsOf(toSet(p));
+const candleTimeframes = (p: Flat) => candleTimeframesOf(toSet(p));
+const chooseStepTimeframe = (p: Flat, finest: Timeframe) =>
+	chooseStepTimeframeOf(toSet(p), finest);
+const emaPeriods = (p: Flat) => emaPeriodsOf(toSet(p));
+const historyShortfalls = (
+	p: Flat,
+	...rest: Parameters<typeof historyShortfallsOf> extends [unknown, ...infer R]
+		? R
+		: never
+) => historyShortfallsOf(toSet(p), ...rest);
+const recentMs = (p: Flat) => recentMsOf(toSet(p));
+const rsiLines = (p: Flat) => rsiLinesOf(toSet(p));
+const validateConditionSet = (p: Flat | ConditionSet) =>
+	validateConditionSetOf(toSet(p)).map((e) => ({
+		...e,
+		path: e.path.replace(/^buys\.0\./, ""),
+	}));
+const parseConditionSet = (v: unknown): Flat | null => {
+	const p = parseConditionSetOf(v);
+	return p ? flat(p) : null;
+};
+const strategyTemplate = (id: TemplateId) => {
+	const t = strategyTemplateOf(id);
+	return { ...t, params: flat(t.params) };
+};
+const conditionStrategy = {
+	requiredJudges: (p: Flat) => conditionStrategyOf.requiredJudges(toSet(p)),
+};
 
 const H = TIMEFRAME_MS["1h"];
 
@@ -42,7 +92,7 @@ function candles(closes: number[]): Candle[] {
 	}));
 }
 
-function params(over: Partial<ConditionSet> = {}): ConditionSet {
+function params(over: Partial<Flat> = {}): Flat {
 	return {
 		frequency: {
 			flat: { value: 1, unit: "h" },
@@ -65,7 +115,7 @@ function params(over: Partial<ConditionSet> = {}): ConditionSet {
 
 function input(
 	cs: Candle[],
-	p: ConditionSet,
+	p: Flat | ConditionSet,
 	over: Partial<StrategyInput<ConditionSet>> = {},
 ): StrategyInput<ConditionSet> {
 	const position = over.position ?? EMPTY_POSITION;
@@ -90,7 +140,7 @@ function input(
 				: [],
 		cash: 10_000_000,
 		openOrders: [],
-		params: p,
+		params: toSet(p),
 		state: null,
 		...over,
 	};
@@ -296,6 +346,7 @@ describe("買い", () => {
 			{
 				kind: "place",
 				side: "buy",
+				buyId: "b1",
 				type: "limit",
 				price: 13_486_504,
 				quantity: 1_000_000,
@@ -320,6 +371,7 @@ describe("買い", () => {
 			{
 				kind: "place",
 				side: "buy",
+				buyId: "b1",
 				type: "limit",
 				price: 13_331_254,
 				quantity: 1_000_000,
@@ -336,7 +388,13 @@ describe("買い", () => {
 		};
 		const out = evaluateConditionSet(input(rising, market));
 		expect(out.intents).toEqual([
-			{ kind: "place", side: "buy", type: "market", quantity: 1_000_000 },
+			{
+				kind: "place",
+				side: "buy",
+				buyId: "b1",
+				type: "market",
+				quantity: 1_000_000,
+			},
 		]);
 		expect(out.note).toContain("成行で");
 		// 13,500,005 × 0.01 = 135,000.05 円 → 135,001 円必要
@@ -537,7 +595,7 @@ describe("validateConditionSet", () => {
 	});
 
 	test("買いの指値の値幅と取消までの本数", () => {
-		const errs = (buyOrder: ConditionSet["buyOrder"]) =>
+		const errs = (buyOrder: Flat["buyOrder"]) =>
 			validateConditionSet({
 				...strategyTemplate("range").params,
 				buyOrder,
@@ -686,9 +744,9 @@ describe("parseConditionSet", () => {
 	test("数値でない値は NaN にして検証で弾く", () => {
 		const p = parseConditionSet({ ...params(), orderSize: "x" });
 		expect(p?.orderSize).toBeNaN();
-		expect(
-			validateConditionSet(p as ConditionSet).map((e) => e.path),
-		).toContain("orderSize");
+		expect(validateConditionSet(p as Flat).map((e) => e.path)).toContain(
+			"orderSize",
+		);
 	});
 });
 
@@ -697,13 +755,13 @@ describe("判定に使う足の粒度", () => {
 		timeframe: Timeframe,
 		flat: string,
 		holding: string,
-	): ConditionSet => {
+	): Flat => {
 		const f = (v: string) => ({
 			value: Number(v.slice(0, -1)),
 			unit: v.slice(-1) as "s" | "m" | "h",
 		});
 		const p = strategyTemplate("trend").params;
-		const g = (x: ConditionSet["buy"]) => ({
+		const g = (x: Flat["buy"]) => ({
 			...x,
 			conditions: x.conditions.map((c) =>
 				c.type === "emaCross" ? { ...c, timeframe } : c,
@@ -863,7 +921,7 @@ describe("複数ポジション", () => {
 		percent: 1,
 		direction: "down",
 	};
-	const multi = (over: Partial<ConditionSet> = {}) =>
+	const multi = (over: Partial<Flat> = {}) =>
 		params({
 			maxPositions: 3,
 			buy: { match: "all", conditions: [buyAlways] },
@@ -892,10 +950,17 @@ describe("複数ポジション", () => {
 	test("1回の条件成立で行の数だけ同時に出す。指値は行ごとの %、期限は同じ本数", () => {
 		const out = evaluateConditionSet(input(rising, multi()));
 		expect(out.intents).toEqual([
-			{ kind: "place", side: "buy", type: "market", quantity: 1_000_000 },
 			{
 				kind: "place",
 				side: "buy",
+				buyId: "b1",
+				type: "market",
+				quantity: 1_000_000,
+			},
+			{
+				kind: "place",
+				side: "buy",
+				buyId: "b1",
 				type: "limit",
 				price: 9_950_099,
 				quantity: 1_000_000,
@@ -904,13 +969,14 @@ describe("複数ポジション", () => {
 			{
 				kind: "place",
 				side: "buy",
+				buyId: "b1",
 				type: "limit",
 				price: 9_900_099,
 				quantity: 1_000_000,
 				expireAfterMs: 5 * H,
 			},
 		]);
-		expect(out.state).toEqual({ buyHit: true });
+		expect(out.state).toEqual({ buyHits: { b1: true } });
 	});
 
 	test("空き枠が行の数より少なければ、空きの数だけ先頭から出す。保有中でも買う", () => {
@@ -961,7 +1027,7 @@ describe("複数ポジション", () => {
 		expect(
 			evaluateConditionSet(input(flat, multi(), { state: { buyHit: true } }))
 				.state,
-		).toEqual({ buyHit: false });
+		).toEqual({ buyHits: { b1: false } });
 		expect(
 			evaluateConditionSet(input(rising, multi(), { state: { buyHit: false } }))
 				.intents,
@@ -974,7 +1040,7 @@ describe("複数ポジション", () => {
 			input(rising, one, { state: { buyHit: true } }),
 		);
 		expect(out.intents).toHaveLength(1);
-		expect(out.state).toEqual({ buyHit: true });
+		expect(out.state).toEqual({ buyHits: { b1: true } });
 	});
 
 	test("売りはロットごとに、そのロットの買値からの % で判定し、ロットを指定して売る", () => {
@@ -1307,7 +1373,10 @@ describe("トレーリングストップ", () => {
 			}),
 		);
 		expect(out.intents).toHaveLength(1);
-		expect(out.state).toEqual({ buyHit: false, peaks: { b1: 120 } });
+		expect(out.state).toEqual({
+			buyHits: { b1: false },
+			peaks: { b1: 120 },
+		});
 	});
 
 	test("最高値が買値を下回ることはない", () => {
@@ -1874,7 +1943,7 @@ describe("条件ごとの足", () => {
 				expireBars: 3,
 			},
 		};
-		const read = parseConditionSet(old) as ConditionSet;
+		const read = parseConditionSet(old) as Flat;
 		expect(read.buy.conditions[0]).toEqual({ ...above("4h") });
 		expect(read.takeProfit.conditions[0]).toEqual({
 			type: "holdingBars",
@@ -1904,5 +1973,204 @@ describe("条件ごとの足", () => {
 		);
 		expect(out.intents[0]).toMatchObject({ expireAfterMs: 2 * D });
 		expect(out.note).toContain("日足で 2 本のあいだ約定しなければ取消");
+	});
+});
+
+describe("複数の買い", () => {
+	const judged = (
+		...values: ("+2" | "+1" | "0" | "-1" | "-2" | "none")[]
+	): Flat["buy"] => ({
+		match: "all",
+		conditions: [{ type: "judgment", judge: "sentiment", values }],
+	});
+	const rule = (
+		id: string,
+		name: string,
+		over: Partial<ConditionSet["buys"][number]> = {},
+	): ConditionSet["buys"][number] => {
+		const { frequency: _f, ...base } = params({
+			buy: judged("+2", "+1", "0", "-1", "-2", "none"),
+			buyOrder: MARKET_BUY_ORDER,
+			stopLoss: {
+				match: "any",
+				conditions: [{ type: "entryChange", percent: 10, direction: "down" }],
+			},
+		});
+		const {
+			dailyLossLimit: _d,
+			stopLossCooldownBars: _c,
+			stopLossCooldownTimeframe: _t,
+			...body
+		} = base;
+		return { id, name, ...body, ...over };
+	};
+	const set = (...buys: ConditionSet["buys"]): ConditionSet => ({
+		...singleBuy(params()),
+		buys,
+	});
+	const cs = candles([100, 100]);
+
+	test("同時に成立したら上の買いだけ注文し、注文に買いの id と名前を付ける", () => {
+		const out = evaluateConditionSet(
+			input(cs, set(rule("b1", "押し目"), rule("b2", "突破"))),
+		);
+		expect(out.intents).toEqual([
+			{
+				kind: "place",
+				side: "buy",
+				type: "market",
+				quantity: 1_000_000,
+				buyId: "b1",
+				buyName: "押し目",
+			},
+		]);
+		expect(out.note).toContain("【押し目】");
+		expect(out.note).toContain(
+			"【突破】買いの条件を満たすが、上の「押し目」で注文したため買わない",
+		);
+	});
+
+	test("上の買いが最大ロット数に達していれば、下の買いで注文する。注文量は買いごと", () => {
+		const out = evaluateConditionSet(
+			input(
+				cs,
+				set(rule("b1", "押し目"), rule("b2", "突破", { orderSize: 2_000_000 })),
+				{
+					lots: [
+						{
+							id: "o1",
+							quantity: 1_000_000,
+							entryPrice: 100,
+							openedAt: 0,
+							buyId: "b1",
+						},
+					],
+				},
+			),
+		);
+		expect(out.intents).toMatchObject([
+			{ side: "buy", quantity: 2_000_000, buyId: "b2", buyName: "突破" },
+		]);
+	});
+
+	test("買いの未約定の注文はその買いだけを止める", () => {
+		const open: Order = {
+			id: "o1",
+			side: "buy",
+			type: "limit",
+			price: 90,
+			quantity: 1_000_000,
+			placedAt: 0,
+			expiresAt: null,
+			status: "open",
+			buyId: "b1",
+		};
+		const out = evaluateConditionSet(
+			input(cs, set(rule("b1", "押し目"), rule("b2", "突破")), {
+				openOrders: [open],
+			}),
+		);
+		expect(out.note).toContain("【押し目】買い注文の約定待ち");
+		expect(out.intents).toMatchObject([{ buyId: "b2" }]);
+	});
+
+	test("ロットは買った買いの売りの条件で売る。買いを持たないロットは先頭の買いで売る", () => {
+		const p = set(
+			rule("b1", "押し目", {
+				buy: judged("+2"),
+				takeProfit: {
+					match: "any",
+					conditions: [{ type: "entryChange", percent: 50, direction: "up" }],
+				},
+			}),
+			rule("b2", "突破", {
+				buy: judged("+2"),
+				takeProfit: {
+					match: "any",
+					conditions: [{ type: "entryChange", percent: 5, direction: "up" }],
+				},
+			}),
+		);
+		// 買値 90 から 100 は +11%: 突破（5%）では利確、押し目（50%）では売らない
+		const lots = [
+			{
+				id: "o1",
+				quantity: 1_000_000,
+				entryPrice: 90,
+				openedAt: 0,
+				buyId: "b1",
+			},
+			{
+				id: "o2",
+				quantity: 1_000_000,
+				entryPrice: 90,
+				openedAt: 0,
+				buyId: "b2",
+			},
+			{ id: "o3", quantity: 1_000_000, entryPrice: 90, openedAt: 0 },
+		];
+		const out = evaluateConditionSet(input(cs, p, { lots }));
+		expect(out.intents).toEqual([
+			{
+				kind: "place",
+				side: "sell",
+				type: "market",
+				quantity: 1_000_000,
+				lotId: "o2",
+				exitKind: "takeProfit",
+			},
+		]);
+		expect(out.note).toContain("「突破」で買った買値 90 のロット");
+	});
+
+	test("連続買いの防止は買いごとに数える", () => {
+		const p = set(
+			rule("b1", "押し目", { maxPositions: 2 }),
+			rule("b2", "突破", { maxPositions: 2 }),
+		);
+		const out = evaluateConditionSet(
+			input(cs, p, { state: { buyHits: { b1: true } } }),
+		);
+		expect(out.note).toContain("【押し目】買いの条件が続いているため買わない");
+		expect(out.intents).toMatchObject([{ buyId: "b2" }]);
+		expect(out.state).toEqual({ buyHits: { b1: true, b2: true } });
+	});
+
+	test("入力検証: 買いは1〜5個、名前は1〜20文字で重ならない、項目のパスは買いの番号から", () => {
+		const errs = (p: ConditionSet) => validateConditionSetOf(p);
+		expect(errs(set(rule("b1", "押し目"), rule("b2", "突破")))).toEqual([]);
+		expect(errs(set())).toContainEqual({
+			path: "buys",
+			message: "買いは 1〜5 個にする",
+		});
+		expect(
+			errs(set(...[1, 2, 3, 4, 5, 6].map((i) => rule(`b${i}`, `買い${i}`)))),
+		).toContainEqual({ path: "buys", message: "買いは 1〜5 個にする" });
+		expect(errs(set(rule("b1", "押し目"), rule("b2", " 押し目 ")))).toEqual([
+			{ path: "buys.1.name", message: "ほかの買いと違う名前にする" },
+		]);
+		expect(errs(set(rule("b1", " ")))).toEqual([
+			{ path: "buys.0.name", message: "1〜20 文字で入れる" },
+		]);
+		expect(errs(set(rule("b1", "押し目"), rule("b1", "突破")))).toEqual([
+			{ path: "buys.1", message: "買いの id が重なっている" },
+		]);
+		expect(
+			errs(set(rule("b1", "押し目"), rule("b2", "突破", { orderSize: 1 }))),
+		).toMatchObject([{ path: "buys.1.orderSize" }]);
+	});
+
+	test("JSON から読み戻せる。買いを持たない保存済みの戦略は買い1つ（b1・買い1）として読む", () => {
+		const p = set(rule("b1", "押し目"), rule("b3", "突破"));
+		expect(parseConditionSetOf(JSON.parse(JSON.stringify(p)))).toEqual(p);
+		const legacy = params({ buy: judged("+2") });
+		const read = parseConditionSetOf(JSON.parse(JSON.stringify(legacy)));
+		expect(read?.buys).toHaveLength(1);
+		expect(read?.buys[0]).toMatchObject({
+			id: "b1",
+			name: "買い1",
+			buy: judged("+2"),
+		});
+		expect(parseConditionSetOf({ ...p, buys: [{ id: 1 }] })).toBeNull();
 	});
 });

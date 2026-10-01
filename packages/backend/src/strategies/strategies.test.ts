@@ -31,13 +31,16 @@ describe("戦略の API", () => {
 		expect(s.name).toBe("トレンド");
 		expect(s.params).toEqual(strategyTemplate("trend").params);
 
-		const params = { ...s.params, orderSize: 3_000_000 };
+		const params = {
+			...s.params,
+			buys: s.params.buys.map((b) => ({ ...b, orderSize: 3_000_000 })),
+		};
 		const saved = await call(app, "PUT", `/${s.id}/params`, { params });
 		expect(saved.status).toBe(200);
 		const got = await call(app, "GET", `/${s.id}`);
-		expect((got.body.strategy as StoredStrategy).params.orderSize).toBe(
-			3_000_000,
-		);
+		expect(
+			(got.body.strategy as StoredStrategy).params.buys[0]?.orderSize,
+		).toBe(3_000_000);
 	});
 
 	test("入力に誤りのある条件は保存しない", async () => {
@@ -48,7 +51,7 @@ describe("戦略の API", () => {
 		const r = await call(app, "PUT", `/${s.id}/params`, { params: s.params });
 		expect(r.status).toBe(400);
 		expect(r.body.errors).toEqual([
-			{ path: "buy", message: "買い注文の条件を1つ以上追加する" },
+			{ path: "buys.0.buy", message: "買い注文の条件を1つ以上追加する" },
 		]);
 	});
 

@@ -1,3 +1,4 @@
+import { parseConditionSet } from "@trading-studio/core";
 import type { Db } from "../db/open";
 import type {
 	AdviceContent,
@@ -20,7 +21,7 @@ type AdviceRow = {
 const toAdvice = (r: AdviceRow): BacktestAdvice => ({
 	runId: r.run_id,
 	status: r.status,
-	content: r.content === null ? null : (JSON.parse(r.content) as AdviceContent),
+	content: r.content === null ? null : readContent(r.content),
 	model: r.model,
 	instructionsVersion: r.instructions_version,
 	appBuiltAt: r.app_built_at,
@@ -28,6 +29,20 @@ const toAdvice = (r: AdviceRow): BacktestAdvice => ({
 	finishedAt: r.finished_at,
 	error: r.error,
 });
+
+/** 改善版の戦略は保存した時点の形のまま。買いを複数持つ前の形も今の形へ読み替える */
+function readContent(text: string): AdviceContent {
+	const c = JSON.parse(text) as AdviceContent;
+	if (c.improved?.ok !== true) return c;
+	const params = parseConditionSet(c.improved.params);
+	return {
+		...c,
+		improved:
+			params === null
+				? { ok: false, reason: "保存した改善版の戦略を読めない" }
+				: { ok: true, params },
+	};
+}
 
 type InstructionsRow = {
 	version: number;

@@ -106,7 +106,10 @@ test("仮想注文が出て約定すると、ホームの保有・注文に出�
 		data: { name: "毎分買う", from: { template: "trend" } },
 	});
 	const { strategy } = (await created.json()) as {
-		strategy: { id: number; params: Record<string, unknown> };
+		strategy: {
+			id: number;
+			params: { buys: Record<string, unknown>[] } & Record<string, unknown>;
+		};
 	};
 	const params = {
 		...strategy.params,
@@ -114,24 +117,29 @@ test("仮想注文が出て約定すると、ホームの保有・注文に出�
 			flat: { value: 1, unit: "m" },
 			holding: { value: 1, unit: "m" },
 		},
-		buy: {
-			match: "all",
-			conditions: [
-				{
-					type: "judgment",
-					judge: "sentiment",
-					values: ["+2", "+1", "0", "-1", "-2"],
+		buys: [
+			{
+				...strategy.params.buys[0],
+				buy: {
+					match: "all",
+					conditions: [
+						{
+							type: "judgment",
+							judge: "sentiment",
+							values: ["+2", "+1", "0", "-1", "-2"],
+						},
+					],
 				},
-			],
-		},
-		takeProfit: {
-			match: "any",
-			conditions: [{ type: "entryChange", percent: 20, direction: "up" }],
-		},
-		stopLoss: {
-			match: "any",
-			conditions: [{ type: "entryChange", percent: 20, direction: "down" }],
-		},
+				takeProfit: {
+					match: "any",
+					conditions: [{ type: "entryChange", percent: 20, direction: "up" }],
+				},
+				stopLoss: {
+					match: "any",
+					conditions: [{ type: "entryChange", percent: 20, direction: "down" }],
+				},
+			},
+		],
 	};
 	expect(
 		(

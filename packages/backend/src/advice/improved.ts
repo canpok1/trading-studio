@@ -116,29 +116,18 @@ const group = (label: string): ResponseSchema => ({
 	required: ["match", "conditions"],
 });
 
-/** 構造化出力で強制する形。画面の項目との対応は description で伝える */
-export const IMPROVED_STRATEGY_SCHEMA: ResponseSchema = {
+/** 買い1つ。買いの条件・注文の出し方と、その買いで買ったロットの売り方 */
+const BUY_RULE: ResponseSchema = {
 	type: "OBJECT",
+	description:
+		"買い1つ。買いの条件と注文の出し方、この買いで買ったロットの一部利確・利確・損切りの条件を持つ",
 	properties: {
-		frequency: {
-			type: "OBJECT",
-			description: "判定の間隔",
-			properties: {
-				flat: { ...FREQUENCY, description: "保有なしのとき" },
-				holding: { ...FREQUENCY, description: "保有中のとき" },
-			},
-			required: ["flat", "holding"],
-		},
+		id: str(
+			"買いの id。今の設定にある買いはその id のまま、新しく足す買いは今の設定と重ならない id（b2 など）",
+		),
+		name: str("買いの名前（1〜20文字、ほかの買いと重ならない）"),
 		orderSizeBtc: num("1回の注文量（BTC）"),
-		maxPositions: int("最大ロット数"),
-		dailyLossLimitYen: int("1日の損失上限（円）"),
-		stopLossCooldownBars: int(
-			"損切り後に買わない本数。損切り（建値ストップを含む）の売りを出してから、stopLossCooldownTimeframe の足でこの本数ぶんの時間は新しい買いを出さない。0 は止めない",
-		),
-		stopLossCooldownTimeframe: str(
-			"損切り後に買わない本数を数える足",
-			TIMEFRAMES,
-		),
+		maxPositions: int("この買いの最大ロット数"),
 		...Object.fromEntries(
 			CONDITION_GROUPS.map((k) => [k, group(CONDITION_GROUP_LABELS[k])]),
 		),
@@ -178,15 +167,50 @@ export const IMPROVED_STRATEGY_SCHEMA: ResponseSchema = {
 		},
 	},
 	required: [
-		"frequency",
+		"id",
+		"name",
 		"orderSizeBtc",
 		"maxPositions",
-		"dailyLossLimitYen",
-		"stopLossCooldownBars",
-		"stopLossCooldownTimeframe",
 		...CONDITION_GROUPS,
 		"partialSell",
 		"buyOrder",
+	],
+};
+
+/** 構造化出力で強制する形。画面の項目との対応は description で伝える */
+export const IMPROVED_STRATEGY_SCHEMA: ResponseSchema = {
+	type: "OBJECT",
+	properties: {
+		frequency: {
+			type: "OBJECT",
+			description: "判定の間隔",
+			properties: {
+				flat: { ...FREQUENCY, description: "保有なしのとき" },
+				holding: { ...FREQUENCY, description: "保有中のとき" },
+			},
+			required: ["flat", "holding"],
+		},
+		dailyLossLimitYen: int("1日の損失上限（円）"),
+		stopLossCooldownBars: int(
+			"損切り後に買わない本数。損切り（建値ストップを含む）の売りを出してから、stopLossCooldownTimeframe の足でこの本数ぶんの時間は、どの買いも新しい買いを出さない。0 は止めない",
+		),
+		stopLossCooldownTimeframe: str(
+			"損切り後に買わない本数を数える足",
+			TIMEFRAMES,
+		),
+		buys: {
+			type: "ARRAY",
+			description:
+				"買い（1〜5個）。上ほど優先し、同じ判定で複数成立したら上の1つだけ注文する。ロットは買った買いの売りの条件で売る",
+			items: BUY_RULE,
+		},
+	},
+	required: [
+		"frequency",
+		"dailyLossLimitYen",
+		"stopLossCooldownBars",
+		"stopLossCooldownTimeframe",
+		"buys",
 	],
 };
 
@@ -212,17 +236,26 @@ export function readImprovedStrategy(
 	const fail = (reason: string): ImprovedStrategy => ({ ok: false, reason });
 	if (typeof raw !== "object" || raw === null)
 		return fail("AI の応答に改善版の戦略が無い");
-	const { orderSizeBtc, dailyLossLimitYen, ...rest } = dropNulls(raw) as Record<
+	const { dailyLossLimitYen, buys, ...rest } = dropNulls(raw) as Record<
 		string,
 		unknown
 	>;
 	const params = parseConditionSet({
 		...rest,
-		orderSize:
-			typeof orderSizeBtc === "number"
-				? Math.round(orderSizeBtc * SATOSHI_PER_BTC)
-				: undefined,
 		dailyLossLimit: dailyLossLimitYen,
+		buys: Array.isArray(buys)
+			? buys.map((b) => {
+					if (typeof b !== "object" || b === null) return b;
+					const { orderSizeBtc, ...r } = b as Record<string, unknown>;
+					return {
+						...r,
+						orderSize:
+							typeof orderSizeBtc === "number"
+								? Math.round(orderSizeBtc * SATOSHI_PER_BTC)
+								: undefined,
+					};
+				})
+			: buys,
 	});
 	if (!params) return fail("AI の出した改善版の戦略の形が正しくない");
 	const errors = validateConditionSet(params);

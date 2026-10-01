@@ -90,9 +90,11 @@ export function strategyRsi(params: ConditionSet | null): RsiSetting | null {
 /** 戦略のボリンジャーバンド。使っていなければ null。複数あれば本数が短い方（同じ本数なら σ が小さい方） */
 export function strategyBb(params: ConditionSet | null): BbSetting | null {
 	if (!params) return null;
-	const all = CONDITION_GROUPS.flatMap((k) =>
-		params[k].conditions.flatMap((c) =>
-			c.type === "bollinger" ? [{ period: c.period, sigma: c.sigma }] : [],
+	const all = params.buys.flatMap((b) =>
+		CONDITION_GROUPS.flatMap((k) =>
+			b[k].conditions.flatMap((c) =>
+				c.type === "bollinger" ? [{ period: c.period, sigma: c.sigma }] : [],
+			),
 		),
 	);
 	all.sort((a, b) => a.period - b.period || a.sigma - b.sigma);

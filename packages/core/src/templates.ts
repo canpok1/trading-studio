@@ -9,6 +9,7 @@ import {
 	DEFAULT_PARTIAL_SELL,
 	DEFAULT_STOP_LOSS_COOLDOWN_BARS,
 	MARKET_BUY_ORDER,
+	singleBuy,
 } from "./condition-strategy";
 
 export const TEMPLATE_IDS = ["blank", "trend", "range"] as const;
@@ -24,7 +25,7 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 	blank: {
 		name: "空の戦略",
 		description: "損切りの条件だけ入った状態から組み立てる。",
-		params: {
+		params: singleBuy({
 			frequency: {
 				flat: { value: 1, unit: "h" },
 				holding: { value: 15, unit: "m" },
@@ -43,12 +44,12 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 				match: "any",
 				conditions: [{ type: "entryChange", percent: 2, direction: "down" }],
 			},
-		},
+		}),
 	},
 	trend: {
 		name: "トレンド追随",
 		description: "上昇の流れに乗って買い、流れが変わったら売る。",
-		params: {
+		params: singleBuy({
 			frequency: {
 				flat: { value: 1, unit: "h" },
 				holding: { value: 15, unit: "m" },
@@ -91,12 +92,12 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 				match: "any",
 				conditions: [{ type: "entryChange", percent: 2, direction: "down" }],
 			},
-		},
+		}),
 	},
 	range: {
 		name: "レンジ逆張り",
 		description: "直近の安値を割ったところで買い、戻したところで売る。",
-		params: {
+		params: singleBuy({
 			frequency: {
 				flat: { value: 30, unit: "m" },
 				holding: { value: 30, unit: "m" },
@@ -131,7 +132,7 @@ const TEMPLATES: Record<TemplateId, StrategyTemplate> = {
 				match: "any",
 				conditions: [{ type: "entryChange", percent: 1.5, direction: "down" }],
 			},
-		},
+		}),
 	},
 };
 

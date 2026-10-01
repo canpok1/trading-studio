@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import type { Candle, ConditionSet } from "@trading-studio/core";
+import type {
+	Candle,
+	ConditionSet,
+	SingleBuyConditionSet,
+} from "@trading-studio/core";
 import {
 	DEFAULT_BUY_ORDER,
 	DEFAULT_PARTIAL_SELL,
+	singleBuy,
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
 import { createTestApp } from "../test-app";
@@ -15,7 +20,7 @@ const H = TIMEFRAME_MS["1h"];
 const START = Date.UTC(2026, 6, 31, 15);
 const DAYS = 20;
 
-const PARAMS: ConditionSet = {
+const FLAT: SingleBuyConditionSet = {
 	frequency: {
 		flat: { value: 1, unit: "h" },
 		holding: { value: 1, unit: "h" },
@@ -43,6 +48,7 @@ const PARAMS: ConditionSet = {
 		conditions: [{ type: "entryChange", percent: 1, direction: "down" }],
 	},
 };
+const PARAMS: ConditionSet = singleBuy(FLAT);
 
 // 2日周期で ±5% 動く値動き。買いの指値が約定するよう、安値側のひげを長くする
 function candles(from: number, bars: number): Candle[] {
@@ -298,7 +304,10 @@ describe("バックテストの実行", () => {
 
 	test("入力の誤りは実行しない", async () => {
 		const t = setup();
-		const bad = await post(t, body({ params: { ...PARAMS, orderSize: 0 } }));
+		const bad = await post(
+			t,
+			body({ params: singleBuy({ ...FLAT, orderSize: 0 }) }),
+		);
 		expect(bad.status).toBe(400);
 		expect(bad.json.kind).toBe("invalid_params");
 		const period = await post(
@@ -323,12 +332,12 @@ describe("バックテストの実行", () => {
 		await t.backtests.running();
 
 		// 実行後に戦略を変えても、結果の条件は変わらない
-		t.strategies.updateParams(s.strategy.id, {
-			...PARAMS,
-			orderSize: 2_000_000,
-		});
+		t.strategies.updateParams(
+			s.strategy.id,
+			singleBuy({ ...FLAT, orderSize: 2_000_000 }),
+		);
 		const run = t.backtests.get(id) as BacktestRun;
-		expect(run.params.orderSize).toBe(1_000_000);
+		expect(run.params.buys[0]?.orderSize).toBe(1_000_000);
 		expect(run.name).toBe("名前付き");
 
 		const save = (b: unknown) =>
@@ -343,7 +352,9 @@ describe("バックテストの実行", () => {
 		expect(res.status).toBe(200);
 		const created = ((await res.json()) as { strategy: { id: number } })
 			.strategy;
-		expect(t.strategies.get(created.id)?.params.orderSize).toBe(1_000_000);
+		expect(t.strategies.get(created.id)?.params.buys[0]?.orderSize).toBe(
+			1_000_000,
+		);
 		// 保存しても実行の名前は変わらない
 		expect((t.backtests.get(id) as BacktestRun).name).toBe("名前付き");
 	});
@@ -453,15 +464,15 @@ describe("チャートの AI 判定", () => {
 });
 
 describe("AI 判定の条件", () => {
-	const withJudgment: ConditionSet = {
-		...PARAMS,
+	const withJudgment: ConditionSet = singleBuy({
+		...FLAT,
 		buy: {
 			match: "all",
 			conditions: [
 				{ type: "judgment", judge: "sentiment", values: ["+2", "+1"] },
 			],
 		},
-	};
+	});
 
 	function score(t: T, at: number, sentiment: number) {
 		const source = t.newsRepo.insertSource(
@@ -521,8 +532,8 @@ describe("AI 判定の条件", () => {
 		const t = setup();
 		const recorded = START + 5 * 24 * H;
 		score(t, recorded, 0);
-		const params: ConditionSet = {
-			...PARAMS,
+		const params: ConditionSet = singleBuy({
+			...FLAT,
 			buy: {
 				match: "all",
 				conditions: [
@@ -533,7 +544,7 @@ describe("AI 判定の条件", () => {
 					},
 				],
 			},
-		};
+		});
 		const r = await post(t, body({ params }));
 		expect(r.status).toBe(202);
 		const run = r.json.run as BacktestRun;
