@@ -20,6 +20,7 @@ import { AdviceSection } from "../components/backtest/AdviceSection";
 import { OrderRow, OrderSheet, Stat } from "../components/backtest/OrderViews";
 import { alignJudgments } from "../components/chart/judgment-data";
 import { PriceChart } from "../components/chart/PriceChart";
+import { GradeBadge, GradeHelp } from "../components/Grade";
 import { Modal } from "../components/Modal";
 import { Page } from "../components/Page";
 import { EmptyState, ErrorState, LoadingCard } from "../components/States";
@@ -35,6 +36,14 @@ import {
 	ruleText,
 	stepLimitedText,
 } from "../lib/condition-text";
+import {
+	buyHoldPercentOf,
+	gradeMaxDrawdown,
+	gradePnl,
+	gradeProfitFactor,
+	gradeTrades,
+	gradeWinRate,
+} from "../lib/grade";
 import {
 	formatInt,
 	formatSignedInt,
@@ -379,6 +388,7 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 	const indicators = useChartIndicators(run.params);
 	const noOrders = run.orderCount === 0;
 	const tone = (n: number) => (n >= 0 ? "text-profit" : "text-loss");
+	const buyHold = buyHoldPercentOf(chart.bars);
 
 	return (
 		// 広い画面は上段に条件と成績を並べ、チャート以下は2列幅で縦に積む
@@ -388,9 +398,15 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 				aria-label="成績の要約"
 				className="flex flex-col gap-3.5 rounded-xl border border-line bg-surface px-4 py-3.5"
 			>
-				<h2 className="text-[15px] font-bold">成績</h2>
+				<div className="flex items-center gap-1.5">
+					<h2 className="text-[15px] font-bold">成績</h2>
+					<GradeHelp />
+				</div>
 				<div className="flex flex-col gap-0.5">
-					<span className="text-xs text-text-2">損益</span>
+					<span className="flex items-center gap-1.5 text-xs text-text-2">
+						損益
+						<GradeBadge value={gradePnl(s.pnlPercent, buyHold)} />
+					</span>
 					<div className="flex items-baseline gap-2.5">
 						<span
 							className={`num text-[30px] font-semibold tracking-tight ${tone(s.pnl)}`}
@@ -401,12 +417,18 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 							{formatSignedPercent(s.pnlPercent)}
 						</span>
 					</div>
+					{buyHold !== null && (
+						<span className="num text-xs text-text-2">
+							ガチホなら {formatSignedPercent(buyHold)}
+						</span>
+					)}
 				</div>
 				<div className="grid grid-cols-3 gap-x-2 gap-y-3 border-t border-line pt-3">
 					<Stat
 						label="勝率"
 						value={s.winRate !== null ? `${s.winRate.toFixed(1)}%` : "—"}
 						sub={`${s.wins}勝 ${s.losses}敗`}
+						grade={gradeWinRate(s.winRate)}
 					/>
 					<Stat
 						label="最大DD"
@@ -416,6 +438,7 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 								: "0.0%"
 						}
 						tone="text-loss"
+						grade={gradeMaxDrawdown(s.maxDrawdownPercent)}
 						sub={
 							s.maxDrawdownFrom !== null && s.maxDrawdownTo !== null
 								? `${formatDate(s.maxDrawdownFrom).slice(5)}〜${formatDate(s.maxDrawdownTo).slice(5)}`
@@ -431,8 +454,14 @@ function Result({ run, chart }: { run: BacktestRun; chart: BacktestChart }) {
 									? "∞"
 									: s.profitFactor.toFixed(2)
 						}
+						grade={gradeProfitFactor(s.profitFactor, s.trades)}
 					/>
-					<Stat label="取引回数" value={String(s.trades)} sub="往復" />
+					<Stat
+						label="取引回数"
+						value={String(s.trades)}
+						sub="往復"
+						grade={gradeTrades(s.trades)}
+					/>
 					<Stat
 						label="平均保有"
 						value={

@@ -3,11 +3,19 @@
 import type { TradingPerformance } from "@trading-studio/backend";
 import { formatDate, formatDateTime } from "../../format";
 import {
+	gradeMaxDrawdown,
+	gradePnl,
+	gradeProfitFactor,
+	gradeTrades,
+	gradeWinRate,
+} from "../../lib/grade";
+import {
 	formatSignedInt,
 	formatSignedPercent,
 	holdingText,
 } from "../../lib/number";
 import { Stat } from "../backtest/OrderViews";
+import { GradeBadge, GradeHelp } from "../Grade";
 import { Skeleton } from "../States";
 import { PANEL, PanelHeader } from "./Panel";
 
@@ -23,7 +31,7 @@ export function PerformancePanel({
 }) {
 	return (
 		<section aria-label="成績" className={PANEL}>
-			<PanelHeader title="成績" />
+			<PanelHeader title="成績" tag={<GradeHelp />} />
 			{p === null ? (
 				error ? (
 					<p role="alert" className="text-xs font-semibold text-loss">
@@ -35,7 +43,10 @@ export function PerformancePanel({
 			) : (
 				<>
 					<div className="flex flex-col gap-0.5">
-						<span className="text-xs text-text-2">開始からの損益</span>
+						<span className="flex items-center gap-1.5 text-xs text-text-2">
+							開始からの損益
+							<GradeBadge value={gradePnl(p.pnlPercent, p.buyHoldPercent)} />
+						</span>
 						<div className="flex items-baseline gap-2.5">
 							<span
 								data-testid="home-pnl"
@@ -51,6 +62,8 @@ export function PerformancePanel({
 						</div>
 						<span className="num text-xs text-text-2">
 							{formatDateTime(p.resetAt)} から（口座のリセット以降）
+							{p.buyHoldPercent !== null &&
+								`。ガチホなら ${formatSignedPercent(p.buyHoldPercent)}`}
 						</span>
 					</div>
 					<div className="grid grid-cols-3 gap-x-2 gap-y-3">
@@ -63,6 +76,7 @@ export function PerformancePanel({
 							label="勝率"
 							value={p.winRate !== null ? `${p.winRate.toFixed(1)}%` : "—"}
 							sub={`${p.wins}勝 ${p.losses}敗`}
+							grade={gradeWinRate(p.winRate)}
 						/>
 						<Stat
 							label="最大DD"
@@ -72,6 +86,7 @@ export function PerformancePanel({
 									: "0.0%"
 							}
 							tone="text-loss"
+							grade={gradeMaxDrawdown(p.maxDrawdownPercent)}
 							sub={
 								p.maxDrawdownFrom !== null && p.maxDrawdownTo !== null
 									? `${formatDate(p.maxDrawdownFrom).slice(5)}〜${formatDate(p.maxDrawdownTo).slice(5)}`
@@ -87,10 +102,12 @@ export function PerformancePanel({
 										? "∞"
 										: p.profitFactor.toFixed(2)
 							}
+							grade={gradeProfitFactor(p.profitFactor, p.trades)}
 						/>
 						<Stat
 							label="取引回数"
 							value={String(p.trades)}
+							grade={gradeTrades(p.trades)}
 							sub={`平均保有 ${p.averageHoldingMs !== null ? holdingText(p.averageHoldingMs) : "—"}`}
 						/>
 					</div>

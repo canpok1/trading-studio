@@ -32,6 +32,7 @@ export function tradingPerformance({
 	price,
 	fills,
 	prices,
+	basePrice,
 }: {
 	initialCash: number;
 	resetAt: number;
@@ -41,6 +42,8 @@ export function tradingPerformance({
 	price: number | null;
 	fills: readonly TradeOrder[];
 	prices: readonly PricePoint[];
+	/** リセットした時点の価格。分からなければ null */
+	basePrice: number | null;
 }): TradingPerformance {
 	// 約定をたどって、各時点の現金と数量を出す（core の約定と同じ丸め）
 	let c = initialCash;
@@ -125,6 +128,10 @@ export function tradingPerformance({
 		equity,
 		pnl,
 		pnlPercent: pnl === null ? null : (pnl / initialCash) * 100,
+		buyHoldPercent:
+			basePrice !== null && basePrice > 0 && price !== null
+				? (price / basePrice - 1) * 100
+				: null,
 		realizedPnl,
 		trades: trades.length,
 		wins: wins.length,

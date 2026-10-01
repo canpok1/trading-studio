@@ -129,6 +129,8 @@ test("ひな形から名前を付けて実行すると結果が出て、注文�
 	const summary = page.getByRole("region", { name: "成績の要約" });
 	await expect(summary).toContainText("損益");
 	await expect(summary).toContainText("取引回数");
+	// 取引回数の評価は取引が無くても出る
+	await expect(summary.getByTestId("grade-badge").first()).toBeVisible();
 	await expect(page.getByRole("img", { name: "価格チャート" })).toBeVisible();
 	await expect(
 		page.getByRole("button", { name: "ローソク足", exact: true }),
