@@ -96,6 +96,20 @@ export type BacktestChart = {
 
 export type OrderFilter = "filled" | "all";
 
+/** 実行の一覧の並び。new=実行の新しい順、pnl=損益率の高い順（成績の無いものは最後） */
+export type RunSort = "new" | "pnl";
+
+export type RunFilter = {
+	limit: number;
+	/** 名前のキーワード。空白で区切った語をすべて含むもの */
+	q: string;
+	/** 失敗・中止を除く */
+	hideFailed: boolean;
+	sort: RunSort;
+};
+
+export type RunListResult = { runs: BacktestRun[]; total: number };
+
 export type StartBacktestResult =
 	| { ok: true; run: BacktestRun }
 	| { ok: false; error: StartBacktestFailure };
@@ -130,7 +144,7 @@ export interface BacktestService {
 	current(): BacktestRun | null;
 	/** 実行中なら中止を求める。中止は計算の区切りで効く */
 	cancel(id: number): BacktestRun | null;
-	list(): BacktestRun[];
+	list(filter?: Partial<RunFilter>): RunListResult;
 	/** timeframe の足で返す。足が maxBars（既定はチャートの上限）より多ければ too_many */
 	chart(
 		id: number,

@@ -339,13 +339,7 @@ function createServer({
 			},
 			annotations: readOnly,
 		},
-		({ limit }) =>
-			text(
-				backtests
-					.list()
-					.slice(0, limit)
-					.map((r) => runView(r)),
-			),
+		({ limit }) => text(backtests.list({ limit }).runs.map((r) => runView(r))),
 	);
 
 	server.registerTool(

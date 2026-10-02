@@ -273,8 +273,9 @@ export function createBacktestService({
 			return get(id);
 		},
 
-		list() {
-			return repo.list().map(withProgress);
+		list(filter) {
+			const r = repo.list(filter);
+			return { ...r, runs: r.runs.map(withProgress) };
 		},
 
 		chart(id, timeframe, maxBars = MAX_CHART_BARS) {

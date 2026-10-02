@@ -12,7 +12,13 @@ import type {
 import { parseAggregationRule, parseConditionSet } from "@trading-studio/core";
 import type { Db } from "../db/open";
 import type { RunnerOutput } from "./runner";
-import type { BacktestChart, BacktestRun, BacktestStatus } from "./types";
+import type {
+	BacktestChart,
+	BacktestRun,
+	BacktestStatus,
+	RunFilter,
+	RunListResult,
+} from "./types";
 
 type RunRow = {
 	id: number;
@@ -166,11 +172,37 @@ export class BacktestRepository {
 		return r ? toRun(r) : null;
 	}
 
-	list(limit = 100): BacktestRun[] {
-		return this.sql
-			.query<RunRow, [number]>(`${SELECT_RUN} order by r.id desc limit ?`)
-			.all(limit)
+	list({
+		limit = 100,
+		q = "",
+		hideFailed = false,
+		sort = "new",
+	}: Partial<RunFilter> = {}): RunListResult {
+		const where: string[] = [];
+		const args: (string | number)[] = [];
+		for (const word of q.split(/\s+/).filter(Boolean)) {
+			where.push("r.strategy_name like ? escape '\\'");
+			args.push(`%${word.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+		}
+		if (hideFailed) where.push("r.status not in ('failed', 'canceled')");
+		const cond = where.length ? ` where ${where.join(" and ")}` : "";
+		const order =
+			sort === "pnl"
+				? "json_extract(r.summary, '$.pnlPercent') is null, json_extract(r.summary, '$.pnlPercent') desc, r.id desc"
+				: "r.id desc";
+		const total =
+			this.sql
+				.query<{ c: number }, (string | number)[]>(
+					`select count(*) as c from backtest_runs r${cond}`,
+				)
+				.get(...args)?.c ?? 0;
+		const runs = this.sql
+			.query<RunRow, (string | number)[]>(
+				`${SELECT_RUN}${cond} order by ${order} limit ?`,
+			)
+			.all(...args, limit)
 			.map(toRun);
+		return { runs, total };
 	}
 
 	/** 開始時刻が [from, to) の完了した実行（新しい順） */
