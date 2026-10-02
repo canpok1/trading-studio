@@ -203,6 +203,12 @@ test("期間に欠損があると確認が出て、飛ばして実行できる",
 	).toBeVisible();
 	const history = page.getByRole("region", { name: "過去の実行" });
 	await expect(history.getByRole("link").first()).toContainText(name);
+	// 名前で絞ると条件を URL に持ち、合わなければその旨を出す
+	await history.getByRole("searchbox", { name: "名前で探す" }).fill("該当なし");
+	await expect(page).toHaveURL(/[?&]q=/);
+	await expect(history.getByText("条件に合う実行が無い。")).toBeVisible();
+	await history.getByRole("searchbox", { name: "名前で探す" }).fill(name);
+	await expect(history.getByRole("link").first()).toContainText(name);
 	// 履歴のタブに実行の画面は出さず、「実行」のタブへ戻せる
 	await expect(
 		page.getByRole("button", { name: "バックテストを実行" }),

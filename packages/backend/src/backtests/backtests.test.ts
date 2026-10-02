@@ -660,3 +660,42 @@ describe("AI 判定の条件", () => {
 		expect((plain.json.run as BacktestRun).criteriaVersion).toBeNull();
 	});
 });
+
+test("実行の一覧は件数・名前のキーワード・失敗と中止を除く・損益順で絞れる", async () => {
+	const t = createTestApp();
+	const insert = t.db.$client.prepare(
+		"insert into backtest_runs (strategy_name, params, timeframe, from_time, to_time, initial_cash, fee_limit_ppm, fee_market_ppm, skip_gaps, status, started_at, bar_count, summary) values (?, ?, '1h', 0, 1, 1, 1, 1, 0, ?, 0, 1, ?)",
+	);
+	const runs: [string, string, number | null][] = [
+		["トレンド 100%", "done", 3],
+		["トレンド_改善版", "done", -2],
+		["レンジ", "failed", null],
+		["トレンド", "canceled", null],
+		["レンジ 改善版", "done", 8],
+	];
+	for (const [name, status, pnl] of runs) {
+		insert.run(
+			name,
+			JSON.stringify(PARAMS),
+			status,
+			pnl === null ? null : JSON.stringify({ pnlPercent: pnl }),
+		);
+	}
+	const ids = async (q = "") => {
+		const r = await getJson<{ runs: BacktestRun[]; total: number }>(
+			t,
+			`/api/backtests${q}`,
+		);
+		return { ids: r.runs.map((x) => x.id), total: r.total };
+	};
+	expect(await ids()).toEqual({ ids: [5, 4, 3, 2, 1], total: 5 });
+	expect(await ids("?limit=2")).toEqual({ ids: [5, 4], total: 5 });
+	// 空白で区切った語はすべて含むもの。% と _ は文字そのものとして探す
+	expect(await ids("?q=改善版%20トレンド")).toEqual({ ids: [2], total: 1 });
+	expect(await ids("?q=_")).toEqual({ ids: [2], total: 1 });
+	expect(await ids("?q=%25")).toEqual({ ids: [1], total: 1 });
+	expect(await ids("?hideFailed=1")).toEqual({ ids: [5, 2, 1], total: 3 });
+	// 成績の無いものは最後（新しい順）
+	expect(await ids("?sort=pnl")).toEqual({ ids: [5, 1, 2, 4, 3], total: 5 });
+	expect((await t.app.request("/api/backtests?limit=0")).status).toBe(400);
+});

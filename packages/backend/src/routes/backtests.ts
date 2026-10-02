@@ -15,13 +15,32 @@ const num = (v: unknown) => (typeof v === "number" ? v : Number.NaN);
 
 const NOT_FOUND = { message: "バックテストの実行が見つからない" };
 
+/** 実行の一覧の既定の件数と上限 */
+const RUNS_PAGE = 20;
+const MAX_RUNS = 1000;
+
 /** 注文一覧の1ページの上限 */
 const MAX_LIMIT = 200;
 
 export function backtestRoutes(service: BacktestService) {
 	return (
 		new Hono()
-			.get("/", (c) => c.json({ runs: service.list() }))
+			.get("/", (c) => {
+				const q = c.req.query();
+				const limit = q.limit === undefined ? RUNS_PAGE : Number(q.limit);
+				if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_RUNS) {
+					return c.json({ message: `件数は 1〜${MAX_RUNS}` }, 400);
+				}
+				return c.json(
+					service.list({
+						limit,
+						q: q.q ?? "",
+						hideFailed: q.hideFailed === "1",
+						sort: q.sort === "pnl" ? "pnl" : "new",
+					}),
+					200,
+				);
+			})
 			.post(
 				"/",
 				validator("json", (v, c) => {

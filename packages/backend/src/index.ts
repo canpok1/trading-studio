@@ -10,6 +10,8 @@ export type {
 	BacktestChart,
 	BacktestMarker,
 	BacktestRun,
+	RunListResult,
+	RunSort,
 } from "./backtests/types";
 export type { CollectorStatus } from "./collector/types";
 export type { CurrentJudgment, JudgmentSeries } from "./judgments/types";
