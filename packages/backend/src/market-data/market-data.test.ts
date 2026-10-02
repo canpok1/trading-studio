@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { TIMEFRAME_MS } from "@trading-studio/core";
 import { createTestApp } from "../test-app";
+import { MarketDataRepository } from "./repository";
 import type { ImportJob } from "./types";
 
 const M = TIMEFRAME_MS["1m"];
@@ -242,6 +243,45 @@ describe("過去データの取り込み", () => {
 		expect(m1?.gaps).toEqual([
 			{ from: DAY + 2 * M, to: DAY + 5 * M, missing: 3 },
 		]);
+	});
+
+	test("一度欠損を探した後に足を書いても、全部を探し直したときと同じ欠損を返す", async () => {
+		const t = createTestApp();
+		await importCsv(t, csv([DAY, DAY + 5 * M, DAY + 10 * M, DAY + 20 * M]));
+		const fresh = () => new MarketDataRepository(t.db).coverage();
+		const bar = (time: number) => ({
+			time,
+			open: 1,
+			high: 1,
+			low: 1,
+			close: 1,
+			volume: 1,
+		});
+		const steps: (() => unknown)[] = [
+			// 欠損の中ほどを埋める・欠損の端を埋める・最後の足の後に続ける・最初の足より前に足す
+			() => t.marketDataRepo.upsertCollected([bar(DAY + 7 * M)]),
+			() => t.marketDataRepo.upsertCollected([bar(DAY + 11 * M)]),
+			() =>
+				t.marketDataRepo.upsertCollected([
+					bar(DAY + 21 * M),
+					bar(DAY + 30 * M),
+				]),
+			() => importCsv(t, csv([DAY - 3 * M, DAY + 15 * M])),
+			() =>
+				t.marketDataRepo.refillDerived(DAY, DAY + 31 * M, null, {
+					overrideImported: true,
+				}),
+		];
+		t.marketDataRepo.coverage();
+		for (const step of steps) {
+			await step();
+			expect(t.marketDataRepo.coverage()).toEqual(fresh());
+		}
+		// 取り込みを取り消すと足が消えるので、覚えた欠損を捨てて探し直す
+		const job = await importCsv(t, csv([DAY + 40 * M]));
+		t.marketDataRepo.coverage();
+		t.marketDataRepo.deleteImported(job.id);
+		expect(t.marketDataRepo.coverage()).toEqual(fresh());
 	});
 
 	test("取り込み中に2件目は受け付けない。中止すると何も残らない", async () => {
