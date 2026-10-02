@@ -61,8 +61,75 @@ function toJob(r: ImportRow): ImportJob {
 /** 画面に返す欠損の上限 */
 const MAX_GAPS = 200;
 
+/** 足を書いた期間の時刻の範囲 [from, to) */
+type Span = { from: number; to: number };
+
+const spanOf = (times: Iterable<number>): Span | null => {
+	let from = Number.POSITIVE_INFINITY;
+	let to = Number.NEGATIVE_INFINITY;
+	for (const t of times) {
+		from = Math.min(from, t);
+		to = Math.max(to, t + 1);
+	}
+	return from < to ? { from, to } : null;
+};
+
 export class MarketDataRepository {
 	constructor(private readonly db: Db) {}
+
+	/**
+	 * 粒度ごとの欠損の一覧と、前回探してから足を書いた期間。
+	 * 全部の足をたどって欠損を探すと1年分の1分足で 0.5 秒かかるため、書いた期間の前後だけ探し直す。
+	 * 他のインスタンスが書いた足には追従しないので、足を書くインスタンスは1つにする
+	 */
+	private readonly gapCache = new Map<
+		Timeframe,
+		{ gaps: Gap[]; dirty: Span | null }
+	>();
+
+	private markWritten(timeframe: Timeframe, span: Span | null): void {
+		const c = this.gapCache.get(timeframe);
+		if (!c || !span) return;
+		c.dirty = c.dirty
+			? {
+					from: Math.min(c.dirty.from, span.from),
+					to: Math.max(c.dirty.to, span.to),
+				}
+			: span;
+	}
+
+	/** 欠損の一覧（古い順、全期間） */
+	private allGaps(timeframe: Timeframe): Gap[] {
+		const c = this.gapCache.get(timeframe);
+		if (!c) {
+			const gaps = this.gaps(timeframe);
+			this.gapCache.set(timeframe, { gaps, dirty: null });
+			return gaps;
+		}
+		if (!c.dirty) return c.gaps;
+		// 書いた期間の直前・直後の足は前からある足なので、その間の欠損だけが変わりうる（足は消さない。消すときは覚えた一覧を捨てる）
+		const { from, to } = c.dirty;
+		const lo =
+			this.sql
+				.query<{ t: number | null }, [string, number]>(
+					"select max(time) as t from candles where timeframe = ? and time < ?",
+				)
+				.get(timeframe, from)?.t ?? Number.MIN_SAFE_INTEGER;
+		const hi =
+			this.sql
+				.query<{ t: number | null }, [string, number]>(
+					"select min(time) as t from candles where timeframe = ? and time >= ?",
+				)
+				.get(timeframe, to)?.t ?? Number.MAX_SAFE_INTEGER;
+		const step = TIMEFRAME_MS[timeframe];
+		const inside = (g: Gap) => g.from - step >= lo && g.to <= hi;
+		c.gaps = [
+			...c.gaps.filter((g) => !inside(g)),
+			...this.gaps(timeframe, lo, hi + 1),
+		].sort((a, b) => a.from - b.from);
+		c.dirty = null;
+		return c.gaps;
+	}
 
 	private get sql() {
 		return this.db.$client;
@@ -166,6 +233,7 @@ export class MarketDataRepository {
 				).changes;
 			}
 		})();
+		this.markWritten(timeframe, spanOf(rows.map((c) => c.time)));
 		return { inserted, skipped: rows.length - inserted };
 	}
 
@@ -200,6 +268,7 @@ export class MarketDataRepository {
 	/** 取り込みを取り消す。その取り込みで保存した足を消す */
 	deleteImported(importId: number): void {
 		this.sql.run("delete from candles where import_id = ?", [importId]);
+		this.gapCache.clear();
 	}
 
 	loadCandles(timeframe: Timeframe, from: number, to: number): Candle[] {
@@ -326,6 +395,7 @@ export class MarketDataRepository {
 					).changes;
 				}
 			})();
+			this.markWritten(target, { from: start, to: end });
 		}
 		return written;
 	}
@@ -344,6 +414,7 @@ export class MarketDataRepository {
 				stmt.run(c.time, c.open, c.high, c.low, c.close, c.volume);
 			}
 		})();
+		this.markWritten("1m", spanOf(rows.map((c) => c.time)));
 	}
 
 	/**
@@ -452,7 +523,7 @@ export class MarketDataRepository {
 					"select count(*) as count, sum(source != 'derived') as imported, min(time) as first, max(time) as last from candles where timeframe = ?",
 				)
 				.get(timeframe);
-			const gaps = this.gaps(timeframe);
+			const gaps = this.allGaps(timeframe);
 			return {
 				timeframe,
 				count: s?.count ?? 0,
