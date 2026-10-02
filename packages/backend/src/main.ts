@@ -36,6 +36,7 @@ import { RetentionRepository } from "./retention/repository";
 import { createRetentionService } from "./retention/service";
 import { ScoringAnalysisRepository } from "./scoring-analysis/repository";
 import { createScoringAnalysis } from "./scoring-analysis/service";
+import { slowRequestLog, watchEventLoopLag } from "./slow-log";
 import { serveFrontend } from "./static";
 import { createStrategyService } from "./strategies/service";
 import { TradingRepository } from "./trading/repository";
@@ -184,6 +185,7 @@ const scoringAnalysis = createScoringAnalysis({
 	scorer,
 });
 const server = new Hono()
+	.use("/api/*", slowRequestLog())
 	// 画面の配信（GET *）より前に置く
 	.route(
 		"/mcp",
@@ -225,6 +227,7 @@ const server = new Hono()
 		}),
 	);
 serveFrontend(server, distDir);
+const stopLagWatch = watchEventLoopLag();
 
 const http = Bun.serve({
 	hostname,
@@ -249,6 +252,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
 		clearInterval(scorerTimer);
 		clearInterval(tradingTimer);
 		clearInterval(retentionTimer);
+		stopLagWatch();
 		collector.stop();
 		await http.stop();
 		db.$client.close();

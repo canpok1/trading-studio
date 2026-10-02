@@ -33,3 +33,7 @@ docker compose up -d
 コンテナはホストの `127.0.0.1:3000` にだけ公開し、Tailscale Serve で tailnet 内へ HTTPS で中継する（ADR 0003・0004）。Tailscale に接続した端末から `https://<mini-pc のマシン名>.<tailnet 名>.ts.net/` で開く。自宅 LAN 内でも、Tailscale に接続していない端末からは開けない。Tailscale の導入と Serve の設定は mini-pc-setup が行う。
 
 **cloudflared（Cloudflare Tunnel）経由では公開しない。** インターネットに公開され、ログイン機能の無いこのアプリを誰でも操作できてしまうため。
+
+## 画面が遅いときの調べ方
+
+backend は応答に0.2秒以上かかった API（`slow api: GET /api/... 512ms 200`）と、処理が詰まってどの要求にも応えられなかった時間（`event loop blocked: 800ms`）をログに出す。`docker compose logs trading-studio | grep -E "slow api|event loop"` で見る。前者は API 自体が重い、後者は別の処理（定期処理など）に塞がれている。
