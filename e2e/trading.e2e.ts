@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { chooseStrategy, openRunSettings } from "./run-settings";
 
 /** 注文の行の名前（「買 0.020 BTC · 約定 …」） */
 const ORDER_ROW = / · (約定|注文中|取消)/;
@@ -14,8 +15,7 @@ test("ホームで自動取引をオンにすると帯が全画面に出て、�
 	const { strategy } = (await res.json()) as { strategy: { id: number } };
 	try {
 		await page.goto("/home");
-		const select = page.getByLabel("運用する戦略");
-		await select.selectOption({ label: `${name}` });
+		await chooseStrategy(page, name);
 		await expect(page.getByRole("status")).toHaveText(
 			`運用する戦略を「${name}」にした`,
 		);
@@ -33,10 +33,12 @@ test("ホームで自動取引をオンにすると帯が全画面に出て、�
 		await expect(band).toContainText("ペーパー稼働中");
 		await expect(page.getByTestId("band-strategy")).toHaveText(name);
 		await expect(page.getByTestId("band-pnl")).toHaveText(
-			/^開始からの損益 [+−][\d,]+円（[+−]\d+\.\d%）$/,
+			/^通算損益 [+−][\d,]+円（[+−]\d+\.\d%）$/,
 		);
 		await expect(page.getByTestId("auto-state")).toHaveText("稼働中");
-		await expect(select).toBeDisabled();
+		let settings = await openRunSettings(page);
+		await expect(settings.getByLabel("運用する戦略")).toBeDisabled();
+		await settings.getByRole("button", { name: "閉じる" }).click();
 		// 口座のリセットは停止中だけ
 		await expect(
 			page.getByRole("button", { name: "口座をリセット" }),
@@ -69,7 +71,8 @@ test("ホームで自動取引をオンにすると帯が全画面に出て、�
 			"自動取引を停止した。今から新しい注文は出ない",
 		);
 		await expect(band).toBeHidden();
-		await expect(select).toBeEnabled();
+		settings = await openRunSettings(page);
+		await expect(settings.getByLabel("運用する戦略")).toBeEnabled();
 	} finally {
 		await page.request.post("/api/trading/runs/1/stop");
 	}
@@ -113,9 +116,11 @@ test("タブを追加して戦略ごとに別々に動かせ、2つ稼働中な�
 			`ペーパー・${name}`,
 		);
 		// 稼働中はタブを消せない
-		await expect(page.getByRole("button", { name: "タブを削除" })).toHaveCount(
-			0,
-		);
+		const settings = await openRunSettings(page);
+		await expect(
+			settings.getByRole("button", { name: "タブを削除" }),
+		).toHaveCount(0);
+		await settings.getByRole("button", { name: "閉じる" }).click();
 	} finally {
 		await page.request.post("/api/trading/runs/1/stop");
 		await page.request.post(`/api/trading/runs/${runId}/stop`);
@@ -142,7 +147,9 @@ test("タブを追加して戦略ごとに別々に動かせ、2つ稼働中な�
 	// 足したタブを消すと、先頭のタブに戻る
 	for (const tab of ["ライブ口座", name]) {
 		await page.getByRole("tab", { name: tab }).click();
-		await page.getByRole("button", { name: "タブを削除" }).click();
+		await (await openRunSettings(page))
+			.getByRole("button", { name: "タブを削除" })
+			.click();
 		await page
 			.getByRole("dialog")
 			.getByRole("button", { name: "削除する" })
@@ -151,7 +158,9 @@ test("タブを追加して戦略ごとに別々に動かせ、2つ稼働中な�
 	}
 	await expect(page.getByRole("tab")).toHaveCount(1);
 	// 最後の1つは消せない
-	await expect(page.getByRole("button", { name: "タブを削除" })).toHaveCount(0);
+	await expect(
+		(await openRunSettings(page)).getByRole("button", { name: "タブを削除" }),
+	).toHaveCount(0);
 });
 
 async function strategyId(page: import("@playwright/test").Page, name: string) {
@@ -168,7 +177,7 @@ test("条件が足りない戦略は運用する戦略に選べない", async ({
 		data: { name, from: { template: "blank" } },
 	});
 	await page.goto("/home");
-	const select = page.getByLabel("運用する戦略");
+	const select = (await openRunSettings(page)).getByLabel("運用する戦略");
 	const before = await select.inputValue();
 	await select.selectOption({ label: `${name}` });
 	await expect(page.getByRole("status")).toHaveText(
@@ -290,9 +299,7 @@ test("仮想注文が出て約定すると、ホームの保有・注文に出�
 	await expect(page.getByRole("status")).toHaveText(
 		"「ペーパー」の口座をリセットした。開始時の資金 500,000円",
 	);
-	await expect(page.getByRole("region", { name: "口座情報" })).toContainText(
-		"評価損益—",
-	);
+	await expect(page.getByTestId("home-unrealized")).toHaveText("—");
 	// 5秒ごとの読み直しを待たずに、総資産と成績がリセット後の値になる
 	await expect(page.getByTestId("account-equity")).toHaveText("500,000円", {
 		timeout: 2_000,

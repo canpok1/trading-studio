@@ -9,8 +9,6 @@ import type {
 } from "@trading-studio/backend";
 import type { Timeframe } from "@trading-studio/core";
 import {
-	JUDGE_LABELS,
-	JUDGES,
 	TIMEFRAME_LABELS,
 	TIMEFRAME_MS,
 	TIMEFRAMES,
@@ -18,7 +16,7 @@ import {
 } from "@trading-studio/core";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
 import { useApi } from "../api";
 import { orderTime } from "../components/backtest/OrderViews";
 import type { ChartBar, ChartMarker } from "../components/chart/chart-data";
@@ -30,7 +28,11 @@ import { OrdersPanel } from "../components/home/OrdersPanel";
 import { PANEL, PanelHeader } from "../components/home/Panel";
 import { PerformancePanel } from "../components/home/PerformancePanel";
 import { AddRunDialog } from "../components/home/RunDialogs";
-import { JudgmentBadge } from "../components/judgment/JudgmentBadge";
+import {
+	JudgmentTiles,
+	TotalPnlTile,
+	UnrealizedPnlTile,
+} from "../components/home/SummaryTiles";
 import { EmptyState, ErrorState, Skeleton } from "../components/States";
 import {
 	LIVE_AVAILABLE,
@@ -357,40 +359,34 @@ function HomeBody({
 					</Button>
 				</div>
 			)}
-			{run ? (
-				<AutoTradingCard
-					key={`card-${run.id}`}
-					run={run}
-					strategies={strategies}
-					canDelete={(runs?.length ?? 0) > 1}
-					onToast={showToast}
-					onDeleted={() => {
-						setSelectedOrder(null);
-						setParams({}, { replace: true });
-					}}
-				/>
-			) : (
-				<Skeleton className="h-32 rounded-xl" />
-			)}
-			{!hasAccount ? null : run ? (
-				<AccountPanel
-					key={`account-${run.id}`}
-					status={run}
-					performance={perf.performance}
-					price={latest?.price ?? null}
-					onToast={showToast}
-					onReset={() => {
-						perf.reload();
-						reloadOrders();
-					}}
-				/>
-			) : (
-				<Skeleton className="h-32 rounded-xl" />
-			)}
-			{hasAccount && (
-				<PerformancePanel performance={perf.performance} error={perf.error} />
-			)}
-			<JudgmentPanel current={current} />
+			{/* 要点: スマホは自動取引を1行で置いて下に 2×2、PC は横一列で自動取引を右端に */}
+			<div
+				className={`grid grid-cols-2 gap-2.5 lg:col-span-2 ${hasAccount ? "sm:grid-cols-4 xl:grid-cols-[repeat(4,minmax(0,1fr))_minmax(0,1.3fr)]" : "xl:grid-cols-[repeat(2,minmax(0,1fr))_minmax(0,1.3fr)]"}`}
+			>
+				{run ? (
+					<AutoTradingCard
+						key={`card-${run.id}`}
+						run={run}
+						strategies={strategies}
+						canDelete={(runs?.length ?? 0) > 1}
+						onToast={showToast}
+						onDeleted={() => {
+							setSelectedOrder(null);
+							setParams({}, { replace: true });
+						}}
+						className="col-span-full xl:order-last xl:col-span-1"
+					/>
+				) : (
+					<Skeleton className="col-span-full h-14 rounded-xl xl:order-last xl:col-span-1" />
+				)}
+				{hasAccount && run && (
+					<>
+						<TotalPnlTile performance={perf.performance} error={perf.error} />
+						<UnrealizedPnlTile status={run} price={latest?.price ?? null} />
+					</>
+				)}
+				<JudgmentTiles current={current} />
+			</div>
 			{barsError && !bars ? (
 				<section aria-label="価格チャート" className={`${PANEL} lg:col-span-2`}>
 					<PanelHeader title="チャート" />
@@ -440,6 +436,22 @@ function HomeBody({
 						</select>
 					}
 				/>
+			)}
+			{hasAccount && run && (
+				<>
+					<PerformancePanel performance={perf.performance} error={perf.error} />
+					<AccountPanel
+						key={`account-${run.id}`}
+						status={run}
+						performance={perf.performance}
+						price={latest?.price ?? null}
+						onToast={showToast}
+						onReset={() => {
+							perf.reload();
+							reloadOrders();
+						}}
+					/>
+				</>
 			)}
 			{hasAccount && (
 				<OrdersPanel
@@ -568,41 +580,6 @@ function toMarkers(
 					},
 				];
 	});
-}
-
-/** 今の市場評価。押すとニュース画面へ */
-function JudgmentPanel({ current }: { current: CurrentJudgment | null }) {
-	return (
-		<section aria-label="市場評価" className={PANEL}>
-			<PanelHeader
-				title="市場評価"
-				link={{ to: "/news", label: "ニュース ›" }}
-			/>
-			{current === null ? (
-				<Skeleton className="h-[74px]" />
-			) : (
-				<div className="grid grid-cols-2 gap-2">
-					{JUDGES.map((j) => {
-						const r = current.results[j];
-						return (
-							<Link
-								key={j}
-								to="/news"
-								data-testid={`home-judge-${j}`}
-								className="flex min-w-0 flex-col items-start gap-1.5 rounded-[10px] border border-line px-3 py-2.5 hover:bg-surface-2"
-							>
-								<span className="text-xs text-text-2">{JUDGE_LABELS[j]}</span>
-								<JudgmentBadge judge={j} value={r.value} />
-								<span className="num text-xs text-text-2">
-									{r.average === null ? "—" : `${r.average}点`}
-								</span>
-							</Link>
-						);
-					})}
-				</div>
-			)}
-		</section>
-	);
 }
 
 /** 24時間の変化率。上がれば緑・下がれば赤 */
