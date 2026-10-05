@@ -71,7 +71,7 @@ type Props = {
 	/** 最初に見せる長さ（最新から遡るミリ秒）。null なら全体を収める */
 	initialSpanMs?: number | null;
 	/**
-	 * 今のレート。渡すと価格の軸に「現在」の線と値を出す（ホーム）。
+	 * 今のレート。渡すと今のレートの線と、価格の軸に値を出す（ホーム）。
 	 * 省略すると最後の足の終値を出す（過去のデータを見るバックテスト結果）
 	 */
 	currentPrice?: number | null;
@@ -210,7 +210,7 @@ export function PriceChart({
 		bbs: ISeriesApi<"Line">[];
 		rsis: ISeriesApi<"Line">[];
 		layer: JudgeLayer;
-		/** 「現在」の線と、それを付けた系列 */
+		/** 今のレートの線と、それを付けた系列 */
 		now: {
 			series: ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
 			line: IPriceLine;
@@ -601,7 +601,8 @@ export function PriceChart({
 		c.price.priceScale().applyOptions({ scaleMargins: { top: 0.1, bottom } });
 	}, [slotJudgments, bg, hasJudgments, themeTick]);
 
-	// 今のレート。組み込みの最後の値の表示を消し、「現在」の線に置き換える。
+	// 今のレート。組み込みの最後の値の表示を消し、今のレートの線に置き換える。
+	// 線の名前（title）は描画領域の右端に出て最新の足に重なるので付けない。値は価格の軸に出す
 	// 系列を付け替えたら（themeTick は色を読み直すため）線を引き直す
 	const showNow = currentPrice !== undefined;
 	// biome-ignore lint/correctness/useExhaustiveDependencies: marksTick で系列の付け替えを、themeTick で色の変化を拾う
@@ -630,7 +631,6 @@ export function PriceChart({
 				axisLabelVisible: true,
 				axisLabelColor: color,
 				axisLabelTextColor: cssVar("--color-accent-ink"),
-				title: "現在",
 			}),
 		};
 	}, [currentPrice, showNow, marksTick, themeTick]);
