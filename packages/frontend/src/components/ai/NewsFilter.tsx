@@ -1,4 +1,5 @@
 import type { NewsImpact } from "@trading-studio/backend";
+import { DURATION_LABELS, DURATIONS } from "@trading-studio/core";
 import { useEffect, useId, useRef, useState } from "react";
 import type { NewsFilterState, NewsPeriod } from "../../lib/news-filter";
 import {
@@ -19,6 +20,7 @@ import { Button, Segmented } from "../ui";
 const TYPING_MS = 400;
 
 const IMPACTS = Object.keys(IMPACT_LABELS) as NewsImpact[];
+const ACTIVE_LABEL = "評価に使用中";
 
 const toggle = <T,>(list: readonly T[], v: T) =>
 	list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
@@ -83,6 +85,12 @@ export function NewsFilterBar({
 			</div>
 			<fieldset className="-mx-4 flex min-w-0 gap-1.5 overflow-x-auto px-4 lg:mx-0 lg:px-0">
 				<legend className="sr-only">よく使う条件</legend>
+				<Chip
+					pressed={filter.active}
+					onClick={() => onChange({ ...filter, active: !filter.active })}
+				>
+					{ACTIVE_LABEL}
+				</Chip>
 				{filter.period === "custom" && (
 					<Chip pressed onClick={() => setPeriod("custom")}>
 						{customRangeLabel(filter)}
@@ -218,6 +226,34 @@ function FilterModal({
 						</Chip>
 					))}
 				</div>
+			</section>
+			<section className="flex flex-col gap-2">
+				<h3 className="text-[13px] font-bold">持続（どれかに当てはまる）</h3>
+				<div className="flex flex-wrap gap-1.5">
+					{DURATIONS.map((d) => (
+						<Chip
+							key={d}
+							pressed={f.durations.includes(d)}
+							onClick={() => setF({ ...f, durations: toggle(f.durations, d) })}
+						>
+							{DURATION_LABELS[d]}
+						</Chip>
+					))}
+				</div>
+			</section>
+			<section className="flex flex-col gap-2">
+				<h3 className="text-[13px] font-bold">市場評価</h3>
+				<div className="flex flex-wrap gap-1.5">
+					<Chip
+						pressed={f.active}
+						onClick={() => setF({ ...f, active: !f.active })}
+					>
+						{ACTIVE_LABEL}
+					</Chip>
+				</div>
+				<p className="text-xs text-text-2">
+					上の市場評価に使っている（重みが 0% より大きい）ニュースだけ
+				</p>
 			</section>
 			<section className="flex flex-col gap-2">
 				<h3 className="text-[13px] font-bold">並び順</h3>
