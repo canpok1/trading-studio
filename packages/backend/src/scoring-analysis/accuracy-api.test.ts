@@ -44,7 +44,7 @@ async function scored() {
 }
 
 describe("GET /api/scoring/accuracy", () => {
-	test("版ごとの当たり具合と、ほかの版から採点し直した記事との比較を返す", async () => {
+	test("版ごとの精度と、ほかの版から採点し直した記事との比較を返す", async () => {
 		const t = await scored();
 		const [first] = t.db.$client
 			.query<{ id: number }, []>("select id from news order by id limit 1")

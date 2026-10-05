@@ -107,7 +107,7 @@ const OPTIONS: [ThemePreference, string][] = [
 	["dark", "ダーク"],
 ];
 
-/** プロンプトで試す記事の ID（`?trial=1,2`）。ニュース画面の当たり具合から渡す */
+/** プロンプトで試す記事の ID（`?trial=1,2`）。ニュース画面の精度分析から渡す */
 function parseTrialIds(v: string | null): number[] {
 	if (!v) return [];
 	return v

@@ -1,10 +1,10 @@
-// 市場評価の当たり具合（ニュース画面のカード）の型。app.ts から参照されるため、Bun 固有の型を持ち込まない（docs/news-page.md）
+// 市場評価の精度（ニュース画面の精度分析）の型。app.ts から参照されるため、Bun 固有の型を持ち込まない（docs/news-page.md）
 
-/** 当たり具合を測る、採点時刻からの長さ */
+/** 精度を測る、採点時刻からの長さ */
 export const ACCURACY_HORIZONS = ["4h", "24h"] as const;
 export type AccuracyHorizon = (typeof ACCURACY_HORIZONS)[number];
 
-/** 当たり具合を集計する期間（日）。新しさの時刻で測る */
+/** 精度を集計する期間（日）。新しさの時刻で測る */
 export const ACCURACY_DAYS = 30;
 
 /** 当たりの件数がこれ未満なら偶然と区別できないと出す */

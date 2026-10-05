@@ -1,4 +1,4 @@
-// 市場評価の当たり具合。採点の版ごとに、点数とその後の値動き・点数の偏りを集計する（docs/news-page.md）
+// 市場評価の精度。採点の版ごとに、点数とその後の値動き・点数の偏りを集計する（docs/news-page.md）
 
 import type { AggregationRule } from "@trading-studio/core";
 import type { VersionScoreRow } from "./repository";
@@ -115,7 +115,7 @@ function list(rows: readonly ScoredWithReturn[]): AccuracyList {
 const strip = ({ lists: _, ...s }: ReturnType<typeof stats>): VersionStats => s;
 
 /**
- * 版ごとの当たり具合と、使用中の版とほかの版の同じ記事どうしの比較。
+ * 版ごとの精度と、使用中の版とほかの版の同じ記事どうしの比較。
  * 使用中の版が無い（版が1つも無い）ときは、最も新しい版を比べる基準にする
  */
 export function accuracyByVersion(

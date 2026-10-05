@@ -364,7 +364,7 @@ export function createScoringAnalysis({
 			};
 		},
 
-		/** 直近の期間の、版ごとの採点の当たり具合と、評価が戦略の判断を変えうる状態だった時間（ニュース画面） */
+		/** 直近の期間の、版ごとの採点の精度と、評価が戦略の判断を変えうる状態だった時間（ニュース画面） */
 		accuracy(horizon: AccuracyHorizon): AccuracyReport {
 			const to = now();
 			const from = to - ACCURACY_DAYS * 24 * HOUR;

@@ -40,7 +40,7 @@ const LIST_TITLES: Record<ListKind, string> = {
 	calmRisk: "動かなかった警戒以上の記事",
 };
 
-/** ニュース画面の「評価の当たり具合」。採点の版ごとに、点数とその後の値動き・点数の偏りを出す */
+/** ニュース画面の精度分析タブの「精度の内訳」。採点の版ごとに、点数とその後の値動き・点数の偏りを出す */
 export function AccuracyCard({ rule }: { rule: AggregationRule }) {
 	const api = useApi();
 	const [horizon, setHorizon] = useState<AccuracyHorizon>("24h");
@@ -58,13 +58,13 @@ export function AccuracyCard({ rule }: { rule: AggregationRule }) {
 		<>
 			<div className="flex items-center justify-between gap-2">
 				<div className="flex items-center gap-1.5">
-					<h2 className="text-[15px] font-bold">評価の当たり具合</h2>
-					<Help label="評価の当たり具合">
+					<h2 className="text-[15px] font-bold">精度の内訳</h2>
+					<Help label="精度の内訳">
 						<p>
 							記事の点数と、採点した時刻（評価に使い始める時刻）からその後の値動きを突き合わせる。版ごとに、直近の記事で集計する。
 						</p>
 						<p>
-							当たりは、やや強気以上・やや弱気以下の点数が付いた記事のうち、値動きの向きが点数の符号と合った割合。偶然でも50%前後になる。
+							的中は、やや強気以上・やや弱気以下の点数が付いた記事のうち、値動きの向きが点数の符号と合った割合。偶然でも50%前後になる。
 						</p>
 						<p>
 							中立の帯は、やや弱気とやや強気のあいだで 0
@@ -95,7 +95,7 @@ export function AccuracyCard({ rule }: { rule: AggregationRule }) {
 				<Skeleton className="h-[220px] w-full" />
 			) : state.kind === "error" ? (
 				<ErrorState
-					what="当たり具合を読み込めなかった"
+					what="精度の内訳を読み込めなかった"
 					next={state.message}
 					action={<Button onClick={reload}>もう一度読み込む</Button>}
 				/>
@@ -131,7 +131,7 @@ function AccuracyBody({
 		version === activeVersion ? `v${version}（使用中）` : `v${version}`;
 	return (
 		<section
-			aria-label="評価の当たり具合"
+			aria-label="精度の内訳"
 			className="flex flex-col overflow-hidden rounded-xl border border-line bg-surface"
 		>
 			<Block title="戦略への影響">
@@ -228,7 +228,7 @@ function VersionBlocks({
 				className="border-b md:border-r md:border-b-0"
 			>
 				<Row
-					label={`当たり（${HORIZON_LABELS[report.horizon]}）`}
+					label={`的中（${HORIZON_LABELS[report.horizon]}）`}
 					value={hitText(s)}
 				/>
 				<HitNote s={s} minSamples={report.minSamples} />
@@ -284,7 +284,7 @@ function HitNote({
 	if (s.directed < minSamples)
 		return (
 			<p className="text-xs text-text-2">
-				{minSamples} 件未満のため、当たりは偶然の可能性
+				{minSamples} 件未満のため、的中率は偶然の可能性
 			</p>
 		);
 	return null;
@@ -311,7 +311,7 @@ function Comparison({
 	// スマホ幅で3列に収めるため、件数の単位と内訳は省く
 	const rows: [string, (x: VersionStats) => string][] = [
 		[
-			"当たり",
+			"的中",
 			(x) =>
 				x.sentiment.directed === 0
 					? "—"
@@ -349,7 +349,7 @@ function Comparison({
 			</table>
 			{few > 0 && few < minSamples && (
 				<p className="text-xs text-text-2">
-					{minSamples} 件未満のため、当たりの差は偶然の可能性
+					{minSamples} 件未満のため、的中率の差は偶然の可能性
 				</p>
 			)}
 		</div>
