@@ -343,6 +343,8 @@ test("ボリンジャーバンドは戦略で使っていなければ隠して�
 
 	await page.getByRole("button", { name: "BB の本数を変える" }).click();
 	await page.getByRole("button", { name: "既定の値に戻す" }).click();
+	// 閉じたモーダルの位置にポインタが残ると、値の行がデータの無い足を指して BB を出さないことがある
+	await page.mouse.move(0, 0);
 	await expect(page.getByTestId("chart-bb")).toHaveText(/^BB20 /);
 	await openDisplay(page);
 	await bb.click();
