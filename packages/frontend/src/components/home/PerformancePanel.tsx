@@ -1,20 +1,15 @@
-// ホームの成績。口座のリセット以降の損益と勝率などの数字
+// ホームの成績。口座のリセット以降の確定損益・勝率などの数字。通算損益は要点のカードに出す
 
 import type { TradingPerformance } from "@trading-studio/backend";
 import { formatDate, formatDateTime } from "../../format";
 import {
 	gradeMaxDrawdown,
-	gradePnl,
 	gradeProfitFactor,
 	gradeWinRate,
 } from "../../lib/grade";
-import {
-	formatSignedInt,
-	formatSignedPercent,
-	holdingText,
-} from "../../lib/number";
+import { formatSignedInt, holdingText } from "../../lib/number";
 import { Stat } from "../backtest/OrderViews";
-import { FewTradesNote, GradeBadge, GradeHelp } from "../Grade";
+import { FewTradesNote, GradeHelp } from "../Grade";
 import { Skeleton } from "../States";
 import { PANEL, PanelHeader } from "./Panel";
 
@@ -41,36 +36,9 @@ export function PerformancePanel({
 				)
 			) : (
 				<>
-					<div className="flex flex-col gap-0.5">
-						<span className="flex items-center gap-1.5 text-xs text-text-2">
-							開始からの損益
-							<GradeBadge
-								value={gradePnl(
-									p.pnlPercent,
-									p.buyHoldPercent,
-									p.trades === 0 && p.position.quantity === 0,
-								)}
-							/>
-						</span>
-						<div className="flex items-baseline gap-2.5">
-							<span
-								data-testid="home-pnl"
-								className={`num text-[26px] font-semibold tracking-tight ${tone(p.pnl)}`}
-							>
-								{p.pnl === null ? "—" : `${formatSignedInt(p.pnl)}円`}
-							</span>
-							{p.pnlPercent !== null && (
-								<span className={`num text-base font-semibold ${tone(p.pnl)}`}>
-									{formatSignedPercent(p.pnlPercent)}
-								</span>
-							)}
-						</div>
-						<span className="num text-xs text-text-2">
-							{formatDateTime(p.resetAt)} から（口座のリセット以降）
-							{p.buyHoldPercent !== null &&
-								`。ガチホなら ${formatSignedPercent(p.buyHoldPercent)}`}
-						</span>
-					</div>
+					<span className="num text-xs text-text-2">
+						{formatDateTime(p.resetAt)} から（口座のリセット以降）
+					</span>
 					<div className="grid grid-cols-3 gap-x-2 gap-y-3">
 						<Stat
 							label="確定損益"

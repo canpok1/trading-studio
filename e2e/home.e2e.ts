@@ -2,6 +2,7 @@ import { rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
+import { chooseStrategy } from "./run-settings";
 
 // e2e/server.ts の DB と同じ場所。このファイルがあると偽物の取引所が止まる
 const downFile = fileURLToPath(
@@ -66,10 +67,9 @@ test("EMA は戦略で使っていれば表示して始まり、どの粒度で�
 	await create(range, "range");
 
 	await page.goto("/home");
-	const select = page.getByLabel("運用する戦略");
 	const ema = page.getByRole("button", { name: "EMA", exact: true });
 
-	await select.selectOption({ label: `${trend}` });
+	await chooseStrategy(page, trend);
 	await openDisplay(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "true");
 	// 既定は日足。戦略の条件の足（トレンド追随は1時間足）は見ない
@@ -84,7 +84,7 @@ test("EMA は戦略で使っていれば表示して始まり、どの粒度で�
 	await expect(ema).toHaveAttribute("aria-pressed", "true");
 
 	// EMA を使わない戦略では隠して始まる
-	await select.selectOption({ label: `${range}` });
+	await chooseStrategy(page, range);
 	await openDisplay(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "false");
 
@@ -116,10 +116,8 @@ test("EMA は戦略で使っていれば表示して始まり、どの粒度で�
 
 	// 選んだ戦略は保存される
 	await page.reload();
-	await expect(select.locator("option:checked")).toHaveText(
-		new RegExp(`^${range}`),
-	);
-	await select.selectOption("");
+	await expect(page.getByTestId("auto-strategy")).toHaveText(range);
+	await chooseStrategy(page, null);
 });
 
 test("RSI の条件を持つ戦略を選ぶと RSI の小窓と値が出て、ボタンで隠せる", async ({
@@ -224,10 +222,10 @@ test("ホームは横にはみ出さない", async ({ page }) => {
 	expect(overflow).toBe(false);
 });
 
-test("PC 幅では上の4つのパネルが2列に並び、チャートと注文・約定は2列ぶんの幅を使う", async ({
+test("PC 幅では要点が横一列（自動取引は右端）、その下にチャート、成績｜口座情報、注文・約定の順に並ぶ", async ({
 	page,
 }, testInfo) => {
-	test.skip(testInfo.project.name !== "desktop", "2列になるのは PC 幅だけ");
+	test.skip(testInfo.project.name !== "desktop", "横一列になるのは PC 幅だけ");
 	await page.goto("/home");
 	const box = async (name: string) => {
 		const b = await page
@@ -239,22 +237,28 @@ test("PC 幅では上の4つのパネルが2列に並び、チャートと注文
 	await expect(page.getByRole("region", { name: "価格チャート" })).toBeVisible({
 		timeout: 15_000,
 	});
+	const total = await box("通算損益");
+	const unrealized = await box("含み損益");
+	const risk = await page.getByTestId("home-judge-risk").boundingBox();
 	const auto = await box("自動取引設定");
-	const account = await box("口座情報");
-	const perf = await box("成績");
-	const ai = await box("市場評価");
 	const chart = await box("価格チャート");
+	const perf = await box("成績");
+	const account = await box("口座情報");
 	const orders = await box("注文・約定");
-	// 自動取引設定の右に口座情報、その下の段に成績・市場評価
-	expect(account.x).toBeGreaterThan(auto.x + auto.width);
-	expect(perf.y).toBeGreaterThan(auto.y + auto.height);
-	expect(ai.x).toBeGreaterThan(perf.x + perf.width);
-	// チャートと注文・約定は両方の列にまたがる
-	for (const b of [chart, orders]) {
-		expect(b.y).toBeGreaterThan(ai.y + ai.height - 1);
-		expect(b.x).toBeLessThanOrEqual(auto.x);
-		expect(b.x + b.width).toBeGreaterThanOrEqual(account.x + account.width - 1);
-	}
+	if (!risk) throw new Error("リスクの位置を取れなかった");
+	// 要点は同じ段に左から通算損益・含み損益・…・自動取引
+	for (const b of [unrealized, risk, auto]) expect(b.y).toBe(total.y);
+	expect(unrealized.x).toBeGreaterThan(total.x);
+	expect(auto.x).toBeGreaterThan(risk.x);
+	// チャートは要点の下で、両方の列にまたがる
+	expect(chart.y).toBeGreaterThan(total.y + total.height - 1);
+	expect(chart.x).toBeLessThanOrEqual(total.x);
+	expect(chart.x + chart.width).toBeGreaterThanOrEqual(auto.x + auto.width - 1);
+	// その下の段に成績｜口座情報、最後に注文・約定
+	expect(perf.y).toBeGreaterThan(chart.y + chart.height - 1);
+	expect(account.y).toBe(perf.y);
+	expect(account.x).toBeGreaterThan(perf.x + perf.width);
+	expect(orders.y).toBeGreaterThan(perf.y + perf.height - 1);
 });
 
 test("チャートに市場評価の背景と帯が出て、帯をタップすると背景が入れ替わり、再読み込み後も保たれる", async ({
@@ -339,6 +343,8 @@ test("ボリンジャーバンドは戦略で使っていなければ隠して�
 
 	await page.getByRole("button", { name: "BB の本数を変える" }).click();
 	await page.getByRole("button", { name: "既定の値に戻す" }).click();
+	// 閉じたモーダルの位置にポインタが残ると、値の行がデータの無い足を指して BB を出さないことがある
+	await page.mouse.move(0, 0);
 	await expect(page.getByTestId("chart-bb")).toHaveText(/^BB20 /);
 	await openDisplay(page);
 	await bb.click();

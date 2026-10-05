@@ -5,6 +5,7 @@ import {
 	collectorTrouble,
 	judgmentsFrom,
 	loadRange,
+	unrealizedPnl,
 	withLatestPrice,
 } from "./home";
 
@@ -87,5 +88,13 @@ describe("ホームの表示", () => {
 			since: "2026/09/26 12:00:00",
 			retry: "自動で再接続中（次は 12:00:04）",
 		});
+	});
+
+	test("含み損益は保有を今の価格で評価し、保有か価格が無ければ出さない", () => {
+		// 0.01 BTC を 1,000万円で買い、今 1,050万円
+		expect(unrealizedPnl(1_000_000, 10_000_000, 10_500_000)).toBe(5_000);
+		expect(unrealizedPnl(1_000_000, 10_000_000, 9_900_000)).toBe(-1_000);
+		expect(unrealizedPnl(0, null, 10_500_000)).toBeNull();
+		expect(unrealizedPnl(1_000_000, 10_000_000, null)).toBeNull();
 	});
 });

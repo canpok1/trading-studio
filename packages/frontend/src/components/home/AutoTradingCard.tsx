@@ -1,11 +1,12 @@
-// ホームの自動取引のカード。選んでいるタブのオンオフと運用する戦略、タブの名前の変更・削除。止まっている理由があるときだけ添える
+// ホームの自動取引のカード。選んでいるタブのオンオフと状態・戦略名を1行で出し、止まっている理由があるときだけ添える。
+// 運用する戦略の変更・タブの名前の変更・削除はたまにしか使わないので「⋯」の設定に入れる
 
 import type {
 	AutoTradingStatus,
 	StoredStrategy,
 } from "@trading-studio/backend";
 import { validateConditionSet } from "@trading-studio/core";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useApi } from "../../api";
 import { formatClock } from "../../format";
 import { useTradingStatus } from "../../lib/trading";
@@ -13,8 +14,8 @@ import { errorMessage, readJson } from "../../lib/useAsync";
 import { Modal } from "../Modal";
 import { LIVE_AVAILABLE, MODE_LABELS } from "../trading/TradeViews";
 import { Button } from "../ui";
-import { PANEL } from "./Panel";
 import { DeleteRunDialog, RenameRunDialog } from "./RunDialogs";
+import { TILE } from "./SummaryTiles";
 
 export function AutoTradingCard({
 	run,
@@ -22,6 +23,7 @@ export function AutoTradingCard({
 	canDelete,
 	onToast,
 	onDeleted,
+	className = "",
 }: {
 	run: AutoTradingStatus;
 	strategies: StoredStrategy[];
@@ -29,12 +31,14 @@ export function AutoTradingCard({
 	canDelete: boolean;
 	onToast: (message: string) => void;
 	onDeleted: () => void;
+	className?: string;
 }) {
 	const api = useApi();
 	const { set, drop } = useTradingStatus();
-	const [dialog, setDialog] = useState<"start" | "rename" | "delete" | null>(
-		null,
-	);
+	const [dialog, setDialog] = useState<
+		"start" | "settings" | "rename" | "delete" | null
+	>(null);
+	const selectId = useId();
 	const [busy, setBusy] = useState(false);
 	const on = run.enabled;
 	const unavailable = run.mode === "live" && !LIVE_AVAILABLE;
@@ -110,18 +114,8 @@ export function AutoTradingCard({
 	const loss = run.dailyLoss;
 	const holding = run.strategyLock === "holding";
 	return (
-		<section aria-label="自動取引設定" className={`${PANEL} flex-1`}>
-			<div className="flex items-center justify-between gap-2">
-				<div className="flex flex-col">
-					<h2 className="text-[15px] font-bold">自動取引</h2>
-					<span data-testid="auto-state" className="text-xs text-text-2">
-						{unavailable
-							? "ライブ取引はまだ使えない"
-							: on
-								? "稼働中"
-								: "停止中"}
-					</span>
-				</div>
+		<section aria-label="自動取引設定" className={`${TILE} ${className}`}>
+			<div className="flex items-center gap-3">
 				<button
 					type="button"
 					role="switch"
@@ -135,33 +129,33 @@ export function AutoTradingCard({
 						className={`h-[26px] w-[26px] rounded-full bg-white shadow transition-transform ${on ? "translate-x-6" : ""}`}
 					/>
 				</button>
+				<div className="flex min-w-0 flex-1 flex-col">
+					<h2 className="text-[13px] font-bold">
+						自動取引{" "}
+						<span data-testid="auto-state">
+							{unavailable
+								? "ライブ取引はまだ使えない"
+								: on
+									? "稼働中"
+									: "停止中"}
+						</span>
+					</h2>
+					<span
+						data-testid="auto-strategy"
+						className="truncate text-xs text-text-2"
+					>
+						{active ? active.name : "戦略 未選択"}
+					</span>
+				</div>
+				<button
+					type="button"
+					aria-label="タブの設定"
+					onClick={() => setDialog("settings")}
+					className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line text-base font-bold text-text-2 hover:bg-surface-2"
+				>
+					⋯
+				</button>
 			</div>
-			<select
-				aria-label="運用する戦略"
-				className="h-11 w-full rounded-lg border border-line bg-surface px-3 text-[15px] font-semibold disabled:opacity-60"
-				value={active?.id ?? ""}
-				disabled={busy || on || holding}
-				onChange={(e) =>
-					choose(e.target.value === "" ? null : Number(e.target.value))
-				}
-			>
-				<option value="">未選択</option>
-				{strategies.map((s) => (
-					<option key={s.id} value={s.id}>
-						{s.name}
-					</option>
-				))}
-			</select>
-			{strategies.length === 0 && (
-				<p className="text-xs text-text-2">
-					戦略がまだ無い。「戦略」の画面で作ると選べる
-				</p>
-			)}
-			{!on && holding && (
-				<p className="text-xs text-text-2">
-					保有か未約定の注文がある間は、運用する戦略を変えられない
-				</p>
-			)}
 			{on && run.waitingForMarket && (
 				<p className="text-xs font-semibold">
 					価格の収集が止まっているため、判定を待っている
@@ -172,20 +166,55 @@ export function AutoTradingCard({
 					1日の損失上限に達したため、翌 0 時まで新しい買いを止めている
 				</p>
 			)}
-			<div className="flex gap-2">
-				<Button size="sm" onClick={() => setDialog("rename")}>
-					タブの名前を変える
-				</Button>
-				{canDelete && !on && (
-					<Button
-						size="sm"
-						className="text-loss"
-						onClick={() => setDialog("delete")}
-					>
-						タブを削除
+			{dialog === "settings" && (
+				<Modal title={`「${run.name}」の設定`} onClose={() => setDialog(null)}>
+					<div className="flex flex-col gap-1.5">
+						<label htmlFor={selectId} className="text-[13px] font-semibold">
+							運用する戦略
+						</label>
+						<select
+							id={selectId}
+							className="h-11 w-full rounded-lg border border-line bg-surface px-3 text-[15px] font-semibold disabled:opacity-60"
+							value={active?.id ?? ""}
+							disabled={busy || on || holding}
+							onChange={(e) =>
+								choose(e.target.value === "" ? null : Number(e.target.value))
+							}
+						>
+							<option value="">未選択</option>
+							{strategies.map((s) => (
+								<option key={s.id} value={s.id}>
+									{s.name}
+								</option>
+							))}
+						</select>
+						{strategies.length === 0 && (
+							<p className="text-xs text-text-2">
+								戦略がまだ無い。「戦略」の画面で作ると選べる
+							</p>
+						)}
+						{on && (
+							<p className="text-xs text-text-2">
+								稼働中は運用する戦略を変えられない
+							</p>
+						)}
+						{!on && holding && (
+							<p className="text-xs text-text-2">
+								保有か未約定の注文がある間は、運用する戦略を変えられない
+							</p>
+						)}
+					</div>
+					<Button onClick={() => setDialog("rename")}>
+						タブの名前を変える
 					</Button>
-				)}
-			</div>
+					{canDelete && !on && (
+						<Button className="text-loss" onClick={() => setDialog("delete")}>
+							タブを削除
+						</Button>
+					)}
+					<Button onClick={() => setDialog(null)}>閉じる</Button>
+				</Modal>
+			)}
 			{dialog === "rename" && (
 				<RenameRunDialog
 					run={run}

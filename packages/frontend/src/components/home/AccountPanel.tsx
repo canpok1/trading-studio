@@ -1,4 +1,4 @@
-// ホームの口座情報。総資産・現金・保有・平均取得・評価損益と、停止中だけ口座のリセット
+// ホームの口座情報。総資産・現金・保有・平均取得と、停止中だけ口座のリセット。含み損益は要点のカードに出す
 
 import type {
 	AutoTradingStatus,
@@ -8,6 +8,7 @@ import { formatBtc } from "@trading-studio/core";
 import { useId, useState } from "react";
 import { useApi } from "../../api";
 import { formatDateTime } from "../../format";
+import { unrealizedPnl } from "../../lib/home";
 import { formatInt, formatSignedInt } from "../../lib/number";
 import { useTradingStatus } from "../../lib/trading";
 import { errorMessage, readJson } from "../../lib/useAsync";
@@ -24,7 +25,7 @@ const DEFAULT_INITIAL_CASH = 1_000_000;
 const tone = (v: number | null) =>
 	v === null ? "" : v >= 0 ? "text-profit" : "text-loss";
 
-/** 評価損益は手数料を含めず、今の価格で評価する。保有を押すとロットごとの一覧を出す */
+/** 保有を押すとロットごとの買値と含み損益の一覧を出す */
 export function AccountPanel({
 	status,
 	performance,
@@ -47,11 +48,6 @@ export function AccountPanel({
 	const { account } = status;
 	const { quantity, entryPrice } = account.position;
 	const lots = account.lots;
-	const unrealized = (q: number, entry: number | null) =>
-		q > 0 && entry !== null && price !== null
-			? Math.round(((price - entry) * q) / 100_000_000)
-			: null;
-	const pnl = unrealized(quantity, entryPrice);
 
 	const reset = async (initialCash: number) => {
 		setResetting(false);
@@ -73,7 +69,7 @@ export function AccountPanel({
 	};
 
 	return (
-		<section aria-label="口座情報" className={`${PANEL} @container`}>
+		<section aria-label="口座情報" className={PANEL}>
 			<PanelHeader title="口座情報" tag={<ModeTag mode={status.mode} />} />
 			<div className="flex flex-col gap-0.5">
 				<span className="text-xs text-text-2">総資産</span>
@@ -86,8 +82,7 @@ export function AccountPanel({
 						: `${formatInt(performance.equity)}円`}
 				</span>
 			</div>
-			{/* 4 列は、8 桁の価格と評価損益が横に並んでも重ならないパネル幅があるときだけにする */}
-			<div className="grid grid-cols-2 gap-x-2 gap-y-3 @min-[28rem]:grid-cols-4">
+			<div className="grid grid-cols-3 gap-x-2 gap-y-3">
 				<Stat
 					label="現金"
 					value={performance ? `${formatInt(performance.cash)}円` : "—"}
@@ -109,11 +104,6 @@ export function AccountPanel({
 					label="平均取得"
 					value={entryPrice === null ? "—" : `${formatInt(entryPrice)}円`}
 				/>
-				<Stat
-					label="評価損益"
-					value={pnl === null ? "—" : `${formatSignedInt(pnl)}円`}
-					tone={tone(pnl)}
-				/>
 			</div>
 			{!status.enabled && (
 				<Button
@@ -132,7 +122,7 @@ export function AccountPanel({
 				<Modal title="保有中のロット" onClose={() => setLotsOpen(false)}>
 					<div className="overflow-hidden rounded-xl border border-line">
 						{lots.map((l) => {
-							const v = unrealized(l.quantity, l.entryPrice);
+							const v = unrealizedPnl(l.quantity, l.entryPrice, price);
 							return (
 								<div
 									key={l.id}

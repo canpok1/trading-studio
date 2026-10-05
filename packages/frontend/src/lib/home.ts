@@ -117,3 +117,17 @@ export function collectorTrouble(
 				: `自動で再接続中（次は ${formatDateTime(s.retryAt).slice(11)}）`,
 	};
 }
+
+/**
+ * 保有の含み損益（円）。手数料を含めず、今の価格で評価する。
+ * 保有が無いか、買値か今の価格が分からなければ null
+ */
+export function unrealizedPnl(
+	quantity: number,
+	entryPrice: number | null,
+	price: number | null,
+): number | null {
+	return quantity > 0 && entryPrice !== null && price !== null
+		? Math.round(((price - entryPrice) * quantity) / 100_000_000)
+		: null;
+}

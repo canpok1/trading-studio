@@ -175,7 +175,7 @@ export function Layout({ badges = {} }: { badges?: Record<string, boolean> }) {
 }
 
 /**
- * 自動取引がオンの間だけ、全画面の上部に出す帯。開始からの損益を出し、押すとホームの稼働中のタブへ。
+ * 自動取引がオンの間だけ、全画面の上部に出す帯。通算損益を出し、押すとホームの稼働中のタブへ。
  * 複数のタブが稼働中なら件数と、損益の合計（開始時の資金の合計に対する %）を出す
  */
 function TradingBand() {
@@ -210,7 +210,7 @@ function TradingBand() {
 					data-testid="band-pnl"
 					className="num font-bold whitespace-nowrap"
 				>
-					<span className="sr-only">開始からの損益 </span>
+					<span className="sr-only">通算損益 </span>
 					{pnl === null
 						? "損益 —"
 						: `${formatSignedInt(pnl)}円（${formatSignedPercent((pnl / initialCash) * 100)}）`}
