@@ -13,8 +13,27 @@ import { HORIZON_LABELS } from "./Precision";
 /** 入力の範囲。backend の検査と合わせる */
 const DAYS_MAX = 92;
 const MIN_SAMPLES_MAX = 1000;
+const BAND_MAX = 50;
+const HORIZONS = ["4h", "24h"] as const;
+
+const validBands = (lo: number, hi: number) =>
+	Number.isFinite(lo) &&
+	Number.isFinite(hi) &&
+	lo > 0 &&
+	lo < hi &&
+	hi <= BAND_MAX;
 
 const errorsOf = (s: AccuracySettings) => ({
+	sentimentBands: HORIZONS.every((h) =>
+		validBands(s.sentimentBands[h].small, s.sentimentBands[h].large),
+	)
+		? undefined
+		: `0 より大きく、横ばい < 大きく動いた ≦ ${BAND_MAX}`,
+	riskBands: HORIZONS.every((h) =>
+		validBands(s.riskBands[h].rough, s.riskBands[h].wild),
+	)
+		? undefined
+		: `0 より大きく、静か < 大荒れ ≦ ${BAND_MAX}`,
 	days:
 		Number.isInteger(s.days) && s.days >= 1 && s.days <= DAYS_MAX
 			? undefined
@@ -60,11 +79,8 @@ export function AccuracySetting() {
 	if (draft === null || saved === null) return null;
 
 	const errors = errorsOf(draft);
-	const invalid = errors.days !== undefined || errors.minSamples !== undefined;
-	const changed =
-		draft.days !== saved.days ||
-		draft.horizon !== saved.horizon ||
-		draft.minSamples !== saved.minSamples;
+	const invalid = Object.values(errors).some((e) => e !== undefined);
+	const changed = JSON.stringify(draft) !== JSON.stringify(saved);
 	const edit = (patch: Partial<AccuracySettings>) => {
 		setMessage(null);
 		setDraft((d) => (d ? { ...d, ...patch } : d));
@@ -110,6 +126,61 @@ export function AccuracySetting() {
 		</div>
 	);
 
+	const bands = <K extends "sentimentBands" | "riskBands">(
+		key: K,
+		title: string,
+		cols: readonly (readonly [string, string])[],
+	) => (
+		<div className="flex flex-col gap-1">
+			<table className="w-full max-w-[320px] text-[13px]">
+				<caption className="pb-1 text-left">{title}</caption>
+				<thead>
+					<tr className="text-xs text-text-2">
+						<th />
+						{cols.map(([k, label]) => (
+							<th key={k} className="text-left font-normal">
+								{label}
+							</th>
+						))}
+					</tr>
+				</thead>
+				<tbody>
+					{HORIZONS.map((h) => (
+						<tr key={h}>
+							<th className="py-0.5 pr-2 text-left font-normal">
+								{HORIZON_LABELS[h]}
+							</th>
+							{cols.map(([k, label]) => (
+								<td key={k} className="py-0.5 pr-2">
+									<NumberInput
+										aria-label={`${title} ${HORIZON_LABELS[h]} ${label}`}
+										inputMode="decimal"
+										value={
+											(draft[key][h] as Record<string, number>)[k] ?? Number.NaN
+										}
+										onChange={(v) =>
+											edit({
+												[key]: {
+													...draft[key],
+													[h]: { ...draft[key][h], [k]: v },
+												},
+											})
+										}
+										invalid={errors[key] !== undefined}
+										className="w-[64px]"
+									/>
+								</td>
+							))}
+						</tr>
+					))}
+				</tbody>
+			</table>
+			{errors[key] && (
+				<p className="text-xs font-semibold text-loss">{errors[key]}</p>
+			)}
+		</div>
+	);
+
 	return (
 		<Card className="flex flex-col gap-2.5">
 			<div className="flex items-center gap-1.5">
@@ -126,7 +197,11 @@ export function AccuracySetting() {
 					</p>
 					<p>
 						データ不足の件数:
-						対象（センチメントは強気・弱気の材料、リスクは荒れた記事）がこれ未満なら、偶然と区別できないとして評価に「データ不足」を添える。
+						数えた記事がこれ未満なら、偶然と区別できないとして評価に「データ不足」を添える。
+					</p>
+					<p>
+						値動きの段階の境目:
+						評価と突き合わせる値動きの段階を分ける騰落率（%、上下とも同じ幅）。センチメントは横ばい未満・大きく動いた以上、リスクは静か未満・大荒れ以上の値を、測る長さごとに決める。
 					</p>
 				</Help>
 			</div>
@@ -147,6 +222,14 @@ export function AccuracySetting() {
 				</div>
 			</div>
 			{number("minSamples", "データ不足の件数", "件未満")}
+			{bands("sentimentBands", "センチメントの境目（%）", [
+				["small", "横ばい（未満）"],
+				["large", "大きく動いた（以上）"],
+			])}
+			{bands("riskBands", "リスクの境目（%）", [
+				["rough", "静か（未満）"],
+				["wild", "大荒れ（以上）"],
+			])}
 			<div className="flex justify-end">
 				<Button size="sm" disabled={busy || !changed || invalid} onClick={save}>
 					保存

@@ -12,31 +12,48 @@ export type AccuracySettings = {
 	horizon: AccuracyHorizon;
 	/** 対象がこれ未満なら偶然と区別できないとして「データ不足」を添える */
 	minSamples: number;
+	/** センチメントと比べる値動きの段階の境目（%）。測る長さごと */
+	sentimentBands: Record<AccuracyHorizon, SentimentBands>;
+	/** リスクと比べる値動きの段階の境目（%）。測る長さごと */
+	riskBands: Record<AccuracyHorizon, RiskBands>;
 };
+
+/**
+ * 値動きの大きさ（上下は問わない）を3段階に分ける境目（%）。
+ * rough 未満が静か、rough 以上 wild 未満が荒れた、wild 以上が大荒れ
+ */
+export type RiskBands = { rough: number; wild: number };
+
+/**
+ * 値動きを5段階に分ける境目（%、上下とも同じ幅）。
+ * small 未満が横ばい、small 以上 large 未満が上昇・下落、large 以上が大きく上昇・大きく下落
+ */
+export type SentimentBands = { small: number; large: number };
 
 export const DEFAULT_ACCURACY_SETTINGS: AccuracySettings = {
 	days: 30,
 	horizon: "24h",
 	minSamples: 30,
+	sentimentBands: {
+		"4h": { small: 0.2, large: 0.7 },
+		"24h": { small: 0.5, large: 2 },
+	},
+	riskBands: {
+		"4h": { rough: 0.7, wild: 1.1 },
+		"24h": { rough: 2, wild: 3 },
+	},
 };
 
 /** 集計する期間の上限（日）。足をメモリに載せるため */
 export const ACCURACY_DAYS_MAX = 92;
 /** データ不足とする件数の上限 */
 export const ACCURACY_MIN_SAMPLES_MAX = 1000;
+/** 値動きの段階の境目の上限（%） */
+export const ACCURACY_BAND_MAX = 50;
 
 export type SetAccuracySettingsResult =
 	| { ok: true }
 	| { ok: false; message: string; field: keyof AccuracySettings };
-
-/**
- * 採点時刻から測る長さの後に、この大きさ（%）以上動いたら「荒れた」とみなす。
- * 直近の値動きの上位2割ほど
- */
-export const ACCURACY_ROUGH_PCT: Record<AccuracyHorizon, number> = {
-	"4h": 0.7,
-	"24h": 2,
-};
 
 /** 記事の一覧に出す上限（新しい順） */
 export const ACCURACY_LIST_MAX = 30;
@@ -58,6 +75,23 @@ export type AccuracyNews = {
 /** 記事の一覧。total は上限で切る前の件数 */
 export type AccuracyList = { total: number; items: AccuracyNews[] };
 
+/**
+ * 評価の段階と値動きの段階の突き合わせ。記事ごとに、段階が一致で2点・1段ずれで1点・それ以外は0点
+ */
+export type LevelMatch = {
+	/** 値動きの段階ごとの件数と点数の合計。段階の低い順で、記事の無い段階も含む */
+	levels: { level: number; count: number; points: number }[];
+	/** 2点・1点・0点の件数 */
+	exact: number;
+	near: number;
+	miss: number;
+	/**
+	 * 得点率（%）。値動きの段階ごとの平均点（2点満点に対する割合）を、記事のある段階で平均する。
+	 * 中立ばかりで点を稼げないよう、件数で重み付けしない。記事が無ければ null
+	 */
+	rate: number | null;
+};
+
 /** ある版の採点を、ある記事の集まりで集計したもの */
 export type VersionStats = {
 	version: number;
@@ -72,35 +106,27 @@ export type VersionStats = {
 		positive: number;
 		/** 中立の帯（やや弱気の上限〜やや強気の下限の手前）で 0 でない件数 */
 		neutralBand: number;
-		/** 強気材料・弱気材料（やや強気以上・やや弱気以下）で、値動きが分かり 0 でない件数 */
-		directed: number;
-		/** そのうち点数の符号と値動きの向きが合った件数 */
-		hits: number;
+		/** 点数が付き値動きが分かる記事の、評価と値動きの段階の突き合わせ */
+		match: LevelMatch;
 	};
 	risk: {
 		scored: number;
 		nulls: number;
 		/** 最も多い点数とその件数。点数が付いた記事が無ければ null */
 		mode: { score: number; count: number } | null;
-		/** 点数が付き値動きが分かる記事のうち、その後に荒れた件数 */
-		rough: number;
-		/** そのうち警戒以上だった件数 */
-		roughHigh: number;
-		/** 点数が付き値動きが分かる記事のうち、その後が静かだった件数 */
-		calm: number;
-		/** そのうち平常だった件数 */
-		calmNormal: number;
+		/** 点数が付き値動きが分かる記事の、評価と値動きの段階の突き合わせ */
+		match: LevelMatch;
 	};
 };
 
 export type VersionAccuracy = VersionStats & {
-	/** 強気材料・弱気材料で、値動きの向きが点数と逆だったもの */
+	/** センチメントが0点（値動きの段階と2段以上ずれた）だったもの */
 	misses: AccuracyList;
 	/** 中立の帯で 0 でないもの（平均を薄める弱い点数） */
 	neutral: AccuracyList;
-	/** 平常なのに、その後に荒れたもの */
+	/** リスクの段階が、その後の値動きの段階より低かったもの（平常なのに荒れたなど） */
 	missedRisk: AccuracyList;
-	/** 警戒以上なのに、その後が静かだったもの */
+	/** リスクの段階が、その後の値動きの段階より高かったもの（危機なのに静かなど） */
 	falseAlarm: AccuracyList;
 };
 
@@ -118,8 +144,10 @@ export type AccuracyReport = {
 	from: number;
 	to: number;
 	horizon: AccuracyHorizon;
-	/** 荒れたとみなす値動きの大きさ（%） */
-	roughPct: number;
+	/** リスクと比べる値動きの段階の境目 */
+	riskBands: RiskBands;
+	/** センチメントと比べる値動きの段階の境目 */
+	sentimentBands: SentimentBands;
 	/** 集計した期間（日） */
 	days: number;
 	/** 当たりの件数がこれ未満なら偶然と区別できない */

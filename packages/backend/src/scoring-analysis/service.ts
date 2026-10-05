@@ -25,13 +25,21 @@ import type {
 	SetAccuracySettingsResult,
 } from "./types";
 import {
+	ACCURACY_BAND_MAX,
 	ACCURACY_DAYS_MAX,
 	ACCURACY_HORIZONS,
 	ACCURACY_MIN_SAMPLES_MAX,
-	ACCURACY_ROUGH_PCT,
 } from "./types";
 
 const HOUR = 3_600_000;
+
+/** 段階の境目が 0 < 小さい方 < 大きい方 ≦ 上限 か */
+const validBands = (small: number, large: number) =>
+	Number.isFinite(small) &&
+	Number.isFinite(large) &&
+	small > 0 &&
+	large > small &&
+	large <= ACCURACY_BAND_MAX;
 
 /** その後の値動きを測る長さ */
 export const HORIZONS = {
@@ -395,7 +403,10 @@ export function createScoringAnalysis({
 				})),
 				rule,
 				active,
-				ACCURACY_ROUGH_PCT[horizon],
+				{
+					sentiment: settings.sentimentBands[horizon],
+					risk: settings.riskBands[horizon],
+				},
 			);
 			const s = judgments.series(from, to, HOUR, rule);
 			const judged = s.values.sentiment.filter((v) => v !== null).length;
@@ -405,7 +416,8 @@ export function createScoringAnalysis({
 				from,
 				to,
 				horizon,
-				roughPct: ACCURACY_ROUGH_PCT[horizon],
+				riskBands: settings.riskBands[horizon],
+				sentimentBands: settings.sentimentBands[horizon],
 				days: settings.days,
 				minSamples: settings.minSamples,
 				priceTimeframe: p.timeframe,
@@ -447,10 +459,41 @@ export function createScoringAnalysis({
 					field: "minSamples",
 					message: `データ不足の件数は 1〜${ACCURACY_MIN_SAMPLES_MAX} の整数`,
 				};
+			for (const h of ACCURACY_HORIZONS) {
+				const b = s.sentimentBands?.[h];
+				if (!b || !validBands(b.small, b.large))
+					return {
+						ok: false,
+						field: "sentimentBands",
+						message: `センチメントの境目は 0 より大きく、小さい方 < 大きい方 ≦ ${ACCURACY_BAND_MAX}%`,
+					};
+				const r = s.riskBands?.[h];
+				if (!r || !validBands(r.rough, r.wild))
+					return {
+						ok: false,
+						field: "riskBands",
+						message: `リスクの境目は 0 より大きく、荒れた < 大荒れ ≦ ${ACCURACY_BAND_MAX}%`,
+					};
+			}
 			repo.saveAccuracySettings({
 				days: s.days,
 				horizon: s.horizon,
 				minSamples: s.minSamples,
+				sentimentBands: Object.fromEntries(
+					ACCURACY_HORIZONS.map((h) => [
+						h,
+						{
+							small: s.sentimentBands[h].small,
+							large: s.sentimentBands[h].large,
+						},
+					]),
+				) as AccuracySettings["sentimentBands"],
+				riskBands: Object.fromEntries(
+					ACCURACY_HORIZONS.map((h) => [
+						h,
+						{ rough: s.riskBands[h].rough, wild: s.riskBands[h].wild },
+					]),
+				) as AccuracySettings["riskBands"],
 			});
 			return { ok: true };
 		},

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { AccuracyReport, AccuracySettings } from "../index";
 import { createTestApp } from "../test-app";
+import { DEFAULT_ACCURACY_SETTINGS } from "./types";
 
 const H = 3_600_000;
 const START = Date.UTC(2026, 6, 31, 15);
@@ -93,29 +94,40 @@ describe("/api/scoring/accuracy/settings", () => {
 	test("保存した期間・長さ・件数で集計する。長さを省くと設定の長さ", async () => {
 		const t = await scored();
 		const before = await t.app.request("/api/scoring/accuracy/settings");
-		expect(await before.json()).toEqual({
-			days: 30,
-			horizon: "24h",
-			minSamples: 30,
-		});
-		const saved: AccuracySettings = { days: 7, horizon: "4h", minSamples: 5 };
+		expect(await before.json()).toEqual(DEFAULT_ACCURACY_SETTINGS);
+		const saved: AccuracySettings = {
+			...DEFAULT_ACCURACY_SETTINGS,
+			days: 7,
+			horizon: "4h",
+			minSamples: 5,
+			riskBands: {
+				"4h": { rough: 1, wild: 1.5 },
+				"24h": { rough: 2, wild: 3 },
+			},
+		};
 		expect((await put(t, saved)).status).toBe(200);
 		const res = await t.app.request("/api/scoring/accuracy");
 		const r = (await res.json()) as AccuracyReport;
-		expect(r).toMatchObject({ days: 7, horizon: "4h", minSamples: 5 });
+		expect(r).toMatchObject({
+			days: 7,
+			horizon: "4h",
+			minSamples: 5,
+			riskBands: { rough: 1, wild: 1.5 },
+			sentimentBands: { small: 0.2, large: 0.7 },
+		});
 		expect(r.to - r.from).toBe(7 * 24 * H);
 	});
 
 	test("範囲外の値は 400 で、保存しない", async () => {
 		const t = createTestApp();
-		const bad = await put(t, { days: 93, horizon: "24h", minSamples: 30 });
+		const bad = await put(t, { ...DEFAULT_ACCURACY_SETTINGS, days: 93 });
 		expect(bad.status).toBe(400);
 		expect(await bad.json()).toMatchObject({ field: "days" });
 		expect(
-			(await put(t, { days: 30, horizon: "1h", minSamples: 30 })).status,
+			(await put(t, { ...DEFAULT_ACCURACY_SETTINGS, horizon: "1h" })).status,
 		).toBe(400);
 		expect(
-			(await put(t, { days: 30, horizon: "24h", minSamples: 0 })).status,
+			(await put(t, { ...DEFAULT_ACCURACY_SETTINGS, minSamples: 0 })).status,
 		).toBe(400);
 		const now = await t.app.request("/api/scoring/accuracy/settings");
 		expect(await now.json()).toMatchObject({ days: 30 });

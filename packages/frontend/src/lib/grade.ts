@@ -93,32 +93,40 @@ export type PrecisionGrade = {
 	insufficient: boolean;
 };
 
+type Cutoffs = readonly [number, number, number, number];
+
+const gradeByCutoffs = (rate: number, c: Cutoffs): Grade =>
+	rate >= c[0]
+		? "excellent"
+		: rate >= c[1]
+			? "good"
+			: rate >= c[2]
+				? "fair"
+				: rate >= c[3]
+					? "poor"
+					: "bad";
+
 /**
- * センチメントの精度＝的中率（%）。強気・弱気の材料のうち、その後の値動きの向きが合った割合。
- * 偶然でも 50% 前後になるので、普通を 50% の前後に置く
+ * 得点率（%）の評価。当てずっぽうの得点率が普通に入るよう、観点ごとに基準を置く。
+ * センチメントは常に中立で 40%・でたらめで 36%、リスクは常に平常で 50%・でたらめで 56%
  */
-export function gradeSentimentPrecision(
-	hitRate: number | null,
+const CUTOFFS = {
+	sentiment: [55, 45, 35, 25],
+	risk: [70, 60, 50, 40],
+} as const satisfies Record<string, Cutoffs>;
+
+export function gradePrecision(
+	judge: keyof typeof CUTOFFS,
+	rate: number | null,
+	/** 数えた記事の件数 */
 	samples: number,
+	/** 記事の無い値動きの段階があるか。その段階の当たり外れが分からない */
+	emptyLevel: boolean,
 	/** これ未満は偶然と区別できない。精度の設定で変える */
 	minSamples: number,
 ): PrecisionGrade {
 	return {
-		grade: hitRate === null ? null : of(rateGrade(hitRate)),
-		insufficient: samples < minSamples,
+		grade: rate === null ? null : of(gradeByCutoffs(rate, CUTOFFS[judge])),
+		insufficient: samples < minSamples || emptyLevel,
 	};
 }
-
-function rateGrade(rate: number): Grade {
-	if (rate >= 65) return "excellent";
-	if (rate >= 55) return "good";
-	if (rate >= 45) return "fair";
-	if (rate >= 35) return "poor";
-	return "bad";
-}
-
-/**
- * リスクの精度＝見分け率（%）。荒れた側と静かな側の当たりの割合の平均で、
- * 当てずっぽうでも 50% になるため、センチメントと同じ基準で分ける
- */
-export const gradeRiskPrecision = gradeSentimentPrecision;

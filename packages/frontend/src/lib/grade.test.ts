@@ -5,9 +5,8 @@ import {
 	fewTradesNote,
 	gradeMaxDrawdown,
 	gradePnl,
+	gradePrecision,
 	gradeProfitFactor,
-	gradeRiskPrecision,
-	gradeSentimentPrecision,
 	gradeWinRate,
 } from "./grade";
 
@@ -85,27 +84,42 @@ describe("成績の評価", () => {
 
 describe("市場評価の精度", () => {
 	const gradeLabel = (g: PrecisionGrade) => g.grade?.label ?? null;
-	test("センチメントは的中率を 50% の前後で分ける", () => {
-		expect(gradeLabel(gradeSentimentPrecision(65, 30, 30))).toBe("優秀");
-		expect(gradeLabel(gradeSentimentPrecision(55, 30, 30))).toBe("良い");
-		expect(gradeLabel(gradeSentimentPrecision(50, 30, 30))).toBe("普通");
-		expect(gradeLabel(gradeSentimentPrecision(44.9, 30, 30))).toBe("悪い");
-		expect(gradeLabel(gradeSentimentPrecision(34, 30, 30))).toBe("非常に悪い");
+	const sentiment = (rate: number) =>
+		gradeLabel(gradePrecision("sentiment", rate, 30, false, 30));
+	const risk = (rate: number) =>
+		gradeLabel(gradePrecision("risk", rate, 30, false, 30));
+	test("センチメントは常に中立（40%）とでたらめ（36%）が普通に入る", () => {
+		expect([55, 45, 40, 36, 35, 34.9, 25, 24].map(sentiment)).toEqual([
+			"優秀",
+			"良い",
+			"普通",
+			"普通",
+			"普通",
+			"悪い",
+			"悪い",
+			"非常に悪い",
+		]);
 	});
-	test("リスクは見分け率をセンチメントと同じ基準で分ける", () => {
-		expect(gradeLabel(gradeRiskPrecision(65, 30, 30))).toBe("優秀");
-		expect(gradeLabel(gradeRiskPrecision(51, 30, 30))).toBe("普通");
-		expect(gradeLabel(gradeRiskPrecision(34, 30, 30))).toBe("非常に悪い");
+	test("リスクは常に平常（50%）とでたらめ（56%）が普通に入る", () => {
+		expect([70, 60, 56, 50, 49, 40, 39].map(risk)).toEqual([
+			"優秀",
+			"良い",
+			"普通",
+			"普通",
+			"悪い",
+			"悪い",
+			"非常に悪い",
+		]);
 	});
-	test("30件未満でも評価は出し、データ不足を添える", () => {
-		expect(gradeSentimentPrecision(35, 23, 30)).toEqual({
-			grade: { grade: "poor", label: "悪い" },
+	test("件数が足りないか記事の無い段階があれば、評価は出しデータ不足を添える", () => {
+		expect(gradePrecision("sentiment", 35, 23, false, 30)).toEqual({
+			grade: { grade: "fair", label: "普通" },
 			insufficient: true,
 		});
-		expect(gradeSentimentPrecision(35, 30, 30).insufficient).toBe(false);
-		expect(gradeRiskPrecision(null, 100, 30)).toEqual({
-			grade: null,
-			insufficient: false,
-		});
+		expect(gradePrecision("sentiment", 35, 30, false, 30).insufficient).toBe(
+			false,
+		);
+		expect(gradePrecision("risk", 60, 100, true, 30).insufficient).toBe(true);
+		expect(gradePrecision("risk", null, 0, true, 30).grade).toBeNull();
 	});
 });

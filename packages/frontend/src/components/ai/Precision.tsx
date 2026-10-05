@@ -1,9 +1,9 @@
-// 市場評価の精度（センチメント・リスクそれぞれ1つの指標と5段階の評価）。ニュース画面の一覧と精度分析のタブで使う
+// 市場評価の精度（センチメント・リスクそれぞれ得点率と5段階の評価）。ニュース画面の一覧と精度分析のタブで使う
 
 import type {
 	AccuracyHorizon,
 	AccuracyReport,
-	VersionStats,
+	LevelMatch,
 } from "@trading-studio/backend";
 import type { Judge } from "@trading-studio/core";
 import { JUDGE_LABELS, JUDGES } from "@trading-studio/core";
@@ -11,7 +11,7 @@ import { useCallback } from "react";
 import { Link } from "react-router";
 import { useApi } from "../../api";
 import type { PrecisionGrade } from "../../lib/grade";
-import { gradeRiskPrecision, gradeSentimentPrecision } from "../../lib/grade";
+import { gradePrecision } from "../../lib/grade";
 import { readJson, useAsync } from "../../lib/useAsync";
 import { GradeBadge } from "../Grade";
 import { Help } from "../Help";
@@ -21,24 +21,33 @@ export const HORIZON_LABELS: Record<AccuracyHorizon, string> = {
 	"24h": "24時間後",
 };
 
+/** 評価と突き合わせる、値動きの段階の名前 */
+export const MOVE_LEVEL_LABELS: Record<Judge, Record<number, string>> = {
+	sentiment: {
+		[-2]: "大きく下落",
+		[-1]: "下落",
+		0: "横ばい",
+		1: "上昇",
+		2: "大きく上昇",
+	},
+	risk: { 0: "静か", 1: "荒れた", 2: "大荒れ" },
+};
+
 export type Precision = {
 	badge: PrecisionGrade;
 	/** 指標の名前 */
 	metric: string;
-	/** 指標の値（的中率は「35%」、倍率は「1.07倍」）。出せなければ「—」 */
+	/** 指標の値（「48%」）。出せなければ「—」 */
 	value: string;
 	/** 算出に使った件数の説明 */
 	basis: string;
 };
 
-/**
- * リスクの見分け率（%）。荒れた記事のうち警戒以上と言えた割合と、静かだった記事のうち平常と言えた割合の平均。
- * 平常ばかり付けても高くならないよう、単純な的中率にしない。片側が無ければ null
- */
-export function riskDiscrimination(r: VersionStats["risk"]): number | null {
-	if (r.rough === 0 || r.calm === 0) return null;
-	return ((r.roughHigh / r.rough + r.calmNormal / r.calm) / 2) * 100;
-}
+/** 出す値と評価が食い違わないよう、四捨五入した値で評価する */
+export const roundedRate = (m: LevelMatch) =>
+	m.rate === null ? null : Math.round(m.rate);
+
+export const matchCount = (m: LevelMatch) => m.exact + m.near + m.miss;
 
 /** 使用中の版の、設定の長さの後の値動きで測った精度。採点した記事が無ければ null */
 export function precisionOf(
@@ -50,27 +59,24 @@ export function precisionOf(
 			? report.versions[0]
 			: report.versions.find((x) => x.version === report.activeVersion);
 	if (!v) return null;
-	const s = v.sentiment;
-	// 出す値と評価が食い違わないよう、四捨五入した値で評価する
-	const hitRate =
-		s.directed === 0 ? null : Math.round((s.hits / s.directed) * 100);
-	const r = v.risk;
-	const raw = riskDiscrimination(r);
-	const rate = raw === null ? null : Math.round(raw);
-	return {
-		sentiment: {
-			badge: gradeSentimentPrecision(hitRate, s.directed, report.minSamples),
-			metric: "的中率",
-			value: hitRate === null ? "—" : `${hitRate}%`,
-			basis: `強気・弱気の材料 ${s.directed} 件のうち、値動きの向きが合った ${s.hits} 件の割合`,
-		},
-		risk: {
-			badge: gradeRiskPrecision(rate, r.rough, report.minSamples),
-			metric: "見分け率",
+	const of = (judge: Judge): Precision => {
+		const m = v[judge].match;
+		const rate = roundedRate(m);
+		const n = matchCount(m);
+		return {
+			badge: gradePrecision(
+				judge,
+				rate,
+				n,
+				m.levels.some((l) => l.count === 0),
+				report.minSamples,
+			),
+			metric: "得点率",
 			value: rate === null ? "—" : `${rate}%`,
-			basis: `荒れた記事 ${r.rough} 件のうち警戒以上 ${r.roughHigh} 件、静かだった記事 ${r.calm} 件のうち平常 ${r.calmNormal} 件。それぞれの割合の平均`,
-		},
+			basis: `記事 ${n} 件（2点 ${m.exact}・1点 ${m.near}・0点 ${m.miss}）。値動きの段階ごとの平均点を、さらに平均した割合`,
+		};
 	};
+	return { sentiment: of("sentiment"), risk: of("risk") };
 }
 
 /** 精度の計算に使う集計（設定の長さ）。重いので開いたときに1回だけ読む */
@@ -137,37 +143,46 @@ export function PrecisionLink({
 	);
 }
 
-/** 精度の測り方。値は精度の設定（期間・長さ・件数）に合わせる */
+/** 精度の測り方。値は精度の設定（期間・長さ・件数・段階の境目）に合わせる */
 export type PrecisionBasis = Pick<
 	AccuracyReport,
-	"days" | "horizon" | "roughPct" | "minSamples"
+	"days" | "horizon" | "minSamples" | "sentimentBands" | "riskBands"
 >;
 
 export function PrecisionHelp({ basis }: { basis: PrecisionBasis | null }) {
 	const days = basis ? `直近 ${basis.days} 日` : "直近の期間";
 	const after = basis ? HORIZON_LABELS[basis.horizon] : "一定時間後";
-	const rough = basis ? `±${basis.roughPct}%` : "一定以上";
+	const sb = basis?.sentimentBands;
+	const rb = basis?.riskBands;
 	return (
 		<Help label="精度">
 			<p>
 				使用中の版の採点を、{days}の記事について、採点した時刻から{after}
 				の値動きと突き合わせる。優秀・良い・普通・悪い・非常に悪い
-				の5段階。期間・長さ・データ不足の件数は設定の「ニュース」→「精度」で変える。
+				の5段階。期間・長さ・段階の境目・データ不足の件数は設定の「ニュース」→「精度」で変える。
+			</p>
+			<p>
+				記事ごとに、評価の段階と値動きの段階が一致で2点、1段ずれで1点、それ以外は0点。得点率は、値動きの段階ごとの平均点（2点満点）を、記事のある段階で平均した割合。横ばいばかりの期間に中立を付け続けても高くならない。
 			</p>
 			<ul className="flex list-disc flex-col gap-1 pl-4">
 				<li>
-					センチメント:
-					的中率。やや強気以上・やや弱気以下の記事のうち、値動きの向きが合った割合。偶然でも50%前後になる。65%以上=優秀、55%以上=良い、45%以上=普通、35%以上=悪い、35%未満=非常に悪い
+					センチメント: 強い弱気〜強い強気の5段階を、
+					{sb
+						? `±${sb.small}% 未満=横ばい、±${sb.large}% 未満=上昇・下落、それ以上=大きく上昇・大きく下落`
+						: "横ばい・上昇・下落・大きく上昇・大きく下落"}
+					と比べる。常に中立で40%、でたらめで36%。55%以上=優秀、45%以上=良い、35%以上=普通、25%以上=悪い、25%未満=非常に悪い
 				</li>
 				<li>
-					リスク: 見分け率。{rough}
-					以上動いた（荒れた）記事のうち警戒以上と言えた割合と、静かだった記事のうち平常と言えた割合の平均。平常ばかり付けても高くならず、50%が当てずっぽうと同じ。基準はセンチメントと同じ
+					リスク: 平常・警戒・危機を、上下を問わない値動きの大きさ
+					{rb
+						? `（±${rb.rough}% 未満=静か、±${rb.wild}% 未満=荒れた、それ以上=大荒れ）`
+						: "（静か・荒れた・大荒れ）"}
+					と比べる。常に平常で50%、でたらめで56%。70%以上=優秀、60%以上=良い、50%以上=普通、40%以上=悪い、40%未満=非常に悪い
 				</li>
 			</ul>
 			<p>
-				センチメントは強気・弱気の材料、リスクは荒れた記事が
-				{basis ? ` ${basis.minSamples} ` : "一定"}
-				件未満のときは偶然と区別できないので、評価に「データ不足」を添える。
+				数えた記事が{basis ? ` ${basis.minSamples} ` : "一定"}
+				件未満のときや、記事の無い値動きの段階があるときは偶然と区別できないので、評価に「データ不足」を添える。
 			</p>
 		</Help>
 	);

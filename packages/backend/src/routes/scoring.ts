@@ -49,14 +49,42 @@ export function scoringRoutes(
 						!isObj(v) ||
 						typeof v.days !== "number" ||
 						typeof v.horizon !== "string" ||
-						typeof v.minSamples !== "number"
+						typeof v.minSamples !== "number" ||
+						!isObj(v.sentimentBands) ||
+						!isObj(v.riskBands)
 					) {
-						return c.json({ message: "days・horizon・minSamples が必要" }, 400);
+						return c.json(
+							{
+								message:
+									"days・horizon・minSamples・sentimentBands・riskBands が必要",
+							},
+							400,
+						);
 					}
+					// 数でない境目は NaN にして、サービスの検査で弾く
+					const num = (o: unknown, h: AccuracyHorizon, k: string) => {
+						const b = isObj(o) ? o[h] : undefined;
+						return isObj(b) && typeof b[k] === "number"
+							? (b[k] as number)
+							: Number.NaN;
+					};
+					const { sentimentBands: sb, riskBands: rb } = v;
+					const both = <T>(f: (h: AccuracyHorizon) => T) => ({
+						"4h": f("4h"),
+						"24h": f("24h"),
+					});
 					return {
 						days: v.days,
 						horizon: v.horizon as AccuracyHorizon,
 						minSamples: v.minSamples,
+						sentimentBands: both((h) => ({
+							small: num(sb, h, "small"),
+							large: num(sb, h, "large"),
+						})),
+						riskBands: both((h) => ({
+							rough: num(rb, h, "rough"),
+							wild: num(rb, h, "wild"),
+						})),
 					};
 				}),
 				(c) => {
