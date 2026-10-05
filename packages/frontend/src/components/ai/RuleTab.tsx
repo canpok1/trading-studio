@@ -1,10 +1,13 @@
 import type { CurrentJudgment } from "@trading-studio/backend";
 import type { AggregationRule } from "@trading-studio/core";
 import {
+	DURATION_LABELS,
+	HALF_LIVES_IN_WINDOW,
 	JUDGE_LABELS,
 	JUDGES,
 	JUDGMENT_VALUE_LABELS,
 	judgmentBands,
+	LASTING_DURATIONS,
 	validateAggregationRule,
 } from "@trading-studio/core";
 import type { ReactNode } from "react";
@@ -17,25 +20,27 @@ import { NumberInput } from "../NumberInput";
 import { Button, Card } from "../ui";
 
 type Path =
-	| "windowHours"
-	| "halfLifeHours"
+	| `halfLifeHours.${string}`
 	| `thresholds.${"sentiment" | "risk"}.${string}`;
 
+function group(r: AggregationRule, path: Path): Record<string, number> {
+	const [a, b] = path.split(".") as [string, string];
+	return (
+		a === "halfLifeHours"
+			? r.halfLifeHours
+			: r.thresholds[b as keyof AggregationRule["thresholds"]]
+	) as Record<string, number>;
+}
+
+const leaf = (path: Path) => path.split(".").at(-1) as string;
+
 function get(r: AggregationRule, path: Path): number {
-	const [a, b, c] = path.split(".") as [string, string?, string?];
-	if (a === "windowHours" || a === "halfLifeHours") return r[a];
-	const group = r.thresholds[b as keyof AggregationRule["thresholds"]];
-	return (group as Record<string, number>)[c as string] as number;
+	return group(r, path)[leaf(path)] as number;
 }
 
 function set(r: AggregationRule, path: Path, v: number): AggregationRule {
 	const next = structuredClone(r);
-	const [a, b, c] = path.split(".") as [string, string?, string?];
-	if (a === "windowHours" || a === "halfLifeHours") next[a] = v;
-	else {
-		const group = next.thresholds[b as keyof AggregationRule["thresholds"]];
-		(group as Record<string, number>)[c as string] = v;
-	}
+	group(next, path)[leaf(path)] = v;
 	return next;
 }
 
@@ -131,9 +136,12 @@ export function RuleTab({
 					<h2 className="text-[15px] font-bold">平均のとり方</h2>
 					<Help label="平均のとり方">
 						<p>
-							半減期ごとに重みが半分になる。
-							{Number.isFinite(draft.halfLifeHours) ? draft.halfLifeHours : "—"}{" "}
-							時間前のニュースは今の半分の重み。
+							ニュースごとの重みで平均する。重みは公開した時点で 100%、AI
+							が付けた持続（短期・中期・長期）ごとの半減期で半分になり、半減期の
+							{HALF_LIVES_IN_WINDOW}
+							倍たつと
+							0%（集計の対象外）になる。持続が「なし」（相場に関係ない）のニュースは
+							0%。
 						</p>
 						<p>
 							市場評価は評価のたびに計算し直す（AI
@@ -141,8 +149,12 @@ export function RuleTab({
 						</p>
 					</Help>
 				</div>
-				{field("期間", "windowHours", "時間")}
-				{field("半減期", "halfLifeHours", "時間")}
+				<strong className="text-xs">半減期</strong>
+				{LASTING_DURATIONS.map((d) => (
+					<div key={d}>
+						{field(DURATION_LABELS[d], `halfLifeHours.${d}`, "時間")}
+					</div>
+				))}
 			</Card>
 			<Card className="flex flex-col gap-2.5">
 				<div className="flex items-center gap-1.5">

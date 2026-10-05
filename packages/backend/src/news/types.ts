@@ -1,6 +1,6 @@
 // ニュース収集と採点の型。app.ts から参照されるため、Bun 固有の型を持ち込まない
 
-import type { Scores } from "@trading-studio/core";
+import type { Duration, Scores } from "@trading-studio/core";
 
 export const NEWS_LANGUAGES = ["ja", "en"] as const;
 export type NewsLanguage = (typeof NEWS_LANGUAGES)[number];
@@ -48,6 +48,8 @@ export type NewsScore = {
 	status: "done" | "retry" | "failed" | "skipped";
 	/** 観点ごとの点数。採点済みでなければ null */
 	scores: Scores | null;
+	/** 影響の持続。採点済みでなければ null */
+	duration: Duration | null;
 	comment: string | null;
 	/** 判定に使い始める時刻。採点し直して置き換えても変えない */
 	scoredAt: number | null;
@@ -170,12 +172,13 @@ export type TrialItem = {
 		/** 保存済みの採点。採点済みでなければ null */
 		stored: {
 			scores: Scores;
+			duration: Duration;
 			comment: string | null;
 			criteriaVersion: number | null;
 		} | null;
 	};
 	result:
-		| { ok: true; scores: Scores; comment: string }
+		| { ok: true; scores: Scores; duration: Duration; comment: string }
 		| { ok: false; message: string };
 };
 

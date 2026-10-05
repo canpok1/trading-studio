@@ -1,7 +1,7 @@
 // 採点のプロンプトと、AI の応答の検証。ひな形と出力形式は集計の前提なので固定する
 
-import type { Scores } from "@trading-studio/core";
-import { JUDGES, SCORE_RANGES } from "@trading-studio/core";
+import type { Duration, Scores } from "@trading-studio/core";
+import { DURATIONS, JUDGES, SCORE_RANGES } from "@trading-studio/core";
 
 /** ひな形。{news} と {criteria} を差し込む。長い文書を先頭に、指示を最後に置く */
 export const PROMPT_TEMPLATE = `<news>
@@ -16,12 +16,14 @@ export const PROMPT_TEMPLATE = `<news>
 <news> のニュース1件が BTC/JPY の相場に与える影響を、<criteria> の基準で採点してください。
 
 # 出力（この形式以外は受け付けない）
-観点ごとの整数。関係ない観点は null。
+まず duration を決め、次に観点ごとの整数を付ける。
+- duration: 相場への影響が続く長さ。none=BTC/JPY の相場に関係ない / short=数時間（発言・話題・単発の値動き） / medium=1日程度（企業や取引所の発表・ETF の資金の出入り） / long=数日以上（規制・金融政策・大規模な流出）
 - sentiment: -100〜100。BTC の価格にとって強気材料か弱気材料か。-100=強い弱気材料（下落要因） / 0=中立 / 100=強い強気材料（上昇要因）
 - risk: 0〜100。0=安全 / 100=危険
+duration が none なら sentiment と risk は 0 にする。それ以外でも関係ない観点は 0 にする。
 comment には採点の理由を日本語で書く。
 
-JSON のみを出力: {"sentiment": 整数|null, "risk": 整数|null, "comment": 文字列}`;
+JSON のみを出力: {"duration": "none"|"short"|"medium"|"long", "sentiment": 整数, "risk": 整数, "comment": 文字列}`;
 
 /** 採点の基準の初版 */
 export const DEFAULT_CRITERIA = `- 価格そのものの推移ではなく、ニュースの材料で判断する
@@ -59,25 +61,28 @@ export const RESPONSE_SCHEMA = {
 	properties: {
 		sentiment: {
 			type: "INTEGER",
-			nullable: true,
 			minimum: SCORE_RANGES.sentiment.min,
 			maximum: SCORE_RANGES.sentiment.max,
 		},
 		risk: {
 			type: "INTEGER",
-			nullable: true,
 			minimum: SCORE_RANGES.risk.min,
 			maximum: SCORE_RANGES.risk.max,
 		},
+		duration: { type: "STRING", format: "enum", enum: [...DURATIONS] },
 		comment: { type: "STRING" },
 	},
-	required: ["sentiment", "risk", "comment"],
-	propertyOrdering: ["sentiment", "risk", "comment"],
+	required: ["duration", "sentiment", "risk", "comment"],
+	propertyOrdering: ["duration", "sentiment", "risk", "comment"],
 } as const;
 
 export const COMMENT_MAX = 1000;
 
-export type ScoreResponse = { scores: Scores; comment: string };
+export type ScoreResponse = {
+	scores: Scores;
+	duration: Duration;
+	comment: string;
+};
 
 /** 応答を検証する。形が合わなければ理由の文字列を返す */
 export function parseScoreResponse(v: unknown): ScoreResponse | string {
@@ -89,20 +94,26 @@ export function parseScoreResponse(v: unknown): ScoreResponse | string {
 	for (const j of JUDGES) {
 		const x = o[j];
 		const { min, max } = SCORE_RANGES[j];
-		if (x === null) {
-			scores[j] = null;
-		} else if (
-			Number.isInteger(x) &&
-			(x as number) >= min &&
-			(x as number) <= max
-		) {
+		if (Number.isInteger(x) && (x as number) >= min && (x as number) <= max) {
 			scores[j] = x as number;
 		} else {
-			return `${j} が ${min}〜${max} の整数か null でない: ${JSON.stringify(x) ?? "なし"}`;
+			return `${j} が ${min}〜${max} の整数でない: ${JSON.stringify(x) ?? "なし"}`;
 		}
+	}
+	const duration = o.duration;
+	if (!DURATIONS.includes(duration as Duration)) {
+		return `duration が ${DURATIONS.join("・")} のどれでもない: ${JSON.stringify(duration) ?? "なし"}`;
 	}
 	if (typeof o.comment !== "string" || o.comment.trim() === "") {
 		return "comment が空";
 	}
-	return { scores, comment: o.comment.trim().slice(0, COMMENT_MAX) };
+	// 関係ない記事の点数は 0 にそろえる（AI が点数を付けても集計には使わないため）
+	if (duration === "none") {
+		for (const j of JUDGES) scores[j] = 0;
+	}
+	return {
+		scores,
+		duration: duration as Duration,
+		comment: o.comment.trim().slice(0, COMMENT_MAX),
+	};
 }

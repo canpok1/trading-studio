@@ -175,6 +175,7 @@ function newsView(r: AnalysisNewsRow | ScoredNewsView) {
 		status: r.status ?? "unscored",
 		scores:
 			r.status === "done" ? { sentiment: r.sentiment, risk: r.risk } : null,
+		duration: r.status === "done" ? r.duration : null,
 		comment: r.comment,
 		scoredAt: r.scoredAt === null ? null : jst(r.scoredAt),
 		criteriaVersion: r.criteriaVersion,
@@ -484,7 +485,7 @@ function createServer({
 				model: scoring.models(),
 				aggregationRule: judgments.rule(),
 				aggregationRuleNote:
-					"判定は、新しさの時刻（公開時刻と取得時刻の早いほう）が windowHours 以内で採点済みのニュースの点数を、halfLifeHours で重みが半分になる加重平均にし、thresholds と比べて出す。sentiment: plus2 以上=+2・plus1 以上=+1・minus2 未満=-2・minus1 未満=-1。risk: caution 以上=警戒・crisis 以上=危機",
+					"判定は、採点済みのニュースの点数を重み付き平均にし、thresholds と比べて出す。重みは新しさの時刻（公開時刻と取得時刻の早いほう）に 1 で、ニュースの duration（AI が付けた影響の持続。short・medium・long）ごとの halfLifeHours で半分になり、半減期の 4 倍たったら 0。duration が none（相場に関係ない）のニュースは重み 0。重み 0 のニュースは平均に入れない。sentiment: plus2 以上=+2・plus1 以上=+1・minus2 未満=-2・minus1 未満=-1。risk: caution 以上=警戒・crisis 以上=危機",
 				status: {
 					state: st.state,
 					error: st.error,

@@ -1,9 +1,15 @@
 import type {
 	AggregationRule,
+	Duration,
 	Judge,
 	JudgmentValue,
 } from "@trading-studio/core";
-import { classify, JUDGE_LABELS, SCORE_RANGES } from "@trading-studio/core";
+import {
+	classify,
+	DURATION_LABELS,
+	JUDGE_LABELS,
+	SCORE_RANGES,
+} from "@trading-studio/core";
 import type { Shape } from "./judgment-style";
 import { valueStyle } from "./judgment-style";
 
@@ -69,34 +75,42 @@ export function JudgmentBadge<J extends Judge>({
 	);
 }
 
-/** 観点ごとの点数のチップ。null は関係なし */
+/** チップは横に並べるので、観点の名前を短くする */
+const CHIP_LABELS: Record<Judge, string> = {
+	sentiment: "センチ",
+	risk: "リスク",
+};
+
+const CHIP =
+	"inline-flex h-[26px] items-center gap-1.5 rounded-full bg-surface-2 px-2.5 text-xs whitespace-nowrap";
+
+/** 観点ごとの点数のチップ */
 export function ScoreChip({
 	judge,
 	score,
 	rule,
 }: {
 	judge: Judge;
-	score: number | null;
+	score: number;
 	rule: AggregationRule;
 }) {
-	if (score === null) {
-		return (
-			<span
-				title="関係なし"
-				className="inline-flex h-[26px] items-center gap-1.5 rounded-full bg-surface-2 px-2.5 text-xs whitespace-nowrap text-text-2"
-			>
-				{JUDGE_LABELS[judge]} <b className="num">—</b>
-			</span>
-		);
-	}
 	const s = valueStyle(judge, classify(judge, score, rule));
 	return (
-		<span className="inline-flex h-[26px] items-center gap-1.5 rounded-full bg-surface-2 px-2.5 text-xs whitespace-nowrap">
+		<span className={CHIP}>
 			<ShapeIcon
 				shape={s.shape === "oct" ? "tri" : s.shape}
 				color={`var(${s.solid})`}
 			/>
-			{JUDGE_LABELS[judge]} <b className="num">{score}</b>
+			{CHIP_LABELS[judge]} <b className="num">{score}</b>
+		</span>
+	);
+}
+
+/** 影響の持続のチップ。none（相場に関係ない）は薄く出す */
+export function DurationChip({ duration }: { duration: Duration }) {
+	return (
+		<span className={`${CHIP} ${duration === "none" ? "text-text-2" : ""}`}>
+			持続 <b>{DURATION_LABELS[duration]}</b>
 		</span>
 	);
 }

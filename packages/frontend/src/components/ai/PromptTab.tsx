@@ -5,7 +5,7 @@ import type {
 	TrialItem,
 	TrialResult,
 } from "@trading-studio/backend";
-import type { AggregationRule, Scores } from "@trading-studio/core";
+import type { AggregationRule, Duration, Scores } from "@trading-studio/core";
 import { JUDGES } from "@trading-studio/core";
 import { useCallback, useEffect, useState } from "react";
 import { useApi } from "../../api";
@@ -13,7 +13,7 @@ import { formatDateTime } from "../../format";
 import { lineDiff } from "../../lib/line-diff";
 import { errorMessage, readJson, useAsync } from "../../lib/useAsync";
 import { Help } from "../Help";
-import { ScoreChip } from "../judgment/JudgmentBadge";
+import { DurationChip, ScoreChip } from "../judgment/JudgmentBadge";
 import { Modal } from "../Modal";
 import { ErrorState, LoadingCard, Skeleton } from "../States";
 import { Button, Card } from "../ui";
@@ -471,9 +471,11 @@ function PromptBody({
 
 function ScoreChips({
 	scores,
+	duration,
 	rule,
 }: {
 	scores: Scores;
+	duration: Duration;
 	rule: AggregationRule;
 }) {
 	return (
@@ -481,6 +483,7 @@ function ScoreChips({
 			{JUDGES.map((j) => (
 				<ScoreChip key={j} judge={j} score={scores[j]} rule={rule} />
 			))}
+			<DurationChip duration={duration} />
 		</div>
 	);
 }
@@ -499,7 +502,11 @@ function TrialRow({ item, rule }: { item: TrialItem; rule: AggregationRule }) {
 			<span className="text-xs font-semibold">試した採点</span>
 			{result.ok ? (
 				<>
-					<ScoreChips scores={result.scores} rule={rule} />
+					<ScoreChips
+						scores={result.scores}
+						duration={result.duration}
+						rule={rule}
+					/>
 					<p className="text-xs leading-relaxed">{result.comment}</p>
 				</>
 			) : (
@@ -514,7 +521,11 @@ function TrialRow({ item, rule }: { item: TrialItem; rule: AggregationRule }) {
 			</span>
 			{news.stored ? (
 				<>
-					<ScoreChips scores={news.stored.scores} rule={rule} />
+					<ScoreChips
+						scores={news.stored.scores}
+						duration={news.stored.duration}
+						rule={rule}
+					/>
 					{news.stored.comment && (
 						<p className="text-xs leading-relaxed text-text-2">
 							{news.stored.comment}

@@ -1,6 +1,6 @@
 import type { NewsItem } from "@trading-studio/backend";
 import type { AggregationRule } from "@trading-studio/core";
-import { JUDGES } from "@trading-studio/core";
+import { HALF_LIVES_IN_WINDOW, JUDGES } from "@trading-studio/core";
 import { useId, useState } from "react";
 import { useApi } from "../../api";
 import {
@@ -14,7 +14,7 @@ import { newsState } from "../../lib/ai";
 import { groupByDay } from "../../lib/news-filter";
 import { errorMessage, readJson } from "../../lib/useAsync";
 import { ChevronIcon } from "../icons";
-import { ScoreChip } from "../judgment/JudgmentBadge";
+import { DurationChip, ScoreChip } from "../judgment/JudgmentBadge";
 import { EmptyState, Skeleton } from "../States";
 import { Button } from "../ui";
 
@@ -120,6 +120,7 @@ function NewsCard({
 	const [open, setOpen] = useState(false);
 	const detailId = useId();
 	const state = newsState(n, scorerStopped);
+	const duration = n.score?.duration ?? "short";
 
 	const send = async (
 		what: string,
@@ -157,10 +158,17 @@ function NewsCard({
 			data-testid="news-card"
 			className={`flex flex-col gap-2 border-b border-line p-3.5 last:border-b-0 ${state.kind === "done" && weight === null ? "opacity-60" : ""}`}
 		>
-			<span className="num text-xs text-text-2">
-				{timeOnly ? formatTime(n.publishedAt) : formatDateTime(n.publishedAt)} ·{" "}
-				{n.sourceName}
-			</span>
+			<div className="flex items-baseline gap-2 text-xs text-text-2">
+				<span className="num min-w-0 flex-1 truncate">
+					{timeOnly ? formatTime(n.publishedAt) : formatDateTime(n.publishedAt)}{" "}
+					· {n.sourceName}
+				</span>
+				{state.kind === "done" && (
+					<span className="shrink-0 whitespace-nowrap">
+						重み <b className="num">{Math.round((weight ?? 0) * 100)}%</b>
+					</span>
+				)}
+			</div>
 			<a
 				href={n.url}
 				target="_blank"
@@ -176,16 +184,11 @@ function NewsCard({
 							<ScoreChip
 								key={j}
 								judge={j}
-								score={n.score?.scores?.[j] ?? null}
+								score={n.score?.scores?.[j] ?? 0}
 								rule={rule}
 							/>
 						))}
-						<span className="inline-flex h-[26px] items-center gap-1.5 rounded-full bg-surface-2 px-2.5 text-xs whitespace-nowrap">
-							重み{" "}
-							<b className="num">
-								{weight === null ? "対象外" : `${Math.round(weight * 100)}%`}
-							</b>
-						</span>
+						<DurationChip duration={duration} />
 					</div>
 					<button
 						type="button"
@@ -215,7 +218,9 @@ function NewsCard({
 							</span>
 							{weight === null && (
 								<span className="num text-xs text-text-2">
-									集計の対象外（{rule.windowHours}時間より前）
+									{duration === "none"
+										? "集計の対象外（相場に関係ない）"
+										: `集計の対象外（持続の半減期の${HALF_LIVES_IN_WINDOW}倍、${rule.halfLifeHours[duration] * HALF_LIVES_IN_WINDOW}時間より前）`}
 								</span>
 							)}
 							{canRescore && n.rescore === null && (
@@ -286,8 +291,7 @@ function NewsCard({
 			)}
 			{state.kind === "skipped" && (
 				<span className="text-xs text-text-2">
-					集計の対象外（取得した時点で{rule.windowHours}
-					時間より前のため採点していない）
+					集計の対象外（取得した時点で古かったため採点していない）
 				</span>
 			)}
 			{error && (

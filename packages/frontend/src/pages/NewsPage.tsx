@@ -4,7 +4,11 @@ import type {
 	NewsSearchResult,
 	ScorerStatus,
 } from "@trading-studio/backend";
-import { JUDGE_LABELS, JUDGES } from "@trading-studio/core";
+import {
+	HALF_LIVES_IN_WINDOW,
+	JUDGE_LABELS,
+	JUDGES,
+} from "@trading-studio/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useApi } from "../api";
@@ -201,9 +205,10 @@ export function NewsPage() {
 				</h2>
 				<Help label="市場評価">
 					<p>
-						直近 {current.rule.windowHours}{" "}
-						時間のニュースの点数を、新しいほど重く平均する（半減期{" "}
-						{current.rule.halfLifeHours} 時間）。
+						ニュースの点数を、重みを付けて平均する。重みは新しいほど重く、AI
+						が付けた持続ごとの半減期（短期 {current.rule.halfLifeHours.short}
+						・中期 {current.rule.halfLifeHours.medium}・長期{" "}
+						{current.rule.halfLifeHours.long} 時間）で半分になる。
 					</p>
 				</Help>
 			</div>
@@ -277,13 +282,21 @@ export function NewsPage() {
 				<Help label="ニュースごと">
 					<p>
 						{data.collector.intervalMinutes}
-						分ごとにニュースを取得し、新着だけを1回ずつ採点する。—
-						は関係なし（その観点の集計に入れない）。
+						分ごとにニュースを取得し、新着だけを1回ずつ採点する。センチはセンチメントの略。関係ない観点は
+						0 点。
 					</p>
 					<p>
-						重みは市場評価の平均でのその記事の重さ。新しい記事が 100% で、
-						{current.rule.halfLifeHours} 時間ごとに半分になる。
-						{current.rule.windowHours} 時間より前は対象外。
+						持続は相場への影響が続く長さで、AI
+						が短期・中期・長期・なしで付ける。
+					</p>
+					<p>
+						重みは市場評価の平均でのその記事の重さ。新しい記事が 100%
+						で、持続ごとの半減期（短期 {current.rule.halfLifeHours.short}・中期{" "}
+						{current.rule.halfLifeHours.medium}・長期{" "}
+						{current.rule.halfLifeHours.long} 時間）で半分になる。半減期の{" "}
+						{HALF_LIVES_IN_WINDOW}{" "}
+						倍より前と、持続が「なし」（相場に関係ない）の記事は
+						0%（集計の対象外）。
 					</p>
 					<p>
 						強気材料・弱気材料・リスク高は、評価基準のやや強気以上・やや弱気以下・警戒以上の点数が付いたもの。影響の大きい順は、センチメントの点数の絶対値とリスクの点数の大きい方で並べる。

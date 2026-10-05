@@ -3,6 +3,7 @@
 import type {
 	AggregationRule,
 	Candle,
+	Duration,
 	Judge,
 	Scores,
 	Timeframe,
@@ -183,7 +184,9 @@ export type ScoredNewsView = AnalysisNewsRow & {
 
 export type TrialItem = {
 	news: ScoredNewsView;
-	trial: { scores: Scores; comment: string } | { error: string };
+	trial:
+		| { scores: Scores; duration: Duration; comment: string }
+		| { error: string };
 };
 
 export type ScoringAnalysisService = ReturnType<typeof createScoringAnalysis>;
@@ -273,7 +276,10 @@ export function createScoringAnalysis({
 				}));
 				const judges = {} as Record<Judge, unknown>;
 				for (const j of JUDGES) {
-					const scored = withReturns.filter((x) => x.r[j] !== null);
+					// 持続 none（相場に関係ない記事）は市場評価に使わないので除く
+					const scored = withReturns.filter(
+						(x) => x.r.duration !== "none" && x.r[j] !== null,
+					);
 					const corr = {} as Record<Horizon, number | null>;
 					const hit = {} as Record<
 						Horizon,

@@ -55,8 +55,29 @@ export const SCORE_RANGES: Record<Judge, { min: number; max: number }> = {
 	risk: { min: 0, max: 100 },
 };
 
-/** 観点ごとの点数。SCORE_RANGES の範囲の整数、関係なしは null */
-export type Scores = Record<Judge, number | null>;
+/** 観点ごとの点数。SCORE_RANGES の範囲の整数。関係ない観点は 0 */
+export type Scores = Record<Judge, number>;
+
+/** 影響の持続。none は相場に関係ない記事で、集計に使わない（重み 0%） */
+export const DURATIONS = ["none", "short", "medium", "long"] as const;
+export type Duration = (typeof DURATIONS)[number];
+/** 半減期を持つ持続 */
+export type LastingDuration = Exclude<Duration, "none">;
+export const LASTING_DURATIONS = [
+	"short",
+	"medium",
+	"long",
+] as const satisfies readonly LastingDuration[];
+
+export const DURATION_LABELS: Record<Duration, string> = {
+	none: "なし",
+	short: "短期",
+	medium: "中期",
+	long: "長期",
+};
+
+/** 半減期の何倍たったら集計から外すか */
+export const HALF_LIVES_IN_WINDOW = 4;
 
 /** 採点済みのニュース1件。採点に失敗したものは渡さない */
 export type ScoredNews = {
@@ -68,12 +89,15 @@ export type ScoredNews = {
 	/** 採点した時刻。これより前の評価時刻では使わない */
 	scoredAt: number;
 	scores: Scores;
+	duration: Duration;
 };
 
-/** 評価ルール（画面の名前。コード上は集計ルール）。時間は時間単位の整数、しきい値は観点の点数の範囲（SCORE_RANGES）の整数 */
+/**
+ * 評価ルール（画面の名前。コード上は集計ルール）。時間は時間単位の整数、しきい値は観点の点数の範囲（SCORE_RANGES）の整数。
+ * 半減期は持続ごと。ニュースは半減期の HALF_LIVES_IN_WINDOW 倍たったら集計から外す
+ */
 export type AggregationRule = {
-	windowHours: number;
-	halfLifeHours: number;
+	halfLifeHours: Record<LastingDuration, number>;
 	thresholds: {
 		/** caution 以上=警戒、crisis 以上=危機 */
 		risk: { caution: number; crisis: number };
@@ -83,8 +107,7 @@ export type AggregationRule = {
 };
 
 export const DEFAULT_AGGREGATION_RULE: AggregationRule = {
-	windowHours: 24,
-	halfLifeHours: 6,
+	halfLifeHours: { short: 6, medium: 24, long: 72 },
 	thresholds: {
 		risk: { caution: 40, crisis: 70 },
 		sentiment: { plus2: 60, plus1: 20, minus1: -20, minus2: -60 },
@@ -148,8 +171,16 @@ export function validateAggregationRule(r: AggregationRule): ValidationError[] {
 	const errors: ValidationError[] = [];
 	const err = (path: string, message: string) => errors.push({ path, message });
 	const h = RULE_LIMITS.hours;
-	for (const k of ["windowHours", "halfLifeHours"] as const) {
-		if (!isIntIn(r[k], h)) err(k, `${h.min}〜${h.max} の整数で入れる`);
+	const hl = r.halfLifeHours;
+	const hoursOk = LASTING_DURATIONS.filter((d) => {
+		if (isIntIn(hl[d], h)) return true;
+		err(`halfLifeHours.${d}`, `${h.min}〜${h.max} の整数で入れる`);
+		return false;
+	});
+	// 持続の長さの順を崩すと、短期の記事のほうが長く効いて名前と食い違う
+	if (hoursOk.length === LASTING_DURATIONS.length) {
+		if (hl.medium < hl.short) err("halfLifeHours.medium", "短期以上にする");
+		if (hl.long < hl.medium) err("halfLifeHours.long", "中期以上にする");
 	}
 	let scoresOk = true;
 	for (const j of JUDGES) {
@@ -199,14 +230,35 @@ function num(v: unknown): number {
 	return typeof v === "number" ? v : Number.NaN;
 }
 
-/** JSON から読む。形が違えば null。値の範囲は validateAggregationRule で見る */
+/**
+ * JSON から読む。形が違えば null。値の範囲は validateAggregationRule で見る。
+ * 半減期が1つだけの古い形（windowHours と数値の halfLifeHours）は、その半減期を短期にし、中期・長期は既定値（短期より短ければ短期と同じ）にする
+ */
 export function parseAggregationRule(v: unknown): AggregationRule | null {
 	if (!isObj(v) || !isObj(v.thresholds)) return null;
 	const t = v.thresholds;
 	if (!isObj(t.risk) || !isObj(t.sentiment)) return null;
+	let halfLifeHours: AggregationRule["halfLifeHours"];
+	if (isObj(v.halfLifeHours)) {
+		const h = v.halfLifeHours;
+		halfLifeHours = {
+			short: num(h.short),
+			medium: num(h.medium),
+			long: num(h.long),
+		};
+	} else if (typeof v.halfLifeHours === "number") {
+		const short = v.halfLifeHours;
+		const d = DEFAULT_AGGREGATION_RULE.halfLifeHours;
+		halfLifeHours = {
+			short,
+			medium: Math.max(d.medium, short),
+			long: Math.max(d.long, short),
+		};
+	} else {
+		return null;
+	}
 	return {
-		windowHours: num(v.windowHours),
-		halfLifeHours: num(v.halfLifeHours),
+		halfLifeHours,
 		thresholds: {
 			risk: { caution: num(t.risk.caution), crisis: num(t.risk.crisis) },
 			sentiment: {
@@ -269,12 +321,35 @@ export type JudgeResult<J extends Judge = Judge> = {
 export type JudgmentSnapshot = {
 	time: number;
 	results: { [J in Judge]: JudgeResult<J> };
-	/** 期間内で評価時刻までに採点済みのニュースの重み（評価時刻に公開されたものが 1）。どの観点の平均にも使われないものも含む */
+	/** 重みが 0 より大きいニュースの重み（評価時刻に公開されたものが 1） */
 	weights: Map<number, number>;
 };
 
-function inWindow(n: ScoredNews, time: number, windowMs: number): boolean {
-	return n.scoredAt <= time && newsTime(n) > time - windowMs;
+/** 集計に使う長さ（ミリ秒）。持続 none は 0 */
+export function windowMs(duration: Duration, rule: AggregationRule): number {
+	return duration === "none"
+		? 0
+		: rule.halfLifeHours[duration] * HALF_LIVES_IN_WINDOW * HOUR;
+}
+
+/** 一番長く集計に使う長さ（ミリ秒）。この長さより前のニュースはどの時刻の判定にも使わない */
+export function maxWindowMs(rule: AggregationRule): number {
+	return Math.max(...LASTING_DURATIONS.map((d) => windowMs(d, rule)));
+}
+
+/**
+ * ある時刻のニュースの重み。新しさの時刻に 1 で、持続の半減期ごとに半分になる。
+ * 採点前・持続 none・半減期の HALF_LIVES_IN_WINDOW 倍たったものは 0（集計に使わない）
+ */
+export function newsWeight(
+	n: ScoredNews,
+	time: number,
+	rule: AggregationRule,
+): number {
+	if (n.duration === "none" || n.scoredAt > time) return 0;
+	const age = time - newsTime(n);
+	if (age >= windowMs(n.duration, rule)) return 0;
+	return 0.5 ** (age / (rule.halfLifeHours[n.duration] * HOUR));
 }
 
 function summarize(
@@ -282,28 +357,33 @@ function summarize(
 	time: number,
 	rule: AggregationRule,
 ): JudgmentSnapshot["results"] {
-	const halfLifeMs = rule.halfLifeHours * HOUR;
 	const sum: Record<Judge, number> = { sentiment: 0, risk: 0 };
-	const wsum: Record<Judge, number> = { sentiment: 0, risk: 0 };
-	const count: Record<Judge, number> = { sentiment: 0, risk: 0 };
+	let wsum = 0;
+	let count = 0;
 	for (const n of active) {
-		const w = 0.5 ** ((time - newsTime(n)) / halfLifeMs);
-		for (const j of JUDGES) {
-			const s = n.scores[j];
-			if (s === null) continue;
-			sum[j] += w * s;
-			wsum[j] += w;
-			count[j] += 1;
-		}
+		const w = newsWeight(n, time, rule);
+		if (w === 0) continue;
+		wsum += w;
+		count += 1;
+		for (const j of JUDGES) sum[j] += w * n.scores[j];
 	}
+	return resultsOf(sum, wsum, count, rule);
+}
+
+function resultsOf(
+	sum: Record<Judge, number>,
+	wsum: number,
+	count: number,
+	rule: AggregationRule,
+): JudgmentSnapshot["results"] {
 	const result = <J extends Judge>(j: J): JudgeResult<J> => {
-		if (count[j] === 0) {
+		if (count === 0) {
 			return { value: NEUTRAL[j], average: null, count: 0 };
 		}
 		// 画面に出す整数の点数と判定を揃えるため、整数に丸めてからしきい値と比べる。
 		// 重みの小数計算の誤差で .5 ちょうどの丸めが評価時刻によって揺れないよう、先に小数6桁で丸める
-		const average = Math.round(Math.round((sum[j] / wsum[j]) * 1e6) / 1e6);
-		return { value: classify(j, average, rule), average, count: count[j] };
+		const average = Math.round(Math.round((sum[j] / wsum) * 1e6) / 1e6);
+		return { value: classify(j, average, rule), average, count };
 	};
 	return {
 		sentiment: result("sentiment"),
@@ -311,18 +391,19 @@ function summarize(
 	};
 }
 
-/** ある時刻の判定。`採点時刻 <= time` かつ期間内のニュースだけを使う */
+/** ある時刻の判定。重みが 0 より大きいニュースだけを使う */
 export function judgeAt(
 	news: readonly ScoredNews[],
 	time: number,
 	rule: AggregationRule,
 ): JudgmentSnapshot {
-	const windowMs = rule.windowHours * HOUR;
-	const halfLifeMs = rule.halfLifeHours * HOUR;
-	const active = news.filter((n) => inWindow(n, time, windowMs));
 	const weights = new Map<number, number>();
-	for (const n of active) {
-		weights.set(n.id, 0.5 ** ((time - newsTime(n)) / halfLifeMs));
+	const active: ScoredNews[] = [];
+	for (const n of news) {
+		const w = newsWeight(n, time, rule);
+		if (w === 0) continue;
+		weights.set(n.id, w);
+		active.push(n);
 	}
 	return { time, results: summarize(active, time, rule), weights };
 }
@@ -334,18 +415,17 @@ export type JudgmentPoint = {
 
 /**
  * 昇順に進む時刻ごとの判定を順に出す（バックテストの評価のたびに呼ぶ）。
- * 重みはどのニュースも同じ割合で減るので、使うニュースが変わらない間は平均点も変わらない。
- * そのため使うニュースが入れ替わる時刻だけ計算し直す
+ * 使うニュースが入れ替わる時刻だけ記事ごとに計算し、その間は半減期ごとの和から平均を出す。
+ * 半減期が1種類なら平均点も変わらないので計算しない
  */
 export function judgmentCursor(
 	news: readonly ScoredNews[],
 	rule: AggregationRule,
 ): (time: number) => JudgmentPoint["values"] {
-	const windowMs = rule.windowHours * HOUR;
-	// ニュースは [採点時刻, 新しさの時刻 + 期間) の間だけ使う
+	// ニュースは [採点時刻, 新しさの時刻 + 集計に使う長さ) の間だけ使う
 	const events: { at: number; news: ScoredNews; add: boolean }[] = [];
 	for (const n of news) {
-		const end = newsTime(n) + windowMs;
+		const end = newsTime(n) + windowMs(n.duration, rule);
 		if (n.scoredAt >= end) continue;
 		events.push({ at: n.scoredAt, news: n, add: true });
 		events.push({ at: end, news: n, add: false });
@@ -354,6 +434,15 @@ export function judgmentCursor(
 	const active = new Set<ScoredNews>();
 	let next = 0;
 	let values: JudgmentPoint["values"] = { ...NEUTRAL };
+	// 半減期ごとに、基準の時刻 at での重みの和と重み付きの点数の和。同じ半減期の記事は重みが同じ割合で減るので、
+	// 時刻 t ではどちらにも 0.5 ** ((t - at) / 半減期) を掛ければよい。使う記事が変わったときだけ作り直す
+	let groups: {
+		halfLifeMs: number;
+		at: number;
+		wsum: number;
+		sum: Record<Judge, number>;
+	}[] = [];
+	let count = 0;
 	let prev = Number.NEGATIVE_INFINITY;
 	return (time) => {
 		if (time < prev) throw new RangeError("時刻は昇順で渡す");
@@ -370,7 +459,31 @@ export function judgmentCursor(
 			changed = true;
 		}
 		if (changed) {
-			const r = summarize([...active], time, rule);
+			const byHalfLife = new Map<number, (typeof groups)[0]>();
+			for (const n of active) {
+				const halfLifeMs =
+					rule.halfLifeHours[n.duration as LastingDuration] * HOUR;
+				let g = byHalfLife.get(halfLifeMs);
+				if (!g) {
+					g = { halfLifeMs, at: time, wsum: 0, sum: { sentiment: 0, risk: 0 } };
+					byHalfLife.set(halfLifeMs, g);
+				}
+				const w = newsWeight(n, time, rule);
+				g.wsum += w;
+				for (const j of JUDGES) g.sum[j] += w * n.scores[j];
+			}
+			groups = [...byHalfLife.values()];
+			count = active.size;
+		}
+		if (changed || groups.length > 1) {
+			const sum: Record<Judge, number> = { sentiment: 0, risk: 0 };
+			let wsum = 0;
+			for (const g of groups) {
+				const f = 0.5 ** ((time - g.at) / g.halfLifeMs);
+				wsum += f * g.wsum;
+				for (const j of JUDGES) sum[j] += f * g.sum[j];
+			}
+			const r = resultsOf(sum, wsum, count, rule);
 			values = {
 				sentiment: r.sentiment.value,
 				risk: r.risk.value,

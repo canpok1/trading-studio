@@ -1,6 +1,7 @@
 // ニュースの採点の常駐処理。新着を1件ずつ Gemini で採点し、点数を記録する。新着が無いときは頼まれた採点し直しを進める
 
 import type { AggregationRule } from "@trading-studio/core";
+import { maxWindowMs } from "@trading-studio/core";
 import type { ScoreModel } from "./gemini";
 import { DEFAULT_SCORING_MODEL } from "./gemini";
 import type { PromptNews, ScoreResponse } from "./prompt";
@@ -73,7 +74,7 @@ export function createScorer({
 	}
 
 	async function scoreNext() {
-		repo.skipOlderThan(now() - rule().windowHours * 3_600_000);
+		repo.skipOlderThan(now() - maxWindowMs(rule()));
 		// 新着を先に採点する。採点し直しは新着が無いときだけ
 		const next = repo.nextToScore(now());
 		if (!next) return rescoreNext();

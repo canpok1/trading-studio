@@ -84,7 +84,7 @@ function classify(
 	const isDirected = (s: number) =>
 		s >= t.sentiment.plus1 || s < t.sentiment.minus1;
 	const sentimentPairs = rows.flatMap((r) =>
-		r.sentiment === null || r.returnPct === null
+		r.duration === "none" || r.returnPct === null
 			? []
 			: [
 					{
@@ -100,10 +100,10 @@ function classify(
 		.map((x) => x.row);
 	const neutral = rows.filter(
 		(r) =>
-			r.sentiment !== null && r.sentiment !== 0 && !isDirected(r.sentiment),
+			r.duration !== "none" && r.sentiment !== 0 && !isDirected(r.sentiment),
 	);
 	const riskPairs = rows.flatMap((r) =>
-		r.risk === null || r.returnPct === null
+		r.duration === "none" || r.returnPct === null
 			? []
 			: [
 					{
@@ -134,8 +134,10 @@ function stats(
 	bands: AccuracyBands,
 ): VersionStats & { lists: ReturnType<typeof classify> } {
 	const c = classify(rows, rule, bands);
-	const sentiments = rows.flatMap((r) => r.sentiment ?? []);
-	const risks = rows.flatMap((r) => r.risk ?? []);
+	// 持続 none（相場に関係ない記事）は点数が 0 でも数えない。市場評価に使わないため
+	const related = rows.filter((r) => r.duration !== "none");
+	const sentiments = related.map((r) => r.sentiment);
+	const risks = related.map((r) => r.risk);
 	const counts = new Map<number, number>();
 	for (const r of risks) counts.set(r, (counts.get(r) ?? 0) + 1);
 	let mode: VersionStats["risk"]["mode"] = null;
@@ -180,6 +182,7 @@ function list(rows: readonly ScoredWithReturn[]): AccuracyList {
 			publishedAt: r.publishedAt,
 			sentiment: r.sentiment,
 			risk: r.risk,
+			duration: r.duration,
 			comment: r.comment,
 			returnPct: r.returnPct,
 		}));

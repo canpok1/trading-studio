@@ -11,10 +11,15 @@ import type {
 } from "@trading-studio/core";
 import {
 	CSV_HEADER,
+	DURATION_LABELS,
+	DURATIONS,
 	formatCandleCsvRow,
 	formatJstRfc3339,
+	HALF_LIVES_IN_WINDOW,
 	JUDGES,
 	judgeAt,
+	LASTING_DURATIONS,
+	maxWindowMs,
 } from "@trading-studio/core";
 import type { BacktestRepository } from "../backtests/repository";
 import type { BacktestRun } from "../backtests/types";
@@ -110,13 +115,18 @@ const newsTable: Table<NewsExportRow> = {
 		col("score_status", SCORE_STATUS, (r) => r.status ?? "unscored"),
 		col(
 			"sentiment",
-			"センチメントの点数（-100〜100、0 が中立、高いほど BTC の価格にとって強気材料）。関係なし・採点済みでなければ空",
+			"センチメントの点数（-100〜100、0 が中立、高いほど BTC の価格にとって強気材料）。関係ない観点は 0。採点済みでなければ空",
 			(r) => (r.status === "done" ? r.sentiment : null),
 		),
 		col(
 			"risk",
-			"リスクの点数（0〜100、高いほど危険）。関係なし・採点済みでなければ空",
+			"リスクの点数（0〜100、高いほど危険）。関係ない観点は 0。採点済みでなければ空",
 			(r) => (r.status === "done" ? r.risk : null),
+		),
+		col(
+			"duration",
+			`影響の持続（${DURATIONS.map((d) => `${d}: ${DURATION_LABELS[d]}`).join(" / ")}）。none は相場に関係ない記事で、市場評価に使わない。半減期は aggregation_rule.csv。採点済みでなければ空`,
+			(r) => (r.status === "done" ? r.duration : null),
 		),
 		col("comment", "AI が書いた採点の理由", (r) => r.comment),
 		...time<NewsExportRow>(
@@ -175,16 +185,11 @@ const ruleTable: Table<RuleRow> = {
 function ruleRows(rule: AggregationRule): RuleRow[] {
 	const t = rule.thresholds;
 	return [
-		{
-			key: "window_hours",
-			value: rule.windowHours,
-			desc: "集計に使うニュースの期間（時間）。新しさの時刻がこの時間内のものを使う",
-		},
-		{
-			key: "half_life_hours",
-			value: rule.halfLifeHours,
-			desc: "重みの半減期（時間）。新しさの時刻からこの時間で重みが半分になる",
-		},
+		...LASTING_DURATIONS.map((d) => ({
+			key: `half_life_hours_${d}`,
+			value: rule.halfLifeHours[d],
+			desc: `持続が${DURATION_LABELS[d]}（${d}）のニュースの重みの半減期（時間）。新しさの時刻からこの時間で重みが半分になり、${HALF_LIVES_IN_WINDOW}倍たったら集計に使わない`,
+		})),
 		{
 			key: "risk_caution",
 			value: t.risk.caution,
@@ -247,7 +252,7 @@ const judgmentsTable: Table<JudgmentRow> = {
 			),
 			col(
 				`${j}_count`,
-				"平均に使ったニュースの件数（この観点が関係なしのものは数えない）",
+				"平均に使ったニュースの件数（重みが 0 のもの・持続が none のものは数えない）",
 				(r) => r.results?.[j].count ?? null,
 			),
 		]),
@@ -263,7 +268,7 @@ function hourlyJudgments(
 	rule: AggregationRule,
 	firstScoredAt: number | null,
 ): JudgmentRow[] {
-	const windowMs = rule.windowHours * HOUR;
+	const windowMs = maxWindowMs(rule);
 	const rows: JudgmentRow[] = [];
 	let lo = 0;
 	let hi = 0;
@@ -272,7 +277,7 @@ function hourlyJudgments(
 			rows.push({ time: t, results: null });
 			continue;
 		}
-		// 新しさの時刻 <= 採点時刻なので、期間内のニュースは採点時刻も (t - 期間, t] にある
+		// 新しさの時刻 <= 採点時刻なので、集計に使うニュースは採点時刻も (t - 一番長い長さ, t] にある
 		while (hi < news.length && (news[hi] as ScoredNews).scoredAt <= t) hi++;
 		while (lo < hi && (news[lo] as ScoredNews).scoredAt <= t - windowMs) lo++;
 		rows.push({
@@ -644,7 +649,7 @@ function readme({
 		"",
 		"## 期間で絞る基準",
 		"",
-		`- news.csv: 新しさの時刻（公開時刻と取得時刻の早いほう）が、期間の始まりの ${rule.windowHours} 時間（集計に使う期間）前から期間の終わりまでのもの。期間の最初の判定に使うニュースも入れるため`,
+		`- news.csv: 新しさの時刻（公開時刻と取得時刻の早いほう）が、期間の始まりの ${maxWindowMs(rule) / HOUR} 時間（一番長い半減期の ${HALF_LIVES_IN_WINDOW} 倍。集計に使う一番長い長さ）前から期間の終わりまでのもの。期間の最初の判定に使うニュースも入れるため`,
 		"- judgments.csv: 期間内の1時間足の終わりの時刻。書き出した時刻より後は入れない",
 		`- ${CANDLE_FILE}: 開始時刻が期間内の1分足`,
 		"- paper_decisions.csv: 判断した時刻が期間内のもの。paper_orders.csv: 発注した時刻が期間内のもの",
@@ -716,7 +721,7 @@ export function createAnalysisExportService({
 			}
 			const t = now();
 			const rule = scoreRepo.aggregationRule();
-			const windowMs = rule.windowHours * HOUR;
+			const windowMs = maxWindowMs(rule);
 			const encoder = new TextEncoder();
 			const files: { name: string; data: Uint8Array }[] = [];
 			const ai: Listed[] = [];
@@ -739,7 +744,7 @@ export function createAnalysisExportService({
 					.map((c) => ({ ...c, active: c.version === active })),
 			);
 			add(ruleTable, ruleRows(rule));
-			// 期間内の判定に使うニュースは、採点時刻が (期間の始まり − 集計の期間, 期間の終わり] にある
+			// 期間内の判定に使うニュースは、採点時刻が (期間の始まり − 集計に使う一番長い長さ, 期間の終わり] にある
 			const scored = scoreRepo.scoredNews(from - windowMs, to + 1);
 			add(
 				judgmentsTable,

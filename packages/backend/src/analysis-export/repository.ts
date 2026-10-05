@@ -16,6 +16,7 @@ export type NewsExportRow = {
 	status: string | null;
 	risk: number | null;
 	sentiment: number | null;
+	duration: string | null;
 	comment: string | null;
 	scored_at: number | null;
 	criteria_version: number | null;
@@ -82,7 +83,7 @@ export class AnalysisExportRepository {
 		return this.sql
 			.query<NewsExportRow, [number, number]>(
 				`select n.id, n.source_id, n.source_name, n.language, n.url, n.title, n.summary,
-				   n.published_at, n.fetched_at, s.status, s.sentiment, s.risk, s.comment,
+				   n.published_at, n.fetched_at, s.status, s.sentiment, s.risk, s.duration, s.comment,
 				   s.scored_at, s.criteria_version, s.model, s.app_built_at, s.error, s.attempts
 				 from news n left join news_scores s on s.news_id = n.id
 				 where min(n.published_at, n.fetched_at) >= ? and min(n.published_at, n.fetched_at) < ?

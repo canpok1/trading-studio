@@ -10,9 +10,11 @@ import {
 import { formatBtc, formatYen } from "./format";
 import type { AggregationRule, Judge } from "./news-judgment";
 import {
+	DURATION_LABELS,
 	JUDGE_LABELS,
 	JUDGMENT_VALUE_LABELS,
 	judgmentBands,
+	LASTING_DURATIONS,
 } from "./news-judgment";
 import { TIMEFRAME_LABELS } from "./timeframe";
 import type { FeeRates } from "./trading";
@@ -126,7 +128,7 @@ export function ruleScreenText(r: AggregationRule): string[] {
 			)
 			.join("・");
 	return [
-		`- 平均のとり方: 期間 ${r.windowHours} 時間・半減期 ${r.halfLifeHours} 時間`,
+		`- 平均のとり方: 半減期 ${LASTING_DURATIONS.map((d) => `${DURATION_LABELS[d]} ${r.halfLifeHours[d]} 時間`).join("・")}`,
 		`- 評価基準 センチメント: ${bands("sentiment")}`,
 		`- 評価基準 リスク: ${bands("risk")}`,
 	];

@@ -9,8 +9,7 @@ const scoringDown = fileURLToPath(
 );
 
 const DEFAULT_RULE = {
-	windowHours: 24,
-	halfLifeHours: 6,
+	halfLifeHours: { short: 6, medium: 24, long: 72 },
 	thresholds: {
 		risk: { caution: 40, crisis: 70 },
 		sentiment: { plus2: 60, plus1: 20, minus1: -20, minus2: -60 },
@@ -41,8 +40,10 @@ test("取得して採点したニュースが一覧に出て、市場評価が�
 		.filter({ hasText: "デモの採点。" })
 		.first();
 	await expect(scored).toBeVisible({ timeout: 20_000 });
-	// 重みは閉じたままでも見える。版・モデルは「詳しく」で開く
+	// 重み・持続は閉じたままでも見える。版・モデルは「詳しく」で開く
 	await expect(scored).toContainText(/重み \d+%/);
+	await expect(scored).toContainText(/センチ -?\d+/);
+	await expect(scored).toContainText("持続 短期");
 	await expect(scored).not.toContainText("プロンプト v");
 	await scored.getByRole("button", { name: /詳しく/ }).click();
 	await expect(scored).toContainText("プロンプト v");

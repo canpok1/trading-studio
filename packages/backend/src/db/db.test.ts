@@ -355,7 +355,8 @@ describe("0012 トレンドをセンチメントへ統合", () => {
 				.all(),
 		).toEqual([
 			{ news_id: 1, risk: 30, sentiment: -40 },
-			{ news_id: 2, risk: 10, sentiment: null },
+			// 関係なし（null）は 0018 で 0 点になる
+			{ news_id: 2, risk: 10, sentiment: 0 },
 		]);
 		const json = (q: string) =>
 			db.$client
@@ -469,6 +470,62 @@ describe("0016 運用（タブ）ごとの自動取引", () => {
 				account: null,
 			}),
 		]);
+	});
+});
+
+describe("0018 影響の持続", () => {
+	test("関係なしを 0 点にし、両方とも関係なしの採点は持続 none、ほかは short にする", async () => {
+		const db = await dbUpTo(17);
+		for (const id of [1, 2, 3, 4]) {
+			insert(db, "news", { id, url: `https://a.example/${id}` });
+		}
+		insert(db, "news_scores", {
+			news_id: 1,
+			status: "done",
+			risk: null,
+			sentiment: null,
+		});
+		insert(db, "news_scores", {
+			news_id: 2,
+			status: "done",
+			risk: 20,
+			sentiment: null,
+		});
+		insert(db, "news_scores", {
+			news_id: 3,
+			status: "done",
+			risk: 20,
+			sentiment: -30,
+		});
+		insert(db, "news_scores", { news_id: 4, status: "retry" });
+		insert(db, "news_rescores", {
+			news_id: 1,
+			criteria_version: 2,
+			status: "done",
+			risk: null,
+			sentiment: 40,
+			requested_at: 0,
+		});
+
+		migrateDb(db, { now: 1 });
+
+		expect(
+			db.$client
+				.query(
+					"select news_id, sentiment, risk, duration from news_scores order by news_id",
+				)
+				.all(),
+		).toEqual([
+			{ news_id: 1, sentiment: 0, risk: 0, duration: "none" },
+			{ news_id: 2, sentiment: 0, risk: 20, duration: "short" },
+			{ news_id: 3, sentiment: -30, risk: 20, duration: "short" },
+			{ news_id: 4, sentiment: null, risk: null, duration: null },
+		]);
+		expect(
+			db.$client
+				.query("select sentiment, risk, duration from news_rescores")
+				.all(),
+		).toEqual([{ sentiment: 40, risk: 0, duration: "short" }]);
 	});
 });
 
