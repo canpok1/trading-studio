@@ -83,3 +83,45 @@ export function buyHoldPercentOf(
 	const base = first.open ?? first.close;
 	return base > 0 ? (last.close / base - 1) * 100 : null;
 }
+
+/** 市場評価の精度を評価するのに要る件数。これ未満は偶然と区別できない */
+export const PRECISION_MIN_SAMPLES = 30;
+
+/** 精度のバッジ。件数が足りなければ「データ不足」 */
+export type PrecisionBadgeValue =
+	| GradeBadgeValue
+	| { grade: "none"; label: string };
+
+const insufficient = { grade: "none", label: "データ不足" } as const;
+
+/**
+ * センチメントの精度＝的中率（%）。強気・弱気の材料のうち、その後の値動きの向きが合った割合。
+ * 偶然でも 50% 前後になるので、普通を 50% の前後に置く
+ */
+export function gradeSentimentPrecision(
+	hitRate: number | null,
+	samples: number,
+): PrecisionBadgeValue {
+	if (hitRate === null || samples < PRECISION_MIN_SAMPLES) return insufficient;
+	if (hitRate >= 65) return of("excellent");
+	if (hitRate >= 55) return of("good");
+	if (hitRate >= 45) return of("fair");
+	if (hitRate >= 35) return of("poor");
+	return of("bad");
+}
+
+/**
+ * リスクの精度＝警戒以上の記事の後の値動きの大きさが、すべての記事の後の何倍か。
+ * 1 倍なら見分けられていないので、普通を 1 倍の前後に置く
+ */
+export function gradeRiskPrecision(
+	ratio: number | null,
+	samples: number,
+): PrecisionBadgeValue {
+	if (ratio === null || samples < PRECISION_MIN_SAMPLES) return insufficient;
+	if (ratio >= 1.5) return of("excellent");
+	if (ratio >= 1.2) return of("good");
+	if (ratio >= 0.9) return of("fair");
+	if (ratio >= 0.7) return of("poor");
+	return of("bad");
+}
