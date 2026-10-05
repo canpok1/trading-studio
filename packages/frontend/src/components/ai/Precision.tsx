@@ -18,6 +18,8 @@ import { Help } from "../Help";
 
 export type Precision = {
 	badge: PrecisionBadgeValue;
+	/** 指標の名前 */
+	metric: string;
 	/** 指標の値（的中率は「35%」、倍率は「1.07倍」）。出せなければ「—」 */
 	value: string;
 	/** 算出に使った件数の説明 */
@@ -44,13 +46,15 @@ export function precisionOf(
 	return {
 		sentiment: {
 			badge: gradeSentimentPrecision(hitRate, s.directed),
+			metric: "的中率",
 			value: hitRate === null ? "—" : `${Math.round(hitRate)}%`,
-			basis: `${s.hits} / ${s.directed} 件が的中`,
+			basis: `強気・弱気の材料 ${s.directed} 件のうち、値動きの向きが合った ${s.hits} 件の割合`,
 		},
 		risk: {
 			badge: gradeRiskPrecision(ratio, r.high),
+			metric: "値動き倍率",
 			value: ratio === null ? "—" : `${ratio.toFixed(2)}倍`,
-			basis: `警戒以上 ${r.high} 件`,
+			basis: `警戒以上の記事 ${r.high} 件の後の値動きが、すべての記事の後の何倍か`,
 		},
 	};
 }
@@ -96,11 +100,13 @@ export function PrecisionLink({
 		<Link
 			to={to}
 			className="inline-flex items-center gap-1 text-xs text-text-2"
-			aria-label={`精度 ${precision.badge.label} ${precision.value}。精度分析を開く`}
+			aria-label={`精度 ${precision.badge.label}（${precision.metric} ${precision.value}）。精度分析を開く`}
 		>
 			精度
 			<PrecisionBadge value={precision.badge} />
-			<span className="num">{precision.value}</span>
+			<span className="num">
+				（{precision.metric} {precision.value}）
+			</span>
 		</Link>
 	);
 }
@@ -120,7 +126,7 @@ export function PrecisionHelp() {
 				</li>
 				<li>
 					リスク:
-					警戒以上の記事の後の値動きの大きさが、すべての記事の後の何倍か。1倍なら危険を見分けられていない。1.5倍以上=優秀、1.2倍以上=良い、0.9倍以上=普通、0.7倍以上=悪い、0.7倍未満=非常に悪い
+					値動き倍率。警戒以上の記事の後の値動きの大きさが、すべての記事の後の何倍か。1倍なら危険を見分けられていない。1.5倍以上=優秀、1.2倍以上=良い、0.9倍以上=普通、0.7倍以上=悪い、0.7倍未満=非常に悪い
 				</li>
 			</ul>
 			<p>
@@ -156,19 +162,22 @@ export function PrecisionSummary({
 						<div
 							key={j}
 							data-testid={`precision-${j}`}
-							className="flex items-center justify-between gap-2 border-b border-line px-3.5 py-3 last:border-b-0"
+							className="flex flex-col gap-1 border-b border-line px-3.5 py-3 last:border-b-0"
 						>
-							<span className="flex flex-col">
+							<span className="flex items-center justify-between gap-2">
 								<strong>{JUDGE_LABELS[j]}</strong>
-								<span className="num text-xs text-text-2">
-									{precision[j].basis}
-								</span>
+								<PrecisionBadge value={precision[j].badge} />
 							</span>
-							<span className="flex items-center gap-2">
+							<span className="flex items-baseline gap-1.5">
+								<span className="text-xs text-text-2">
+									{precision[j].metric}
+								</span>
 								<span className="num text-lg font-bold">
 									{precision[j].value}
 								</span>
-								<PrecisionBadge value={precision[j].badge} />
+							</span>
+							<span className="num text-xs text-text-2">
+								{precision[j].basis}
 							</span>
 						</div>
 					))
