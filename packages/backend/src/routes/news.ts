@@ -1,3 +1,5 @@
+import type { Duration } from "@trading-studio/core";
+import { DURATIONS } from "@trading-studio/core";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { validator } from "hono/validator";
@@ -51,6 +53,14 @@ export function parseFilter(
 	if (!impacts.every((i) => (NEWS_IMPACTS as readonly string[]).includes(i))) {
 		return "影響の大きさの形が違う";
 	}
+	const durations = q.duration ? q.duration.split(",") : [];
+	if (!durations.every((d) => (DURATIONS as readonly string[]).includes(d))) {
+		return "持続の形が違う";
+	}
+	const activeAt = time(q.active);
+	if (activeAt !== null && !Number.isSafeInteger(activeAt)) {
+		return "評価の時刻の形が違う";
+	}
 	const sort = q.sort ?? "new";
 	if (!(NEWS_SORTS as readonly string[]).includes(sort)) {
 		return "並び順の形が違う";
@@ -63,6 +73,8 @@ export function parseFilter(
 		to,
 		q: text,
 		impacts: impacts as NewsImpact[],
+		durations: durations as Duration[],
+		activeAt,
 		sort: sort as NewsSort,
 	};
 }

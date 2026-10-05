@@ -148,6 +148,10 @@ export type NewsFilter = {
 	q: string;
 	/** どれかに当てはまるもの。空なら絞らない */
 	impacts: NewsImpact[];
+	/** 持続がどれかのもの（採点済みだけ）。空なら絞らない */
+	durations: Duration[];
+	/** この時刻の市場評価に使っている（重みが 0% より大きい）ものだけ。null なら絞らない */
+	activeAt: number | null;
 	sort: NewsSort;
 	limit: number;
 };

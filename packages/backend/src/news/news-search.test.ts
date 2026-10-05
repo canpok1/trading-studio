@@ -122,3 +122,43 @@ test("キーワードは語をすべて含むもの。見出し・概要・採�
 		"100% up",
 	]);
 });
+
+test("持続は選んだどれかのもので、未採点は入らない", async () => {
+	const t = setup();
+	t.add("none", 90, { sentiment: 0, risk: 0 }, { duration: "none" });
+	t.add("short", 91, { sentiment: 0, risk: 0 });
+	t.add("long", 92, { sentiment: 0, risk: 0 }, { duration: "long" });
+	t.add("unscored", 93, null);
+	expect(await t.titles("duration=long")).toEqual(["long"]);
+	expect(await t.titles("duration=none,short")).toEqual(["short", "none"]);
+	expect((await t.search("duration=forever")).status).toBe(400);
+});
+
+test("市場評価に使用中は、その時刻の重みが 0% より大きいもの（持続の半減期の4倍より新しく、採点済み）", async () => {
+	const t = setup();
+	// 既定の半減期: 短期 6・中期 24・長期 72 時間。集計に使うのは 24・96・288 時間
+	t.add("short-in", 77, { sentiment: 0, risk: 0 });
+	t.add("short-out", 76, { sentiment: 0, risk: 0 });
+	t.add("medium-in", 5, { sentiment: 0, risk: 0 }, { duration: "medium" });
+	t.add("long-in", 1, { sentiment: 0, risk: 0 }, { duration: "long" });
+	t.add("none", 99, { sentiment: 0, risk: 0 }, { duration: "none" });
+	t.add("unscored", 99, null);
+	expect(await t.titles(`active=${100 * H}`)).toEqual([
+		"short-in",
+		"medium-in",
+		"long-in",
+	]);
+	// 過去の時刻では、その時刻より後に採点したものは使っていない
+	expect(await t.titles(`active=${80 * H}`)).toEqual([
+		"short-in",
+		"short-out",
+		"medium-in",
+		"long-in",
+	]);
+	expect(await t.titles(`active=${76.5 * H}`)).toEqual([
+		"short-out",
+		"medium-in",
+		"long-in",
+	]);
+	expect((await t.search("active=abc")).status).toBe(400);
+});

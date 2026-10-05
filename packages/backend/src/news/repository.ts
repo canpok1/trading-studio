@@ -1,4 +1,5 @@
 import type { AggregationRule } from "@trading-studio/core";
+import { LASTING_DURATIONS, windowMs } from "@trading-studio/core";
 import type { Db } from "../db/open";
 import type { FeedItem } from "./rss";
 import { toNewsScore } from "./score-repository";
@@ -269,6 +270,23 @@ export class NewsRepository {
 		if (impacts.length) {
 			where.push(
 				`(s.status = 'done' and s.duration != 'none' and (${impacts.join(" or ")}))`,
+			);
+		}
+		if (f.durations.length) {
+			where.push(
+				`(s.status = 'done' and s.duration in (${f.durations.map(() => "?").join(",")}))`,
+			);
+			args.push(...f.durations);
+		}
+		if (f.activeAt !== null) {
+			// core の newsWeight が 0 より大きいもの。新しさの時刻は公開時刻と取得時刻の早いほう
+			where.push(
+				`(s.status = 'done' and s.scored_at <= ? and ? - min(n.published_at, n.fetched_at) < case s.duration ${LASTING_DURATIONS.map(() => "when ? then ?").join(" ")} else 0 end)`,
+			);
+			args.push(
+				f.activeAt,
+				f.activeAt,
+				...LASTING_DURATIONS.flatMap((d) => [d, windowMs(d, rule)]),
 			);
 		}
 		const from = `${NEWS_FROM}${where.length ? ` where ${where.join(" and ")}` : ""}`;

@@ -1,6 +1,8 @@
 // ニュース画面の絞り込みの条件。URL の検索パラメータに持ち、API の問い合わせへ変える。描画に依存しない
 
 import type { NewsImpact, NewsSort } from "@trading-studio/backend";
+import type { Duration } from "@trading-studio/core";
+import { DURATIONS } from "@trading-studio/core";
 import { formatDate, fromDateInputValue } from "../format";
 
 export const NEWS_PERIODS = ["all", "24h", "7d", "custom"] as const;
@@ -31,6 +33,9 @@ export type NewsFilterState = {
 	fromDate: string;
 	toDate: string;
 	impacts: NewsImpact[];
+	durations: Duration[];
+	/** 上の市場評価に使っている（重みが 0% より大きい）ものだけ */
+	active: boolean;
 	sort: NewsSort;
 	q: string;
 };
@@ -40,6 +45,8 @@ export const EMPTY_FILTER: NewsFilterState = {
 	fromDate: "",
 	toDate: "",
 	impacts: [],
+	durations: [],
+	active: false,
 	sort: "new",
 	q: "",
 };
@@ -63,6 +70,10 @@ export function parseNewsFilter(p: URLSearchParams): NewsFilterState {
 		impacts: IMPACTS.filter((i) =>
 			(p.get("impact") ?? "").split(",").includes(i),
 		),
+		durations: DURATIONS.filter((d) =>
+			(p.get("dur") ?? "").split(",").includes(d),
+		),
+		active: p.get("active") === "1",
 		sort: sort === "impact" ? "impact" : "new",
 		q: p.get("q") ?? "",
 	};
@@ -77,6 +88,8 @@ export function newsFilterParams(f: NewsFilterState): URLSearchParams {
 		if (f.toDate) p.set("to", f.toDate);
 	}
 	if (f.impacts.length) p.set("impact", f.impacts.join(","));
+	if (f.durations.length) p.set("dur", f.durations.join(","));
+	if (f.active) p.set("active", "1");
 	if (f.sort !== "new") p.set("sort", f.sort);
 	if (f.q.trim()) p.set("q", f.q);
 	return p;
@@ -106,6 +119,8 @@ export function newsQuery(
 	if (from !== null) q.from = String(from);
 	if (to !== null) q.to = String(to);
 	if (f.impacts.length) q.impact = f.impacts.join(",");
+	if (f.durations.length) q.duration = f.durations.join(",");
+	if (f.active) q.active = String(evaluationTime(f, now) ?? now);
 	if (f.sort !== "new") q.sort = f.sort;
 	if (f.q.trim()) q.q = f.q.trim();
 	return q;
@@ -143,7 +158,11 @@ export function customRangeLabel(f: NewsFilterState): string {
 /** 「絞り込み」ボタンに出す、キーワード以外で既定から変えている条件の数 */
 export function activeFilterCount(f: NewsFilterState): number {
 	return (
-		(f.period !== "all" ? 1 : 0) + f.impacts.length + (f.sort !== "new" ? 1 : 0)
+		(f.period !== "all" ? 1 : 0) +
+		f.impacts.length +
+		f.durations.length +
+		(f.active ? 1 : 0) +
+		(f.sort !== "new" ? 1 : 0)
 	);
 }
 

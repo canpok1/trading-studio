@@ -25,13 +25,17 @@ test("URL との読み書きは往復で変わらず、既定の値は書かな�
 		fromDate: "2026-09-27",
 		toDate: "2026-09-28",
 		impacts: ["bull" as const, "risk" as const],
+		durations: ["none" as const, "long" as const],
+		active: true,
 		sort: "impact" as const,
 		q: "ETF 承認",
 	};
 	expect(parseNewsFilter(newsFilterParams(f))).toEqual(f);
 	expect(
-		parseNewsFilter(new URLSearchParams("period=x&sort=x&impact=x,bear")),
-	).toEqual({ ...EMPTY_FILTER, impacts: ["bear"] });
+		parseNewsFilter(
+			new URLSearchParams("period=x&sort=x&impact=x,bear&dur=x,long&active=x"),
+		),
+	).toEqual({ ...EMPTY_FILTER, impacts: ["bear"], durations: ["long"] });
 });
 
 test("期間は 24時間・7日が今から遡り、日付の指定は終了日の終わりまで", () => {
@@ -59,6 +63,23 @@ test("期間は 24時間・7日が今から遡り、日付の指定は終了日�
 		sort: "impact",
 		q: "ETF",
 	});
+});
+
+test("持続はそのまま、評価に使用中は市場評価の時点（今か日付の指定の終わり）で問い合わせる", () => {
+	const f = {
+		...EMPTY_FILTER,
+		durations: ["long" as const, "medium" as const],
+		active: true,
+	};
+	expect(newsQuery(f, NOW, 100)).toEqual({
+		limit: "100",
+		duration: "long,medium",
+		active: String(NOW),
+	});
+	expect(
+		newsQuery({ ...f, period: "custom", toDate: "2026-09-27" }, NOW, 100)
+			.active,
+	).toBe(String(D28));
 });
 
 test("市場評価の時点は、日付の指定の終わりが今より前のときだけその終わり", () => {
@@ -103,9 +124,11 @@ test("絞り込みの数はキーワードを数えない", () => {
 			...EMPTY_FILTER,
 			period: "7d",
 			impacts: ["bull", "bear"],
+			durations: ["long"],
+			active: true,
 			q: "x",
 		}),
-	).toBe(3);
+	).toBe(5);
 });
 
 test("日付の区切りは JST の日が変わる位置", () => {

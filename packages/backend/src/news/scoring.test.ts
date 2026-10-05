@@ -757,6 +757,8 @@ describe("運用の採点を置き換える採点し直し", () => {
 		to: null,
 		q: "",
 		impacts: [],
+		durations: [],
+		activeAt: null,
 		sort: "new" as const,
 		limit: 100,
 	};
