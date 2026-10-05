@@ -57,6 +57,11 @@ export function formatDateWeekday(ms: number): string {
 	return `${formatDate(ms)}（${w}）`;
 }
 
+/** 例: 2026/09/26（土） 13:14 */
+export function formatDateWeekdayTime(ms: number): string {
+	return `${formatDateWeekday(ms)} ${formatTime(ms)}`;
+}
+
 /** 例: 2026-09-26（input type="date" の値） */
 export function toDateInputValue(ms: number): string {
 	const t = jstParts(ms);

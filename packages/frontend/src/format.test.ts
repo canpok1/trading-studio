@@ -3,6 +3,7 @@ import {
 	formatDate,
 	formatDateTime,
 	formatDateWeekday,
+	formatDateWeekdayTime,
 	formatVersion,
 	fromDateInputValue,
 	toDateInputValue,
@@ -30,6 +31,9 @@ describe("日時の表示", () => {
 		expect(formatDate(Date.UTC(2026, 8, 25, 15))).toBe("2026/09/26");
 		expect(formatDateWeekday(Date.UTC(2026, 8, 25, 15))).toBe(
 			"2026/09/26（土）",
+		);
+		expect(formatDateWeekdayTime(Date.UTC(2026, 8, 25, 15, 4))).toBe(
+			"2026/09/26（土） 00:04",
 		);
 	});
 
