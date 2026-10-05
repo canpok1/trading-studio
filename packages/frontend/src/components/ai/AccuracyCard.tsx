@@ -11,16 +11,13 @@ import type {
 } from "@trading-studio/backend";
 import type { AggregationRule, Judge } from "@trading-studio/core";
 import type { ReactNode } from "react";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router";
-import { useApi } from "../../api";
 import { formatDate, formatDateTime } from "../../format";
-import { readJson, useAsync } from "../../lib/useAsync";
 import { Help } from "../Help";
 import { ScoreChip } from "../judgment/JudgmentBadge";
 import { Modal } from "../Modal";
-import { ErrorState, Skeleton } from "../States";
-import { Button, Segmented } from "../ui";
+import { Button } from "../ui";
 import {
 	HORIZON_LABELS,
 	MOVE_LEVEL_LABELS,
@@ -44,77 +41,41 @@ const LIST_TITLES: Record<ListKind, string> = {
 	falseAlarm: "空振りの記事",
 };
 
-/** ニュース画面の精度分析タブの「精度の内訳」。採点の版ごとに、点数とその後の値動き・点数の偏りを出す */
-export function AccuracyCard({ rule }: { rule: AggregationRule }) {
-	const api = useApi();
-	// null は設定の長さ
-	const [horizon, setHorizon] = useState<AccuracyHorizon | null>(null);
-	// 読み直しの間は本体が作り直されるので、選んだ版はここで持つ。null は使用中の版
-	const [version, setVersion] = useState<number | null>(null);
-	const load = useCallback(
-		() =>
-			api.api.scoring.accuracy
-				.$get({ query: horizon === null ? {} : { horizon } })
-				.then((r) => readJson<AccuracyReport>(r)),
-		[api, horizon],
-	);
-	const { state, reload } = useAsync(load);
+/**
+ * ニュース画面の精度分析タブの「精度の内訳」。採点の版ごとに、点数とその後の値動き・点数の偏りを出す。
+ * 値動きを測る長さは設定のもの。一覧の精度と食い違わないよう、ここでは切り替えない
+ */
+export function AccuracyCard({
+	report,
+	rule,
+}: {
+	report: AccuracyReport;
+	rule: AggregationRule;
+}) {
 	return (
 		<>
-			<div className="flex items-center justify-between gap-2">
-				<div className="flex items-center gap-1.5">
-					<h2 className="text-[15px] font-bold">精度の内訳</h2>
-					<Help label="精度の内訳">
-						<p>
-							記事の点数と、採点した時刻（評価に使い始める時刻）からその後の値動きを突き合わせる。版ごとに、直近の記事で集計する。期間と、最初に出す長さは設定の「ニュース」→「精度」で変える。
-						</p>
-						<p>
-							得点率は、記事ごとに評価の段階と値動きの段階が一致で2点・1段ずれで1点・それ以外は0点とし、値動きの段階ごとの平均点（2点満点）を記事のある段階で平均した割合。段階ごとの件数と平均点も出す。段階の境目は設定で変える。
-						</p>
-						<p>
-							中立の帯は、やや弱気とやや強気のあいだで 0
-							でない点数。評価の平均を薄めるだけで、評価を動かさない。
-						</p>
-						<p>
-							外れた記事は、センチメントが0点（2段以上ずれた）のもの。見逃した記事は、リスクの段階がその後の値動きより低かったもの（平常なのに荒れたなど）。空振りの記事は、高かったもの（危機なのに静かなど）。同じ時間帯の記事はみな同じ値動きの後に置かれるので、外れの原因がその記事とは限らない。
-						</p>
-						<p>
-							「同じ記事で比べる」は、使用中の版とほかの版の両方で採点した記事だけで比べる。過去の記事を使用中の版で採点し直すと増える。
-						</p>
-					</Help>
-				</div>
-				<div className="w-44">
-					<Segmented
-						name="accuracy-horizon"
-						label="値動きを測る長さ"
-						size="sm"
-						options={(["4h", "24h"] as const).map(
-							(h) => [h, HORIZON_LABELS[h]] as const,
-						)}
-						value={
-							horizon ?? (state.kind === "ok" ? state.data.horizon : "24h")
-						}
-						disabled={horizon === null && state.kind !== "ok"}
-						onChange={setHorizon}
-					/>
-				</div>
+			<div className="flex items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">精度の内訳</h2>
+				<Help label="精度の内訳">
+					<p>
+						記事の点数と、採点した時刻（評価に使い始める時刻）からその後の値動きを突き合わせる。版ごとに、直近の記事で集計する。期間・値動きを測る長さ・段階の境目は設定の「ニュース」→「精度」で変える。
+					</p>
+					<p>
+						得点率は、記事ごとに評価の段階と値動きの段階が一致で2点・1段ずれで1点・それ以外は0点とし、値動きの段階ごとの平均点（2点満点）を記事のある段階で平均した割合。段階ごとの件数と平均点も出す。段階の境目は設定で変える。
+					</p>
+					<p>
+						中立の帯は、やや弱気とやや強気のあいだで 0
+						でない点数。評価の平均を薄めるだけで、評価を動かさない。
+					</p>
+					<p>
+						外れた記事は、センチメントが0点（2段以上ずれた）のもの。見逃した記事は、リスクの段階がその後の値動きより低かったもの（平常なのに荒れたなど）。空振りの記事は、高かったもの（危機なのに静かなど）。同じ時間帯の記事はみな同じ値動きの後に置かれるので、外れの原因がその記事とは限らない。
+					</p>
+					<p>
+						「同じ記事で比べる」は、使用中の版とほかの版の両方で採点した記事だけで比べる。過去の記事を使用中の版で採点し直すと増える。
+					</p>
+				</Help>
 			</div>
-			{state.kind === "loading" ? (
-				<Skeleton className="h-[220px] w-full" />
-			) : state.kind === "error" ? (
-				<ErrorState
-					what="精度の内訳を読み込めなかった"
-					next={state.message}
-					action={<Button onClick={reload}>もう一度読み込む</Button>}
-				/>
-			) : (
-				<AccuracyBody
-					report={state.data}
-					rule={rule}
-					selected={version}
-					onSelect={setVersion}
-				/>
-			)}
+			<AccuracyBody report={report} rule={rule} />
 		</>
 	);
 }
@@ -122,16 +83,14 @@ export function AccuracyCard({ rule }: { rule: AggregationRule }) {
 function AccuracyBody({
 	report,
 	rule,
-	selected,
-	onSelect,
 }: {
 	report: AccuracyReport;
 	rule: AggregationRule;
-	selected: number | null;
-	onSelect: (version: number) => void;
 }) {
 	const { versions, activeVersion, influence } = report;
 	const [list, setList] = useState<ListKind | null>(null);
+	// null は使用中の版
+	const [selected, onSelect] = useState<number | null>(null);
 	const v =
 		versions.find((x) => x.version === (selected ?? activeVersion)) ??
 		versions[0];
@@ -167,16 +126,20 @@ function AccuracyBody({
 				<>
 					{versions.length > 1 && (
 						<div className="border-b border-line px-3.5 py-3">
-							<Segmented
-								name="accuracy-version"
-								label="採点の版"
-								size="sm"
-								options={versions.map(
-									(x) => [String(x.version), label(x.version)] as const,
-								)}
-								value={String(v.version)}
-								onChange={(s) => onSelect(Number(s))}
-							/>
+							<label className="flex items-center gap-2 text-[13px]">
+								<span className="text-text-2">採点の版</span>
+								<select
+									value={v.version}
+									onChange={(e) => onSelect(Number(e.target.value))}
+									className="h-9 min-w-0 flex-1 rounded-[10px] border border-line bg-surface px-2 text-sm"
+								>
+									{versions.map((x) => (
+										<option key={x.version} value={x.version}>
+											{label(x.version)}
+										</option>
+									))}
+								</select>
+							</label>
 						</div>
 					)}
 					<VersionBlocks

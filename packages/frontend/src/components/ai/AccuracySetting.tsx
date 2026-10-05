@@ -152,23 +152,28 @@ export function AccuracySetting() {
 							</th>
 							{cols.map(([k, label]) => (
 								<td key={k} className="py-0.5 pr-2">
-									<NumberInput
-										aria-label={`${title} ${HORIZON_LABELS[h]} ${label}`}
-										inputMode="decimal"
-										value={
-											(draft[key][h] as Record<string, number>)[k] ?? Number.NaN
-										}
-										onChange={(v) =>
-											edit({
-												[key]: {
-													...draft[key],
-													[h]: { ...draft[key][h], [k]: v },
-												},
-											})
-										}
-										invalid={errors[key] !== undefined}
-										className="w-[64px]"
-									/>
+									<span className="inline-flex items-center gap-1">
+										<span>±</span>
+										<NumberInput
+											aria-label={`${title} ${HORIZON_LABELS[h]} ${label}`}
+											inputMode="decimal"
+											value={
+												(draft[key][h] as Record<string, number>)[k] ??
+												Number.NaN
+											}
+											onChange={(v) =>
+												edit({
+													[key]: {
+														...draft[key],
+														[h]: { ...draft[key][h], [k]: v },
+													},
+												})
+											}
+											invalid={errors[key] !== undefined}
+											className="w-[64px]"
+										/>
+										<span>%</span>
+									</span>
 								</td>
 							))}
 						</tr>
@@ -193,7 +198,7 @@ export function AccuracySetting() {
 					</p>
 					<p>
 						値動きを測る長さ:
-						採点した時刻から何時間後の値動きと比べるか。精度分析の「精度の内訳」で最初に出す長さにもなる。
+						採点した時刻から何時間後の値動きと比べるか。一覧の精度と精度分析の両方に使う。
 					</p>
 					<p>
 						データ不足の件数:
@@ -222,11 +227,11 @@ export function AccuracySetting() {
 				</div>
 			</div>
 			{number("minSamples", "データ不足の件数", "件未満")}
-			{bands("sentimentBands", "センチメントの境目（%）", [
+			{bands("sentimentBands", "センチメントの境目", [
 				["small", "横ばい（未満）"],
 				["large", "大きく動いた（以上）"],
 			])}
-			{bands("riskBands", "リスクの境目（%）", [
+			{bands("riskBands", "リスクの境目", [
 				["rough", "静か（未満）"],
 				["wild", "大荒れ（以上）"],
 			])}

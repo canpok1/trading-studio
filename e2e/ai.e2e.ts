@@ -79,8 +79,7 @@ test("精度を一覧から開き、内訳を版ごとに出し、選んだ記�
 	const card = page.getByRole("region", { name: "精度の内訳" });
 	await expect(card).toContainText("戦略への影響");
 	await expect(card).toContainText(/センチメント · v\d+（使用中） · \d+ 件/);
-	await page.getByText("4時間後", { exact: true }).click();
-	await expect(card).toContainText("得点率（4時間後）");
+	await expect(card).toContainText("得点率（24時間後）");
 
 	const res = await page.request.get("/api/news?limit=1");
 	const { news } = (await res.json()) as { news: { id: number }[] };
@@ -92,7 +91,7 @@ test("精度を一覧から開き、内訳を版ごとに出し、選んだ記�
 	);
 });
 
-test("精度の測り方を設定すると、精度分析の期間と最初に出す長さが変わる", async ({
+test("精度の測り方を設定すると、精度分析の期間・長さ・境目が変わる", async ({
 	page,
 }) => {
 	try {
@@ -108,9 +107,7 @@ test("精度の測り方を設定すると、精度分析の期間と最初に�
 			.getByText("4時間後", { exact: true })
 			.click();
 		await page.getByLabel("データ不足の件数").fill("5");
-		const small = page.getByLabel(
-			"センチメントの境目（%） 4時間後 横ばい（未満）",
-		);
+		const small = page.getByLabel("センチメントの境目 4時間後 横ばい（未満）");
 		await small.fill("1");
 		await expect(page.getByText("横ばい < 大きく動いた")).toBeVisible();
 		await small.fill("0.3");
