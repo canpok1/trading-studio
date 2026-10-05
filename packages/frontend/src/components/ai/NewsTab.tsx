@@ -6,7 +6,7 @@ import { useApi } from "../../api";
 import {
 	formatDateTime,
 	formatDateWeekday,
-	formatTime,
+	formatDateWeekdayTime,
 	formatVersion,
 } from "../../format";
 import type { AiData } from "../../lib/ai";
@@ -60,7 +60,6 @@ export function NewsTab({
 		<NewsCard
 			key={n.id}
 			news={n}
-			timeOnly={grouped}
 			weight={current.weights[n.id] ?? null}
 			rule={current.rule}
 			scorerStopped={scorer.state === "stopped"}
@@ -95,7 +94,6 @@ export function NewsTab({
 
 function NewsCard({
 	news: n,
-	timeOnly,
 	weight,
 	rule,
 	scorerStopped,
@@ -103,8 +101,6 @@ function NewsCard({
 	onChanged,
 }: {
 	news: NewsItem;
-	/** 日付の区切りの下では時刻だけ出す */
-	timeOnly: boolean;
 	weight: number | null;
 	rule: AggregationRule;
 	scorerStopped: boolean;
@@ -158,13 +154,17 @@ function NewsCard({
 			data-testid="news-card"
 			className={`flex flex-col gap-2 border-b border-line p-3.5 last:border-b-0 ${state.kind === "done" && weight === null ? "opacity-60" : ""}`}
 		>
-			<div className="flex items-baseline gap-2 text-xs text-text-2">
-				<span className="num min-w-0 flex-1 truncate">
-					{timeOnly ? formatTime(n.publishedAt) : formatDateTime(n.publishedAt)}{" "}
-					· {n.sourceName}
+			{/* スマホ幅では取得元を2行目へ回し、日時と重みを省略させない */}
+			<div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-text-2">
+				<span className="num whitespace-nowrap">
+					{formatDateWeekdayTime(n.publishedAt)}
+				</span>
+				<span className="num order-last min-w-0 basis-full truncate sm:order-none sm:flex-1 sm:basis-auto">
+					<span className="hidden sm:inline">· </span>
+					{n.sourceName}
 				</span>
 				{state.kind === "done" && (
-					<span className="shrink-0 whitespace-nowrap">
+					<span className="ml-auto shrink-0 whitespace-nowrap">
 						重み <b className="num">{Math.round((weight ?? 0) * 100)}%</b>
 					</span>
 				)}
