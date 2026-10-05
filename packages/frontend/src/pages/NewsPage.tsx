@@ -8,6 +8,7 @@ import { JUDGE_LABELS, JUDGES } from "@trading-studio/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useApi } from "../api";
+import { AccuracyCard } from "../components/ai/AccuracyCard";
 import { BulkRescore } from "../components/ai/BulkRescore";
 import { NewsFilterBar } from "../components/ai/NewsFilter";
 import { NewsTab } from "../components/ai/NewsTab";
@@ -199,6 +200,7 @@ export function NewsPage() {
 					最新の状態を読み込めなかった（{error}）。5秒ごとに読み直している
 				</p>
 			)}
+			<AccuracyCard rule={current.rule} />
 			<div className="flex items-center gap-1.5">
 				<h2 className="text-[15px] font-bold">ニュースごと</h2>
 				<Help label="ニュースごと">

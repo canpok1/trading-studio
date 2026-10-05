@@ -57,6 +57,31 @@ test("取得して採点したニュースが一覧に出て、市場評価が�
 	);
 });
 
+test("評価の当たり具合を版ごとに出し、選んだ記事をプロンプトの試す記事にして開ける", async ({
+	page,
+}) => {
+	await page.goto("/news");
+	await expect(
+		page.getByTestId("news-card").filter({ hasText: "デモの採点。" }).first(),
+	).toBeVisible({ timeout: 20_000 });
+	// 当たり具合は開いたときに計算するので、採点の後に開き直す
+	await page.reload();
+	const card = page.getByRole("region", { name: "評価の当たり具合" });
+	await expect(card).toContainText("戦略への影響");
+	await expect(card).toContainText(/センチメント · v\d+（使用中） · \d+ 件/);
+	await page.getByText("4時間後", { exact: true }).click();
+	await expect(card).toContainText("当たり（4時間後）");
+
+	const res = await page.request.get("/api/news?limit=1");
+	const { news } = (await res.json()) as { news: { id: number }[] };
+	await page.goto(
+		`/settings?section=news&tab=prompt&trial=${news[0]?.id ?? 0}`,
+	);
+	await expect(page.getByTestId("trial-targets")).toHaveText(
+		"試す記事: 選んだ 1 件",
+	);
+});
+
 test("評価ルールを保存すると市場評価が変わる", async ({ page }) => {
 	try {
 		await page.goto("/news");
