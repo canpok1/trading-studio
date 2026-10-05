@@ -82,7 +82,12 @@ export function TotalPnlTile({
 						{p.pnl === null ? "—" : `${formatSignedInt(p.pnl)}円`}
 					</span>
 					<span className="num text-xs text-text-2">
-						{p.pnlPercent === null ? "—" : formatSignedPercent(p.pnlPercent)}
+						<span
+							data-testid="home-pnl-percent"
+							className={`font-semibold ${tone(p.pnlPercent)}`}
+						>
+							{p.pnlPercent === null ? "—" : formatSignedPercent(p.pnlPercent)}
+						</span>
 						{p.buyHoldPercent !== null &&
 							`（ガチホ ${formatSignedPercent(p.buyHoldPercent)}）`}
 					</span>
