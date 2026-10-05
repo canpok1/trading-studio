@@ -91,7 +91,7 @@ export function BulkRescore({
 					</p>
 					<ul className="list-disc pl-5 text-xs leading-relaxed text-text-2">
 						<li>
-							採点し直した点数で今の採点を置き換える。今の市場評価とペーパー取引にも反映する
+							採点し直した点数で今の採点を置き換える。今の市場評価とデモ取引にも反映する
 						</li>
 						<li>
 							集計に使い始める時刻は元の採点時刻のまま。元の点数は元の版の採点として残り、バックテストで版を選ぶと使える

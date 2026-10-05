@@ -213,7 +213,7 @@ export class TradingRepository {
 		);
 	}
 
-	/** 運用を1つも持っていなければ、既定の資金のペーパーを1つ作る（タブは最低1つ） */
+	/** 運用を1つも持っていなければ、既定の資金のデモを1つ作る（タブは最低1つ） */
 	ensureRun(now: number): void {
 		const r = this.sql
 			.query<{ n: number }, []>(
@@ -221,10 +221,7 @@ export class TradingRepository {
 			)
 			.get();
 		if ((r?.n ?? 0) === 0) {
-			this.createRun(
-				{ name: "ペーパー", mode: "paper", strategyId: null },
-				now,
-			);
+			this.createRun({ name: "デモ", mode: "paper", strategyId: null }, now);
 		}
 	}
 

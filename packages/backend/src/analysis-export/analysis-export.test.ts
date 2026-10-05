@@ -309,7 +309,7 @@ describe("分析用エクスポート", () => {
 		).toMatchObject({ note: "買う", position_quantity: "0" });
 	});
 
-	test("ペーパーの判断と注文を、そのときの判定付きで入れる", async () => {
+	test("デモの判断と注文を、そのときの判定付きで入れる", async () => {
 		const t = createTestApp();
 		const decisionId = t.tradingRepo.addDecision(
 			{ id: 1, mode: "paper" },
@@ -333,7 +333,7 @@ describe("分析用エクスポート", () => {
 			expect.objectContaining({
 				decision_id: String(decisionId),
 				run_id: "1",
-				run_name: "ペーパー",
+				run_name: "デモ",
 				strategy_name: "戦略A",
 				note: "様子見",
 				judgment_sentiment: "+1",

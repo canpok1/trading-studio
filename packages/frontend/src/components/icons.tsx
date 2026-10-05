@@ -121,7 +121,7 @@ export function OtherIcon({ size = 22 }: IconProps) {
 	);
 }
 
-/** ペーパー（模擬売買）の印 */
+/** デモ（模擬売買）の印 */
 export function PaperIcon({ size = 16 }: IconProps) {
 	return (
 		<Svg size={size} strokeLinecap="round" strokeLinejoin="round">

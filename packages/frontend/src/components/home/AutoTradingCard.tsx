@@ -134,7 +134,7 @@ export function AutoTradingCard({
 						自動取引{" "}
 						<span data-testid="auto-state">
 							{unavailable
-								? "ライブ取引はまだ使えない"
+								? "リアル取引はまだ使えない"
 								: on
 									? "稼働中"
 									: "停止中"}

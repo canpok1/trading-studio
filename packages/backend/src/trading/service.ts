@@ -43,7 +43,7 @@ import type {
 	TradingService,
 } from "./types";
 
-/** ペーパーの注文の id の頭につける文字 */
+/** デモの注文の id の頭につける文字 */
 const PAPER_ID_PREFIX = "p";
 
 export type TradingEngine = TradingService & {
@@ -390,7 +390,7 @@ export function createTradingService({
 				return fail("limit", `タブは ${TRADING_RUN_LIMITS.runs} つまで`);
 			}
 			if (input.mode === "live" && runs.some((r) => r.mode === "live")) {
-				return fail("limit", "ライブのタブは1つまで（実口座は1つのため）");
+				return fail("limit", "リアルのタブは1つまで（実口座は1つのため）");
 			}
 			const id = repo.createRun({ ...input, name: input.name.trim() }, now());
 			return okRun(id);
@@ -454,7 +454,7 @@ export function createTradingService({
 			if (row.mode !== "paper") {
 				return fail(
 					"unsupported_mode",
-					"ライブはまだ選べない（フェーズ5で有効にする）",
+					"リアルはまだ選べない（フェーズ5で有効にする）",
 				);
 			}
 			if (row.enabled) return fail("running", "自動取引は既に稼働中");

@@ -204,9 +204,7 @@ function TradingBand() {
 			>
 				<PaperIcon />
 				<strong className="text-[13px] whitespace-nowrap">
-					{running.length > 1
-						? `ペーパー ${running.length}件稼働中`
-						: "ペーパー稼働中"}
+					{running.length > 1 ? `デモ ${running.length}件稼働中` : "デモ稼働中"}
 				</strong>
 				<span className="hidden xl:inline">最新の実データで模擬売買</span>
 				<span
