@@ -27,7 +27,7 @@ const CONDITIONS: Record<ConditionType, string> = {
 	judgment: `- \`{"type":"judgment","judge":"sentiment"|"risk","values":[...]}\` ニュースの市場評価（センチメント・リスク）が values のどれか。values は sentiment: ${values("sentiment")}（BTC の価格にとって強気材料か弱気材料か）、risk: ${values("risk")}（画面の名前を括弧に添えた）。どの判定でも ${NO_JUDGMENT}（データなし＝採点の記録が始まる前）を足せる。データなしのとき ${NO_JUDGMENT} を含まない条件は満たさない。記録開始前を含む期間のバックテストは、判定の条件のどれかに ${NO_JUDGMENT} があるときだけ実行できる`,
 };
 
-/** 値と画面の名前の対応。例: +2（強い強気） */
+/** 値と画面の名前の対応。例: +2（かなり強気） */
 function values(j: Judge): string {
 	return JUDGMENT_VALUES[j]
 		.map((v) => `${v}（${JUDGMENT_VALUE_LABELS[v]}）`)
