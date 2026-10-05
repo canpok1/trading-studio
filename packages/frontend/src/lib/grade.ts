@@ -87,12 +87,14 @@ export function buyHoldPercentOf(
 /** 市場評価の精度を評価するのに要る件数。これ未満は偶然と区別できない */
 export const PRECISION_MIN_SAMPLES = 30;
 
-/** 精度のバッジ。件数が足りなければ「データ不足」 */
-export type PrecisionBadgeValue =
-	| GradeBadgeValue
-	| { grade: "none"; label: string };
-
-const insufficient = { grade: "none", label: "データ不足" } as const;
+/**
+ * 精度の評価。grade は値が出せなければ null。
+ * insufficient は件数が足りず偶然と区別できないこと。そのときも評価は出し、添えて示す
+ */
+export type PrecisionGrade = {
+	grade: GradeBadgeValue | null;
+	insufficient: boolean;
+};
 
 /**
  * センチメントの精度＝的中率（%）。強気・弱気の材料のうち、その後の値動きの向きが合った割合。
@@ -101,13 +103,19 @@ const insufficient = { grade: "none", label: "データ不足" } as const;
 export function gradeSentimentPrecision(
 	hitRate: number | null,
 	samples: number,
-): PrecisionBadgeValue {
-	if (hitRate === null || samples < PRECISION_MIN_SAMPLES) return insufficient;
-	if (hitRate >= 65) return of("excellent");
-	if (hitRate >= 55) return of("good");
-	if (hitRate >= 45) return of("fair");
-	if (hitRate >= 35) return of("poor");
-	return of("bad");
+): PrecisionGrade {
+	return {
+		grade: hitRate === null ? null : of(rateGrade(hitRate)),
+		insufficient: samples < PRECISION_MIN_SAMPLES,
+	};
+}
+
+function rateGrade(rate: number): Grade {
+	if (rate >= 65) return "excellent";
+	if (rate >= 55) return "good";
+	if (rate >= 45) return "fair";
+	if (rate >= 35) return "poor";
+	return "bad";
 }
 
 /**
