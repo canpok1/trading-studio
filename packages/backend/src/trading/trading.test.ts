@@ -10,7 +10,7 @@ import {
 	MARKET_BUY_ORDER,
 	singleBuy,
 } from "@trading-studio/core";
-import { createTestApp } from "../test-app";
+import { createTestApp, TEST_FEE_RATES } from "../test-app";
 import { TradingRepository } from "./repository";
 import { createTradingService } from "./service";
 import type { AutoTradingStatus, StoredOrder } from "./types";
@@ -418,6 +418,7 @@ describe("止まっていた間と再起動", () => {
 			},
 			marketData: t.marketDataRepo,
 			market: () => t.live.current,
+			fees: TEST_FEE_RATES,
 			now: () => t.clock.now,
 		});
 		expect(restarted.run(1)).toEqual(before);

@@ -17,6 +17,7 @@ import {
 	chooseStepTimeframe,
 	conditionStrategy,
 	DEFAULT_CONDITION_TIMEFRAME,
+	DEFAULT_FEE_RATES,
 	historyShortfalls,
 	isCoarser,
 	parseConditionSet,
@@ -75,7 +76,6 @@ import { errorMessage, readJson, useAsync } from "../lib/useAsync";
 
 const DAY = 86_400_000;
 const DEFAULT_CASH = 2_000_000;
-const DEFAULT_FEE_PPM = 1000;
 const STORAGE_KEY = "backtest-draft";
 const NAME_MAX = 40;
 export const BACKTEST_NAME_MAX = NAME_MAX;
@@ -284,8 +284,7 @@ export function BacktestRunPage() {
 				initialCash: passed?.initialCash ?? base?.initialCash ?? DEFAULT_CASH,
 				fees: passed?.fees ??
 					base?.fees ?? {
-						limitPpm: DEFAULT_FEE_PPM,
-						marketPpm: DEFAULT_FEE_PPM,
+						...DEFAULT_FEE_RATES,
 					},
 				criteriaVersion:
 					passed?.criteriaVersion !== undefined
@@ -304,7 +303,7 @@ export function BacktestRunPage() {
 				fromDate: null,
 				toDate: null,
 				initialCash: DEFAULT_CASH,
-				fees: { limitPpm: DEFAULT_FEE_PPM, marketPpm: DEFAULT_FEE_PPM },
+				fees: { ...DEFAULT_FEE_RATES },
 			});
 		}
 	}, [strategies, draft, location, search, navigate, setDraft]);

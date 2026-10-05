@@ -35,6 +35,9 @@ import { createStrategyService } from "./strategies/service";
 import { TradingRepository } from "./trading/repository";
 import { createTradingService } from "./trading/service";
 
+/** テストの手数料率。既定は 0% だが、手数料の扱いを確かめるため 0.1% で動かす */
+export const TEST_FEE_RATES = { limitPpm: 1000, marketPpm: 1000 };
+
 export function createTestApp(
 	over: Partial<AppDeps> = {},
 	db: Db = createTestDb(),
@@ -136,6 +139,7 @@ export function createTestApp(
 		marketData: marketDataRepo,
 		market: () => live.current,
 		now: () => clock.now,
+		fees: TEST_FEE_RATES,
 	});
 	const analysisExport = createAnalysisExportService({
 		repo: new AnalysisExportRepository(db),
