@@ -55,6 +55,7 @@ export function SettingsPage() {
 		: "general";
 	const tabParam = params.get("tab");
 	const newsTab: NewsSettingsTab = isNewsTab(tabParam) ? tabParam : "rule";
+	const trialIds = parseTrialIds(params.get("trial"));
 	return (
 		<Page title="設定">
 			<Tabs
@@ -93,7 +94,7 @@ export function SettingsPage() {
 						}
 						small
 					/>
-					<NewsSettings tab={newsTab} />
+					<NewsSettings tab={newsTab} trialIds={trialIds} />
 				</div>
 			)}
 		</Page>
@@ -105,6 +106,15 @@ const OPTIONS: [ThemePreference, string][] = [
 	["light", "ライト"],
 	["dark", "ダーク"],
 ];
+
+/** プロンプトで試す記事の ID（`?trial=1,2`）。ニュース画面の当たり具合から渡す */
+function parseTrialIds(v: string | null): number[] {
+	if (!v) return [];
+	return v
+		.split(",")
+		.map(Number)
+		.filter((n) => Number.isSafeInteger(n) && n > 0);
+}
 
 function ThemeSetting() {
 	const { preference, setPreference } = useTheme();
@@ -145,7 +155,13 @@ type NewsSettingsData = {
 };
 
 /** ニュースの設定。評価ルールと取得の状態を読み、取得の状態は定期的に読み直す */
-function NewsSettings({ tab }: { tab: NewsSettingsTab }) {
+function NewsSettings({
+	tab,
+	trialIds,
+}: {
+	tab: NewsSettingsTab;
+	trialIds: readonly number[];
+}) {
 	const api = useApi();
 	const visible = usePageVisible();
 	const [data, setData] = useState<NewsSettingsData | null>(null);
@@ -194,7 +210,13 @@ function NewsSettings({ tab }: { tab: NewsSettingsTab }) {
 				</p>
 			)}
 			{tab === "rule" && <RuleTab saved={data.rule} onSaved={load} />}
-			{tab === "prompt" && <PromptTab rule={data.rule} onChanged={load} />}
+			{tab === "prompt" && (
+				<PromptTab
+					rule={data.rule}
+					onChanged={load}
+					initialTrialIds={trialIds}
+				/>
+			)}
 			{tab === "sources" && (
 				<SourcesTab collector={data.collector} onChanged={load} />
 			)}

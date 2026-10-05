@@ -32,9 +32,12 @@ type Criteria = {
 export function PromptTab({
 	rule,
 	onChanged,
+	initialTrialIds = [],
 }: {
 	rule: AggregationRule;
 	onChanged: () => void;
+	/** 試す記事の初期値（ニュース画面の当たり具合から渡す記事の ID） */
+	initialTrialIds?: readonly number[];
 }) {
 	const api = useApi();
 	const load = useCallback(
@@ -58,6 +61,7 @@ export function PromptTab({
 				<PromptBody
 					criteria={state.data}
 					rule={rule}
+					initialTrialIds={initialTrialIds}
 					onChanged={() => {
 						reload();
 						onChanged();
@@ -205,10 +209,12 @@ function PromptBody({
 	criteria,
 	rule,
 	onChanged,
+	initialTrialIds,
 }: {
 	criteria: Criteria;
 	rule: AggregationRule;
 	onChanged: () => void;
+	initialTrialIds: readonly number[];
 }) {
 	const api = useApi();
 	const { versions, activeVersion, template } = criteria;
@@ -224,7 +230,9 @@ function PromptBody({
 		{ kind: "running" } | { kind: "done"; result: TrialResult } | null
 	>(null);
 	// 空なら最新の1件で試す
-	const [picked, setPicked] = useState<NewsItem[]>([]);
+	const [picked, setPicked] = useState<readonly number[]>(() =>
+		initialTrialIds.slice(0, TRIAL_MAX),
+	);
 	const [picking, setPicking] = useState(false);
 	// 差分は「選んだ版 → 使用中の版」。未選択なら使用中の1つ前の版と比べる
 	const [diffFrom, setDiffFrom] = useState<number | null>(null);
@@ -270,7 +278,7 @@ function PromptBody({
 			const res = await api.api.scoring.trial.$post({
 				json: {
 					criteria: draft,
-					newsIds: picked.length > 0 ? picked.map((n) => n.id) : undefined,
+					newsIds: picked.length > 0 ? [...picked] : undefined,
 				},
 			});
 			const body = (await res.json()) as TrialResult | { message: string };
@@ -382,8 +390,8 @@ function PromptBody({
 			{picking && (
 				<PickNewsModal
 					initial={picked}
-					onDone={(news) => {
-						setPicked(news);
+					onDone={(ids) => {
+						setPicked(ids);
 						setPicking(false);
 					}}
 					onClose={() => setPicking(false)}
@@ -555,8 +563,8 @@ function PickNewsModal({
 	onDone,
 	onClose,
 }: {
-	initial: NewsItem[];
-	onDone: (news: NewsItem[]) => void;
+	initial: readonly number[];
+	onDone: (ids: readonly number[]) => void;
 	onClose: () => void;
 }) {
 	const api = useApi();
@@ -568,11 +576,11 @@ function PickNewsModal({
 		[api],
 	);
 	const { state, reload } = useAsync(load);
-	const [selected, setSelected] = useState<NewsItem[]>(initial);
-	const has = (id: number) => selected.some((n) => n.id === id);
+	const [selected, setSelected] = useState<readonly number[]>(initial);
+	const has = (id: number) => selected.includes(id);
 	const toggle = (n: NewsItem) =>
 		setSelected((s) =>
-			s.some((x) => x.id === n.id) ? s.filter((x) => x.id !== n.id) : [...s, n],
+			s.includes(n.id) ? s.filter((x) => x !== n.id) : [...s, n.id],
 		);
 	return (
 		<Modal title="試す記事を選ぶ" onClose={onClose}>
