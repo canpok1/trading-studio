@@ -19,7 +19,11 @@ import type {
 	ScoringAnalysisRepository,
 } from "./repository";
 import type { AccuracyHorizon, AccuracyReport } from "./types";
-import { ACCURACY_DAYS, ACCURACY_MIN_SAMPLES } from "./types";
+import {
+	ACCURACY_DAYS,
+	ACCURACY_MIN_SAMPLES,
+	ACCURACY_ROUGH_PCT,
+} from "./types";
 
 const HOUR = 3_600_000;
 
@@ -383,6 +387,7 @@ export function createScoringAnalysis({
 				})),
 				rule,
 				active,
+				ACCURACY_ROUGH_PCT[horizon],
 			);
 			const s = judgments.series(from, to, HOUR, rule);
 			const judged = s.values.sentiment.filter((v) => v !== null).length;
@@ -392,6 +397,7 @@ export function createScoringAnalysis({
 				from,
 				to,
 				horizon,
+				roughPct: ACCURACY_ROUGH_PCT[horizon],
 				days: ACCURACY_DAYS,
 				minSamples: ACCURACY_MIN_SAMPLES,
 				priceTimeframe: p.timeframe,

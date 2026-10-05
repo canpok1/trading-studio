@@ -75,6 +75,7 @@ test("精度を一覧から開き、内訳を版ごとに出し、選んだ記�
 		/データ不足|優秀|良い|普通|悪い/,
 	);
 	await expect(page.getByTestId("precision-sentiment")).toContainText("的中率");
+	await expect(page.getByTestId("precision-risk")).toContainText("見分け率");
 	const card = page.getByRole("region", { name: "精度の内訳" });
 	await expect(card).toContainText("戦略への影響");
 	await expect(card).toContainText(/センチメント · v\d+（使用中） · \d+ 件/);

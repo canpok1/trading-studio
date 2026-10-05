@@ -1,6 +1,6 @@
 // 市場評価の精度（センチメント・リスクそれぞれ1つの指標と5段階の評価）。ニュース画面の一覧と精度分析のタブで使う
 
-import type { AccuracyReport } from "@trading-studio/backend";
+import type { AccuracyReport, VersionStats } from "@trading-studio/backend";
 import type { Judge } from "@trading-studio/core";
 import { JUDGE_LABELS, JUDGES } from "@trading-studio/core";
 import { useCallback } from "react";
@@ -26,6 +26,15 @@ export type Precision = {
 	basis: string;
 };
 
+/**
+ * リスクの見分け率（%）。荒れた記事のうち警戒以上と言えた割合と、静かだった記事のうち平常と言えた割合の平均。
+ * 平常ばかり付けても高くならないよう、単純な的中率にしない。片側が無ければ null
+ */
+export function riskDiscrimination(r: VersionStats["risk"]): number | null {
+	if (r.rough === 0 || r.calm === 0) return null;
+	return ((r.roughHigh / r.rough + r.calmNormal / r.calm) / 2) * 100;
+}
+
 /** 使用中の版の、24時間後の値動きで測った精度。採点した記事が無ければ null */
 export function precisionOf(
 	report: AccuracyReport,
@@ -39,10 +48,7 @@ export function precisionOf(
 	const s = v.sentiment;
 	const hitRate = s.directed === 0 ? null : (s.hits / s.directed) * 100;
 	const r = v.risk;
-	const ratio =
-		r.highMeanAbsPct === null || !r.baseMeanAbsPct
-			? null
-			: r.highMeanAbsPct / r.baseMeanAbsPct;
+	const rate = riskDiscrimination(r);
 	return {
 		sentiment: {
 			badge: gradeSentimentPrecision(hitRate, s.directed),
@@ -51,10 +57,10 @@ export function precisionOf(
 			basis: `強気・弱気の材料 ${s.directed} 件のうち、値動きの向きが合った ${s.hits} 件の割合`,
 		},
 		risk: {
-			badge: gradeRiskPrecision(ratio, r.high),
-			metric: "値動き倍率",
-			value: ratio === null ? "—" : `${ratio.toFixed(2)}倍`,
-			basis: `警戒以上の記事 ${r.high} 件の後の値動きが、すべての記事の後の何倍か`,
+			badge: gradeRiskPrecision(rate, r.rough),
+			metric: "見分け率",
+			value: rate === null ? "—" : `${Math.round(rate)}%`,
+			basis: `荒れた記事 ${r.rough} 件のうち警戒以上 ${r.roughHigh} 件、静かだった記事 ${r.calm} 件のうち平常 ${r.calmNormal} 件。それぞれの割合の平均`,
 		},
 	};
 }
@@ -125,12 +131,13 @@ export function PrecisionHelp() {
 					的中率。やや強気以上・やや弱気以下の記事のうち、値動きの向きが合った割合。偶然でも50%前後になる。65%以上=優秀、55%以上=良い、45%以上=普通、35%以上=悪い、35%未満=非常に悪い
 				</li>
 				<li>
-					リスク:
-					値動き倍率。警戒以上の記事の後の値動きの大きさが、すべての記事の後の何倍か。1倍なら危険を見分けられていない。1.5倍以上=優秀、1.2倍以上=良い、0.9倍以上=普通、0.7倍以上=悪い、0.7倍未満=非常に悪い
+					リスク: 見分け率。24時間後に ±2%
+					以上動いた（荒れた）記事のうち警戒以上と言えた割合と、静かだった記事のうち平常と言えた割合の平均。平常ばかり付けても高くならず、50%が当てずっぽうと同じ。基準はセンチメントと同じ
 				</li>
 			</ul>
 			<p>
-				対象の記事が {PRECISION_MIN_SAMPLES}{" "}
+				センチメントは強気・弱気の材料、リスクは荒れた記事が{" "}
+				{PRECISION_MIN_SAMPLES}{" "}
 				件未満のときは偶然と区別できないので「データ不足」。
 			</p>
 		</Help>

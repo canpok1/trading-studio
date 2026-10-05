@@ -18,6 +18,7 @@ import { ScoreChip } from "../judgment/JudgmentBadge";
 import { Modal } from "../Modal";
 import { ErrorState, Skeleton } from "../States";
 import { Button, Segmented } from "../ui";
+import { riskDiscrimination } from "./Precision";
 
 /** プロンプトで一度に試せる記事の数。プロンプトのタブと合わせる */
 const TRIAL_MAX = 5;
@@ -31,13 +32,13 @@ const pct = (n: number, d: number) =>
 	d === 0 ? "—" : `${Math.round((n / d) * 100)}%`;
 const signedPct = (v: number | null) =>
 	v === null ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(2)}%`;
-const absPct = (v: number | null) => (v === null ? "—" : `${v.toFixed(2)}%`);
 
-type ListKind = "misses" | "neutral" | "calmRisk";
+type ListKind = "misses" | "neutral" | "missedRisk" | "falseAlarm";
 const LIST_TITLES: Record<ListKind, string> = {
 	misses: "外れた記事",
 	neutral: "中立の帯の記事",
-	calmRisk: "動かなかった警戒以上の記事",
+	missedRisk: "見逃した記事",
+	falseAlarm: "空振りの記事",
 };
 
 /** ニュース画面の精度分析タブの「精度の内訳」。採点の版ごとに、点数とその後の値動き・点数の偏りを出す */
@@ -71,7 +72,11 @@ export function AccuracyCard({ rule }: { rule: AggregationRule }) {
 							でない点数。評価の平均を薄めるだけで、評価を動かさない。
 						</p>
 						<p>
-							リスクは、警戒以上の記事の後に値動きが大きくなったかを、その版のすべての記事の後と比べる。
+							リスクは、その後に荒れた（4時間後は ±0.7%、24時間後は ±2%
+							以上動いた）記事を警戒以上、静かだった記事を平常と言えたかを記事ごとに判定する。見分け率は、荒れた側と静かな側それぞれの当たりの割合の平均。平常ばかり付けても高くならず、50%が当てずっぽうと同じ。
+						</p>
+						<p>
+							見逃した記事は、平常なのにその後に荒れたもの。空振りの記事は、警戒以上なのにその後が静かだったもの。同じ時間帯の記事はみな同じ値動きの後に置かれるので、見逃しの原因がその記事とは限らない。
 						</p>
 						<p>
 							「同じ記事で比べる」は、使用中の版とほかの版の両方で採点した記事だけで比べる。過去の記事を使用中の版で採点し直すと増える。
@@ -242,10 +247,23 @@ function VersionBlocks({
 			</Block>
 			<Block title={`リスク · ${title}`} className="border-b-0">
 				<Row
-					label={`警戒以上の後の値動き（${HORIZON_LABELS[report.horizon]}）`}
-					value={`${absPct(r.highMeanAbsPct)}（${r.high} 件）`}
+					label={`見分け率（${HORIZON_LABELS[report.horizon]}・±${report.roughPct}%）`}
+					value={rateText(riskDiscrimination(r))}
 				/>
-				<Row label="すべての記事の後" value={absPct(r.baseMeanAbsPct)} />
+				<Row
+					label="荒れた記事のうち警戒以上"
+					value={countText(r.roughHigh, r.rough)}
+				/>
+				<Row
+					label="静かだった記事のうち平常"
+					value={countText(r.calmNormal, r.calm)}
+				/>
+				{r.rough < report.minSamples && (
+					<p className="text-xs text-text-2">
+						荒れた記事が {report.minSamples}{" "}
+						件未満のため、見分け率は偶然の可能性
+					</p>
+				)}
 				<Row label="関係なし" value={pct(r.nulls, v.articles)} />
 				<Row
 					label="最も多い点数"
@@ -256,12 +274,17 @@ function VersionBlocks({
 					}
 				/>
 				<div className="flex flex-wrap gap-2 pt-1">
-					<ListButton list={v.calmRisk} kind="calmRisk" onOpen={onOpen} />
+					<ListButton list={v.missedRisk} kind="missedRisk" onOpen={onOpen} />
+					<ListButton list={v.falseAlarm} kind="falseAlarm" onOpen={onOpen} />
 				</div>
 			</Block>
 		</div>
 	);
 }
+
+const countText = (n: number, d: number) =>
+	d === 0 ? "—" : `${n} / ${d} 件（${pct(n, d)}）`;
+const rateText = (v: number | null) => (v === null ? "—" : `${Math.round(v)}%`);
 
 const hitText = (s: VersionStats["sentiment"]) =>
 	s.directed === 0
@@ -319,7 +342,7 @@ function Comparison({
 		],
 		["中立の帯", (x) => pct(x.sentiment.neutralBand, x.sentiment.scored)],
 		["センチメント関係なし", (x) => pct(x.sentiment.nulls, x.articles)],
-		["警戒以上の後", (x) => absPct(x.risk.highMeanAbsPct)],
+		["リスクの見分け率", (x) => rateText(riskDiscrimination(x.risk))],
 	];
 	const few = Math.max(c.other.sentiment.directed, c.active.sentiment.directed);
 	return (

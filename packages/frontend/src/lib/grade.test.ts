@@ -90,12 +90,10 @@ describe("市場評価の精度", () => {
 		expect(label(gradeSentimentPrecision(44.9, 30))).toBe("悪い");
 		expect(label(gradeSentimentPrecision(34, 30))).toBe("非常に悪い");
 	});
-	test("リスクは値動きの倍率を 1 倍の前後で分ける", () => {
-		expect(label(gradeRiskPrecision(1.5, 30))).toBe("優秀");
-		expect(label(gradeRiskPrecision(1.2, 30))).toBe("良い");
-		expect(label(gradeRiskPrecision(1, 30))).toBe("普通");
-		expect(label(gradeRiskPrecision(0.7, 30))).toBe("悪い");
-		expect(label(gradeRiskPrecision(0.69, 30))).toBe("非常に悪い");
+	test("リスクは見分け率をセンチメントと同じ基準で分ける", () => {
+		expect(label(gradeRiskPrecision(65, 30))).toBe("優秀");
+		expect(label(gradeRiskPrecision(51, 30))).toBe("普通");
+		expect(label(gradeRiskPrecision(34, 30))).toBe("非常に悪い");
 	});
 	test("30件未満か値が無ければデータ不足", () => {
 		expect(label(gradeSentimentPrecision(80, 29))).toBe("データ不足");

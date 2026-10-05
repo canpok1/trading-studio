@@ -111,17 +111,7 @@ export function gradeSentimentPrecision(
 }
 
 /**
- * リスクの精度＝警戒以上の記事の後の値動きの大きさが、すべての記事の後の何倍か。
- * 1 倍なら見分けられていないので、普通を 1 倍の前後に置く
+ * リスクの精度＝見分け率（%）。荒れた側と静かな側の当たりの割合の平均で、
+ * 当てずっぽうでも 50% になるため、センチメントと同じ基準で分ける
  */
-export function gradeRiskPrecision(
-	ratio: number | null,
-	samples: number,
-): PrecisionBadgeValue {
-	if (ratio === null || samples < PRECISION_MIN_SAMPLES) return insufficient;
-	if (ratio >= 1.5) return of("excellent");
-	if (ratio >= 1.2) return of("good");
-	if (ratio >= 0.9) return of("fair");
-	if (ratio >= 0.7) return of("poor");
-	return of("bad");
-}
+export const gradeRiskPrecision = gradeSentimentPrecision;

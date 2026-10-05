@@ -10,6 +10,15 @@ export const ACCURACY_DAYS = 30;
 /** 当たりの件数がこれ未満なら偶然と区別できないと出す */
 export const ACCURACY_MIN_SAMPLES = 30;
 
+/**
+ * 採点時刻から測る長さの後に、この大きさ（%）以上動いたら「荒れた」とみなす。
+ * 直近の値動きの上位2割ほど
+ */
+export const ACCURACY_ROUGH_PCT: Record<AccuracyHorizon, number> = {
+	"4h": 0.7,
+	"24h": 2,
+};
+
 /** 記事の一覧に出す上限（新しい順） */
 export const ACCURACY_LIST_MAX = 30;
 
@@ -54,12 +63,14 @@ export type VersionStats = {
 		nulls: number;
 		/** 最も多い点数とその件数。点数が付いた記事が無ければ null */
 		mode: { score: number; count: number } | null;
-		/** 警戒以上の点数で、値動きが分かる件数 */
-		high: number;
-		/** 警戒以上の記事の後の値動きの大きさの平均（%）。無ければ null */
-		highMeanAbsPct: number | null;
-		/** この版の値動きが分かるすべての記事の後の値動きの大きさの平均（%）。無ければ null */
-		baseMeanAbsPct: number | null;
+		/** 点数が付き値動きが分かる記事のうち、その後に荒れた件数 */
+		rough: number;
+		/** そのうち警戒以上だった件数 */
+		roughHigh: number;
+		/** 点数が付き値動きが分かる記事のうち、その後が静かだった件数 */
+		calm: number;
+		/** そのうち平常だった件数 */
+		calmNormal: number;
 	};
 };
 
@@ -68,8 +79,10 @@ export type VersionAccuracy = VersionStats & {
 	misses: AccuracyList;
 	/** 中立の帯で 0 でないもの（平均を薄める弱い点数） */
 	neutral: AccuracyList;
-	/** 警戒以上なのに、その後の値動きがこの版の平均より小さかったもの */
-	calmRisk: AccuracyList;
+	/** 平常なのに、その後に荒れたもの */
+	missedRisk: AccuracyList;
+	/** 警戒以上なのに、その後が静かだったもの */
+	falseAlarm: AccuracyList;
 };
 
 /** 同じ記事どうしで、使用中の版とほかの版を比べたもの */
@@ -86,6 +99,8 @@ export type AccuracyReport = {
 	from: number;
 	to: number;
 	horizon: AccuracyHorizon;
+	/** 荒れたとみなす値動きの大きさ（%） */
+	roughPct: number;
 	/** 集計した期間（日） */
 	days: number;
 	/** 当たりの件数がこれ未満なら偶然と区別できない */

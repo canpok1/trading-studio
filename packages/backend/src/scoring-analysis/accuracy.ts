@@ -14,12 +14,11 @@ import { ACCURACY_LIST_MAX } from "./types";
 /** 版の採点に、採点時刻からの騰落率（%）を付けたもの */
 export type ScoredWithReturn = VersionScoreRow & { returnPct: number | null };
 
-const mean = (xs: number[]) =>
-	xs.length === 0
-		? null
-		: Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 1000) / 1000;
-
-function classify(rows: readonly ScoredWithReturn[], rule: AggregationRule) {
+function classify(
+	rows: readonly ScoredWithReturn[],
+	rule: AggregationRule,
+	roughPct: number,
+) {
 	const t = rule.thresholds;
 	const isDirected = (s: number) =>
 		s >= t.sentiment.plus1 || s < t.sentiment.minus1;
@@ -37,26 +36,26 @@ function classify(rows: readonly ScoredWithReturn[], rule: AggregationRule) {
 		(r) =>
 			r.sentiment !== null && r.sentiment !== 0 && !isDirected(r.sentiment),
 	);
-	const withReturn = rows.filter((r) => r.returnPct !== null);
-	const baseMeanAbsPct = mean(
-		withReturn.map((r) => Math.abs(r.returnPct as number)),
+	const measured = rows.filter((r) => r.risk !== null && r.returnPct !== null);
+	const isHigh = (r: ScoredWithReturn) => (r.risk as number) >= t.risk.caution;
+	const rough = measured.filter(
+		(r) => Math.abs(r.returnPct as number) >= roughPct,
 	);
-	const high = withReturn.filter(
-		(r) => r.risk !== null && r.risk >= t.risk.caution,
+	const calm = measured.filter(
+		(r) => Math.abs(r.returnPct as number) < roughPct,
 	);
-	const calmRisk =
-		baseMeanAbsPct === null
-			? []
-			: high.filter((r) => Math.abs(r.returnPct as number) < baseMeanAbsPct);
-	return { directed, misses, neutral, high, baseMeanAbsPct, calmRisk };
+	const missedRisk = rough.filter((r) => !isHigh(r));
+	const falseAlarm = calm.filter(isHigh);
+	return { directed, misses, neutral, rough, calm, missedRisk, falseAlarm };
 }
 
 function stats(
 	version: number,
 	rows: readonly ScoredWithReturn[],
 	rule: AggregationRule,
+	roughPct: number,
 ): VersionStats & { lists: ReturnType<typeof classify> } {
-	const c = classify(rows, rule);
+	const c = classify(rows, rule, roughPct);
 	const sentiments = rows.flatMap((r) => r.sentiment ?? []);
 	const risks = rows.flatMap((r) => r.risk ?? []);
 	const counts = new Map<number, number>();
@@ -86,9 +85,10 @@ function stats(
 			scored: risks.length,
 			nulls: rows.length - risks.length,
 			mode,
-			high: c.high.length,
-			highMeanAbsPct: mean(c.high.map((r) => Math.abs(r.returnPct as number))),
-			baseMeanAbsPct: c.baseMeanAbsPct,
+			rough: c.rough.length,
+			roughHigh: c.rough.length - c.missedRisk.length,
+			calm: c.calm.length,
+			calmNormal: c.calm.length - c.falseAlarm.length,
 		},
 		lists: c,
 	};
@@ -122,6 +122,7 @@ export function accuracyByVersion(
 	rows: readonly ScoredWithReturn[],
 	rule: AggregationRule,
 	activeVersion: number | null,
+	roughPct: number,
 ): { versions: VersionAccuracy[]; comparisons: VersionComparison[] } {
 	const byVersion = new Map<number, ScoredWithReturn[]>();
 	for (const r of rows) {
@@ -131,12 +132,13 @@ export function accuracyByVersion(
 	}
 	const order = [...byVersion.keys()].sort((a, b) => b - a);
 	const versions = order.map((v) => {
-		const s = stats(v, byVersion.get(v) ?? [], rule);
+		const s = stats(v, byVersion.get(v) ?? [], rule, roughPct);
 		return {
 			...strip(s),
 			misses: list(s.lists.misses),
 			neutral: list(s.lists.neutral),
-			calmRisk: list(s.lists.calmRisk),
+			missedRisk: list(s.lists.missedRisk),
+			falseAlarm: list(s.lists.falseAlarm),
 		};
 	});
 	const base = activeVersion ?? order[0];
@@ -150,12 +152,13 @@ export function accuracyByVersion(
 			return {
 				version: v,
 				common: other.length,
-				other: strip(stats(v, other, rule)),
+				other: strip(stats(v, other, rule, roughPct)),
 				active: strip(
 					stats(
 						base as number,
 						baseRows.filter((r) => ids.has(r.id)),
 						rule,
+						roughPct,
 					),
 				),
 			};
