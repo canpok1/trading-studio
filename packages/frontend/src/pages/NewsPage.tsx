@@ -173,7 +173,10 @@ export function NewsPage() {
 				) : precisionReport.state.kind === "loading" ? (
 					<Skeleton className="h-[120px] w-full" />
 				) : (
-					<PrecisionSummary precision={precision} />
+					<PrecisionSummary
+						precision={precision}
+						basis={precisionReport.state.data}
+					/>
 				)}
 				<AccuracyCard rule={current.rule} />
 			</Page>

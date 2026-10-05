@@ -1,6 +1,8 @@
-// 採点の分析で読むニュースと採点。読むだけで書き換えない
+// 採点の分析で読むニュースと採点。読むだけで書き換えない。書くのは精度の設定だけ
 
 import type { Db } from "../db/open";
+import type { AccuracySettings } from "./types";
+import { DEFAULT_ACCURACY_SETTINGS } from "./types";
 
 /** ニュースと採点。採点の行が無ければ status は null */
 export type AnalysisNewsRow = {
@@ -50,11 +52,32 @@ const COLUMNS = `n.id, n.source_name as sourceName, n.language, n.url, n.title, 
   s.comment, s.scored_at as scoredAt, s.criteria_version as criteriaVersion, s.model,
   s.app_built_at as appBuiltAt, s.error`;
 
+const ACCURACY_SETTINGS_KEY = "accuracy_settings";
+
 export class ScoringAnalysisRepository {
 	constructor(private readonly db: Db) {}
 
 	private get sql() {
 		return this.db.$client;
+	}
+
+	accuracySettings(): AccuracySettings {
+		const r = this.sql
+			.query<{ value: string }, [string]>(
+				"select value from settings where key = ?",
+			)
+			.get(ACCURACY_SETTINGS_KEY);
+		return {
+			...DEFAULT_ACCURACY_SETTINGS,
+			...(r ? (JSON.parse(r.value) as Partial<AccuracySettings>) : {}),
+		};
+	}
+
+	saveAccuracySettings(s: AccuracySettings) {
+		this.sql.run(
+			"insert into settings (key, value) values (?, ?) on conflict (key) do update set value = excluded.value",
+			[ACCURACY_SETTINGS_KEY, JSON.stringify(s)],
+		);
 	}
 
 	private where(f: NewsFilter): { clause: string; args: (number | string)[] } {

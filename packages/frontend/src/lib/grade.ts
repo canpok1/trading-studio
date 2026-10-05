@@ -84,9 +84,6 @@ export function buyHoldPercentOf(
 	return base > 0 ? (last.close / base - 1) * 100 : null;
 }
 
-/** 市場評価の精度を評価するのに要る件数。これ未満は偶然と区別できない */
-export const PRECISION_MIN_SAMPLES = 30;
-
 /**
  * 精度の評価。grade は値が出せなければ null。
  * insufficient は件数が足りず偶然と区別できないこと。そのときも評価は出し、添えて示す
@@ -103,10 +100,12 @@ export type PrecisionGrade = {
 export function gradeSentimentPrecision(
 	hitRate: number | null,
 	samples: number,
+	/** これ未満は偶然と区別できない。精度の設定で変える */
+	minSamples: number,
 ): PrecisionGrade {
 	return {
 		grade: hitRate === null ? null : of(rateGrade(hitRate)),
-		insufficient: samples < PRECISION_MIN_SAMPLES,
+		insufficient: samples < minSamples,
 	};
 }
 

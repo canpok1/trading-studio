@@ -4,11 +4,30 @@
 export const ACCURACY_HORIZONS = ["4h", "24h"] as const;
 export type AccuracyHorizon = (typeof ACCURACY_HORIZONS)[number];
 
-/** 精度を集計する期間（日）。新しさの時刻で測る */
-export const ACCURACY_DAYS = 30;
+/** 精度の設定。設定画面の「ニュース」区分の「精度」で変える */
+export type AccuracySettings = {
+	/** 集計する期間（日）。新しさの時刻で測る */
+	days: number;
+	/** 精度に使う、採点時刻からの長さ。精度の内訳の既定にもする */
+	horizon: AccuracyHorizon;
+	/** 対象がこれ未満なら偶然と区別できないとして「データ不足」を添える */
+	minSamples: number;
+};
 
-/** 当たりの件数がこれ未満なら偶然と区別できないと出す */
-export const ACCURACY_MIN_SAMPLES = 30;
+export const DEFAULT_ACCURACY_SETTINGS: AccuracySettings = {
+	days: 30,
+	horizon: "24h",
+	minSamples: 30,
+};
+
+/** 集計する期間の上限（日）。足をメモリに載せるため */
+export const ACCURACY_DAYS_MAX = 92;
+/** データ不足とする件数の上限 */
+export const ACCURACY_MIN_SAMPLES_MAX = 1000;
+
+export type SetAccuracySettingsResult =
+	| { ok: true }
+	| { ok: false; message: string; field: keyof AccuracySettings };
 
 /**
  * 採点時刻から測る長さの後に、この大きさ（%）以上動いたら「荒れた」とみなす。
@@ -125,5 +144,8 @@ export type AccuracyReport = {
 };
 
 export interface AccuracyService {
-	accuracy(horizon: AccuracyHorizon): AccuracyReport;
+	/** horizon を省くと設定の長さで測る */
+	accuracy(horizon?: AccuracyHorizon): AccuracyReport;
+	accuracySettings(): AccuracySettings;
+	setAccuracySettings(s: AccuracySettings): SetAccuracySettingsResult;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { AccuracyReport } from "../index";
+import type { AccuracyReport, AccuracySettings } from "../index";
 import { createTestApp } from "../test-app";
 
 const H = 3_600_000;
@@ -79,5 +79,45 @@ describe("GET /api/scoring/accuracy", () => {
 		const t = createTestApp();
 		const res = await t.app.request("/api/scoring/accuracy?horizon=1h");
 		expect(res.status).toBe(400);
+	});
+});
+
+describe("/api/scoring/accuracy/settings", () => {
+	const put = (t: ReturnType<typeof createTestApp>, body: unknown) =>
+		t.app.request("/api/scoring/accuracy/settings", {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		});
+
+	test("保存した期間・長さ・件数で集計する。長さを省くと設定の長さ", async () => {
+		const t = await scored();
+		const before = await t.app.request("/api/scoring/accuracy/settings");
+		expect(await before.json()).toEqual({
+			days: 30,
+			horizon: "24h",
+			minSamples: 30,
+		});
+		const saved: AccuracySettings = { days: 7, horizon: "4h", minSamples: 5 };
+		expect((await put(t, saved)).status).toBe(200);
+		const res = await t.app.request("/api/scoring/accuracy");
+		const r = (await res.json()) as AccuracyReport;
+		expect(r).toMatchObject({ days: 7, horizon: "4h", minSamples: 5 });
+		expect(r.to - r.from).toBe(7 * 24 * H);
+	});
+
+	test("範囲外の値は 400 で、保存しない", async () => {
+		const t = createTestApp();
+		const bad = await put(t, { days: 93, horizon: "24h", minSamples: 30 });
+		expect(bad.status).toBe(400);
+		expect(await bad.json()).toMatchObject({ field: "days" });
+		expect(
+			(await put(t, { days: 30, horizon: "1h", minSamples: 30 })).status,
+		).toBe(400);
+		expect(
+			(await put(t, { days: 30, horizon: "24h", minSamples: 0 })).status,
+		).toBe(400);
+		const now = await t.app.request("/api/scoring/accuracy/settings");
+		expect(await now.json()).toMatchObject({ days: 30 });
 	});
 });

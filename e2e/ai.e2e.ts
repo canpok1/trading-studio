@@ -92,6 +92,36 @@ test("精度を一覧から開き、内訳を版ごとに出し、選んだ記�
 	);
 });
 
+test("精度の測り方を設定すると、精度分析の期間と最初に出す長さが変わる", async ({
+	page,
+}) => {
+	try {
+		await page.goto("/settings?section=news&tab=accuracy");
+		const days = page.getByLabel("集計する期間");
+		await expect(days).toHaveValue("30");
+		await days.fill("0");
+		await expect(page.getByText("1〜92 の整数")).toBeVisible();
+		await expect(page.getByRole("button", { name: "保存" })).toBeDisabled();
+		await days.fill("7");
+		await page.getByText("4時間後", { exact: true }).click();
+		await page.getByLabel("データ不足の件数").fill("5");
+		await page.getByRole("button", { name: "保存" }).click();
+		await expect(page.getByRole("status")).toContainText("保存した");
+
+		await page.goto("/news?tab=accuracy");
+		const card = page.getByRole("region", { name: "精度の内訳" });
+		await expect(card).toContainText("的中（4時間後）");
+		await page.getByRole("button", { name: "精度の説明" }).click();
+		await expect(page.getByRole("note", { name: "精度の説明" })).toContainText(
+			"直近 7 日",
+		);
+	} finally {
+		await page.request.put("/api/scoring/accuracy/settings", {
+			data: { days: 30, horizon: "24h", minSamples: 30 },
+		});
+	}
+});
+
 test("評価ルールを保存すると市場評価が変わる", async ({ page }) => {
 	try {
 		await page.goto("/news");

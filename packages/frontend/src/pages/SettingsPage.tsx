@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { useApi } from "../api";
 import { ApiKeySetting } from "../components/ApiKeySetting";
+import { AccuracySetting } from "../components/ai/AccuracySetting";
 import { PromptTab } from "../components/ai/PromptTab";
 import { RuleTab } from "../components/ai/RuleTab";
 import { SourcesTab } from "../components/ai/SourcesTab";
@@ -42,6 +43,7 @@ const NEWS_TABS = [
 	["rule", "評価ルール"],
 	["prompt", "プロンプト"],
 	["sources", "取得"],
+	["accuracy", "精度"],
 ] as const;
 type NewsSettingsTab = (typeof NEWS_TABS)[number][0];
 const isNewsTab = (v: string | null): v is NewsSettingsTab =>
@@ -217,6 +219,7 @@ function NewsSettings({
 					initialTrialIds={trialIds}
 				/>
 			)}
+			{tab === "accuracy" && <AccuracySetting />}
 			{tab === "sources" && (
 				<SourcesTab collector={data.collector} onChanged={load} />
 			)}

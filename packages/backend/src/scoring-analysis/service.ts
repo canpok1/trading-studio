@@ -18,10 +18,16 @@ import type {
 	NewsFilter,
 	ScoringAnalysisRepository,
 } from "./repository";
-import type { AccuracyHorizon, AccuracyReport } from "./types";
+import type {
+	AccuracyHorizon,
+	AccuracyReport,
+	AccuracySettings,
+	SetAccuracySettingsResult,
+} from "./types";
 import {
-	ACCURACY_DAYS,
-	ACCURACY_MIN_SAMPLES,
+	ACCURACY_DAYS_MAX,
+	ACCURACY_HORIZONS,
+	ACCURACY_MIN_SAMPLES_MAX,
 	ACCURACY_ROUGH_PCT,
 } from "./types";
 
@@ -369,9 +375,11 @@ export function createScoringAnalysis({
 		},
 
 		/** 直近の期間の、版ごとの採点の精度と、評価が戦略の判断を変えうる状態だった時間（ニュース画面） */
-		accuracy(horizon: AccuracyHorizon): AccuracyReport {
+		accuracy(h?: AccuracyHorizon): AccuracyReport {
+			const settings = repo.accuracySettings();
+			const horizon = h ?? settings.horizon;
 			const to = now();
-			const from = to - ACCURACY_DAYS * 24 * HOUR;
+			const from = to - settings.days * 24 * HOUR;
 			const rule = judgments.rule();
 			const active = activeVersion();
 			const rows = repo.versionScores(from, to);
@@ -398,8 +406,8 @@ export function createScoringAnalysis({
 				to,
 				horizon,
 				roughPct: ACCURACY_ROUGH_PCT[horizon],
-				days: ACCURACY_DAYS,
-				minSamples: ACCURACY_MIN_SAMPLES,
+				days: settings.days,
+				minSamples: settings.minSamples,
 				priceTimeframe: p.timeframe,
 				activeVersion: active,
 				influence: {
@@ -410,6 +418,41 @@ export function createScoringAnalysis({
 				versions,
 				comparisons,
 			};
+		},
+
+		accuracySettings(): AccuracySettings {
+			return repo.accuracySettings();
+		},
+
+		setAccuracySettings(s: AccuracySettings): SetAccuracySettingsResult {
+			if (!Number.isInteger(s.days) || s.days < 1 || s.days > ACCURACY_DAYS_MAX)
+				return {
+					ok: false,
+					field: "days",
+					message: `期間は 1〜${ACCURACY_DAYS_MAX} 日の整数`,
+				};
+			if (!ACCURACY_HORIZONS.includes(s.horizon))
+				return {
+					ok: false,
+					field: "horizon",
+					message: `測る長さは ${ACCURACY_HORIZONS.join(" か ")}`,
+				};
+			if (
+				!Number.isInteger(s.minSamples) ||
+				s.minSamples < 1 ||
+				s.minSamples > ACCURACY_MIN_SAMPLES_MAX
+			)
+				return {
+					ok: false,
+					field: "minSamples",
+					message: `データ不足の件数は 1〜${ACCURACY_MIN_SAMPLES_MAX} の整数`,
+				};
+			repo.saveAccuracySettings({
+				days: s.days,
+				horizon: s.horizon,
+				minSamples: s.minSamples,
+			});
+			return { ok: true };
 		},
 
 		/** 過去のニュースを採点の基準の案で採点し直す。保存も集計への反映もしない */

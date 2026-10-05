@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import { validator } from "hono/validator";
 import type { LiveRescoreResult, ScoringService } from "../news/types";
-import type { AccuracyService } from "../scoring-analysis/types";
+import type {
+	AccuracyHorizon,
+	AccuracyService,
+} from "../scoring-analysis/types";
 import { ACCURACY_HORIZONS } from "../scoring-analysis/types";
 import { parseFilter } from "./news";
 
@@ -24,8 +27,10 @@ export function scoringRoutes(
 			.get(
 				"/accuracy",
 				validator("query", (v, c) => {
-					const h = v.horizon ?? "24h";
-					const horizon = ACCURACY_HORIZONS.find((x) => x === h);
+					// 省けば設定の長さ
+					if (v.horizon === undefined)
+						return {} as { horizon?: AccuracyHorizon };
+					const horizon = ACCURACY_HORIZONS.find((x) => x === v.horizon);
 					if (!horizon) {
 						return c.json(
 							{ message: `horizon は ${ACCURACY_HORIZONS.join(" か ")}` },
@@ -35,6 +40,31 @@ export function scoringRoutes(
 					return { horizon };
 				}),
 				(c) => c.json(accuracy.accuracy(c.req.valid("query").horizon)),
+			)
+			.get("/accuracy/settings", (c) => c.json(accuracy.accuracySettings()))
+			.put(
+				"/accuracy/settings",
+				validator("json", (v, c) => {
+					if (
+						!isObj(v) ||
+						typeof v.days !== "number" ||
+						typeof v.horizon !== "string" ||
+						typeof v.minSamples !== "number"
+					) {
+						return c.json({ message: "days・horizon・minSamples が必要" }, 400);
+					}
+					return {
+						days: v.days,
+						horizon: v.horizon as AccuracyHorizon,
+						minSamples: v.minSamples,
+					};
+				}),
+				(c) => {
+					const r = accuracy.setAccuracySettings(c.req.valid("json"));
+					return r.ok
+						? c.json(accuracy.accuracySettings(), 200)
+						: c.json({ message: r.message, field: r.field }, 400);
+				},
 			)
 			.get("/criteria", (c) => c.json(service.criteria()))
 			.post(

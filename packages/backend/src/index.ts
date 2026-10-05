@@ -44,6 +44,7 @@ export type {
 	AccuracyList,
 	AccuracyNews,
 	AccuracyReport,
+	AccuracySettings,
 	VersionAccuracy,
 	VersionComparison,
 	VersionStats,

@@ -86,24 +86,24 @@ describe("成績の評価", () => {
 describe("市場評価の精度", () => {
 	const gradeLabel = (g: PrecisionGrade) => g.grade?.label ?? null;
 	test("センチメントは的中率を 50% の前後で分ける", () => {
-		expect(gradeLabel(gradeSentimentPrecision(65, 30))).toBe("優秀");
-		expect(gradeLabel(gradeSentimentPrecision(55, 30))).toBe("良い");
-		expect(gradeLabel(gradeSentimentPrecision(50, 30))).toBe("普通");
-		expect(gradeLabel(gradeSentimentPrecision(44.9, 30))).toBe("悪い");
-		expect(gradeLabel(gradeSentimentPrecision(34, 30))).toBe("非常に悪い");
+		expect(gradeLabel(gradeSentimentPrecision(65, 30, 30))).toBe("優秀");
+		expect(gradeLabel(gradeSentimentPrecision(55, 30, 30))).toBe("良い");
+		expect(gradeLabel(gradeSentimentPrecision(50, 30, 30))).toBe("普通");
+		expect(gradeLabel(gradeSentimentPrecision(44.9, 30, 30))).toBe("悪い");
+		expect(gradeLabel(gradeSentimentPrecision(34, 30, 30))).toBe("非常に悪い");
 	});
 	test("リスクは見分け率をセンチメントと同じ基準で分ける", () => {
-		expect(gradeLabel(gradeRiskPrecision(65, 30))).toBe("優秀");
-		expect(gradeLabel(gradeRiskPrecision(51, 30))).toBe("普通");
-		expect(gradeLabel(gradeRiskPrecision(34, 30))).toBe("非常に悪い");
+		expect(gradeLabel(gradeRiskPrecision(65, 30, 30))).toBe("優秀");
+		expect(gradeLabel(gradeRiskPrecision(51, 30, 30))).toBe("普通");
+		expect(gradeLabel(gradeRiskPrecision(34, 30, 30))).toBe("非常に悪い");
 	});
 	test("30件未満でも評価は出し、データ不足を添える", () => {
-		expect(gradeSentimentPrecision(35, 23)).toEqual({
+		expect(gradeSentimentPrecision(35, 23, 30)).toEqual({
 			grade: { grade: "poor", label: "悪い" },
 			insufficient: true,
 		});
-		expect(gradeSentimentPrecision(35, 30).insufficient).toBe(false);
-		expect(gradeRiskPrecision(null, 100)).toEqual({
+		expect(gradeSentimentPrecision(35, 30, 30).insufficient).toBe(false);
+		expect(gradeRiskPrecision(null, 100, 30)).toEqual({
 			grade: null,
 			insufficient: false,
 		});

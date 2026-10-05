@@ -18,15 +18,10 @@ import { ScoreChip } from "../judgment/JudgmentBadge";
 import { Modal } from "../Modal";
 import { ErrorState, Skeleton } from "../States";
 import { Button, Segmented } from "../ui";
-import { riskDiscrimination } from "./Precision";
+import { HORIZON_LABELS, riskDiscrimination } from "./Precision";
 
 /** プロンプトで一度に試せる記事の数。プロンプトのタブと合わせる */
 const TRIAL_MAX = 5;
-
-const HORIZON_LABELS: Record<AccuracyHorizon, string> = {
-	"4h": "4時間後",
-	"24h": "24時間後",
-};
 
 const pct = (n: number, d: number) =>
 	d === 0 ? "—" : `${Math.round((n / d) * 100)}%`;
@@ -44,13 +39,14 @@ const LIST_TITLES: Record<ListKind, string> = {
 /** ニュース画面の精度分析タブの「精度の内訳」。採点の版ごとに、点数とその後の値動き・点数の偏りを出す */
 export function AccuracyCard({ rule }: { rule: AggregationRule }) {
 	const api = useApi();
-	const [horizon, setHorizon] = useState<AccuracyHorizon>("24h");
+	// null は設定の長さ
+	const [horizon, setHorizon] = useState<AccuracyHorizon | null>(null);
 	// 読み直しの間は本体が作り直されるので、選んだ版はここで持つ。null は使用中の版
 	const [version, setVersion] = useState<number | null>(null);
 	const load = useCallback(
 		() =>
 			api.api.scoring.accuracy
-				.$get({ query: { horizon } })
+				.$get({ query: horizon === null ? {} : { horizon } })
 				.then((r) => readJson<AccuracyReport>(r)),
 		[api, horizon],
 	);
@@ -62,7 +58,7 @@ export function AccuracyCard({ rule }: { rule: AggregationRule }) {
 					<h2 className="text-[15px] font-bold">精度の内訳</h2>
 					<Help label="精度の内訳">
 						<p>
-							記事の点数と、採点した時刻（評価に使い始める時刻）からその後の値動きを突き合わせる。版ごとに、直近の記事で集計する。
+							記事の点数と、採点した時刻（評価に使い始める時刻）からその後の値動きを突き合わせる。版ごとに、直近の記事で集計する。期間と、最初に出す長さは設定の「ニュース」→「精度」で変える。
 						</p>
 						<p>
 							的中は、やや強気以上・やや弱気以下の点数が付いた記事のうち、値動きの向きが点数の符号と合った割合。偶然でも50%前後になる。
@@ -91,7 +87,10 @@ export function AccuracyCard({ rule }: { rule: AggregationRule }) {
 						options={(["4h", "24h"] as const).map(
 							(h) => [h, HORIZON_LABELS[h]] as const,
 						)}
-						value={horizon}
+						value={
+							horizon ?? (state.kind === "ok" ? state.data.horizon : "24h")
+						}
+						disabled={horizon === null && state.kind !== "ok"}
 						onChange={setHorizon}
 					/>
 				</div>
