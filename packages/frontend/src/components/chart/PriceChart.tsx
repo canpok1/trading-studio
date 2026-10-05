@@ -211,7 +211,7 @@ export function PriceChart({
 		bbs: ISeriesApi<"Line">[];
 		rsis: ISeriesApi<"Line">[];
 		layer: JudgeLayer;
-		/** 価格の軸の「今」「買」の値 */
+		/** 価格の軸の「現」「買」の値 */
 		tags: PriceTags;
 		/** 今のレートの線と、それを付けた系列 */
 		now: {
@@ -610,7 +610,7 @@ export function PriceChart({
 	}, [slotJudgments, bg, hasJudgments, themeTick]);
 
 	// 今のレート。組み込みの最後の値の表示を消し、今のレートの線に置き換える。
-	// 組み込みの線の名前は描画領域の右端に出て最新の足に重なるので、軸の値（「今」付き）は PriceTags で出す
+	// 組み込みの線の名前は描画領域の右端に出て最新の足に重なるので、軸の値（「現」付き）は PriceTags で出す
 	// 系列を付け替えたら（themeTick は色を読み直すため）線を引き直す
 	const showNow = currentPrice !== undefined;
 	// biome-ignore lint/correctness/useExhaustiveDependencies: marksTick で系列の付け替えを、themeTick で色の変化を拾う
@@ -632,7 +632,7 @@ export function PriceChart({
 			series: c.price,
 			line: c.price.createPriceLine({
 				price: currentPrice,
-				color: cssVar("--color-text"),
+				color: cssVar("--color-text-2"),
 				lineWidth: 2,
 				lineStyle: LineStyle.Dashed,
 				axisLabelVisible: false,
@@ -665,7 +665,7 @@ export function PriceChart({
 		};
 	}, [entryPrices, marksTick, themeTick]);
 
-	// 価格の軸の「今」「買」の値。買値は足から離れていても縦の範囲に含めて画面に入れる
+	// 価格の軸の「現」「買」の値。買値は足から離れていても縦の範囲に含めて画面に入れる
 	// biome-ignore lint/correctness/useExhaustiveDependencies: themeTick で色の変化を拾う
 	useEffect(() => {
 		const c = chartRef.current;
@@ -678,8 +678,8 @@ export function PriceChart({
 				: [
 						{
 							price: currentPrice,
-							label: "今",
-							color: cssVar("--color-text"),
+							label: "現",
+							color: cssVar("--color-text-2"),
 							textColor: cssVar("--color-surface"),
 							keepInView: false,
 						},
