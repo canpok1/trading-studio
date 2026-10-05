@@ -44,6 +44,8 @@ const LIST_TITLES: Record<ListKind, string> = {
 export function AccuracyCard({ rule }: { rule: AggregationRule }) {
 	const api = useApi();
 	const [horizon, setHorizon] = useState<AccuracyHorizon>("24h");
+	// 読み直しの間は本体が作り直されるので、選んだ版はここで持つ。null は使用中の版
+	const [version, setVersion] = useState<number | null>(null);
 	const load = useCallback(
 		() =>
 			api.api.scoring.accuracy
@@ -98,7 +100,12 @@ export function AccuracyCard({ rule }: { rule: AggregationRule }) {
 					action={<Button onClick={reload}>もう一度読み込む</Button>}
 				/>
 			) : (
-				<AccuracyBody report={state.data} rule={rule} />
+				<AccuracyBody
+					report={state.data}
+					rule={rule}
+					selected={version}
+					onSelect={setVersion}
+				/>
 			)}
 		</>
 	);
@@ -107,16 +114,19 @@ export function AccuracyCard({ rule }: { rule: AggregationRule }) {
 function AccuracyBody({
 	report,
 	rule,
+	selected,
+	onSelect,
 }: {
 	report: AccuracyReport;
 	rule: AggregationRule;
+	selected: number | null;
+	onSelect: (version: number) => void;
 }) {
 	const { versions, activeVersion, influence } = report;
-	const [selected, setSelected] = useState<number | null>(
-		activeVersion ?? versions[0]?.version ?? null,
-	);
 	const [list, setList] = useState<ListKind | null>(null);
-	const v = versions.find((x) => x.version === selected) ?? versions[0];
+	const v =
+		versions.find((x) => x.version === (selected ?? activeVersion)) ??
+		versions[0];
 	const label = (version: number) =>
 		version === activeVersion ? `v${version}（使用中）` : `v${version}`;
 	return (
@@ -157,7 +167,7 @@ function AccuracyBody({
 									(x) => [String(x.version), label(x.version)] as const,
 								)}
 								value={String(v.version)}
-								onChange={(s) => setSelected(Number(s))}
+								onChange={(s) => onSelect(Number(s))}
 							/>
 						</div>
 					)}

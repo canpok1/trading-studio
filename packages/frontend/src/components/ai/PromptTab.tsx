@@ -598,34 +598,43 @@ function PickNewsModal({
 			) : state.data.news.length === 0 ? (
 				<p className="text-xs text-text-2">ニュースがまだ無い</p>
 			) : (
-				<div className="flex flex-col overflow-hidden rounded-xl border border-line">
-					{state.data.news.map((n) => {
-						const on = has(n.id);
-						return (
-							<label
-								key={n.id}
-								className="flex items-start gap-2.5 border-b border-line px-3 py-2.5 last:border-b-0"
-							>
-								<input
-									type="checkbox"
-									checked={on}
-									disabled={!on && selected.length >= TRIAL_MAX}
-									onChange={() => toggle(n)}
-									className="mt-1"
-								/>
-								<span className="flex flex-col gap-0.5">
-									<span className="text-[13px]">{n.title}</span>
-									<span className="num text-xs text-text-2">
-										{n.sourceName} · {formatDateTime(n.publishedAt)}
-										{n.score?.status === "done" && n.score.scores
-											? ` · 採点済み v${n.score.criteriaVersion ?? "?"}`
-											: " · 未採点"}
+				<>
+					<OutsidePicked
+						selected={selected}
+						listed={state.data.news}
+						onRemove={(ids) =>
+							setSelected((s) => s.filter((id) => !ids.includes(id)))
+						}
+					/>
+					<div className="flex flex-col overflow-hidden rounded-xl border border-line">
+						{state.data.news.map((n) => {
+							const on = has(n.id);
+							return (
+								<label
+									key={n.id}
+									className="flex items-start gap-2.5 border-b border-line px-3 py-2.5 last:border-b-0"
+								>
+									<input
+										type="checkbox"
+										checked={on}
+										disabled={!on && selected.length >= TRIAL_MAX}
+										onChange={() => toggle(n)}
+										className="mt-1"
+									/>
+									<span className="flex flex-col gap-0.5">
+										<span className="text-[13px]">{n.title}</span>
+										<span className="num text-xs text-text-2">
+											{n.sourceName} · {formatDateTime(n.publishedAt)}
+											{n.score?.status === "done" && n.score.scores
+												? ` · 採点済み v${n.score.criteriaVersion ?? "?"}`
+												: " · 未採点"}
+										</span>
 									</span>
-								</span>
-							</label>
-						);
-					})}
-				</div>
+								</label>
+							);
+						})}
+					</div>
+				</>
 			)}
 			<div className="grid grid-cols-2 gap-3">
 				<Button onClick={() => onDone([])}>最新の1件に戻す</Button>
@@ -638,5 +647,29 @@ function PickNewsModal({
 				</Button>
 			</div>
 		</Modal>
+	);
+}
+
+/** ニュース画面の当たり具合から渡した記事のうち、直近の一覧に無いもの。一覧で外せないので、まとめて外せるようにする */
+function OutsidePicked({
+	selected,
+	listed,
+	onRemove,
+}: {
+	selected: readonly number[];
+	listed: readonly NewsItem[];
+	onRemove: (ids: readonly number[]) => void;
+}) {
+	const outside = selected.filter((id) => !listed.some((n) => n.id === id));
+	if (outside.length === 0) return null;
+	return (
+		<div className="flex items-center justify-between gap-2 text-xs">
+			<span className="text-text-2">
+				一覧に無い記事を {outside.length} 件選んでいる
+			</span>
+			<Button size="sm" onClick={() => onRemove(outside)}>
+				外す
+			</Button>
+		</div>
 	);
 }
