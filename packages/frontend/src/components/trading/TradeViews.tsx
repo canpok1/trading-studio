@@ -12,14 +12,14 @@ import { Modal } from "../Modal";
 import { Button } from "../ui";
 
 export const MODE_LABELS: Record<TradingMode, string> = {
-	paper: "ペーパー",
-	live: "ライブ",
+	paper: "デモ",
+	live: "リアル",
 };
 
-/** ライブ取引を動かせるか。フェーズ5で有効にするまでは、ホームで選べず取引画面は空の表示にする */
+/** リアル取引を動かせるか。フェーズ5で有効にするまでは、ホームで選べず取引画面は空の表示にする */
 export const LIVE_AVAILABLE = false;
 
-/** モードの印。ライブを見分けられるように色を変える */
+/** モードの印。リアルを見分けられるように色を変える */
 export function ModeTag({ mode }: { mode: TradingMode }) {
 	return (
 		<span

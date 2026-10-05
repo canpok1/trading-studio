@@ -11,7 +11,7 @@ import type {
 	ValidationError,
 } from "@trading-studio/core";
 
-/** paper: ペーパー（最新の実データで模擬売買） / live: ライブ（実資金。フェーズ5で有効にする） */
+/** paper: デモ（最新の実データで模擬売買） / live: リアル（実資金。フェーズ5で有効にする） */
 export type TradingMode = "paper" | "live";
 
 export type StoredOrder = TradeOrder & {
@@ -164,7 +164,7 @@ export interface TradingService {
 	/** 運用の一覧（作った順） */
 	runs(): AutoTradingStatus[];
 	run(id: number): AutoTradingStatus | null;
-	/** 運用を足す。数は core の TRADING_RUN_LIMITS まで、ライブは1つまで */
+	/** 運用を足す。数は core の TRADING_RUN_LIMITS まで、リアルは1つまで */
 	create(input: RunInput): TradingResult;
 	/** 名前と運用する戦略を変える。戦略はオン中と保有がある間は変えられない */
 	update(

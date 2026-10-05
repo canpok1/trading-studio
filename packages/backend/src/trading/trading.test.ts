@@ -209,10 +209,10 @@ describe("自動取引のオンオフ", () => {
 		expect(t.trading.order(1, "p1")?.decision?.judgments).toEqual({});
 	});
 
-	test("ライブは動かせず、運用する戦略が無いか条件が足りなければオンにできない", async () => {
+	test("リアルは動かせず、運用する戦略が無いか条件が足りなければオンにできない", async () => {
 		const t = setup();
 		const live = t.trading.create({
-			name: "ライブ",
+			name: "リアル",
 			mode: "live",
 			strategyId: t.strategy.id,
 		});
@@ -765,7 +765,7 @@ describe("複数のタブ", () => {
 		expect(
 			(await t.call("GET", "/runs")).body.runs as AutoTradingStatus[],
 		).toMatchObject([
-			{ id: 1, name: "ペーパー", enabled: false },
+			{ id: 1, name: "デモ", enabled: false },
 			{ id: second, name: "比較用", enabled: true },
 		]);
 	});
@@ -787,7 +787,7 @@ describe("複数のタブ", () => {
 		expect(t.orders().map((o) => [o.runId, o.status])).toEqual([[1, "filled"]]);
 	});
 
-	test("タブは5つまで、ライブは1つまで。名前は必須", async () => {
+	test("タブは5つまで、リアルは1つまで。名前は必須", async () => {
 		const t = setup();
 		const add = (mode: "paper" | "live", name = "x") =>
 			t.trading.create({ name, mode, strategyId: null });

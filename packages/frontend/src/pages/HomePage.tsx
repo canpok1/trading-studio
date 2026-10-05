@@ -190,7 +190,7 @@ function HomeBody({
 		null;
 	const runId = run?.id ?? 0;
 	const [adding, setAdding] = useState(false);
-	// ライブが使えない間、ライブのタブは口座・成績・注文を出さない
+	// リアルが使えない間、リアルのタブは口座・成績・注文を出さない
 	const hasAccount = run !== null && !(run.mode === "live" && !LIVE_AVAILABLE);
 	const account = run?.account ?? null;
 	// 状態は定期的に取り直すので、買値が変わったときだけ線を引き直す

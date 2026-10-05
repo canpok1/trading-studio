@@ -76,7 +76,7 @@ test("取引画面の URL はホームの同じモードの最初のタブへ移
 }) => {
 	await page.goto("/trades?mode=paper");
 	await expect(page).toHaveURL(/\/home\?mode=paper$/);
-	await expect(page.getByRole("tab", { name: "ペーパー" })).toHaveAttribute(
+	await expect(page.getByRole("tab", { name: "デモ" })).toHaveAttribute(
 		"aria-selected",
 		"true",
 	);

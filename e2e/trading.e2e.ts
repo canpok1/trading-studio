@@ -22,15 +22,13 @@ test("ホームで自動取引をオンにすると帯が全画面に出て、�
 
 		await page.getByRole("switch", { name: "自動取引" }).click();
 		const dialog = page.getByRole("dialog", {
-			name: "「ペーパー」の自動取引を開始する（ペーパー）",
+			name: "「デモ」の自動取引を開始する（デモ）",
 		});
 		await expect(dialog).toContainText(name);
 		await dialog.getByRole("button", { name: "開始する" }).click();
-		await expect(page.getByRole("status")).toContainText(
-			"「ペーパー」を開始した",
-		);
+		await expect(page.getByRole("status")).toContainText("「デモ」を開始した");
 		const band = page.getByRole("complementary", { name: "稼働中の自動取引" });
-		await expect(band).toContainText("ペーパー稼働中");
+		await expect(band).toContainText("デモ稼働中");
 		await expect(page.getByTestId("band-strategy")).toHaveText(name);
 		await expect(page.getByTestId("band-pnl")).toHaveText(
 			/^通算損益 [+−][\d,]+円（[+−]\d+\.\d%）$/,
@@ -78,7 +76,7 @@ test("ホームで自動取引をオンにすると帯が全画面に出て、�
 	}
 });
 
-test("タブを追加して戦略ごとに別々に動かせ、2つ稼働中なら帯に件数を出す。ライブのタブは動かせない。タブは削除できる", async ({
+test("タブを追加して戦略ごとに別々に動かせ、2つ稼働中なら帯に件数を出す。リアルのタブは動かせない。タブは削除できる", async ({
 	page,
 }, info) => {
 	const name = `比較 ${info.project.name}`;
@@ -88,7 +86,7 @@ test("タブを追加して戦略ごとに別々に動かせ、2つ稼働中な�
 	await page.goto("/home");
 	await expect(page.getByRole("tab")).toHaveCount(1);
 
-	// ペーパーのタブを足す。名前は選んだ戦略の名前になる
+	// デモのタブを足す。名前は選んだ戦略の名前になる
 	await page.getByRole("button", { name: "タブを追加" }).click();
 	let dialog = page.getByRole("dialog", { name: "タブを追加する" });
 	await dialog.getByLabel("運用する戦略").selectOption({ label: name });
@@ -111,10 +109,8 @@ test("タブを追加して戦略ごとに別々に動かせ、2つ稼働中な�
 			.getByRole("button", { name: "開始する" })
 			.click();
 		const band = page.getByRole("complementary", { name: "稼働中の自動取引" });
-		await expect(band).toContainText("ペーパー 2件稼働中");
-		await expect(page.getByTestId("band-strategy")).toHaveText(
-			`ペーパー・${name}`,
-		);
+		await expect(band).toContainText("デモ 2件稼働中");
+		await expect(page.getByTestId("band-strategy")).toHaveText(`デモ・${name}`);
 		// 稼働中はタブを消せない
 		const settings = await openRunSettings(page);
 		await expect(
@@ -126,26 +122,26 @@ test("タブを追加して戦略ごとに別々に動かせ、2つ稼働中な�
 		await page.request.post(`/api/trading/runs/${runId}/stop`);
 	}
 
-	// ライブのタブは1つまでで、動かせず口座・成績・注文を出さない
+	// リアルのタブは1つまでで、動かせず口座・成績・注文を出さない
 	await page.getByRole("button", { name: "タブを追加" }).click();
 	dialog = page.getByRole("dialog", { name: "タブを追加する" });
-	await dialog.getByRole("tab", { name: "ライブ" }).click();
-	await dialog.getByLabel("タブの名前").fill("ライブ口座");
+	await dialog.getByRole("tab", { name: "リアル" }).click();
+	await dialog.getByLabel("タブの名前").fill("リアル口座");
 	await dialog.getByRole("button", { name: "追加する" }).click();
 	await expect(page.getByTestId("auto-state")).toHaveText(
-		"ライブ取引はまだ使えない",
+		"リアル取引はまだ使えない",
 	);
 	await expect(page.getByRole("switch", { name: "自動取引" })).toBeDisabled();
 	await expect(page.getByRole("region", { name: "口座情報" })).toHaveCount(0);
 	await expect(page.getByRole("region", { name: "注文・約定" })).toHaveCount(0);
 	await page.getByRole("button", { name: "タブを追加" }).click();
 	dialog = page.getByRole("dialog", { name: "タブを追加する" });
-	await dialog.getByRole("tab", { name: "ライブ" }).click();
+	await dialog.getByRole("tab", { name: "リアル" }).click();
 	await expect(dialog.getByRole("button", { name: "追加する" })).toBeDisabled();
 	await dialog.getByRole("button", { name: "やめる" }).click();
 
 	// 足したタブを消すと、先頭のタブに戻る
-	for (const tab of ["ライブ口座", name]) {
+	for (const tab of ["リアル口座", name]) {
 		await page.getByRole("tab", { name: tab }).click();
 		await (await openRunSettings(page))
 			.getByRole("button", { name: "タブを削除" })
@@ -272,7 +268,7 @@ test("仮想注文が出て約定すると、ホームの保有・注文に出�
 			/^\d+ 件 · 実現損益/,
 		);
 		// 稼働中のタブで開く
-		await expect(page.getByRole("tab", { name: "ペーパー" })).toHaveAttribute(
+		await expect(page.getByRole("tab", { name: "デモ" })).toHaveAttribute(
 			"aria-selected",
 			"true",
 		);
@@ -297,7 +293,7 @@ test("仮想注文が出て約定すると、ホームの保有・注文に出�
 	await cash.fill("500000");
 	await dialog.getByRole("button", { name: "リセットする" }).click();
 	await expect(page.getByRole("status")).toHaveText(
-		"「ペーパー」の口座をリセットした。開始時の資金 500,000円",
+		"「デモ」の口座をリセットした。開始時の資金 500,000円",
 	);
 	await expect(page.getByTestId("home-unrealized")).toHaveText("—");
 	// 5秒ごとの読み直しを待たずに、総資産と成績がリセット後の値になる

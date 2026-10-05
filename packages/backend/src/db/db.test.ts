@@ -391,7 +391,7 @@ describe("0016 運用（タブ）ごとの自動取引", () => {
 			)
 			.all();
 
-	test("今のペーパーの口座・実行状態・注文・判断を運用1つ「ペーパー」へ移し、運用する戦略を引き継ぐ", async () => {
+	test("今のペーパーの口座・実行状態・注文・判断を運用1つへ移し、運用する戦略を引き継ぐ。名前は「ペーパー」のち「デモ」", async () => {
 		const db = await dbUpTo(15);
 		insert(db, "settings", { key: "active_strategy_id", value: "3" });
 		insert(db, "trading_accounts", {
@@ -430,7 +430,7 @@ describe("0016 運用（タブ）ごとの自動取引", () => {
 		expect(runs(db)).toEqual([
 			{
 				id: 1,
-				name: "ペーパー",
+				name: "デモ",
 				mode: "paper",
 				strategy_id: 2,
 				enabled: 1,

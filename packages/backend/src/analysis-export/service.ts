@@ -310,7 +310,7 @@ const strategiesTable: Table<StrategyExportRow> = {
 	],
 };
 
-/** 判断ログの列（ペーパーとバックテストで共通） */
+/** 判断ログの列（デモとバックテストで共通） */
 function decisionColumns<T>(get: (r: T) => DecisionLog): Column<T>[] {
 	return [
 		...time<T>("time", "判断した時刻", (r) => get(r).time),
@@ -365,12 +365,12 @@ type PaperDecision = DecisionExportRow & {
 
 const paperDecisionsTable: Table<PaperDecision> = {
 	file: "paper_decisions.csv",
-	desc: "自動取引（ペーパー）の判断の記録。評価のたびに1行",
+	desc: "自動取引（デモ）の判断の記録。評価のたびに1行",
 	columns: [
 		col("decision_id", "判断の ID", (r) => r.id),
 		col("run_id", "ホームのタブ（運用）の ID", (r) => r.run_id),
 		col("run_name", "タブの名前（削除したタブも残る）", (r) => r.run_name),
-		col("mode", "paper: ペーパー / live: ライブ", (r) => r.mode),
+		col("mode", "paper: デモ / live: リアル", (r) => r.mode),
 		col("strategy_id", "戦略の ID", (r) => r.strategy_id),
 		col("strategy_name", "判断したときの戦略名", (r) => r.strategy_name),
 		...decisionColumns<PaperDecision>((r) => r.log),
@@ -384,7 +384,7 @@ const paperDecisionsTable: Table<PaperDecision> = {
 	],
 };
 
-/** 注文の列（ペーパーとバックテストで共通） */
+/** 注文の列（デモとバックテストで共通） */
 function orderColumns<T>(get: (r: T) => BacktestOrder): Column<T>[] {
 	return [
 		col("order_id", "注文の ID", (r) => get(r).id),
@@ -443,11 +443,11 @@ const toTradeOrder = (r: OrderExportRow): BacktestOrder => ({
 
 const paperOrdersTable: Table<OrderExportRow> = {
 	file: "paper_orders.csv",
-	desc: "自動取引（ペーパー）の注文。発注から約定・取消までを1行で持つ。発注時刻が期間内のもの。注文の ID はタブの中でだけ一意（run_id と order_id の組で1件）で、pair_id は同じタブの注文を指す",
+	desc: "自動取引（デモ）の注文。発注から約定・取消までを1行で持つ。発注時刻が期間内のもの。注文の ID はタブの中でだけ一意（run_id と order_id の組で1件）で、pair_id は同じタブの注文を指す",
 	columns: [
 		col("run_id", "ホームのタブ（運用）の ID", (r) => r.run_id),
 		col("run_name", "タブの名前（削除したタブも残る）", (r) => r.run_name),
-		col("mode", "paper: ペーパー / live: ライブ", (r) => r.mode),
+		col("mode", "paper: デモ / live: リアル", (r) => r.mode),
 		...orderColumns<OrderExportRow>(toTradeOrder),
 		col(
 			"decision_id",

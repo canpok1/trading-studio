@@ -50,7 +50,7 @@ export function AddRunDialog({
 	onCreated,
 }: {
 	strategies: StoredStrategy[];
-	/** ライブのタブは1つまで */
+	/** リアルのタブは1つまで */
 	hasLive: boolean;
 	onClose: () => void;
 	onCreated: (s: AutoTradingStatus) => void;
@@ -95,8 +95,8 @@ export function AddRunDialog({
 				{mode === "live" && (
 					<span className="text-xs text-text-2">
 						{hasLive
-							? "ライブのタブは1つまで（実口座は1つのため）"
-							: "ライブ取引はまだ使えない。タブは作れるが動かせない"}
+							? "リアルのタブは1つまで（実口座は1つのため）"
+							: "リアル取引はまだ使えない。タブは作れるが動かせない"}
 					</span>
 				)}
 			</div>
