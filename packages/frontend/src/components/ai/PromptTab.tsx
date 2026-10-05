@@ -32,9 +32,12 @@ type Criteria = {
 export function PromptTab({
 	rule,
 	onChanged,
+	initialTrialIds = [],
 }: {
 	rule: AggregationRule;
 	onChanged: () => void;
+	/** 試す記事の初期値（ニュース画面の精度分析から渡す記事の ID） */
+	initialTrialIds?: readonly number[];
 }) {
 	const api = useApi();
 	const load = useCallback(
@@ -58,6 +61,7 @@ export function PromptTab({
 				<PromptBody
 					criteria={state.data}
 					rule={rule}
+					initialTrialIds={initialTrialIds}
 					onChanged={() => {
 						reload();
 						onChanged();
@@ -205,10 +209,12 @@ function PromptBody({
 	criteria,
 	rule,
 	onChanged,
+	initialTrialIds,
 }: {
 	criteria: Criteria;
 	rule: AggregationRule;
 	onChanged: () => void;
+	initialTrialIds: readonly number[];
 }) {
 	const api = useApi();
 	const { versions, activeVersion, template } = criteria;
@@ -224,7 +230,9 @@ function PromptBody({
 		{ kind: "running" } | { kind: "done"; result: TrialResult } | null
 	>(null);
 	// 空なら最新の1件で試す
-	const [picked, setPicked] = useState<NewsItem[]>([]);
+	const [picked, setPicked] = useState<readonly number[]>(() =>
+		initialTrialIds.slice(0, TRIAL_MAX),
+	);
 	const [picking, setPicking] = useState(false);
 	// 差分は「選んだ版 → 使用中の版」。未選択なら使用中の1つ前の版と比べる
 	const [diffFrom, setDiffFrom] = useState<number | null>(null);
@@ -270,7 +278,7 @@ function PromptBody({
 			const res = await api.api.scoring.trial.$post({
 				json: {
 					criteria: draft,
-					newsIds: picked.length > 0 ? picked.map((n) => n.id) : undefined,
+					newsIds: picked.length > 0 ? [...picked] : undefined,
 				},
 			});
 			const body = (await res.json()) as TrialResult | { message: string };
@@ -382,8 +390,8 @@ function PromptBody({
 			{picking && (
 				<PickNewsModal
 					initial={picked}
-					onDone={(news) => {
-						setPicked(news);
+					onDone={(ids) => {
+						setPicked(ids);
 						setPicking(false);
 					}}
 					onClose={() => setPicking(false)}
@@ -555,8 +563,8 @@ function PickNewsModal({
 	onDone,
 	onClose,
 }: {
-	initial: NewsItem[];
-	onDone: (news: NewsItem[]) => void;
+	initial: readonly number[];
+	onDone: (ids: readonly number[]) => void;
 	onClose: () => void;
 }) {
 	const api = useApi();
@@ -568,11 +576,11 @@ function PickNewsModal({
 		[api],
 	);
 	const { state, reload } = useAsync(load);
-	const [selected, setSelected] = useState<NewsItem[]>(initial);
-	const has = (id: number) => selected.some((n) => n.id === id);
+	const [selected, setSelected] = useState<readonly number[]>(initial);
+	const has = (id: number) => selected.includes(id);
 	const toggle = (n: NewsItem) =>
 		setSelected((s) =>
-			s.some((x) => x.id === n.id) ? s.filter((x) => x.id !== n.id) : [...s, n],
+			s.includes(n.id) ? s.filter((x) => x !== n.id) : [...s, n.id],
 		);
 	return (
 		<Modal title="試す記事を選ぶ" onClose={onClose}>
@@ -590,34 +598,43 @@ function PickNewsModal({
 			) : state.data.news.length === 0 ? (
 				<p className="text-xs text-text-2">ニュースがまだ無い</p>
 			) : (
-				<div className="flex flex-col overflow-hidden rounded-xl border border-line">
-					{state.data.news.map((n) => {
-						const on = has(n.id);
-						return (
-							<label
-								key={n.id}
-								className="flex items-start gap-2.5 border-b border-line px-3 py-2.5 last:border-b-0"
-							>
-								<input
-									type="checkbox"
-									checked={on}
-									disabled={!on && selected.length >= TRIAL_MAX}
-									onChange={() => toggle(n)}
-									className="mt-1"
-								/>
-								<span className="flex flex-col gap-0.5">
-									<span className="text-[13px]">{n.title}</span>
-									<span className="num text-xs text-text-2">
-										{n.sourceName} · {formatDateTime(n.publishedAt)}
-										{n.score?.status === "done" && n.score.scores
-											? ` · 採点済み v${n.score.criteriaVersion ?? "?"}`
-											: " · 未採点"}
+				<>
+					<OutsidePicked
+						selected={selected}
+						listed={state.data.news}
+						onRemove={(ids) =>
+							setSelected((s) => s.filter((id) => !ids.includes(id)))
+						}
+					/>
+					<div className="flex flex-col overflow-hidden rounded-xl border border-line">
+						{state.data.news.map((n) => {
+							const on = has(n.id);
+							return (
+								<label
+									key={n.id}
+									className="flex items-start gap-2.5 border-b border-line px-3 py-2.5 last:border-b-0"
+								>
+									<input
+										type="checkbox"
+										checked={on}
+										disabled={!on && selected.length >= TRIAL_MAX}
+										onChange={() => toggle(n)}
+										className="mt-1"
+									/>
+									<span className="flex flex-col gap-0.5">
+										<span className="text-[13px]">{n.title}</span>
+										<span className="num text-xs text-text-2">
+											{n.sourceName} · {formatDateTime(n.publishedAt)}
+											{n.score?.status === "done" && n.score.scores
+												? ` · 採点済み v${n.score.criteriaVersion ?? "?"}`
+												: " · 未採点"}
+										</span>
 									</span>
-								</span>
-							</label>
-						);
-					})}
-				</div>
+								</label>
+							);
+						})}
+					</div>
+				</>
 			)}
 			<div className="grid grid-cols-2 gap-3">
 				<Button onClick={() => onDone([])}>最新の1件に戻す</Button>
@@ -630,5 +647,29 @@ function PickNewsModal({
 				</Button>
 			</div>
 		</Modal>
+	);
+}
+
+/** ニュース画面の精度分析から渡した記事のうち、直近の一覧に無いもの。一覧で外せないので、まとめて外せるようにする */
+function OutsidePicked({
+	selected,
+	listed,
+	onRemove,
+}: {
+	selected: readonly number[];
+	listed: readonly NewsItem[];
+	onRemove: (ids: readonly number[]) => void;
+}) {
+	const outside = selected.filter((id) => !listed.some((n) => n.id === id));
+	if (outside.length === 0) return null;
+	return (
+		<div className="flex items-center justify-between gap-2 text-xs">
+			<span className="text-text-2">
+				一覧に無い記事を {outside.length} 件選んでいる
+			</span>
+			<Button size="sm" onClick={() => onRemove(outside)}>
+				外す
+			</Button>
+		</div>
 	);
 }

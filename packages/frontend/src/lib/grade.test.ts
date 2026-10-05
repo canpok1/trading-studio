@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import type { PrecisionGrade } from "./grade";
 import {
 	buyHoldPercentOf,
 	fewTradesNote,
 	gradeMaxDrawdown,
 	gradePnl,
+	gradePrecision,
 	gradeProfitFactor,
 	gradeWinRate,
 } from "./grade";
@@ -77,5 +79,47 @@ describe("成績の評価", () => {
 		).toBeCloseTo(10);
 		expect(buyHoldPercentOf([{ close: 200 }, { close: 150 }])).toBeCloseTo(-25);
 		expect(buyHoldPercentOf([])).toBeNull();
+	});
+});
+
+describe("市場評価の精度", () => {
+	const gradeLabel = (g: PrecisionGrade) => g.grade?.label ?? null;
+	const sentiment = (rate: number) =>
+		gradeLabel(gradePrecision("sentiment", rate, 30, false, 30));
+	const risk = (rate: number) =>
+		gradeLabel(gradePrecision("risk", rate, 30, false, 30));
+	test("センチメントは常に中立（40%）とでたらめ（36%）が普通に入る", () => {
+		expect([55, 45, 40, 36, 35, 34.9, 25, 24].map(sentiment)).toEqual([
+			"優秀",
+			"良い",
+			"普通",
+			"普通",
+			"普通",
+			"悪い",
+			"悪い",
+			"非常に悪い",
+		]);
+	});
+	test("リスクは常に平常（50%）とでたらめ（56%）が普通に入る", () => {
+		expect([70, 60, 56, 50, 49, 40, 39].map(risk)).toEqual([
+			"優秀",
+			"良い",
+			"普通",
+			"普通",
+			"悪い",
+			"悪い",
+			"非常に悪い",
+		]);
+	});
+	test("件数が足りないか記事の無い段階があれば、評価は出しデータ不足を添える", () => {
+		expect(gradePrecision("sentiment", 35, 23, false, 30)).toEqual({
+			grade: { grade: "fair", label: "普通" },
+			insufficient: true,
+		});
+		expect(gradePrecision("sentiment", 35, 30, false, 30).insufficient).toBe(
+			false,
+		);
+		expect(gradePrecision("risk", 60, 100, true, 30).insufficient).toBe(true);
+		expect(gradePrecision("risk", null, 0, true, 30).grade).toBeNull();
 	});
 });

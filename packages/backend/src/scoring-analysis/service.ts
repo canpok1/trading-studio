@@ -7,18 +7,39 @@ import type {
 	Scores,
 	Timeframe,
 } from "@trading-studio/core";
-import { JUDGES, TIMEFRAME_MS } from "@trading-studio/core";
+import { JUDGES, NEUTRAL, TIMEFRAME_MS } from "@trading-studio/core";
 import type { JudgmentService } from "../judgments/types";
 import type { MarketDataService } from "../market-data/types";
 import type { Scorer } from "../news/scorer";
 import { CRITERIA_MAX } from "../news/scoring-service";
+import { accuracyByVersion } from "./accuracy";
 import type {
 	AnalysisNewsRow,
 	NewsFilter,
 	ScoringAnalysisRepository,
 } from "./repository";
+import type {
+	AccuracyHorizon,
+	AccuracyReport,
+	AccuracySettings,
+	SetAccuracySettingsResult,
+} from "./types";
+import {
+	ACCURACY_BAND_MAX,
+	ACCURACY_DAYS_MAX,
+	ACCURACY_HORIZONS,
+	ACCURACY_MIN_SAMPLES_MAX,
+} from "./types";
 
 const HOUR = 3_600_000;
+
+/** 段階の境目が 0 < 小さい方 < 大きい方 ≦ 上限 か */
+const validBands = (small: number, large: number) =>
+	Number.isFinite(small) &&
+	Number.isFinite(large) &&
+	small > 0 &&
+	large > small &&
+	large <= ACCURACY_BAND_MAX;
 
 /** その後の値動きを測る長さ */
 export const HORIZONS = {
@@ -172,12 +193,15 @@ export function createScoringAnalysis({
 	marketData,
 	judgments,
 	scorer,
+	activeVersion,
 	now = Date.now,
 }: {
 	repo: ScoringAnalysisRepository;
 	marketData: Pick<MarketDataService, "exportCandles">;
-	judgments: Pick<JudgmentService, "series">;
+	judgments: Pick<JudgmentService, "series" | "rule">;
 	scorer: Pick<Scorer, "trial">;
+	/** 使用中の採点の基準の版 */
+	activeVersion: () => number | null;
 	now?: () => number;
 }) {
 	/** [from, to) の時刻から24時間後までの値動き */
@@ -356,6 +380,122 @@ export function createScoringAnalysis({
 				baseline: returnStats(withReturns.map((x) => x.ret)),
 				byJudge,
 			};
+		},
+
+		/** 直近の期間の、版ごとの採点の精度と、評価が戦略の判断を変えうる状態だった時間（ニュース画面） */
+		accuracy(h?: AccuracyHorizon): AccuracyReport {
+			const settings = repo.accuracySettings();
+			const horizon = h ?? settings.horizon;
+			const to = now();
+			const from = to - settings.days * 24 * HOUR;
+			const rule = judgments.rule();
+			const active = activeVersion();
+			const rows = repo.versionScores(from, to);
+			const times = rows.map((r) => r.scoredAt);
+			const p =
+				times.length === 0
+					? priceSeries([], null)
+					: prices(Math.min(...times), Math.max(...times) + 1);
+			const { versions, comparisons } = accuracyByVersion(
+				rows.map((r) => ({
+					...r,
+					returnPct: p.returnsFrom(r.scoredAt)[horizon],
+				})),
+				rule,
+				active,
+				{
+					sentiment: settings.sentimentBands[horizon],
+					risk: settings.riskBands[horizon],
+				},
+			);
+			const s = judgments.series(from, to, HOUR, rule);
+			const judged = s.values.sentiment.filter((v) => v !== null).length;
+			const moved = (j: Judge) =>
+				s.values[j].filter((v) => v !== null && v !== NEUTRAL[j]).length;
+			return {
+				from,
+				to,
+				horizon,
+				riskBands: settings.riskBands[horizon],
+				sentimentBands: settings.sentimentBands[horizon],
+				days: settings.days,
+				minSamples: settings.minSamples,
+				priceTimeframe: p.timeframe,
+				activeVersion: active,
+				influence: {
+					judgedHours: judged,
+					sentiment: moved("sentiment"),
+					risk: moved("risk"),
+				},
+				versions,
+				comparisons,
+			};
+		},
+
+		accuracySettings(): AccuracySettings {
+			return repo.accuracySettings();
+		},
+
+		setAccuracySettings(s: AccuracySettings): SetAccuracySettingsResult {
+			if (!Number.isInteger(s.days) || s.days < 1 || s.days > ACCURACY_DAYS_MAX)
+				return {
+					ok: false,
+					field: "days",
+					message: `期間は 1〜${ACCURACY_DAYS_MAX} 日の整数`,
+				};
+			if (!ACCURACY_HORIZONS.includes(s.horizon))
+				return {
+					ok: false,
+					field: "horizon",
+					message: `測る長さは ${ACCURACY_HORIZONS.join(" か ")}`,
+				};
+			if (
+				!Number.isInteger(s.minSamples) ||
+				s.minSamples < 1 ||
+				s.minSamples > ACCURACY_MIN_SAMPLES_MAX
+			)
+				return {
+					ok: false,
+					field: "minSamples",
+					message: `データ不足の件数は 1〜${ACCURACY_MIN_SAMPLES_MAX} の整数`,
+				};
+			for (const h of ACCURACY_HORIZONS) {
+				const b = s.sentimentBands?.[h];
+				if (!b || !validBands(b.small, b.large))
+					return {
+						ok: false,
+						field: "sentimentBands",
+						message: `センチメントの境目は 0 より大きく、小さい方 < 大きい方 ≦ ${ACCURACY_BAND_MAX}%`,
+					};
+				const r = s.riskBands?.[h];
+				if (!r || !validBands(r.rough, r.wild))
+					return {
+						ok: false,
+						field: "riskBands",
+						message: `リスクの境目は 0 より大きく、荒れた < 大荒れ ≦ ${ACCURACY_BAND_MAX}%`,
+					};
+			}
+			repo.saveAccuracySettings({
+				days: s.days,
+				horizon: s.horizon,
+				minSamples: s.minSamples,
+				sentimentBands: Object.fromEntries(
+					ACCURACY_HORIZONS.map((h) => [
+						h,
+						{
+							small: s.sentimentBands[h].small,
+							large: s.sentimentBands[h].large,
+						},
+					]),
+				) as AccuracySettings["sentimentBands"],
+				riskBands: Object.fromEntries(
+					ACCURACY_HORIZONS.map((h) => [
+						h,
+						{ rough: s.riskBands[h].rough, wild: s.riskBands[h].wild },
+					]),
+				) as AccuracySettings["riskBands"],
+			});
+			return { ok: true };
 		},
 
 		/** 過去のニュースを採点の基準の案で採点し直す。保存も集計への反映もしない */

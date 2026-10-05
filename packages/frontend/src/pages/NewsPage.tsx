@@ -8,15 +8,22 @@ import { JUDGE_LABELS, JUDGES } from "@trading-studio/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useApi } from "../api";
+import { AccuracyCard } from "../components/ai/AccuracyCard";
 import { BulkRescore } from "../components/ai/BulkRescore";
 import { NewsFilterBar } from "../components/ai/NewsFilter";
 import { NewsTab } from "../components/ai/NewsTab";
+import {
+	PrecisionLink,
+	PrecisionSummary,
+	precisionOf,
+	usePrecisionReport,
+} from "../components/ai/Precision";
 import { Help } from "../components/Help";
 import { SettingsIcon } from "../components/icons";
 import { JudgmentBadge, ZoneBar } from "../components/judgment/JudgmentBadge";
 import { Page } from "../components/Page";
 import { ErrorState, Skeleton } from "../components/States";
-import { Button, buttonClass } from "../components/ui";
+import { Button, buttonClass, Tabs } from "../components/ui";
 import { formatDateTime } from "../format";
 import type { AiData } from "../lib/ai";
 import { aiTroubles } from "../lib/ai";
@@ -43,11 +50,31 @@ const NEWS_PAGE = 100;
 /** 読み込める件数の上限（API の上限） */
 const NEWS_MAX = 1000;
 
+const VIEWS = [
+	["list", "一覧"],
+	["accuracy", "精度分析"],
+] as const;
+type View = (typeof VIEWS)[number][0];
+
 export function NewsPage() {
 	const api = useApi();
 	const visible = usePageVisible();
 
 	const [params, setParams] = useSearchParams();
+	const view: View = params.get("tab") === "accuracy" ? "accuracy" : "list";
+	// 絞り込みの条件は残したまま切り替える
+	const viewParams = (v: View) => {
+		const next = new URLSearchParams(params);
+		if (v === "list") next.delete("tab");
+		else next.set("tab", v);
+		return next;
+	};
+	const setView = (v: View) => setParams(viewParams(v), { replace: true });
+	const precisionReport = usePrecisionReport();
+	const precision =
+		precisionReport.state.kind === "ok"
+			? precisionOf(precisionReport.state.data)
+			: null;
 	const filter = parseNewsFilter(params);
 	const filterKey = newsFilterParams(filter).toString();
 	const setFilter = useCallback(
@@ -126,8 +153,48 @@ export function NewsPage() {
 
 	const { current } = data;
 	const troubles = aiTroubles(data.collector, data.scorer);
+	if (view === "accuracy") {
+		return (
+			<Page title="ニュース" actions={<SettingsLink />}>
+				<Tabs
+					label="ニュースの表示"
+					items={VIEWS}
+					current={view}
+					onSelect={setView}
+				/>
+				{precisionReport.state.kind === "error" ? (
+					<ErrorState
+						what="精度を読み込めなかった"
+						next={precisionReport.state.message}
+						action={
+							<Button onClick={precisionReport.reload}>もう一度読み込む</Button>
+						}
+					/>
+				) : precisionReport.state.kind === "loading" ? (
+					<Skeleton className="h-[120px] w-full" />
+				) : (
+					<>
+						<PrecisionSummary
+							precision={precision}
+							basis={precisionReport.state.data}
+						/>
+						<AccuracyCard
+							report={precisionReport.state.data}
+							rule={current.rule}
+						/>
+					</>
+				)}
+			</Page>
+		);
+	}
 	return (
 		<Page title="ニュース" actions={<SettingsLink />}>
+			<Tabs
+				label="ニュースの表示"
+				items={VIEWS}
+				current={view}
+				onSelect={setView}
+			/>
 			<div className="flex items-center gap-1.5">
 				<h2 className="text-[15px] font-bold">
 					{data.at === null ? "今の市場評価" : "過去の時点の市場評価"}
@@ -153,13 +220,19 @@ export function NewsPage() {
 							className="flex flex-col gap-2 border-b border-line px-3.5 py-3 last:border-b-0"
 						>
 							<div className="flex items-center justify-between gap-2">
-								<span>
-									<strong>{JUDGE_LABELS[j]}</strong>{" "}
+								<span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+									<strong>{JUDGE_LABELS[j]}</strong>
 									<span className="num text-xs text-text-2">
 										{r.average === null
 											? "対象のニュースなし"
 											: `${r.average}点 · ${r.count}件から算出`}
 									</span>
+									{precision && (
+										<PrecisionLink
+											precision={precision[j]}
+											to={`/news?${viewParams("accuracy")}`}
+										/>
+									)}
 								</span>
 								<JudgmentBadge judge={j} value={r.value} />
 							</div>

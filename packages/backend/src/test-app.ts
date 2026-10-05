@@ -158,6 +158,7 @@ export function createTestApp(
 		marketData,
 		judgments,
 		scorer,
+		activeVersion: () => scoreRepo.activeCriteriaVersion(),
 		now: () => clock.now,
 	});
 	const app = createApp({
@@ -174,6 +175,7 @@ export function createTestApp(
 		trading,
 		analysisExport,
 		retention,
+		accuracy: scoringAnalysis,
 		...over,
 	});
 	return {

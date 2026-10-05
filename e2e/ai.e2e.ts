@@ -57,6 +57,90 @@ test("取得して採点したニュースが一覧に出て、市場評価が�
 	);
 });
 
+test("精度を一覧から開き、内訳を版ごとに出し、選んだ記事をプロンプトの試す記事にして開ける", async ({
+	page,
+}) => {
+	await page.goto("/news");
+	await expect(
+		page.getByTestId("news-card").filter({ hasText: "デモの採点。" }).first(),
+	).toBeVisible({ timeout: 20_000 });
+	// 精度は開いたときに計算するので、採点の後に開き直す
+	await page.reload();
+	await page
+		.getByTestId("judge-sentiment")
+		.getByRole("link", { name: /精度/ })
+		.click();
+	await expect(page).toHaveURL(/tab=accuracy/);
+	await expect(page.getByTestId("precision-sentiment")).toContainText(
+		/データ不足|優秀|良い|普通|悪い/,
+	);
+	await expect(page.getByTestId("precision-sentiment")).toContainText("得点率");
+	await expect(page.getByTestId("precision-risk")).toContainText("得点率");
+	const card = page.getByRole("region", { name: "精度の内訳" });
+	await expect(card).toContainText("戦略への影響");
+	await expect(card).toContainText(/センチメント · v\d+（使用中） · \d+ 件/);
+	await expect(card).toContainText("得点率（24時間後）");
+
+	const res = await page.request.get("/api/news?limit=1");
+	const { news } = (await res.json()) as { news: { id: number }[] };
+	await page.goto(
+		`/settings?section=news&tab=prompt&trial=${news[0]?.id ?? 0}`,
+	);
+	await expect(page.getByTestId("trial-targets")).toHaveText(
+		"試す記事: 選んだ 1 件",
+	);
+});
+
+test("精度の測り方を設定すると、精度分析の期間・長さ・境目が変わる", async ({
+	page,
+}) => {
+	try {
+		await page.goto("/settings?section=news&tab=accuracy");
+		const days = page.getByLabel("集計する期間");
+		await expect(days).toHaveValue("30");
+		await days.fill("0");
+		await expect(page.getByText("1〜92 の整数")).toBeVisible();
+		await expect(page.getByRole("button", { name: "保存" })).toBeDisabled();
+		await days.fill("7");
+		await page
+			.getByRole("group", { name: "値動きを測る長さ" })
+			.getByText("4時間後", { exact: true })
+			.click();
+		await page.getByLabel("データ不足の件数").fill("5");
+		const small = page.getByLabel("センチメントの境目 4時間後 横ばい（未満）");
+		await small.fill("1");
+		await expect(page.getByText("横ばい < 大きく動いた")).toBeVisible();
+		await small.fill("0.3");
+		await page.getByRole("button", { name: "保存" }).click();
+		await expect(page.getByRole("status")).toContainText("保存した");
+
+		await page.goto("/news?tab=accuracy");
+		const card = page.getByRole("region", { name: "精度の内訳" });
+		await expect(card).toContainText("得点率（4時間後）");
+		await expect(card).toContainText("横ばい ±0.3% 未満");
+		await page.getByRole("button", { name: "精度の説明" }).click();
+		await expect(page.getByRole("note", { name: "精度の説明" })).toContainText(
+			"直近 7 日",
+		);
+	} finally {
+		await page.request.put("/api/scoring/accuracy/settings", {
+			data: {
+				days: 30,
+				horizon: "24h",
+				minSamples: 30,
+				sentimentBands: {
+					"4h": { small: 0.2, large: 0.7 },
+					"24h": { small: 0.5, large: 2 },
+				},
+				riskBands: {
+					"4h": { rough: 0.7, wild: 1.1 },
+					"24h": { rough: 2, wild: 3 },
+				},
+			},
+		});
+	}
+});
+
 test("評価ルールを保存すると市場評価が変わる", async ({ page }) => {
 	try {
 		await page.goto("/news");

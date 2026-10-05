@@ -1,6 +1,11 @@
 import { Hono } from "hono";
 import { validator } from "hono/validator";
 import type { LiveRescoreResult, ScoringService } from "../news/types";
+import type {
+	AccuracyHorizon,
+	AccuracyService,
+} from "../scoring-analysis/types";
+import { ACCURACY_HORIZONS } from "../scoring-analysis/types";
 import { parseFilter } from "./news";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -12,10 +17,83 @@ const liveRescoreBody = (r: LiveRescoreResult & { ok: true }) => ({
 	skipped: r.skipped,
 });
 
-export function scoringRoutes(service: ScoringService) {
+export function scoringRoutes(
+	service: ScoringService,
+	accuracy: AccuracyService,
+) {
 	return (
 		new Hono()
 			.get("/status", (c) => c.json(service.status()))
+			.get(
+				"/accuracy",
+				validator("query", (v, c) => {
+					// 省けば設定の長さ
+					if (v.horizon === undefined)
+						return {} as { horizon?: AccuracyHorizon };
+					const horizon = ACCURACY_HORIZONS.find((x) => x === v.horizon);
+					if (!horizon) {
+						return c.json(
+							{ message: `horizon は ${ACCURACY_HORIZONS.join(" か ")}` },
+							400,
+						);
+					}
+					return { horizon };
+				}),
+				(c) => c.json(accuracy.accuracy(c.req.valid("query").horizon)),
+			)
+			.get("/accuracy/settings", (c) => c.json(accuracy.accuracySettings()))
+			.put(
+				"/accuracy/settings",
+				validator("json", (v, c) => {
+					if (
+						!isObj(v) ||
+						typeof v.days !== "number" ||
+						typeof v.horizon !== "string" ||
+						typeof v.minSamples !== "number" ||
+						!isObj(v.sentimentBands) ||
+						!isObj(v.riskBands)
+					) {
+						return c.json(
+							{
+								message:
+									"days・horizon・minSamples・sentimentBands・riskBands が必要",
+							},
+							400,
+						);
+					}
+					// 数でない境目は NaN にして、サービスの検査で弾く
+					const num = (o: unknown, h: AccuracyHorizon, k: string) => {
+						const b = isObj(o) ? o[h] : undefined;
+						return isObj(b) && typeof b[k] === "number"
+							? (b[k] as number)
+							: Number.NaN;
+					};
+					const { sentimentBands: sb, riskBands: rb } = v;
+					const both = <T>(f: (h: AccuracyHorizon) => T) => ({
+						"4h": f("4h"),
+						"24h": f("24h"),
+					});
+					return {
+						days: v.days,
+						horizon: v.horizon as AccuracyHorizon,
+						minSamples: v.minSamples,
+						sentimentBands: both((h) => ({
+							small: num(sb, h, "small"),
+							large: num(sb, h, "large"),
+						})),
+						riskBands: both((h) => ({
+							rough: num(rb, h, "rough"),
+							wild: num(rb, h, "wild"),
+						})),
+					};
+				}),
+				(c) => {
+					const r = accuracy.setAccuracySettings(c.req.valid("json"));
+					return r.ok
+						? c.json(accuracy.accuracySettings(), 200)
+						: c.json({ message: r.message, field: r.field }, 400);
+				},
+			)
 			.get("/criteria", (c) => c.json(service.criteria()))
 			.post(
 				"/criteria",
