@@ -58,6 +58,7 @@ import {
 import { JudgeLayer, stripArea } from "./judge-layer";
 import type { BarJudgments } from "./judgment-data";
 import { slotAligned } from "./judgment-data";
+import { PriceTags } from "./price-tags";
 
 type Props = {
 	bars: readonly ChartBar[];
@@ -210,6 +211,8 @@ export function PriceChart({
 		bbs: ISeriesApi<"Line">[];
 		rsis: ISeriesApi<"Line">[];
 		layer: JudgeLayer;
+		/** 価格の軸の「今」「買」の値 */
+		tags: PriceTags;
 		/** 今のレートの線と、それを付けた系列 */
 		now: {
 			series: ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
@@ -325,6 +328,8 @@ export function PriceChart({
 		const marks = createSeriesMarkers(line, []);
 		const layer = new JudgeLayer(cssVar);
 		line.attachPrimitive(layer);
+		const tags = new PriceTags();
+		line.attachPrimitive(tags);
 		chartRef.current = {
 			chart,
 			line,
@@ -335,6 +340,7 @@ export function PriceChart({
 			bbs: [],
 			rsis: [],
 			layer,
+			tags,
 			now: null,
 			entries: null,
 		};
@@ -432,10 +438,12 @@ export function PriceChart({
 		const next = candle ? c.candle : c.line;
 		if (next === c.price) return;
 		c.price.detachPrimitive(c.layer);
+		c.price.detachPrimitive(c.tags);
 		c.marks.detach();
 		c.line.applyOptions({ visible: !candle });
 		c.candle.applyOptions({ visible: candle });
 		next.attachPrimitive(c.layer);
+		next.attachPrimitive(c.tags);
 		c.marks = createSeriesMarkers(next, []);
 		c.price = next;
 		setMarksTick((n) => n + 1);
@@ -602,7 +610,7 @@ export function PriceChart({
 	}, [slotJudgments, bg, hasJudgments, themeTick]);
 
 	// 今のレート。組み込みの最後の値の表示を消し、今のレートの線に置き換える。
-	// 線の名前（title）は描画領域の右端に出て最新の足に重なるので付けない。値は価格の軸に出す
+	// 組み込みの線の名前は描画領域の右端に出て最新の足に重なるので、軸の値（「今」付き）は PriceTags で出す
 	// 系列を付け替えたら（themeTick は色を読み直すため）線を引き直す
 	const showNow = currentPrice !== undefined;
 	// biome-ignore lint/correctness/useExhaustiveDependencies: marksTick で系列の付け替えを、themeTick で色の変化を拾う
@@ -620,22 +628,19 @@ export function PriceChart({
 			});
 		}
 		if (currentPrice === undefined || currentPrice === null) return;
-		const color = cssVar("--color-accent");
 		c.now = {
 			series: c.price,
 			line: c.price.createPriceLine({
 				price: currentPrice,
-				color,
-				lineWidth: 1,
+				color: cssVar("--color-text"),
+				lineWidth: 2,
 				lineStyle: LineStyle.Dashed,
-				axisLabelVisible: true,
-				axisLabelColor: color,
-				axisLabelTextColor: cssVar("--color-accent-ink"),
+				axisLabelVisible: false,
 			}),
 		};
 	}, [currentPrice, showNow, marksTick, themeTick]);
 
-	// 保有中のロットの買値の線。価格の系列を付け替えたら引き直す
+	// 保有中のロットの買値の線。買いの矢印と同じ色。価格の系列を付け替えたら引き直す
 	// biome-ignore lint/correctness/useExhaustiveDependencies: marksTick で系列の付け替えを、themeTick で色の変化を拾う
 	useEffect(() => {
 		const c = chartRef.current;
@@ -652,14 +657,42 @@ export function PriceChart({
 				c.price.createPriceLine({
 					price,
 					color,
-					lineWidth: 1,
-					lineStyle: LineStyle.Dotted,
+					lineWidth: 2,
+					lineStyle: LineStyle.Solid,
 					axisLabelVisible: false,
-					title: "買値",
 				}),
 			),
 		};
 	}, [entryPrices, marksTick, themeTick]);
+
+	// 価格の軸の「今」「買」の値。買値は足から離れていても縦の範囲に含めて画面に入れる
+	// biome-ignore lint/correctness/useExhaustiveDependencies: themeTick で色の変化を拾う
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		const buy = cssVar("--color-buy");
+		const buyInk = cssVar("--color-accent-ink");
+		c.tags.setTags([
+			...(currentPrice === undefined || currentPrice === null
+				? []
+				: [
+						{
+							price: currentPrice,
+							label: "今",
+							color: cssVar("--color-text"),
+							textColor: cssVar("--color-surface"),
+							keepInView: false,
+						},
+					]),
+			...entryPrices.map((price) => ({
+				price,
+				label: "買",
+				color: buy,
+				textColor: buyInk,
+				keepInView: true,
+			})),
+		]);
+	}, [currentPrice, entryPrices, themeTick]);
 
 	// 表示範囲。viewKey があれば、足が届き始めたときと viewKey が変わったときだけ合わせ直す
 	const hasBars = barTimes.length > 0;
