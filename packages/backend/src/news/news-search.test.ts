@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import type { Duration } from "@trading-studio/core";
 import { createTestApp } from "../test-app";
 import type { NewsSearchResult } from "./types";
 
@@ -15,8 +16,8 @@ function setup() {
 	const add = (
 		title: string,
 		hour: number,
-		scores: { sentiment: number | null; risk: number | null } | null,
-		opts: { summary?: string; comment?: string } = {},
+		scores: { sentiment: number; risk: number } | null,
+		opts: { summary?: string; comment?: string; duration?: Duration } = {},
 	) => {
 		t.newsRepo.saveFetched(
 			source,
@@ -36,7 +37,11 @@ function setup() {
 		if (scores) {
 			t.scoreRepo.saveScore(
 				id,
-				{ scores, comment: opts.comment ?? "" },
+				{
+					scores,
+					duration: opts.duration ?? "short",
+					comment: opts.comment ?? "",
+				},
 				{
 					scoredAt: hour * H,
 					criteriaVersion: 1,
@@ -79,8 +84,8 @@ test("影響の大きさは今の評価基準で測り、選んだどれかに�
 	// 既定の評価基準: やや強気 20 以上、やや弱気 −20 未満、警戒 40 以上
 	t.add("bull", 90, { sentiment: 20, risk: 0 });
 	t.add("flat", 91, { sentiment: 19, risk: 39 });
-	t.add("bear", 92, { sentiment: -21, risk: null });
-	t.add("risk", 93, { sentiment: null, risk: 40 });
+	t.add("bear", 92, { sentiment: -21, risk: 0 });
+	t.add("risk", 93, { sentiment: 0, risk: 40 });
 	t.add("unscored", 94, null);
 	expect(await t.titles("impact=bull")).toEqual(["bull"]);
 	expect(await t.titles("impact=bear")).toEqual(["bear"]);
@@ -94,7 +99,7 @@ test("影響の大きい順は センチメントの絶対値とリスクの大�
 	t.add("s-80", 90, { sentiment: -80, risk: 10 });
 	t.add("r50", 91, { sentiment: 10, risk: 50 });
 	t.add("unscored", 92, null);
-	t.add("none", 93, { sentiment: null, risk: null });
+	t.add("none", 93, { sentiment: 0, risk: 0 }, { duration: "none" });
 	expect(await t.titles("sort=impact")).toEqual([
 		"s-80",
 		"r50",

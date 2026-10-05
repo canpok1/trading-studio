@@ -1,4 +1,8 @@
-import type { AggregationRule, ScoredNews } from "@trading-studio/core";
+import type {
+	AggregationRule,
+	Duration,
+	ScoredNews,
+} from "@trading-studio/core";
 import {
 	DEFAULT_AGGREGATION_RULE,
 	parseAggregationRule,
@@ -13,6 +17,7 @@ type ScoreRow = {
 	status: NewsScore["status"];
 	risk: number | null;
 	sentiment: number | null;
+	duration: Duration | null;
 	comment: string | null;
 	scored_at: number | null;
 	rescored_at: number | null;
@@ -26,7 +31,11 @@ type ScoreRow = {
 
 export const toNewsScore = (r: ScoreRow): NewsScore => ({
 	status: r.status,
-	scores: r.status === "done" ? { sentiment: r.sentiment, risk: r.risk } : null,
+	scores:
+		r.status === "done"
+			? { sentiment: r.sentiment ?? 0, risk: r.risk ?? 0 }
+			: null,
+	duration: r.status === "done" ? (r.duration ?? "short") : null,
 	comment: r.comment,
 	scoredAt: r.scored_at,
 	rescoredAt: r.rescored_at,
@@ -239,9 +248,10 @@ export class ScoreRepository {
 		},
 	) {
 		this.sql.run(
-			`insert into news_scores (news_id, status, sentiment, risk, comment, scored_at, criteria_version, model, app_built_at, error, attempts, next_attempt_at)
-			 values (?, 'done', ?, ?, ?, ?, ?, ?, ?, null, ?, null)
-			 on conflict (news_id) do update set status = 'done', sentiment = excluded.sentiment, risk = excluded.risk, comment = excluded.comment, scored_at = excluded.scored_at,
+			`insert into news_scores (news_id, status, sentiment, risk, duration, comment, scored_at, criteria_version, model, app_built_at, error, attempts, next_attempt_at)
+			 values (?, 'done', ?, ?, ?, ?, ?, ?, ?, ?, null, ?, null)
+			 on conflict (news_id) do update set status = 'done', sentiment = excluded.sentiment, risk = excluded.risk, duration = excluded.duration,
+			   comment = excluded.comment, scored_at = excluded.scored_at,
 			   criteria_version = excluded.criteria_version, model = excluded.model,
 			   app_built_at = excluded.app_built_at, error = null,
 			   attempts = excluded.attempts, next_attempt_at = null`,
@@ -249,6 +259,7 @@ export class ScoreRepository {
 				newsId,
 				r.scores.sentiment,
 				r.scores.risk,
+				r.duration,
 				r.comment,
 				meta.scoredAt,
 				meta.criteriaVersion,
@@ -318,37 +329,43 @@ export class ScoreRepository {
 			published_at: number;
 			fetched_at: number;
 			scored_at: number;
-			sentiment: number | null;
-			risk: number | null;
+			sentiment: number;
+			risk: number;
+			duration: Duration;
 		};
 		const rows =
 			version === null
 				? this.sql
 						.query<Row, [number, number]>(
-							`select n.id, n.published_at, n.fetched_at, s.scored_at, s.sentiment, s.risk
+							`select n.id, n.published_at, n.fetched_at, s.scored_at, s.sentiment, s.risk, s.duration
 							 from news_scores s join news n on n.id = s.news_id
 							 where s.status = 'done' and s.scored_at >= ? and s.scored_at < ?
 							 order by s.scored_at, n.id`,
 						)
 						.all(from, to)
 				: this.sql
-						.query<Row, [number, number, number, number, number, number]>(
+						.query<
+							Row,
+							[number, number, number, number, number, number, number]
+						>(
 							`select n.id, n.published_at, n.fetched_at, s.scored_at,
 							   case when s.criteria_version = ? then s.sentiment else r.sentiment end as sentiment,
-							   case when s.criteria_version = ? then s.risk else r.risk end as risk
+							   case when s.criteria_version = ? then s.risk else r.risk end as risk,
+							   case when s.criteria_version = ? then s.duration else r.duration end as duration
 							 from news_scores s join news n on n.id = s.news_id
 							 left join news_rescores r on r.news_id = s.news_id and r.criteria_version = ? and r.status = 'done'
 							 where s.status = 'done' and s.scored_at >= ? and s.scored_at < ?
 							   and (s.criteria_version = ? or r.news_id is not null)
 							 order by s.scored_at, n.id`,
 						)
-						.all(version, version, version, from, to, version);
+						.all(version, version, version, version, from, to, version);
 		return rows.map((r) => ({
 			id: r.id,
 			publishedAt: r.published_at,
 			fetchedAt: r.fetched_at,
 			scoredAt: r.scored_at,
 			scores: { sentiment: r.sentiment, risk: r.risk },
+			duration: r.duration,
 		}));
 	}
 
@@ -416,12 +433,13 @@ export class ScoreRepository {
 	) {
 		this.sql.transaction(() => {
 			this.sql.run(
-				`update news_rescores set status = 'done', sentiment = ?, risk = ?, comment = ?, scored_at = ?,
+				`update news_rescores set status = 'done', sentiment = ?, risk = ?, duration = ?, comment = ?, scored_at = ?,
 				   model = ?, app_built_at = ?, error = null, attempts = ?, next_attempt_at = null
 				 where news_id = ? and criteria_version = ?`,
 				[
 					r.scores.sentiment,
 					r.scores.risk,
+					r.duration,
 					r.comment,
 					meta.scoredAt,
 					meta.model,
@@ -526,10 +544,10 @@ export class ScoreRepository {
 			if (s.criteria_version !== null) {
 				const at = s.rescored_at ?? s.scored_at ?? 0;
 				this.sql.run(
-					`insert into news_rescores (news_id, criteria_version, status, sentiment, risk, comment, scored_at, model, app_built_at, attempts, requested_at)
-					 values (?, ?, 'done', ?, ?, ?, ?, ?, ?, 0, ?)
+					`insert into news_rescores (news_id, criteria_version, status, sentiment, risk, duration, comment, scored_at, model, app_built_at, attempts, requested_at)
+					 values (?, ?, 'done', ?, ?, ?, ?, ?, ?, ?, 0, ?)
 					 on conflict (news_id, criteria_version) do update set status = 'done', sentiment = excluded.sentiment,
-					   risk = excluded.risk, comment = excluded.comment, scored_at = excluded.scored_at, model = excluded.model,
+					   risk = excluded.risk, duration = excluded.duration, comment = excluded.comment, scored_at = excluded.scored_at, model = excluded.model,
 					   app_built_at = excluded.app_built_at, error = null, next_attempt_at = null
 					 where news_rescores.status != 'done'`,
 					[
@@ -537,6 +555,7 @@ export class ScoreRepository {
 						s.criteria_version,
 						s.sentiment,
 						s.risk,
+						s.duration,
 						s.comment,
 						at,
 						s.model,
@@ -546,11 +565,12 @@ export class ScoreRepository {
 				);
 			}
 			this.sql.run(
-				`update news_scores set sentiment = ?, risk = ?, comment = ?, criteria_version = ?, model = ?,
+				`update news_scores set sentiment = ?, risk = ?, duration = ?, comment = ?, criteria_version = ?, model = ?,
 				   app_built_at = ?, rescored_at = ? where news_id = ?`,
 				[
 					r.sentiment,
 					r.risk,
+					r.duration,
 					r.comment,
 					version,
 					r.model,

@@ -1,8 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import type { AggregationRule, ScoredNews, Scores } from "./news-judgment";
+import type {
+	AggregationRule,
+	Duration,
+	ScoredNews,
+	Scores,
+} from "./news-judgment";
 import {
 	classify,
 	DEFAULT_AGGREGATION_RULE,
+	DURATIONS,
 	judgeAt,
 	judgmentBands,
 	judgmentSeries,
@@ -27,7 +33,8 @@ function news(
 		publishedAt: t,
 		fetchedAt: t,
 		scoredAt: t,
-		scores: { sentiment: null, risk: null, ...scores },
+		scores: { sentiment: 0, risk: 0, ...scores },
+		duration: "short",
 		...over,
 	};
 }
@@ -63,7 +70,7 @@ describe("judgeAt", () => {
 		expect(judgeAt([n], NOW, rule).weights.get(1)).toBeCloseTo(0.5);
 	});
 
-	test("期間（24時間）より前のニュースは使わない", () => {
+	test("半減期の4倍（短期は24時間）より前のニュースは使わない", () => {
 		const s = judgeAt(
 			[news(1, 24, { sentiment: 80 }), news(2, 23.9, { sentiment: -80 })],
 			NOW,
@@ -73,14 +80,45 @@ describe("judgeAt", () => {
 		expect(s.results.sentiment.value).toBe("-2");
 	});
 
-	test("null の観点は平均に入れず、対象が無い観点は中立", () => {
-		const s = judgeAt([news(1, 0, { risk: 75 })], NOW, rule);
-		expect(s.results.risk).toEqual({ value: "crisis", average: 75, count: 1 });
-		expect(s.results.sentiment).toEqual({
-			value: "0",
+	test("0 点の観点も平均に入れる", () => {
+		const s = judgeAt(
+			[news(1, 0, { risk: 80 }), news(2, 0, { sentiment: 40 })],
+			NOW,
+			rule,
+		);
+		expect(s.results.risk).toEqual({ value: "caution", average: 40, count: 2 });
+		expect(s.results.sentiment).toEqual({ value: "+1", average: 20, count: 2 });
+	});
+
+	test("持続 none のニュースは使わず、対象が無ければ中立", () => {
+		const s = judgeAt(
+			[news(1, 0, { risk: 75 }, { duration: "none" })],
+			NOW,
+			rule,
+		);
+		expect(s.weights.size).toBe(0);
+		expect(s.results.risk).toEqual({
+			value: "normal",
 			average: null,
 			count: 0,
 		});
+	});
+
+	test("半減期は持続ごと。長く続くニュースは半減期の4倍まで使う", () => {
+		const list = [
+			news(1, 0, { sentiment: 0 }),
+			news(2, 24, { sentiment: 90 }, { duration: "medium" }),
+			news(3, 72, { sentiment: -90 }, { duration: "long" }),
+			news(4, 96, { sentiment: 90 }, { duration: "medium" }),
+		];
+		const s = judgeAt(list, NOW, rule);
+		expect(s.weights.get(1)).toBe(1);
+		expect(s.weights.get(2)).toBeCloseTo(0.5);
+		expect(s.weights.get(3)).toBeCloseTo(0.5);
+		expect(s.weights.has(4)).toBe(false);
+		// (0*1 + 90*0.5 - 90*0.5) / 2 = 0
+		expect(s.results.sentiment.average).toBe(0);
+		expect(s.results.sentiment.count).toBe(3);
 	});
 });
 
@@ -143,12 +181,13 @@ describe("judgmentSeries", () => {
 				scoredAt: t + (i % 5) * 60_000,
 				scores: {
 					risk: (i * 53) % 101,
-					sentiment: i % 7 === 0 ? null : (i * 29) % 101,
+					sentiment: (i * 29) % 101,
 				},
+				duration: DURATIONS[i % 4] as Duration,
 			});
 		}
 		const times: number[] = [];
-		for (let t = NOW - 48 * H; t <= NOW + 30 * H; t += 7 * 60_000)
+		for (let t = NOW - 48 * H; t <= NOW + 300 * H; t += 7 * 60_000)
 			times.push(t);
 		const series = judgmentSeries(list, times, rule);
 		for (const p of series) {
@@ -189,6 +228,31 @@ describe("judgmentSeries", () => {
 		expect(series.length).toBe(times.length);
 		expect(performance.now() - begin).toBeLessThan(3000);
 	});
+
+	test("持続が混ざっても1か月分の1分足なら数秒以内", () => {
+		const list: ScoredNews[] = [];
+		for (let i = 0; i < 30 * 100; i++) {
+			const t = i * 864_000;
+			list.push(
+				news(
+					i,
+					0,
+					{ sentiment: i % 101, risk: 50 },
+					{
+						publishedAt: t,
+						fetchedAt: t,
+						scoredAt: t + 60_000,
+						duration: i % 10 === 0 ? "long" : "short",
+					},
+				),
+			);
+		}
+		const times: number[] = [];
+		for (let t = 0; t < 30 * 24 * H; t += 60_000) times.push(t);
+		const begin = performance.now();
+		expect(judgmentSeries(list, times, rule).length).toBe(times.length);
+		expect(performance.now() - begin).toBeLessThan(3000);
+	});
 });
 
 describe("judgmentBands", () => {
@@ -224,16 +288,15 @@ describe("validateAggregationRule", () => {
 
 	test("範囲外と並びの矛盾を指摘する", () => {
 		const bad: AggregationRule = {
-			windowHours: 0,
-			halfLifeHours: 6.5,
+			halfLifeHours: { short: 0, medium: 6.5, long: 72 },
 			thresholds: {
 				risk: { caution: 70, crisis: 40 },
 				sentiment: { plus2: 60, plus1: 60, minus1: 70, minus2: 70 },
 			},
 		};
 		expect(validateAggregationRule(bad).map((e) => e.path)).toEqual([
-			"windowHours",
-			"halfLifeHours",
+			"halfLifeHours.short",
+			"halfLifeHours.medium",
 			"thresholds.risk.caution",
 			"thresholds.sentiment.plus1",
 			"thresholds.sentiment.minus1",
@@ -266,6 +329,32 @@ describe("validateAggregationRule", () => {
 test("parseAggregationRule は形が違えば null", () => {
 	expect(parseAggregationRule(JSON.parse(JSON.stringify(rule)))).toEqual(rule);
 	expect(parseAggregationRule({ windowHours: 24 })).toBeNull();
+});
+
+test("parseAggregationRule は半減期が1つの古い形を短期として読む", () => {
+	const old = {
+		windowHours: 24,
+		halfLifeHours: 8,
+		thresholds: rule.thresholds,
+	};
+	expect(parseAggregationRule(old)).toEqual({
+		...rule,
+		halfLifeHours: { short: 8, medium: 24, long: 72 },
+	});
+	expect(
+		parseAggregationRule({ ...old, halfLifeHours: 48 })?.halfLifeHours,
+	).toEqual({ short: 48, medium: 48, long: 72 });
+});
+
+test("半減期は 短期 ≦ 中期 ≦ 長期 でなければ保存できない", () => {
+	const r = structuredClone(rule);
+	r.halfLifeHours = { short: 24, medium: 12, long: 6 };
+	expect(validateAggregationRule(r).map((e) => e.path)).toEqual([
+		"halfLifeHours.medium",
+		"halfLifeHours.long",
+	]);
+	r.halfLifeHours = { short: 12, medium: 12, long: 12 };
+	expect(validateAggregationRule(r)).toEqual([]);
 });
 
 test("同じ入力で2回実行すると結果が一致する", () => {

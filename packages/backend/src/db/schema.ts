@@ -173,9 +173,11 @@ export const newsScores = sqliteTable(
 			.references(() => news.id),
 		/** done: 採点済み / retry: 再試行を待っている / failed: 採点に失敗 / skipped: 古いので採点しない */
 		status: text("status").notNull(),
-		/** 観点ごとの点数（sentiment は -100〜100 で 0 が中立、risk は 0〜100）。関係なしは null */
+		/** 観点ごとの点数（sentiment は -100〜100 で 0 が中立、risk は 0〜100）。関係ない観点は 0。採点済みでなければ null */
 		risk: integer("risk"),
 		sentiment: integer("sentiment"),
+		/** 影響の持続（none・short・medium・long）。採点済みでなければ null */
+		duration: text("duration"),
 		comment: text("comment"),
 		/** 採点した時刻。これより前の判定には使わない。採点し直して置き換えても変えない */
 		scoredAt: integer("scored_at"),
@@ -213,6 +215,7 @@ export const newsRescores = sqliteTable(
 		status: text("status").notNull(),
 		risk: integer("risk"),
 		sentiment: integer("sentiment"),
+		duration: text("duration"),
 		comment: text("comment"),
 		/** 採点し直した時刻（記録用。判定には使わない） */
 		scoredAt: integer("scored_at"),

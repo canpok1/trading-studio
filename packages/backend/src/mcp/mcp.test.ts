@@ -321,7 +321,7 @@ describe("MCP", () => {
 			const r = await call("get_scoring_setup");
 			expect(r.json).toMatchObject({
 				criteria: [{ version: 1, active: true }],
-				aggregationRule: { windowHours: 24 },
+				aggregationRule: { halfLifeHours: { short: 6, medium: 24, long: 72 } },
 			});
 			expect(r.text).toContain("{criteria}");
 		});

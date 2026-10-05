@@ -144,7 +144,7 @@ function startScoring(t: ReturnType<typeof setup>, at: number) {
 	const id = (t.newsRepo.listNews(1)[0] as { id: number }).id;
 	t.scoreRepo.saveScore(
 		id,
-		{ scores: { sentiment: null, risk: null }, comment: "c" },
+		{ scores: { sentiment: 0, risk: 0 }, duration: "none", comment: "c" },
 		{
 			scoredAt: at,
 			criteriaVersion: 1,

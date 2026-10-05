@@ -8,6 +8,7 @@ import {
 	checkDataResolution,
 	chooseStepTimeframe,
 	conditionStrategy,
+	maxWindowMs,
 	TIMEFRAME_MS,
 	validateConditionSet,
 	withSellDetails,
@@ -228,9 +229,9 @@ export function createBacktestService({
 					fees: input.fees,
 					judgments: usesJudgments
 						? {
-								// 期間の頭で使うニュースは、期間の開始から集計の期間だけ前までに採点されている
+								// 期間の頭で使うニュースは、期間の開始から集計に使う一番長い長さだけ前までに採点されている
 								news: judgments.scoredNews(
-									from - rule.windowHours * 3_600_000,
+									from - maxWindowMs(rule),
 									to,
 									criteriaVersion,
 								),

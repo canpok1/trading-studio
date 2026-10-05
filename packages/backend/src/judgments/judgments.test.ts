@@ -31,7 +31,7 @@ function setup() {
 		).id;
 		t.scoreRepo.saveScore(
 			id,
-			{ scores: { sentiment, risk: null }, comment: "c" },
+			{ scores: { sentiment, risk: 0 }, duration: "short", comment: "c" },
 			{
 				scoredAt: at,
 				criteriaVersion: 1,
@@ -71,7 +71,7 @@ test("今の判定と重み", async () => {
 		time: 100 * H,
 		results: {
 			sentiment: { value: "+1", average: 20, count: 2 },
-			risk: { value: "normal", average: null, count: 0 },
+			risk: { value: "normal", average: 0, count: 2 },
 		},
 		firstScoredAt: 70 * H,
 	});

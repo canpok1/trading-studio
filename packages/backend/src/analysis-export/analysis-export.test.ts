@@ -173,6 +173,7 @@ describe("分析用エクスポート", () => {
 			done,
 			{
 				scores: { sentiment: 80, risk: 10 },
+				duration: "short",
 				comment: "上がりそう",
 			},
 			{

@@ -18,7 +18,8 @@ export function demoScoreModel({
 				h = (h * 31 + (ch.codePointAt(0) ?? 0)) % 1_000_003;
 			return {
 				sentiment: -40 + 2 * (h % 41),
-				risk: h % 3 === 0 ? null : 20 + (h % 51),
+				risk: h % 3 === 0 ? 0 : 20 + (h % 51),
+				duration: "short",
 				comment: "デモの採点。",
 			};
 		},

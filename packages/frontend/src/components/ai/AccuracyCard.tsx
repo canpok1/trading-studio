@@ -204,7 +204,7 @@ function VersionBlocks({
 					bands={bandText(report.sentimentBands)}
 					report={report}
 				/>
-				<Row label="関係なし" value={pct(s.nulls, v.articles)} />
+				<Row label="関係なし（持続なし）" value={pct(s.nulls, v.articles)} />
 				<Row label="プラス" value={pct(s.positive, s.scored)} />
 				<Row label="中立の帯" value={pct(s.neutralBand, s.scored)} />
 				<div className="flex flex-wrap gap-2 pt-1">
@@ -219,7 +219,6 @@ function VersionBlocks({
 					bands={bandText(report.riskBands)}
 					report={report}
 				/>
-				<Row label="関係なし" value={pct(r.nulls, v.articles)} />
 				<Row
 					label="最も多い点数"
 					value={
@@ -336,7 +335,7 @@ function Comparison({
 	const rows: [string, (x: VersionStats) => string][] = [
 		["センチメントの得点率", (x) => rateText(x.sentiment.match)],
 		["中立の帯", (x) => pct(x.sentiment.neutralBand, x.sentiment.scored)],
-		["センチメント関係なし", (x) => pct(x.sentiment.nulls, x.articles)],
+		["関係なし", (x) => pct(x.sentiment.nulls, x.articles)],
 		["リスクの得点率", (x) => rateText(x.risk.match)],
 	];
 	const few = Math.max(

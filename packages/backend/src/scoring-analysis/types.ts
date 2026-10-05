@@ -1,5 +1,7 @@
 // 市場評価の精度（ニュース画面の精度分析）の型。app.ts から参照されるため、Bun 固有の型を持ち込まない（docs/news-page.md）
 
+import type { Duration } from "@trading-studio/core";
+
 /** 精度を測る、採点時刻からの長さ */
 export const ACCURACY_HORIZONS = ["4h", "24h"] as const;
 export type AccuracyHorizon = (typeof ACCURACY_HORIZONS)[number];
@@ -65,8 +67,9 @@ export type AccuracyNews = {
 	url: string;
 	sourceName: string;
 	publishedAt: number;
-	sentiment: number | null;
-	risk: number | null;
+	sentiment: number;
+	risk: number;
+	duration: Duration;
 	comment: string | null;
 	/** 採点時刻から測る長さの後の騰落率（%）。価格が無ければ null */
 	returnPct: number | null;
@@ -98,9 +101,9 @@ export type VersionStats = {
 	/** この版で採点した記事の件数 */
 	articles: number;
 	sentiment: {
-		/** 点数が付いた件数（関係なしを除く） */
+		/** 相場に関係ある件数（持続 none を除く） */
 		scored: number;
-		/** 関係なし（null）の件数 */
+		/** 相場に関係ない（持続 none）件数 */
 		nulls: number;
 		/** プラスの件数 */
 		positive: number;

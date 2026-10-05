@@ -1,5 +1,6 @@
 // 採点の分析で読むニュースと採点。読むだけで書き換えない。書くのは精度の設定だけ
 
+import type { Duration } from "@trading-studio/core";
 import type { Db } from "../db/open";
 import type { AccuracySettings } from "./types";
 import { DEFAULT_ACCURACY_SETTINGS } from "./types";
@@ -17,6 +18,7 @@ export type AnalysisNewsRow = {
 	status: string | null;
 	risk: number | null;
 	sentiment: number | null;
+	duration: Duration | null;
 	comment: string | null;
 	scoredAt: number | null;
 	criteriaVersion: number | null;
@@ -34,8 +36,9 @@ export type VersionScoreRow = {
 	publishedAt: number;
 	scoredAt: number;
 	version: number;
-	sentiment: number | null;
-	risk: number | null;
+	sentiment: number;
+	risk: number;
+	duration: Duration;
 	comment: string | null;
 };
 
@@ -49,7 +52,7 @@ export type NewsFilter = {
 
 const COLUMNS = `n.id, n.source_name as sourceName, n.language, n.url, n.title, n.summary,
   n.published_at as publishedAt, n.fetched_at as fetchedAt, s.status, s.risk, s.sentiment,
-  s.comment, s.scored_at as scoredAt, s.criteria_version as criteriaVersion, s.model,
+  s.duration, s.comment, s.scored_at as scoredAt, s.criteria_version as criteriaVersion, s.model,
   s.app_built_at as appBuiltAt, s.error`;
 
 const ACCURACY_SETTINGS_KEY = "accuracy_settings";
@@ -155,14 +158,14 @@ export class ScoringAnalysisRepository {
 		const rows = this.sql
 			.query<VersionScoreRow & { pri: number }, number[]>(
 				`select n.id, n.title, n.url, n.source_name as sourceName, n.published_at as publishedAt,
-				   s.scored_at as scoredAt, v.version, v.sentiment, v.risk, v.comment, v.pri
+				   s.scored_at as scoredAt, v.version, v.sentiment, v.risk, v.duration, v.comment, v.pri
 				 from news n
 				 join news_scores s on s.news_id = n.id and s.status = 'done' and s.scored_at is not null
 				 join (
-				   select news_id, criteria_version as version, sentiment, risk, comment, 0 as pri
+				   select news_id, criteria_version as version, sentiment, risk, duration, comment, 0 as pri
 				     from news_scores where status = 'done' and criteria_version is not null
 				   union all
-				   select news_id, criteria_version, sentiment, risk, comment, 1
+				   select news_id, criteria_version, sentiment, risk, duration, comment, 1
 				     from news_rescores where status = 'done'
 				 ) v on v.news_id = n.id
 				 where min(n.published_at, n.fetched_at) >= ? and min(n.published_at, n.fetched_at) < ?

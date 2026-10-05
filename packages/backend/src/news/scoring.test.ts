@@ -44,28 +44,44 @@ describe("プロンプト", () => {
 		expect(
 			parseScoreResponse({
 				sentiment: 100,
-				risk: null,
+				risk: 0,
+				duration: "long",
 				comment: " 理由 ",
 			}),
 		).toEqual({
-			scores: { sentiment: 100, risk: null },
+			scores: { sentiment: 100, risk: 0 },
+			duration: "long",
 			comment: "理由",
 		});
 		for (const bad of [
 			null,
 			[],
-			{ sentiment: 101, risk: null, comment: "c" },
-			{ sentiment: -101, risk: null, comment: "c" },
-			{ sentiment: 1, risk: -1, comment: "c" },
-			{ sentiment: 1, risk: 101, comment: "c" },
-			{ sentiment: 50.5, risk: null, comment: "c" },
-			{ sentiment: "50", risk: null, comment: "c" },
-			{ risk: null, comment: "c" },
-			{ sentiment: 1, comment: "c" },
-			{ sentiment: 1, risk: null, comment: "" },
+			{ sentiment: 101, risk: 0, duration: "short", comment: "c" },
+			{ sentiment: -101, risk: 0, duration: "short", comment: "c" },
+			{ sentiment: 1, risk: -1, duration: "short", comment: "c" },
+			{ sentiment: 1, risk: 101, duration: "short", comment: "c" },
+			{ sentiment: 50.5, risk: 0, duration: "short", comment: "c" },
+			{ sentiment: "50", risk: 0, duration: "short", comment: "c" },
+			{ sentiment: null, risk: 0, duration: "short", comment: "c" },
+			{ risk: 0, duration: "short", comment: "c" },
+			{ sentiment: 1, duration: "short", comment: "c" },
+			{ sentiment: 1, risk: 0, comment: "c" },
+			{ sentiment: 1, risk: 0, duration: "forever", comment: "c" },
+			{ sentiment: 1, risk: 0, duration: "short", comment: "" },
 		]) {
 			expect(typeof parseScoreResponse(bad)).toBe("string");
 		}
+	});
+
+	test("持続 none の記事は点数を 0 にそろえる", () => {
+		expect(
+			parseScoreResponse({
+				sentiment: 30,
+				risk: 20,
+				duration: "none",
+				comment: "関係ない",
+			}),
+		).toMatchObject({ scores: { sentiment: 0, risk: 0 }, duration: "none" });
 	});
 });
 
@@ -90,6 +106,7 @@ function setup(opts: { key?: boolean } = {}) {
 			const r = replies.shift() ?? {
 				sentiment: 60,
 				risk: 30,
+				duration: "short",
 				comment: "理由",
 			};
 			if (r instanceof Error) throw r;
@@ -173,10 +190,10 @@ describe("採点", () => {
 		const t = setup();
 		const a = t.addNews("a");
 		t.replies.push(
-			{ sentiment: 101, risk: null, comment: "c" },
+			{ sentiment: 101, risk: 0, duration: "short", comment: "c" },
 			new Error("Gemini API 503: overloaded"),
 			"not json",
-			{ sentiment: 1, risk: null, comment: "" },
+			{ sentiment: 1, risk: 0, duration: "short", comment: "" },
 		);
 		let time = T0;
 		await t.at(time);
@@ -189,7 +206,7 @@ describe("採点", () => {
 			stoppedSince: T0,
 		});
 		expect(t.service.status().error).toContain(
-			"sentiment が -100〜100 の整数か null でない",
+			"sentiment が -100〜100 の整数でない",
 		);
 		// 再試行の時刻の前は採点しない
 		await t.at(time + 1000);
@@ -272,10 +289,11 @@ describe("採点", () => {
 		expect(t.repo.aggregationRule()).toEqual(DEFAULT_AGGREGATION_RULE);
 	});
 
-	test("集計の期間より古い記事は採点しない", async () => {
+	test("集計に使う一番長い長さより古い記事は採点しない", async () => {
 		const t = setup();
-		const old = t.addNews("old", T0 - 25 * H);
-		const recent = t.addNews("recent", T0 - 23 * H);
+		// 一番長い長期の半減期（72時間）の4倍
+		const old = t.addNews("old", T0 - 289 * H);
+		const recent = t.addNews("recent", T0 - 287 * H);
 		await t.at(T0);
 		expect(t.repo.getScore(old)?.status).toBe("skipped");
 		expect(t.repo.getScore(recent)?.status).toBe("done");
@@ -307,7 +325,12 @@ describe("採点", () => {
 		const b = t.addNews("b", T0);
 		await t.at(T0);
 		await t.at(T0);
-		t.replies.push({ sentiment: -10, risk: 5, comment: "案" });
+		t.replies.push({
+			sentiment: -10,
+			risk: 5,
+			duration: "short",
+			comment: "案",
+		});
 		const r = await t.service.trial("案の基準", [a, 999]);
 		expect(r).toMatchObject({
 			ok: true,
@@ -352,7 +375,7 @@ describe("採点", () => {
 				unavailable: () => null,
 				generate: async () => ({
 					sentiment: 0,
-					risk: null,
+					risk: 0,
 					comment: "c",
 				}),
 			},
@@ -586,7 +609,7 @@ test("問い合わせの間を最短の間隔だけ空ける", async () => {
 			unavailable: () => null,
 			async generate() {
 				calls++;
-				return { sentiment: 1, risk: 1, comment: "c" };
+				return { sentiment: 1, risk: 1, duration: "short", comment: "c" };
 			},
 		},
 		rule: () => repo.aggregationRule(),
@@ -624,12 +647,17 @@ describe("版を指定した採点し直し", () => {
 		});
 		// 新着を先に採点する
 		const c = t.addNews("c");
-		t.replies.push({ sentiment: 10, risk: null, comment: "新着" });
+		t.replies.push({
+			sentiment: 10,
+			risk: 0,
+			duration: "short",
+			comment: "新着",
+		});
 		await t.at(T0 + 10_000);
 		expect(t.repo.getScore(c)?.status).toBe("done");
 		t.replies.push(
-			{ sentiment: -80, risk: 5, comment: "v2" },
-			{ sentiment: -40, risk: null, comment: "v2" },
+			{ sentiment: -80, risk: 5, duration: "short", comment: "v2" },
+			{ sentiment: -40, risk: 0, duration: "short", comment: "v2" },
 		);
 		await t.at(T0 + 11_000);
 		await t.at(T0 + 12_000);
@@ -660,8 +688,8 @@ describe("版を指定した採点し直し", () => {
 		]);
 		expect(
 			t.service.rescoreCoverage(
-				T0 + 13_000 + 24 * H,
-				T0 + 14_000 + 24 * H,
+				T0 + 13_000 + 288 * H,
+				T0 + 14_000 + 288 * H,
 				version,
 			),
 		).toMatchObject({ coverage: { total: 1, done: 1 } });
@@ -748,7 +776,12 @@ describe("運用の採点を置き換える採点し直し", () => {
 			status: "pending",
 			error: null,
 		});
-		t.replies.push({ sentiment: -70, risk: 10, comment: "v2 の理由" });
+		t.replies.push({
+			sentiment: -70,
+			risk: 10,
+			duration: "short",
+			comment: "v2 の理由",
+		});
 		await t.at(T0 + 10_000);
 		expect(t.calls.at(-1)?.prompt).toContain("基準2");
 		const item = t.newsRepo.newsByIds([a])[0];
@@ -786,7 +819,12 @@ describe("運用の採点を置き換える採点し直し", () => {
 		const [a] = await scoredThenV2(t, 1);
 		const from = T0 + 24 * H;
 		t.service.requestRescore(from, from + H, 2);
-		t.replies.push({ sentiment: -20, risk: null, comment: "v2" });
+		t.replies.push({
+			sentiment: -20,
+			risk: 0,
+			duration: "short",
+			comment: "v2",
+		});
 		await t.at(T0 + 10_000);
 		expect(t.repo.getScore(a)?.criteriaVersion).toBe(1);
 		const calls = t.calls.length;
@@ -796,7 +834,7 @@ describe("運用の採点を置き換える採点し直し", () => {
 		expect(t.calls).toHaveLength(calls);
 		expect(t.repo.getScore(a)).toMatchObject({
 			criteriaVersion: 2,
-			scores: { sentiment: -20, risk: null },
+			scores: { sentiment: -20, risk: 0 },
 			rescoredAt: T0 + 10_000,
 		});
 	});
@@ -822,11 +860,21 @@ describe("運用の採点を置き換える採点し直し", () => {
 		if (!v3.ok) throw new Error();
 		t.service.setActiveCriteria(v3.version.version);
 		t.service.rescoreLive({ newsId: a });
-		t.replies.push({ sentiment: 30, risk: null, comment: "v3" });
+		t.replies.push({
+			sentiment: 30,
+			risk: 0,
+			duration: "short",
+			comment: "v3",
+		});
 		await t.at(T0 + 11_000);
 		expect(t.repo.getScore(a)?.criteriaVersion).toBe(3);
 		// v2 の再試行が後で成功しても、運用の採点は v3 のまま
-		t.replies.push({ sentiment: -90, risk: null, comment: "v2" });
+		t.replies.push({
+			sentiment: -90,
+			risk: 0,
+			duration: "short",
+			comment: "v2",
+		});
 		await t.at(T0 + 10_000 + RETRY_DELAYS_MS[0]);
 		expect(t.calls.at(-1)?.prompt).toContain("基準2");
 		expect(t.newsRepo.newsByIds([a])[0]).toMatchObject({

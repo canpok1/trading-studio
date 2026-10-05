@@ -5,6 +5,7 @@ import type {
 	SingleBuyConditionSet,
 } from "@trading-studio/core";
 import {
+	DEFAULT_AGGREGATION_RULE,
 	DEFAULT_BUY_ORDER,
 	DEFAULT_PARTIAL_SELL,
 	singleBuy,
@@ -413,7 +414,7 @@ describe("チャートの AI 判定", () => {
 		const id = (t.newsRepo.listNews(1)[0] as { id: number }).id;
 		t.scoreRepo.saveScore(
 			id,
-			{ scores: { sentiment: 60, risk: null }, comment: "c" },
+			{ scores: { sentiment: 60, risk: 0 }, duration: "short", comment: "c" },
 			{
 				scoredAt: at,
 				criteriaVersion: 1,
@@ -498,7 +499,7 @@ describe("AI 判定の条件", () => {
 		).id;
 		t.scoreRepo.saveScore(
 			id,
-			{ scores: { sentiment, risk: null }, comment: "c" },
+			{ scores: { sentiment, risk: 0 }, duration: "short", comment: "c" },
 			{
 				scoredAt: at,
 				criteriaVersion: 1,
@@ -583,7 +584,12 @@ describe("AI 判定の条件", () => {
 	test("採点の版を指定すると、その版の採点が期間の記事にそろっているときだけ実行し、使い始める時刻は運用の採点時刻", async () => {
 		const t = setup();
 		t.clock.now = START + 30 * 24 * H;
-		// 記録の開始。期間の頭の集計の期間より前なので、市場評価には使わない
+		// 集計に使う一番長い長さを 24 時間にする
+		t.scoreRepo.setAggregationRule({
+			...DEFAULT_AGGREGATION_RULE,
+			halfLifeHours: { short: 6, medium: 6, long: 6 },
+		});
+		// 記録の開始。期間の頭の集計に使う長さより前なので、市場評価には使わない
 		score(t, START, 0);
 		const first = START + 3 * 24 * H;
 		score(t, first, 0);
@@ -627,7 +633,7 @@ describe("AI 判定の条件", () => {
 			t.scoreRepo.saveRescore(
 				id,
 				v2,
-				{ scores: { sentiment, risk: null }, comment: "c" },
+				{ scores: { sentiment, risk: 0 }, duration: "short", comment: "c" },
 				meta,
 			);
 		rescore(a, 80);

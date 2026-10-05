@@ -267,7 +267,9 @@ export class NewsRepository {
 			args.push(t.risk.caution);
 		}
 		if (impacts.length) {
-			where.push(`(s.status = 'done' and (${impacts.join(" or ")}))`);
+			where.push(
+				`(s.status = 'done' and s.duration != 'none' and (${impacts.join(" or ")}))`,
+			);
 		}
 		const from = `${NEWS_FROM}${where.length ? ` where ${where.join(" and ")}` : ""}`;
 		// 採点済みでないものは影響の大きい順では最後

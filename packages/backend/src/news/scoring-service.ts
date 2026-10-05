@@ -1,3 +1,4 @@
+import { maxWindowMs } from "@trading-studio/core";
 import { DEFAULT_SCORING_MODEL, SCORING_MODELS } from "./gemini";
 import { PROMPT_TEMPLATE } from "./prompt";
 import type { NewsRepository } from "./repository";
@@ -40,9 +41,9 @@ export function createScoringService({
 			return { ok: false, status: 404, message: "版が見つからない" };
 		return null;
 	};
-	/** 期間 [from, to) の市場評価に使う記事の採点時刻の範囲。期間の頭では評価ルールの集計の期間だけ前までの記事を使う */
+	/** 期間 [from, to) の市場評価に使う記事の採点時刻の範囲。期間の頭では評価ルールで集計に使う一番長い長さだけ前までの記事を使う */
 	const usedBy = (from: number, to: number): [number, number] => [
-		from - repo.aggregationRule().windowHours * 3_600_000,
+		from - maxWindowMs(repo.aggregationRule()),
 		to,
 	];
 	return {
@@ -193,6 +194,7 @@ export function createScoringService({
 							n.score?.status === "done" && n.score.scores
 								? {
 										scores: n.score.scores,
+										duration: n.score.duration ?? "short",
 										comment: n.score.comment,
 										criteriaVersion: n.score.criteriaVersion,
 									}
