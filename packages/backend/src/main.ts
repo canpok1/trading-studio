@@ -183,6 +183,7 @@ const scoringAnalysis = createScoringAnalysis({
 	marketData,
 	judgments,
 	scorer,
+	activeVersion: () => scoreRepo.activeCriteriaVersion(),
 });
 const server = new Hono()
 	.use("/api/*", slowRequestLog())
@@ -224,6 +225,7 @@ const server = new Hono()
 				marketData,
 			}),
 			retention,
+			accuracy: scoringAnalysis,
 		}),
 	);
 serveFrontend(server, distDir);

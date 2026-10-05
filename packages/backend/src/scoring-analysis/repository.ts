@@ -23,6 +23,20 @@ export type AnalysisNewsRow = {
 	error: string | null;
 };
 
+/** ある版の採点。scoredAt は運用の採点時刻（判定に使い始める時刻） */
+export type VersionScoreRow = {
+	id: number;
+	title: string;
+	url: string;
+	sourceName: string;
+	publishedAt: number;
+	scoredAt: number;
+	version: number;
+	sentiment: number | null;
+	risk: number | null;
+	comment: string | null;
+};
+
 /** 絞り込み。status の unscored は採点の行が無いもの */
 export type NewsFilter = {
 	from: number;
@@ -108,5 +122,36 @@ export class ScoringAnalysisRepository {
 			.all(...ids);
 		const byId = new Map(rows.map((r) => [r.id, r]));
 		return ids.flatMap((id) => byId.get(id) ?? []);
+	}
+
+	/**
+	 * 新しさの時刻が [from, to) の記事の、版ごとの採点。運用の採点と採点し直したものを合わせ、同じ記事と版の組は運用の採点を優先する。
+	 * 運用で採点済みでない記事は、値動きを測る起点が無いので除く
+	 */
+	versionScores(from: number, to: number): VersionScoreRow[] {
+		const rows = this.sql
+			.query<VersionScoreRow & { pri: number }, number[]>(
+				`select n.id, n.title, n.url, n.source_name as sourceName, n.published_at as publishedAt,
+				   s.scored_at as scoredAt, v.version, v.sentiment, v.risk, v.comment, v.pri
+				 from news n
+				 join news_scores s on s.news_id = n.id and s.status = 'done' and s.scored_at is not null
+				 join (
+				   select news_id, criteria_version as version, sentiment, risk, comment, 0 as pri
+				     from news_scores where status = 'done' and criteria_version is not null
+				   union all
+				   select news_id, criteria_version, sentiment, risk, comment, 1
+				     from news_rescores where status = 'done'
+				 ) v on v.news_id = n.id
+				 where min(n.published_at, n.fetched_at) >= ? and min(n.published_at, n.fetched_at) < ?
+				 order by n.id, v.version, v.pri`,
+			)
+			.all(from, to);
+		const seen = new Set<string>();
+		return rows.flatMap(({ pri: _, ...r }) => {
+			const key = `${r.id}:${r.version}`;
+			if (seen.has(key)) return [];
+			seen.add(key);
+			return [r];
+		});
 	}
 }

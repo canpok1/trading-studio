@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { validator } from "hono/validator";
 import type { LiveRescoreResult, ScoringService } from "../news/types";
+import type { AccuracyService } from "../scoring-analysis/types";
+import { ACCURACY_HORIZONS } from "../scoring-analysis/types";
 import { parseFilter } from "./news";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -12,10 +14,28 @@ const liveRescoreBody = (r: LiveRescoreResult & { ok: true }) => ({
 	skipped: r.skipped,
 });
 
-export function scoringRoutes(service: ScoringService) {
+export function scoringRoutes(
+	service: ScoringService,
+	accuracy: AccuracyService,
+) {
 	return (
 		new Hono()
 			.get("/status", (c) => c.json(service.status()))
+			.get(
+				"/accuracy",
+				validator("query", (v, c) => {
+					const h = v.horizon ?? "24h";
+					const horizon = ACCURACY_HORIZONS.find((x) => x === h);
+					if (!horizon) {
+						return c.json(
+							{ message: `horizon は ${ACCURACY_HORIZONS.join(" か ")}` },
+							400,
+						);
+					}
+					return { horizon };
+				}),
+				(c) => c.json(accuracy.accuracy(c.req.valid("query").horizon)),
+			)
 			.get("/criteria", (c) => c.json(service.criteria()))
 			.post(
 				"/criteria",

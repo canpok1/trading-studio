@@ -39,6 +39,15 @@ export type {
 	RetentionStatus,
 	RetentionTable,
 } from "./retention/types";
+export type {
+	AccuracyHorizon,
+	AccuracyList,
+	AccuracyNews,
+	AccuracyReport,
+	VersionAccuracy,
+	VersionComparison,
+	VersionStats,
+} from "./scoring-analysis/types";
 export type { StoredStrategy } from "./strategies/types";
 export type {
 	AutoTradingStatus,

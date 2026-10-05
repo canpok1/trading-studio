@@ -7,16 +7,19 @@ import type {
 	Scores,
 	Timeframe,
 } from "@trading-studio/core";
-import { JUDGES, TIMEFRAME_MS } from "@trading-studio/core";
+import { JUDGES, NEUTRAL, TIMEFRAME_MS } from "@trading-studio/core";
 import type { JudgmentService } from "../judgments/types";
 import type { MarketDataService } from "../market-data/types";
 import type { Scorer } from "../news/scorer";
 import { CRITERIA_MAX } from "../news/scoring-service";
+import { accuracyByVersion } from "./accuracy";
 import type {
 	AnalysisNewsRow,
 	NewsFilter,
 	ScoringAnalysisRepository,
 } from "./repository";
+import type { AccuracyHorizon, AccuracyReport } from "./types";
+import { ACCURACY_DAYS, ACCURACY_MIN_SAMPLES } from "./types";
 
 const HOUR = 3_600_000;
 
@@ -172,12 +175,15 @@ export function createScoringAnalysis({
 	marketData,
 	judgments,
 	scorer,
+	activeVersion,
 	now = Date.now,
 }: {
 	repo: ScoringAnalysisRepository;
 	marketData: Pick<MarketDataService, "exportCandles">;
-	judgments: Pick<JudgmentService, "series">;
+	judgments: Pick<JudgmentService, "series" | "rule">;
 	scorer: Pick<Scorer, "trial">;
+	/** 使用中の採点の基準の版 */
+	activeVersion: () => number | null;
 	now?: () => number;
 }) {
 	/** [from, to) の時刻から24時間後までの値動き */
@@ -355,6 +361,48 @@ export function createScoringAnalysis({
 				firstScoredAt: s.firstScoredAt,
 				baseline: returnStats(withReturns.map((x) => x.ret)),
 				byJudge,
+			};
+		},
+
+		/** 直近の期間の、版ごとの採点の当たり具合と、評価が戦略の判断を変えうる状態だった時間（ニュース画面） */
+		accuracy(horizon: AccuracyHorizon): AccuracyReport {
+			const to = now();
+			const from = to - ACCURACY_DAYS * 24 * HOUR;
+			const rule = judgments.rule();
+			const active = activeVersion();
+			const rows = repo.versionScores(from, to);
+			const times = rows.map((r) => r.scoredAt);
+			const p =
+				times.length === 0
+					? priceSeries([], null)
+					: prices(Math.min(...times), Math.max(...times) + 1);
+			const { versions, comparisons } = accuracyByVersion(
+				rows.map((r) => ({
+					...r,
+					returnPct: p.returnsFrom(r.scoredAt)[horizon],
+				})),
+				rule,
+				active,
+			);
+			const s = judgments.series(from, to, HOUR, rule);
+			const judged = s.values.sentiment.filter((v) => v !== null).length;
+			const moved = (j: Judge) =>
+				s.values[j].filter((v) => v !== null && v !== NEUTRAL[j]).length;
+			return {
+				from,
+				to,
+				horizon,
+				days: ACCURACY_DAYS,
+				minSamples: ACCURACY_MIN_SAMPLES,
+				priceTimeframe: p.timeframe,
+				activeVersion: active,
+				influence: {
+					judgedHours: judged,
+					sentiment: moved("sentiment"),
+					risk: moved("risk"),
+				},
+				versions,
+				comparisons,
 			};
 		},
 
