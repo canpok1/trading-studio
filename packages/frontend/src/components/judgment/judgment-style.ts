@@ -38,7 +38,7 @@ export const VALUE_STYLES: {
 	},
 	sentiment: {
 		"+2": {
-			label: "強い強気",
+			label: "かなり強気",
 			bg: "--color-sp2-bg",
 			solid: "--color-sp2",
 			shape: "sq",
@@ -62,7 +62,7 @@ export const VALUE_STYLES: {
 			shape: "sq",
 		},
 		"-2": {
-			label: "強い弱気",
+			label: "かなり弱気",
 			bg: "--color-sm2-bg",
 			solid: "--color-sm2",
 			shape: "sq",

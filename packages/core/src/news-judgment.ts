@@ -35,11 +35,11 @@ export const JUDGMENT_VALUE_LABELS: Record<string, string> = {
 	normal: "平常",
 	caution: "警戒",
 	crisis: "危機",
-	"+2": "強い強気",
+	"+2": "かなり強気",
 	"+1": "やや強気",
 	"0": "中立",
 	"-1": "やや弱気",
-	"-2": "強い弱気",
+	"-2": "かなり弱気",
 	none: "データなし",
 };
 
@@ -204,7 +204,7 @@ export function validateAggregationRule(r: AggregationRule): ValidationError[] {
 	if (se.plus1 >= se.plus2) {
 		err(
 			"thresholds.sentiment.plus1",
-			`強い強気の下限（${se.plus2}）より小さくする`,
+			`かなり強気の下限（${se.plus2}）より小さくする`,
 		);
 	}
 	if (se.minus1 > se.plus1) {

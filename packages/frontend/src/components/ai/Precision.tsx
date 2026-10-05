@@ -166,7 +166,7 @@ export function PrecisionHelp({ basis }: { basis: PrecisionBasis | null }) {
 			</p>
 			<ul className="flex list-disc flex-col gap-1 pl-4">
 				<li>
-					センチメント: 強い弱気〜強い強気の5段階を、
+					センチメント: かなり弱気〜かなり強気の5段階を、
 					{sb
 						? `±${sb.small}% 未満=横ばい、±${sb.large}% 未満=上昇・下落、それ以上=大きく上昇・大きく下落`
 						: "横ばい・上昇・下落・大きく上昇・大きく下落"}

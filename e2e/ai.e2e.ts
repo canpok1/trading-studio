@@ -52,7 +52,7 @@ test("取得して採点したニュースが一覧に出て、市場評価が�
 	);
 	await expect(
 		page.getByRole("list", { name: "センチメントの色の意味" }),
-	).toHaveText(/強い弱気.*やや弱気.*中立.*やや強気.*強い強気/);
+	).toHaveText(/かなり弱気.*やや弱気.*中立.*やや強気.*かなり強気/);
 	await expect(page.getByRole("list", { name: "リスクの色の意味" })).toHaveText(
 		/平常.*警戒.*危機/,
 	);
