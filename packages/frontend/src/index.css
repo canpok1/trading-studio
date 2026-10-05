@@ -11,7 +11,7 @@
 	--font-mono:
 		"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 
-	--color-bg: #f3f4f1;
+	--color-bg: #e3e8e7;
 	--color-surface: #ffffff;
 	--color-surface-2: #e9ebe6;
 	--color-text: #15171a;
@@ -24,8 +24,13 @@
 	--color-rsi1: #7a4fc4;
 	--color-rsi2: #b0417f;
 	--color-bb: #5f6f94;
-	--color-accent: #1d5bd8;
+	/* テーマカラー（青みの深緑）。ボタン・選択中の印に使う。利益・上昇の緑とは明るさで分ける */
+	--color-accent: #0f4c4a;
 	--color-accent-ink: #ffffff;
+	/* メニュー（PC のサイドバー・スマホの下部タブ）の地の色と、その上の文字 */
+	--color-brand: #0f4c4a;
+	--color-brand-ink: #ffffff;
+	--color-brand-ink-2: rgba(255, 255, 255, 0.7);
 	--color-buy: #1d5bd8;
 	--color-sell: #c24e0e;
 	--color-cancel: #7d838a;
@@ -93,8 +98,11 @@
 	--color-rsi1: #b595f0;
 	--color-rsi2: #e58fbf;
 	--color-bb: #a3b3d6;
-	--color-accent: #6d9bf2;
+	--color-accent: #5fb0ac;
 	--color-accent-ink: #0e1012;
+	--color-brand: #11302f;
+	--color-brand-ink: #e7e9e5;
+	--color-brand-ink-2: rgba(231, 233, 229, 0.65);
 	--color-buy: #5c8ff0;
 	--color-sell: #f08a4b;
 	--color-cancel: #8a9198;

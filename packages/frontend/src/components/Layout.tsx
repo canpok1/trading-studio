@@ -95,7 +95,7 @@ export function Layout({ badges = {} }: { badges?: Record<string, boolean> }) {
 			<nav
 				aria-label="メイン"
 				className={[
-					"fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:sticky lg:top-0 lg:flex lg:h-screen lg:shrink-0 lg:flex-col lg:gap-0.5 lg:border-t-0 lg:border-r lg:py-5",
+					"fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-brand bg-brand text-brand-ink-2 pb-[env(safe-area-inset-bottom)] lg:sticky lg:top-0 lg:flex lg:h-screen lg:shrink-0 lg:flex-col lg:gap-0.5 lg:border-t-0 lg:py-5",
 					collapsed ? "lg:w-16 lg:px-2" : "lg:w-[220px] lg:px-3",
 				].join(" ")}
 			>
@@ -106,7 +106,9 @@ export function Layout({ badges = {} }: { badges?: Record<string, boolean> }) {
 					].join(" ")}
 				>
 					{!collapsed && (
-						<span className="text-[15px] font-bold">trading-studio</span>
+						<span className="text-[15px] font-bold text-brand-ink">
+							trading-studio
+						</span>
 					)}
 					<button
 						type="button"
@@ -116,7 +118,7 @@ export function Layout({ badges = {} }: { badges?: Record<string, boolean> }) {
 							collapsed ? "サイドメニューを広げる" : "サイドメニューを畳む"
 						}
 						title={collapsed ? "広げる" : "畳む"}
-						className="flex h-8 w-8 items-center justify-center rounded-lg text-text-2 hover:bg-surface-2 hover:text-text"
+						className="flex h-8 w-8 items-center justify-center rounded-lg text-brand-ink-2 hover:bg-white/10 hover:text-brand-ink"
 					>
 						<CollapseIcon collapsed={collapsed} />
 					</button>
@@ -138,9 +140,10 @@ export function Layout({ badges = {} }: { badges?: Record<string, boolean> }) {
 										: "lg:justify-start lg:gap-2.5 lg:px-2.5",
 									item.show === "tab" ? "lg:hidden" : "",
 									item.show === "side" ? "hidden lg:flex" : "",
+									// スマホは選択中のタブの上端に線、PC は行を塗る
 									active
-										? "font-bold text-accent lg:bg-surface-2 lg:text-text"
-										: "text-text-2 lg:text-text",
+										? "font-bold text-brand-ink before:absolute before:inset-x-[30%] before:top-0 before:h-[3px] before:rounded-b before:bg-brand-ink lg:bg-white/15 lg:before:hidden"
+										: "text-brand-ink-2 lg:hover:bg-white/10 lg:hover:text-brand-ink",
 								].join(" ");
 							}}
 						>
@@ -152,7 +155,7 @@ export function Layout({ badges = {} }: { badges?: Record<string, boolean> }) {
 								<span
 									data-testid={`badge-${item.to}`}
 									className={[
-										"absolute top-2.5 right-[calc(50%-18px)] h-2 w-2 rounded-full bg-accent",
+										"absolute top-2.5 right-[calc(50%-18px)] h-2 w-2 rounded-full bg-brand-ink",
 										collapsed ? "lg:top-2 lg:right-2" : "lg:static lg:ml-auto",
 									].join(" ")}
 								>

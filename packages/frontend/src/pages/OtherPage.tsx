@@ -43,7 +43,7 @@ export function OtherPage() {
 					›
 				</Link>
 			</div>
-			<AppVersion className="block text-center" />
+			<AppVersion className="block text-center text-text-2" />
 		</Page>
 	);
 }
