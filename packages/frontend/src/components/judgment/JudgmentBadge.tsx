@@ -64,7 +64,7 @@ export function JudgmentBadge<J extends Judge>({
 			style={
 				crisis
 					? { background: `var(${s.solid})` }
-					: judge === "risk" && value === "caution"
+					: judge === "risk" && value !== "calm"
 						? { background: `var(${s.bg})` }
 						: undefined
 			}
@@ -131,8 +131,10 @@ export function ZoneBar({
 	const zones: [string, number, number][] =
 		judge === "risk"
 			? [
-					["normal", min, t.risk.caution],
-					["caution", t.risk.caution, t.risk.crisis],
+					["calm", min, t.risk.mild],
+					["mild", t.risk.mild, t.risk.alert],
+					["alert", t.risk.alert, t.risk.severe],
+					["severe", t.risk.severe, t.risk.crisis],
 					["crisis", t.risk.crisis, max],
 				]
 			: [

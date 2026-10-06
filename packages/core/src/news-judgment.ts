@@ -13,7 +13,7 @@ export const JUDGE_LABELS: Record<Judge, string> = {
 /** 判定の値。並びは画面の複数選択の並び */
 export const JUDGMENT_VALUES = {
 	sentiment: ["+2", "+1", "0", "-1", "-2"],
-	risk: ["normal", "caution", "crisis"],
+	risk: ["calm", "mild", "alert", "severe", "crisis"],
 } as const satisfies Record<Judge, readonly string[]>;
 
 export type JudgmentValue<J extends Judge = Judge> =
@@ -32,9 +32,14 @@ export type JudgmentConditionValue<J extends Judge = Judge> =
 	(typeof JUDGMENT_CONDITION_VALUES)[J][number];
 
 export const JUDGMENT_VALUE_LABELS: Record<string, string> = {
+	calm: "平常",
+	mild: "やや警戒",
+	alert: "警戒",
+	severe: "かなり警戒",
+	crisis: "危機",
+	// リスクが3段階だった頃の値。取引の判断の記録に残っている
 	normal: "平常",
 	caution: "警戒",
-	crisis: "危機",
 	"+2": "かなり強気",
 	"+1": "やや強気",
 	"0": "中立",
@@ -46,7 +51,7 @@ export const JUDGMENT_VALUE_LABELS: Record<string, string> = {
 /** 期間内に対象が無いときの判定 */
 export const NEUTRAL: { [J in Judge]: JudgmentValue<J> } = {
 	sentiment: "0",
-	risk: "normal",
+	risk: "calm",
 };
 
 /** 観点ごとの点数の範囲。センチメントは 0 が中立の両側、リスクは 0 が安全の片側 */
@@ -99,8 +104,8 @@ export type ScoredNews = {
 export type AggregationRule = {
 	halfLifeHours: Record<LastingDuration, number>;
 	thresholds: {
-		/** caution 以上=警戒、crisis 以上=危機 */
-		risk: { caution: number; crisis: number };
+		/** mild 以上=やや警戒、alert 以上=警戒、severe 以上=かなり警戒、crisis 以上=危機 */
+		risk: { mild: number; alert: number; severe: number; crisis: number };
 		/** plus2 以上=+2、plus1 以上=+1、minus1 未満=−1、minus2 未満=−2。画面では各値の下限として見せる（judgmentBands） */
 		sentiment: { plus2: number; plus1: number; minus1: number; minus2: number };
 	};
@@ -109,7 +114,7 @@ export type AggregationRule = {
 export const DEFAULT_AGGREGATION_RULE: AggregationRule = {
 	halfLifeHours: { short: 6, medium: 24, long: 72 },
 	thresholds: {
-		risk: { caution: 40, crisis: 70 },
+		risk: { mild: 20, alert: 40, severe: 55, crisis: 70 },
 		sentiment: { plus2: 60, plus1: 20, minus1: -20, minus2: -60 },
 	},
 };
@@ -148,8 +153,10 @@ export function judgmentBands<J extends Judge>(
 		judge === "risk"
 			? [
 					["crisis", "crisis", rule.thresholds.risk.crisis],
-					["caution", "caution", rule.thresholds.risk.caution],
-					["normal", null, min],
+					["severe", "severe", rule.thresholds.risk.severe],
+					["alert", "alert", rule.thresholds.risk.alert],
+					["mild", "mild", rule.thresholds.risk.mild],
+					["calm", null, min],
 				]
 			: [
 					["+2", "plus2", rule.thresholds.sentiment.plus2],
@@ -194,11 +201,19 @@ export function validateAggregationRule(r: AggregationRule): ValidationError[] {
 	}
 	if (!scoresOk) return errors;
 	const t = r.thresholds;
-	if (t.risk.caution >= t.risk.crisis) {
+	// やや警戒・かなり警戒は、3段階だった頃のルールを読み替えたときに範囲が無くなることがあるので、範囲なしにできる
+	const rk = t.risk;
+	if (rk.mild > rk.alert) {
+		err("thresholds.risk.mild", `警戒の下限（${rk.alert}）以下にする`);
+	}
+	if (rk.alert >= rk.severe) {
 		err(
-			"thresholds.risk.caution",
-			`危機の下限（${t.risk.crisis}）より小さくする`,
+			"thresholds.risk.alert",
+			`かなり警戒の下限（${rk.severe}）より小さくする`,
 		);
+	}
+	if (rk.severe > rk.crisis) {
+		err("thresholds.risk.severe", `危機の下限（${rk.crisis}）以下にする`);
 	}
 	const se = t.sentiment;
 	if (se.plus1 >= se.plus2) {
@@ -232,7 +247,8 @@ function num(v: unknown): number {
 
 /**
  * JSON から読む。形が違えば null。値の範囲は validateAggregationRule で見る。
- * 半減期が1つだけの古い形（windowHours と数値の halfLifeHours）は、その半減期を短期にし、中期・長期は既定値（短期より短ければ短期と同じ）にする
+ * 半減期が1つだけの古い形（windowHours と数値の halfLifeHours）は、その半減期を短期にし、中期・長期は既定値（短期より短ければ短期と同じ）にする。
+ * リスクが3段階（caution・crisis）だった頃の形は、警戒・危機の下限をそのまま残し、やや警戒の下限を警戒の下限の半分（切り捨て）、かなり警戒の下限を警戒と危機の下限の中間（切り上げ）に置く。警戒は範囲が残り、旧形が正しければ検証を通る（legacyRiskValues と合わせて判定が変わらない）
  */
 export function parseAggregationRule(v: unknown): AggregationRule | null {
 	if (!isObj(v) || !isObj(v.thresholds)) return null;
@@ -260,7 +276,7 @@ export function parseAggregationRule(v: unknown): AggregationRule | null {
 	return {
 		halfLifeHours,
 		thresholds: {
-			risk: { caution: num(t.risk.caution), crisis: num(t.risk.crisis) },
+			risk: parseRiskThresholds(t.risk),
 			sentiment: {
 				plus2: num(t.sentiment.plus2),
 				plus1: num(t.sentiment.plus1),
@@ -269,6 +285,42 @@ export function parseAggregationRule(v: unknown): AggregationRule | null {
 			},
 		},
 	};
+}
+
+function parseRiskThresholds(
+	r: Record<string, unknown>,
+): AggregationRule["thresholds"]["risk"] {
+	if (r.alert === undefined && r.caution !== undefined) {
+		const alert = num(r.caution);
+		const crisis = num(r.crisis);
+		return {
+			mild: Math.floor(alert / 2),
+			alert,
+			severe: Math.ceil((alert + crisis) / 2),
+			crisis,
+		};
+	}
+	return {
+		mild: num(r.mild),
+		alert: num(r.alert),
+		severe: num(r.severe),
+		crisis: num(r.crisis),
+	};
+}
+
+/**
+ * リスクが3段階だった頃の条件の値を5段階の値に置き換える。parseAggregationRule の置き換えと合わせると、同じ点数で同じ結果になる。
+ * 平常→平常・やや警戒、警戒→警戒・かなり警戒。それ以外（危機・データなし・今の値）はそのまま
+ */
+export function legacyRiskValues(values: readonly string[]): string[] {
+	const out = values.flatMap((v) =>
+		v === "normal"
+			? ["calm", "mild"]
+			: v === "caution"
+				? ["alert", "severe"]
+				: [v],
+	);
+	return [...new Set(out)];
 }
 
 /** ニュースの新しさを測る時刻。公開時刻が取得時刻より後（未来の日付）なら取得時刻 */
@@ -289,9 +341,13 @@ export function classify<J extends Judge>(
 			v =
 				average >= t.risk.crisis
 					? "crisis"
-					: average >= t.risk.caution
-						? "caution"
-						: "normal";
+					: average >= t.risk.severe
+						? "severe"
+						: average >= t.risk.alert
+							? "alert"
+							: average >= t.risk.mild
+								? "mild"
+								: "calm";
 			break;
 		default: {
 			const s = t.sentiment;

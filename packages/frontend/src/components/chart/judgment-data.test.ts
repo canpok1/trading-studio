@@ -15,14 +15,14 @@ describe("alignJudgments", () => {
 				firstScoredAt: 0,
 				values: {
 					sentiment: ["0", null, "-2"],
-					risk: ["normal", "normal", "crisis"],
+					risk: ["calm", "calm", "crisis"],
 				},
 			},
 			// 110 の足は欠けている。90 と 130 は並びの範囲外
 			[90, 100, 120, 130],
 		);
 		expect(r?.sentiment).toEqual([null, "0", "-2", null]);
-		expect(r?.risk).toEqual([null, "normal", "crisis", null]);
+		expect(r?.risk).toEqual([null, "calm", "crisis", null]);
 	});
 });
 

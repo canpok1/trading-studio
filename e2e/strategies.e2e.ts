@@ -123,18 +123,21 @@ test("市場評価の条件を追加して保存でき、値を1つも選ばな�
 		.getByRole("button", { name: "リスクが指定のどれか" })
 		.click();
 	const risk = buy.getByRole("group").filter({ hasText: "リスクが" });
-	await expect(risk.getByLabel("平常")).toBeChecked();
-	await expect(risk.getByLabel("警戒")).toBeChecked();
-	await expect(risk.getByLabel("危機")).not.toBeChecked();
+	const safe = ["平常", "やや警戒", "警戒", "かなり警戒"];
+	for (const v of safe) {
+		await expect(risk.getByLabel(v, { exact: true })).toBeChecked();
+	}
+	await expect(risk.getByLabel("危機", { exact: true })).not.toBeChecked();
 
-	await risk.getByText("平常").click();
-	await risk.getByText("警戒").click();
+	for (const v of safe) {
+		await risk.getByText(v, { exact: true }).click();
+	}
 	await expect(risk).toContainText("1つ以上選ぶ");
 	await expect(
 		page.getByRole("button", { name: "入力を直すと保存できる" }),
 	).toBeDisabled();
 
-	await risk.getByText("平常").click();
+	await risk.getByText("平常", { exact: true }).click();
 	await page.getByRole("button", { name: "保存", exact: true }).click();
 	await expect(page.getByRole("status")).toHaveText("保存した");
 	await page.reload();
@@ -142,8 +145,8 @@ test("市場評価の条件を追加して保存でき、値を1つも選ばな�
 		.getByRole("region", { name: "買い注文する条件" })
 		.getByRole("group")
 		.filter({ hasText: "リスクが" });
-	await expect(saved.getByLabel("平常")).toBeChecked();
-	await expect(saved.getByLabel("警戒")).not.toBeChecked();
+	await expect(saved.getByLabel("平常", { exact: true })).toBeChecked();
+	await expect(saved.getByLabel("警戒", { exact: true })).not.toBeChecked();
 });
 
 test("RSI の条件を追加して保存でき、範囲外の値では保存できない", async ({

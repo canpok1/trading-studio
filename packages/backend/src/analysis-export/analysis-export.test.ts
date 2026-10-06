@@ -271,7 +271,7 @@ describe("分析用エクスポート", () => {
 			sentiment: "+2",
 			sentiment_average: "80",
 			sentiment_count: "1",
-			risk: "normal",
+			risk: "calm",
 			risk_average: "10",
 			risk_count: "1",
 		});

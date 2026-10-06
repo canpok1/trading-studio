@@ -17,16 +17,28 @@ export const VALUE_STYLES: {
 	[J in Judge]: Record<JudgmentValue<J>, ValueStyle>;
 } = {
 	risk: {
-		normal: {
+		calm: {
 			label: "平常",
 			bg: "--color-normal-bg",
 			solid: "--color-normal",
 			shape: "circle",
 		},
-		caution: {
+		mild: {
+			label: "やや警戒",
+			bg: "--color-mild-bg",
+			solid: "--color-mild",
+			shape: "tri",
+		},
+		alert: {
 			label: "警戒",
 			bg: "--color-caution-bg",
 			solid: "--color-caution",
+			shape: "tri",
+		},
+		severe: {
+			label: "かなり警戒",
+			bg: "--color-severe-bg",
+			solid: "--color-severe",
 			shape: "tri",
 		},
 		crisis: {
@@ -70,11 +82,16 @@ export const VALUE_STYLES: {
 	},
 };
 
+/** リスクが3段階だった頃の値（取引の判断の記録に残っている）は、同じ名前の今の値の見た目にする */
+const LEGACY_VALUES: Record<string, string> = {
+	normal: "calm",
+	caution: "alert",
+};
+
 export function valueStyle<J extends Judge>(
 	judge: J,
 	value: JudgmentValue<J>,
 ): ValueStyle {
-	return (VALUE_STYLES[judge] as Record<string, ValueStyle>)[
-		value
-	] as ValueStyle;
+	const styles = VALUE_STYLES[judge] as Record<string, ValueStyle>;
+	return (styles[value] ?? styles[LEGACY_VALUES[value] ?? ""]) as ValueStyle;
 }

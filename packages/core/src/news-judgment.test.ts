@@ -12,6 +12,7 @@ import {
 	judgeAt,
 	judgmentBands,
 	judgmentSeries,
+	legacyRiskValues,
 	newsTime,
 	parseAggregationRule,
 	validateAggregationRule,
@@ -86,7 +87,7 @@ describe("judgeAt", () => {
 			NOW,
 			rule,
 		);
-		expect(s.results.risk).toEqual({ value: "caution", average: 40, count: 2 });
+		expect(s.results.risk).toEqual({ value: "alert", average: 40, count: 2 });
 		expect(s.results.sentiment).toEqual({ value: "+1", average: 20, count: 2 });
 	});
 
@@ -98,7 +99,7 @@ describe("judgeAt", () => {
 		);
 		expect(s.weights.size).toBe(0);
 		expect(s.results.risk).toEqual({
-			value: "normal",
+			value: "calm",
 			average: null,
 			count: 0,
 		});
@@ -134,9 +135,13 @@ test("平均点は整数に丸めてから判定する", () => {
 
 describe("classify のしきい値の境界", () => {
 	test.each([
-		[39.9, "normal"],
-		[40, "caution"],
-		[69.9, "caution"],
+		[19.9, "calm"],
+		[20, "mild"],
+		[39.9, "mild"],
+		[40, "alert"],
+		[54.9, "alert"],
+		[55, "severe"],
+		[69.9, "severe"],
 		[70, "crisis"],
 	] as const)("リスク %p → %p", (avg, v) => {
 		expect(classify("risk", avg, rule)).toBe(v);
@@ -266,8 +271,10 @@ describe("judgmentBands", () => {
 		]);
 		expect(judgmentBands("risk", rule)).toEqual([
 			{ value: "crisis", min: 70, max: 100, key: "crisis" },
-			{ value: "caution", min: 40, max: 69, key: "caution" },
-			{ value: "normal", min: 0, max: 39, key: null },
+			{ value: "severe", min: 55, max: 69, key: "severe" },
+			{ value: "alert", min: 40, max: 54, key: "alert" },
+			{ value: "mild", min: 20, max: 39, key: "mild" },
+			{ value: "calm", min: 0, max: 19, key: null },
 		]);
 	});
 
@@ -290,14 +297,15 @@ describe("validateAggregationRule", () => {
 		const bad: AggregationRule = {
 			halfLifeHours: { short: 0, medium: 6.5, long: 72 },
 			thresholds: {
-				risk: { caution: 70, crisis: 40 },
+				risk: { mild: 20, alert: 70, severe: 55, crisis: 40 },
 				sentiment: { plus2: 60, plus1: 60, minus1: 70, minus2: 70 },
 			},
 		};
 		expect(validateAggregationRule(bad).map((e) => e.path)).toEqual([
 			"halfLifeHours.short",
 			"halfLifeHours.medium",
-			"thresholds.risk.caution",
+			"thresholds.risk.alert",
+			"thresholds.risk.severe",
 			"thresholds.sentiment.plus1",
 			"thresholds.sentiment.minus1",
 			"thresholds.sentiment.minus2",
@@ -306,11 +314,11 @@ describe("validateAggregationRule", () => {
 
 	test("しきい値が観点の点数の範囲の整数でなければ並びは見ない", () => {
 		const bad = structuredClone(rule);
-		bad.thresholds.risk.caution = -1;
+		bad.thresholds.risk.alert = -1;
 		bad.thresholds.sentiment.minus2 = -101;
 		expect(validateAggregationRule(bad).map((e) => e.path)).toEqual([
 			"thresholds.sentiment.minus2",
-			"thresholds.risk.caution",
+			"thresholds.risk.alert",
 		]);
 	});
 
@@ -344,6 +352,32 @@ test("parseAggregationRule は半減期が1つの古い形を短期として読�
 	expect(
 		parseAggregationRule({ ...old, halfLifeHours: 48 })?.halfLifeHours,
 	).toEqual({ short: 48, medium: 48, long: 72 });
+});
+
+test("リスクが3段階だった頃のルールと条件は、同じ点数で同じ結果になるように読む", () => {
+	const old = {
+		halfLifeHours: rule.halfLifeHours,
+		thresholds: {
+			risk: { caution: 35, crisis: 80 },
+			sentiment: rule.thresholds.sentiment,
+		},
+	};
+	const r = parseAggregationRule(old);
+	expect(r?.thresholds.risk).toEqual({
+		mild: 17,
+		alert: 35,
+		severe: 58,
+		crisis: 80,
+	});
+	if (!r) return;
+	expect(validateAggregationRule(r)).toEqual([]);
+	const oldValue = (avg: number) =>
+		avg >= 80 ? "crisis" : avg >= 35 ? "caution" : "normal";
+	for (let avg = 0; avg <= 100; avg++) {
+		expect(legacyRiskValues([oldValue(avg)])).toContain(
+			classify("risk", avg, r),
+		);
+	}
 });
 
 test("半減期は 短期 ≦ 中期 ≦ 長期 でなければ保存できない", () => {

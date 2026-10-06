@@ -265,7 +265,7 @@ export class NewsRepository {
 		}
 		if (f.impacts.includes("risk")) {
 			impacts.push("s.risk >= ?");
-			args.push(t.risk.caution);
+			args.push(t.risk.alert);
 		}
 		if (impacts.length) {
 			where.push(

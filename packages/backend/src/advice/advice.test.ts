@@ -622,7 +622,7 @@ describe("AI に渡す資料", () => {
 					firstScoredAt: 0,
 					values: {
 						sentiment,
-						risk: bars.map(() => "normal" as const),
+						risk: bars.map(() => "calm" as const),
 					},
 				},
 			},

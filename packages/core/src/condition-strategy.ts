@@ -14,6 +14,7 @@ import {
 	JUDGMENT_CONDITION_VALUES,
 	JUDGMENT_VALUE_LABELS,
 	JUDGMENT_VALUES,
+	legacyRiskValues,
 	NO_JUDGMENT,
 } from "./news-judgment";
 import type {
@@ -1646,7 +1647,10 @@ function parseCondition(
 			return {
 				type: "judgment",
 				judge: v.judge as Judge,
-				values: v.values as JudgmentConditionValue[],
+				// リスクが3段階だった頃の値は、同じ点数で同じ結果になる5段階の値に置き換える
+				values: (v.judge === "risk"
+					? legacyRiskValues(v.values)
+					: v.values) as JudgmentConditionValue[],
 			};
 		case "entryChange":
 			if (v.direction !== "up" && v.direction !== "down") return null;
