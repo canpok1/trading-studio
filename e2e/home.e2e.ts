@@ -213,6 +213,26 @@ test("ローソク足に切り替えると4本値が出て、再読み込み後�
 	await expect(page.getByText(/^始 /)).toBeHidden();
 });
 
+test("買値は最初は出し、隠すと再読み込み後も隠したまま", async ({ page }) => {
+	await page.goto("/home");
+	await expect(page.getByTestId("chart-close")).toHaveText(/^[\d,]+円$/, {
+		timeout: 15_000,
+	});
+	const menu = page.getByRole("button", { name: /^表示/ });
+	const toggle = page.getByRole("button", { name: "買値", exact: true });
+	await expect(menu).toContainText("買値");
+	await openDisplay(page);
+	await expect(toggle).toHaveAttribute("aria-pressed", "true");
+	await toggle.click();
+	await expect(toggle).toHaveAttribute("aria-pressed", "false");
+	await expect(menu).not.toContainText("買値");
+
+	await page.reload();
+	await expect(menu).not.toContainText("買値");
+	await openDisplay(page);
+	await expect(toggle).toHaveAttribute("aria-pressed", "false");
+});
+
 test("ホームは横にはみ出さない", async ({ page }) => {
 	await page.goto("/home");
 	await expect(page.getByTestId("chart-close")).toBeVisible();
