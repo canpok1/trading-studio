@@ -11,7 +11,7 @@ const scoringDown = fileURLToPath(
 const DEFAULT_RULE = {
 	halfLifeHours: { short: 6, medium: 24, long: 72 },
 	thresholds: {
-		risk: { caution: 40, crisis: 70 },
+		risk: { mild: 20, alert: 40, severe: 55, crisis: 70 },
 		sentiment: { plus2: 60, plus1: 20, minus1: -20, minus2: -60 },
 	},
 };
@@ -54,7 +54,7 @@ test("取得して採点したニュースが一覧に出て、市場評価が�
 		page.getByRole("list", { name: "センチメントの色の意味" }),
 	).toHaveText(/かなり弱気.*やや弱気.*中立.*やや強気.*かなり強気/);
 	await expect(page.getByRole("list", { name: "リスクの色の意味" })).toHaveText(
-		/平常.*警戒.*危機/,
+		/平常.*やや警戒.*警戒.*かなり警戒.*危機/,
 	);
 });
 

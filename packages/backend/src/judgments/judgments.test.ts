@@ -71,7 +71,7 @@ test("今の判定と重み", async () => {
 		time: 100 * H,
 		results: {
 			sentiment: { value: "+1", average: 20, count: 2 },
-			risk: { value: "normal", average: 0, count: 2 },
+			risk: { value: "calm", average: 0, count: 2 },
 		},
 		firstScoredAt: 70 * H,
 	});
@@ -139,7 +139,7 @@ test("足ごとの判定は足の終わりの時刻で出し、採点の記録�
 		"-1",
 	]);
 	expect(r.values.risk[0]).toBeNull();
-	expect(r.values.risk[1]).toBe("normal");
+	expect(r.values.risk[1]).toBe("calm");
 });
 
 test("足の粒度や期間が不正なら 400", async () => {

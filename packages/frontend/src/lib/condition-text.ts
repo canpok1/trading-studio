@@ -67,7 +67,7 @@ function conditionBody(c: Condition): string {
 export function ruleText(r: AggregationRule): string {
 	const t = r.thresholds;
 	const h = r.halfLifeHours;
-	return `評価ルール 半減期 短期${h.short}・中期${h.medium}・長期${h.long}時間 · センチメントの境目 ${t.sentiment.minus2}/${t.sentiment.minus1}/${t.sentiment.plus1}/${t.sentiment.plus2} · リスクの境目 ${t.risk.caution}/${t.risk.crisis}`;
+	return `評価ルール 半減期 短期${h.short}・中期${h.medium}・長期${h.long}時間 · センチメントの境目 ${t.sentiment.minus2}/${t.sentiment.minus1}/${t.sentiment.plus1}/${t.sentiment.plus2} · リスクの境目 ${t.risk.mild}/${t.risk.alert}/${t.risk.severe}/${t.risk.crisis}`;
 }
 
 export function buyOrderText(o: BuyOrder): string {

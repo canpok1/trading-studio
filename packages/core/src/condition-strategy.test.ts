@@ -863,6 +863,25 @@ describe("市場評価の条件", () => {
 		).toEqual([]);
 	});
 
+	test("リスクが3段階だった頃の値は、同じ点数で同じ結果になる5段階の値で読む", () => {
+		const p = parseConditionSet(
+			JSON.parse(
+				JSON.stringify(
+					buyWith({
+						type: "judgment",
+						judge: "risk",
+						values: ["normal", "caution", "none"] as never,
+					}),
+				),
+			),
+		);
+		expect(p?.buy.conditions[0]).toEqual({
+			type: "judgment",
+			judge: "risk",
+			values: ["calm", "mild", "alert", "severe", "none"],
+		});
+	});
+
 	test("売りのグループにも入れられる", () => {
 		const p = params({
 			stopLoss: {

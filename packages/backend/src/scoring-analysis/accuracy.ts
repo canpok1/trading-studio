@@ -25,8 +25,14 @@ export function roughLevel(pct: number, b: RiskBands): number {
 					: 4;
 }
 
-/** リスクの段階を値動きの5段階に当てる。平常＝静か、警戒＝荒れた、危機＝大荒れ */
-const RISK_LEVEL = { normal: 0, caution: 2, crisis: 4 } as const;
+/** リスクの段階を値動きの5段階に当てる。平常＝静か、やや警戒＝やや荒れ、警戒＝荒れた、かなり警戒＝かなり荒れ、危機＝大荒れ */
+const RISK_LEVEL = {
+	calm: 0,
+	mild: 1,
+	alert: 2,
+	severe: 3,
+	crisis: 4,
+} as const;
 
 /** 段階のずれから精度。一致で 5、1段ずれるごとに 1 下げる（5段階どうしなので 1 が最低） */
 const precisionOf = (predicted: number, actual: number) =>

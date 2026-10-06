@@ -181,7 +181,7 @@ describe("自動取引のオンオフ", () => {
 		const detail = t.trading.order(1, "p1");
 		expect(detail?.decision?.judgments).toEqual({
 			sentiment: "0",
-			risk: "normal",
+			risk: "calm",
 		});
 		expect(detail?.decision?.decision.time).toBe(T0 + M);
 		const api = await t.call("GET", "/orders/1/p1");

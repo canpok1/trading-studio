@@ -419,7 +419,7 @@ const JUDGMENT_DEFAULTS: {
 	[J in Judge]: { buy: JudgmentValue<J>[]; sell: JudgmentValue<J>[] };
 } = {
 	sentiment: { buy: ["0", "+1", "+2"], sell: ["-2"] },
-	risk: { buy: ["normal", "caution"], sell: ["crisis"] },
+	risk: { buy: ["calm", "mild", "alert", "severe"], sell: ["crisis"] },
 };
 
 function defaultCondition(

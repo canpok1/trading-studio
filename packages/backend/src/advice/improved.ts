@@ -96,7 +96,7 @@ const CONDITION: ResponseSchema = {
 		values: opt({
 			type: "ARRAY",
 			description:
-				"判定の値。sentiment: +2=かなり強気・+1=やや強気・0=中立・-1=やや弱気・-2=かなり弱気 / risk: normal=平常・caution=警戒・crisis=危機 / どれでも none=データなし（採点の記録が始まる前）",
+				"判定の値。sentiment: +2=かなり強気・+1=やや強気・0=中立・-1=やや弱気・-2=かなり弱気 / risk: calm=平常・mild=やや警戒・alert=警戒・severe=かなり警戒・crisis=危機 / どれでも none=データなし（採点の記録が始まる前）",
 			items: {
 				type: "STRING",
 				enum: [...new Set(Object.values(JUDGMENT_CONDITION_VALUES).flat())],

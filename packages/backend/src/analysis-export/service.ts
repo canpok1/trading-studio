@@ -191,14 +191,24 @@ function ruleRows(rule: AggregationRule): RuleRow[] {
 			desc: `持続が${DURATION_LABELS[d]}（${d}）のニュースの重みの半減期（時間）。新しさの時刻からこの時間で重みが半分になり、${HALF_LIVES_IN_WINDOW}倍たったら集計に使わない`,
 		})),
 		{
-			key: "risk_caution",
-			value: t.risk.caution,
+			key: "risk_mild",
+			value: t.risk.mild,
+			desc: "平均点がこれ以上ならやや警戒（これ未満は平常）",
+		},
+		{
+			key: "risk_alert",
+			value: t.risk.alert,
 			desc: "平均点がこれ以上なら警戒",
+		},
+		{
+			key: "risk_severe",
+			value: t.risk.severe,
+			desc: "平均点がこれ以上ならかなり警戒",
 		},
 		{
 			key: "risk_crisis",
 			value: t.risk.crisis,
-			desc: "平均点がこれ以上なら危機（警戒未満は平常）",
+			desc: "平均点がこれ以上なら危機",
 		},
 		{
 			key: "sentiment_plus2",
@@ -231,7 +241,7 @@ type JudgmentRow = {
 
 const JUDGE_DESC: Record<Judge, string> = {
 	sentiment: "センチメントの判定（+2 / +1 / 0 / -1 / -2）",
-	risk: "リスクの判定（normal: 平常 / caution: 警戒 / crisis: 危機）",
+	risk: "リスクの判定（calm: 平常 / mild: やや警戒 / alert: 警戒 / severe: かなり警戒 / crisis: 危機）",
 };
 
 const judgmentsTable: Table<JudgmentRow> = {
