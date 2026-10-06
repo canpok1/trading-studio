@@ -73,7 +73,7 @@ test("採点した記事に、値動きを測るまでは精度の測定中を�
 	await expect(page.getByTestId("judge-sentiment")).not.toContainText("精度");
 });
 
-test("精度分析のタブに、市場評価に使った記事の段階ごとの件数と重みの割合を出す", async ({
+test("精度分析のタブに、市場評価に使った記事の段階ごとの件数・平均点・重みの割合を出す", async ({
 	page,
 }) => {
 	await page.goto("/news");
@@ -87,8 +87,8 @@ test("精度分析のタブに、市場評価に使った記事の段階ごと�
 	).toBeVisible();
 	const sentiment = page.getByTestId("breakdown-sentiment");
 	await expect(sentiment.getByRole("row")).toHaveText([
-		/記事の点数の段階.*件数.*重みの割合/,
-		/かなり強気\s*\d+件\s*(\d+%|1%未満)/,
+		/記事の点数の段階.*件数.*平均点.*重みの割合/,
+		/かなり強気\s*\d+件\s*(-?\d+点|—)\s*(\d+%|1%未満)/,
 		/やや強気\s*\d+件/,
 		/中立\s*\d+件/,
 		/やや弱気\s*\d+件/,
