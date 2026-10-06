@@ -86,6 +86,7 @@ test("今の判定と重み", async () => {
 		["-2", 0],
 	]);
 	expect(r.breakdown.sentiment[0]?.share).toBeCloseTo(2 / 3);
+	expect(r.breakdown.sentiment[0]?.average).toBe(60);
 });
 
 test("集計ルールの保存で判定が変わる。試算は保存しない", async () => {

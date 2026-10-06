@@ -14,7 +14,7 @@ function percent(share: number, count: number): string {
 	return p === 0 ? "1%未満" : `${p}%`;
 }
 
-/** 市場評価に使った記事を、記事の点数の段階ごとに件数と重みの割合で出す */
+/** 市場評価に使った記事を、記事の点数の段階ごとに件数・重みの割合・平均点で出す */
 export function BreakdownCards({ current }: { current: CurrentJudgment }) {
 	return (
 		<>
@@ -56,6 +56,7 @@ function BreakdownCard({
 						<th className="py-1 text-left font-normal">記事の点数の段階</th>
 						<th className="py-1 text-right font-normal">件数</th>
 						<th className="py-1 text-right font-normal">重みの割合</th>
+						<th className="py-1 text-right font-normal">平均点</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -68,6 +69,9 @@ function BreakdownCard({
 							<td className="num py-1.5 text-right">{row.count}件</td>
 							<td className="num py-1.5 text-right">
 								{percent(row.share, row.count)}
+							</td>
+							<td className="num py-1.5 text-right">
+								{row.average === null ? "—" : `${row.average}点`}
 							</td>
 						</tr>
 					))}

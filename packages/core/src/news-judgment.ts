@@ -471,10 +471,12 @@ export type BreakdownRow<J extends Judge = Judge> = {
 	count: number;
 	/** 重みの合計に占める割合（0〜1）。記事が無ければ 0 */
 	share: number;
+	/** その段階の記事の点数の重み付き平均（整数に丸める）。記事が無ければ null */
+	average: number | null;
 };
 
 /**
- * 判定に使った記事（重みが 0 より大きいもの）を、観点ごとに記事の点数の段階へ分けた件数と重みの割合。
+ * 判定に使った記事（重みが 0 より大きいもの）を、観点ごとに記事の点数の段階へ分けた件数・重みの割合・平均点。
  * 段階は評価基準の上の値から順（judgmentBands と同じ並び）。件数 0 の段階も出す
  */
 export function judgmentBreakdown(
@@ -483,15 +485,19 @@ export function judgmentBreakdown(
 	rule: AggregationRule,
 ): { [J in Judge]: BreakdownRow<J>[] } {
 	const rows = <J extends Judge>(j: J): BreakdownRow<J>[] => {
-		const acc = new Map<string, { count: number; weight: number }>();
+		const acc = new Map<
+			string,
+			{ count: number; weight: number; score: number }
+		>();
 		let total = 0;
 		for (const n of news) {
 			const w = weights.get(n.id) ?? 0;
 			if (w <= 0) continue;
 			const v = classify(j, n.scores[j], rule);
-			const a = acc.get(v) ?? { count: 0, weight: 0 };
+			const a = acc.get(v) ?? { count: 0, weight: 0, score: 0 };
 			a.count += 1;
 			a.weight += w;
+			a.score += w * n.scores[j];
 			acc.set(v, a);
 			total += w;
 		}
@@ -501,6 +507,10 @@ export function judgmentBreakdown(
 				value,
 				count: a?.count ?? 0,
 				share: a && total > 0 ? a.weight / total : 0,
+				// 全体の平均点と同じく、小数の誤差を落としてから丸める
+				average: a
+					? Math.round(Math.round((a.score / a.weight) * 1e6) / 1e6)
+					: null,
 			};
 		});
 	};
