@@ -25,3 +25,25 @@ export function useChartStyle(): [ChartStyle, (s: ChartStyle) => void] {
 	}, []);
 	return [style, set];
 }
+
+const ENTRY_KEY = "chart-entry";
+
+/** 買値の線を出すか。既定は出す。選んだものをブラウザに保存する */
+export function useShowEntry(): [boolean, (on: boolean) => void] {
+	const [on, setOn] = useState(() => {
+		try {
+			return localStorage.getItem(ENTRY_KEY) !== "off";
+		} catch {
+			return true;
+		}
+	});
+	const set = useCallback((v: boolean) => {
+		setOn(v);
+		try {
+			localStorage.setItem(ENTRY_KEY, v ? "on" : "off");
+		} catch {
+			// 保存できない環境では、この画面を開いている間だけ効く
+		}
+	}, []);
+	return [on, set];
+}

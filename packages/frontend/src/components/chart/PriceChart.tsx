@@ -49,7 +49,7 @@ import {
 	toSlots,
 	zoomRange,
 } from "./chart-data";
-import { useChartStyle } from "./chart-style";
+import { useChartStyle, useShowEntry } from "./chart-style";
 import {
 	BbSettingsModal,
 	EmaSettingsModal,
@@ -76,7 +76,7 @@ type Props = {
 	 * 省略すると最後の足の終値を出す（過去のデータを見るバックテスト結果）
 	 */
 	currentPrice?: number | null;
-	/** 保有中のロットの買値。ロットごとに線を引く */
+	/** 保有中のロットの買値。ロットごとに線を引く。渡すと「表示」に買値の切り替えを出す（ホーム） */
 	entryPrices?: readonly number[];
 	/** 表示の切り替えの先頭に置く操作（ホームの粒度の切り替えなど） */
 	toolbar?: ReactNode;
@@ -189,7 +189,7 @@ export function PriceChart({
 	onMarker,
 	initialSpanMs = null,
 	currentPrice,
-	entryPrices = NO_PERIODS,
+	entryPrices: entryProp,
 	toolbar,
 	compact = false,
 	latestNote,
@@ -229,6 +229,10 @@ export function PriceChart({
 	const [editing, setEditing] = useState<"ema" | "bb" | "rsi" | null>(null);
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [style, setStyle] = useChartStyle();
+	const [showEntry, setShowEntry] = useShowEntry();
+	const hasEntry = entryProp !== undefined;
+	// 隠すと線も軸の値も消え、縦の範囲にも含めない
+	const entryPrices = (showEntry && entryProp) || NO_PERIODS;
 	const [cursor, setCursor] = useState<number | null>(null);
 	const [themeTick, setThemeTick] = useState(0);
 	// 価格の系列を付け替えたら、注文のアイコンを置き直す
@@ -784,6 +788,16 @@ export function PriceChart({
 			>
 				ローソク足
 			</button>
+			{hasEntry && (
+				<button
+					type="button"
+					aria-pressed={showEntry}
+					onClick={() => setShowEntry(!showEntry)}
+					className={CHIP}
+				>
+					買値
+				</button>
+			)}
 			{(["ema", "bb", "rsi"] as const).map((k) => {
 				const label = INDICATOR_LABELS[k];
 				const c = indicators[k];
@@ -816,6 +830,7 @@ export function PriceChart({
 	);
 	const shownLabels = [
 		...(candle ? ["ローソク足"] : []),
+		...(hasEntry && showEntry ? ["買値"] : []),
 		...(["ema", "bb", "rsi"] as const)
 			.filter((k) => indicators[k].on)
 			.map((k) => INDICATOR_LABELS[k]),
