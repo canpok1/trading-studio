@@ -32,8 +32,8 @@ const POLL_MS = 5_000;
 /** 区分はメニューに合わせる。複数のメニューで使う設定は「全般」に置く */
 const SECTIONS = [
 	["general", "全般"],
-	["news", "ニュース"],
 	["backtest", "バックテスト"],
+	["news", "ニュース"],
 ] as const;
 type SettingsSection = (typeof SECTIONS)[number][0];
 const isSection = (v: string | null): v is SettingsSection =>
