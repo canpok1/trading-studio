@@ -77,6 +77,15 @@ test("今の判定と重み", async () => {
 	});
 	expect(r.weights[a]).toBe(1);
 	expect(r.weights[b]).toBeCloseTo(0.5);
+	// 内訳は重み 0% の記事（old）を数えない
+	expect(r.breakdown.sentiment.map((row) => [row.value, row.count])).toEqual([
+		["+2", 1],
+		["+1", 0],
+		["0", 0],
+		["-1", 1],
+		["-2", 0],
+	]);
+	expect(r.breakdown.sentiment[0]?.share).toBeCloseTo(2 / 3);
 });
 
 test("集計ルールの保存で判定が変わる。試算は保存しない", async () => {

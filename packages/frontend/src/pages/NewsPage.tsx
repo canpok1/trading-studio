@@ -12,6 +12,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useApi } from "../api";
+import { BreakdownCards } from "../components/ai/Breakdown";
 import { BulkRescore } from "../components/ai/BulkRescore";
 import { NewsFilterBar } from "../components/ai/NewsFilter";
 import { NewsTab } from "../components/ai/NewsTab";
@@ -21,7 +22,7 @@ import { SettingsIcon } from "../components/icons";
 import { JudgmentBadge, ZoneBar } from "../components/judgment/JudgmentBadge";
 import { Page } from "../components/Page";
 import { ErrorState, Skeleton } from "../components/States";
-import { Button, buttonClass } from "../components/ui";
+import { Button, buttonClass, Tabs } from "../components/ui";
 import { formatDateTime } from "../format";
 import type { AiData } from "../lib/ai";
 import { aiTroubles } from "../lib/ai";
@@ -48,16 +49,34 @@ const NEWS_PAGE = 100;
 /** 読み込める件数の上限（API の上限） */
 const NEWS_MAX = 1000;
 
+const VIEWS = [
+	["list", "一覧"],
+	["accuracy", "精度分析"],
+] as const;
+type View = (typeof VIEWS)[number][0];
+
 export function NewsPage() {
 	const api = useApi();
 	const visible = usePageVisible();
 
 	const [params, setParams] = useSearchParams();
+	const view: View = params.get("tab") === "accuracy" ? "accuracy" : "list";
+	// 絞り込みの条件は残したまま切り替える
+	const setView = (v: View) => {
+		const next = new URLSearchParams(params);
+		if (v === "list") next.delete("tab");
+		else next.set("tab", v);
+		setParams(next, { replace: true });
+	};
 	const filter = parseNewsFilter(params);
 	const filterKey = newsFilterParams(filter).toString();
 	const setFilter = useCallback(
-		(f: NewsFilterState) => setParams(newsFilterParams(f), { replace: true }),
-		[setParams],
+		(f: NewsFilterState) => {
+			const next = newsFilterParams(f);
+			if (view !== "list") next.set("tab", view);
+			setParams(next, { replace: true });
+		},
+		[setParams, view],
 	);
 	const [limit, setLimit] = useState(NEWS_PAGE);
 	// 条件を変えたら読む件数を戻す
@@ -132,8 +151,50 @@ export function NewsPage() {
 
 	const { current } = data;
 	const troubles = aiTroubles(data.collector, data.scorer);
+	const tabs = (
+		<Tabs
+			label="ニュースの表示"
+			items={VIEWS}
+			current={view}
+			onSelect={setView}
+		/>
+	);
+	if (view === "accuracy") {
+		return (
+			<Page title="ニュース" actions={<SettingsLink />}>
+				{tabs}
+				<div className="flex items-center gap-1.5">
+					<h2 className="text-[15px] font-bold">
+						{data.at === null
+							? "今の市場評価の内訳"
+							: "過去の時点の市場評価の内訳"}
+					</h2>
+					<Help label="市場評価の内訳">
+						<p>
+							市場評価に使っている記事（重みが 0%
+							より大きいもの）を、記事ごとの点数を評価基準に当てた段階で分け、件数と重みの割合を出す。
+						</p>
+						<p>
+							市場評価は記事の点数を重みで平均したものなので、件数が多い段階より重みの割合が大きい段階のほうが評価に効く。関係ある記事の
+							0 点は中立・平常に入る。
+						</p>
+					</Help>
+				</div>
+				<BreakdownCards current={current} />
+				<p className="num text-xs text-text-2">
+					{formatDateTime(current.time)} 時点
+				</p>
+				{error && (
+					<p role="alert" className="text-xs font-semibold text-loss">
+						最新の状態を読み込めなかった（{error}）。5秒ごとに読み直している
+					</p>
+				)}
+			</Page>
+		);
+	}
 	return (
 		<Page title="ニュース" actions={<SettingsLink />}>
+			{tabs}
 			<div className="flex items-center gap-1.5">
 				<h2 className="text-[15px] font-bold">
 					{data.at === null ? "今の市場評価" : "過去の時点の市場評価"}

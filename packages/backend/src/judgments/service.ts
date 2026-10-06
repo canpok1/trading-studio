@@ -1,6 +1,7 @@
 import {
 	JUDGES,
 	judgeAt,
+	judgmentBreakdown,
 	judgmentSeries,
 	maxWindowMs,
 	validateAggregationRule,
@@ -27,6 +28,7 @@ export function createJudgmentService({
 				rule,
 				results: s.results,
 				weights: Object.fromEntries(s.weights),
+				breakdown: judgmentBreakdown(news, s.weights, rule),
 				firstScoredAt: repo.firstScoredAt(),
 			};
 		},
