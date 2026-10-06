@@ -41,16 +41,11 @@ export type {
 } from "./retention/types";
 export type {
 	AccuracyHorizon,
-	AccuracyList,
-	AccuracyNews,
-	AccuracyReport,
 	AccuracySettings,
-	LevelMatch,
+	ArticleAccuracy,
+	ArticleAccuracyReport,
 	RiskBands,
 	SentimentBands,
-	VersionAccuracy,
-	VersionComparison,
-	VersionStats,
 } from "./scoring-analysis/types";
 export type { StoredStrategy } from "./strategies/types";
 export type {

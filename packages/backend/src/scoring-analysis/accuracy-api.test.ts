@@ -1,15 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import type { AccuracyReport, AccuracySettings } from "../index";
+import type { AccuracySettings, ArticleAccuracyReport } from "../index";
 import { createTestApp } from "../test-app";
 import { DEFAULT_ACCURACY_SETTINGS } from "./types";
 
 const H = 3_600_000;
 const START = Date.UTC(2026, 6, 31, 15);
 
+/** 1時間ごとに 1% ずつ上がる価格と、採点済みの記事3件（採点は記事ごとに1時間ずれる） */
 async function scored() {
 	const t = createTestApp();
 	const rows = Array.from({ length: 5 * 24 }, (_, i) => {
-		const close = 10_000_000 + i * 10_000;
+		const close = 10_000_000 + i * 100_000;
 		return {
 			time: START + i * H,
 			open: close,
@@ -40,45 +41,56 @@ async function scored() {
 		t.scorer.tick();
 		await t.scorer.idle();
 	}
-	t.clock.now = START + 4 * 24 * H;
-	return t;
+	const ids = t.db.$client
+		.query<{ id: number }, []>("select id from news order by id")
+		.all()
+		.map((r) => r.id);
+	return { t, ids };
 }
 
-describe("GET /api/scoring/accuracy", () => {
-	test("版ごとの精度と、ほかの版から採点し直した記事との比較を返す", async () => {
-		const t = await scored();
-		const [first] = t.db.$client
-			.query<{ id: number }, []>("select id from news order by id limit 1")
-			.all();
-		t.db.$client
-			.query(
-				`insert into news_rescores (news_id, criteria_version, status, sentiment, risk, comment, scored_at, requested_at)
-				 values (?, 2, 'done', 30, 15, '旧', 0, 0)`,
-			)
-			.run(first?.id as number);
+const get = async (t: ReturnType<typeof createTestApp>, ids: number[]) => {
+	const res = await t.app.request(`/api/scoring/accuracy?ids=${ids.join(",")}`);
+	expect(res.status).toBe(200);
+	return (await res.json()) as ArticleAccuracyReport;
+};
 
-		const res = await t.app.request("/api/scoring/accuracy?horizon=4h");
-		expect(res.status).toBe(200);
-		const r = (await res.json()) as AccuracyReport;
-		expect(r).toMatchObject({
-			horizon: "4h",
-			days: 30,
-			activeVersion: 1,
-			priceTimeframe: "1h",
-		});
-		expect(r.influence.judgedHours).toBeGreaterThan(0);
-		expect(r.versions.map((v) => [v.version, v.articles])).toEqual([
-			[2, 1],
-			[1, 3],
+describe("GET /api/scoring/accuracy", () => {
+	test("測る長さがたった記事は精度を、たっていない記事は測定中を返す", async () => {
+		const { t, ids } = await scored();
+		const r1 = await get(t, ids);
+		expect(r1.horizon).toBe("24h");
+		expect(r1.items.map((x) => x.status)).toEqual([
+			"measuring",
+			"measuring",
+			"measuring",
 		]);
-		expect(r.comparisons).toMatchObject([
-			{ version: 2, common: 1, active: { version: 1, articles: 1 } },
-		]);
+
+		t.clock.now = START + 4 * 24 * H;
+		const r2 = await get(t, ids);
+		expect(r2.items).toHaveLength(3);
+		for (const x of r2.items) {
+			expect(x.status).toBe("ok");
+			if (x.status !== "ok") continue;
+			expect(x.sentiment).toBeGreaterThanOrEqual(1);
+			expect(x.sentiment).toBeLessThanOrEqual(5);
+			expect(x.risk).toBeGreaterThanOrEqual(1);
+			expect(x.risk).toBeLessThanOrEqual(5);
+		}
 	});
 
-	test("測る長さが 4h・24h 以外なら 400", async () => {
+	test("持続なしの記事と、無い ID は返さない", async () => {
+		const { t, ids } = await scored();
+		t.db.$client
+			.query("update news_scores set duration = 'none' where news_id = ?")
+			.run(ids[0] as number);
+		t.clock.now = START + 4 * 24 * H;
+		const r = await get(t, [...ids, 99_999]);
+		expect(r.items.map((x) => x.id)).toEqual(ids.slice(1));
+	});
+
+	test("ID の形が違えば 400", async () => {
 		const t = createTestApp();
-		const res = await t.app.request("/api/scoring/accuracy?horizon=1h");
+		const res = await t.app.request("/api/scoring/accuracy?ids=1,a");
 		expect(res.status).toBe(400);
 	});
 });
@@ -91,45 +103,66 @@ describe("/api/scoring/accuracy/settings", () => {
 			body: JSON.stringify(body),
 		});
 
-	test("保存した期間・長さ・件数で集計する。長さを省くと設定の長さ", async () => {
-		const t = await scored();
+	test("保存した長さで測る", async () => {
+		const { t, ids } = await scored();
 		const before = await t.app.request("/api/scoring/accuracy/settings");
 		expect(await before.json()).toEqual(DEFAULT_ACCURACY_SETTINGS);
 		const saved: AccuracySettings = {
 			...DEFAULT_ACCURACY_SETTINGS,
-			days: 7,
 			horizon: "4h",
-			minSamples: 5,
 			riskBands: {
-				"4h": { rough: 1, wild: 1.5 },
-				"24h": { rough: 2, wild: 3 },
+				"4h": { slight: 1, rough: 1.5, heavy: 2, wild: 3 },
+				"24h": { slight: 1, rough: 2, heavy: 3, wild: 5 },
 			},
 		};
 		expect((await put(t, saved)).status).toBe(200);
-		const res = await t.app.request("/api/scoring/accuracy");
-		const r = (await res.json()) as AccuracyReport;
-		expect(r).toMatchObject({
-			days: 7,
+		const now = await t.app.request("/api/scoring/accuracy/settings");
+		expect(await now.json()).toEqual(saved);
+		t.clock.now = START + 30 * H;
+		const r = await get(t, ids);
+		expect(r.horizon).toBe("4h");
+		expect(r.items.every((x) => x.status === "ok")).toBe(true);
+	});
+
+	test("リスクの境目が2つだった頃の保存値は、リスクの境目だけ既定にする", async () => {
+		const t = createTestApp();
+		t.db.$client.run(
+			"insert into settings (key, value) values ('accuracy_settings', ?)",
+			[
+				JSON.stringify({
+					days: 7,
+					horizon: "4h",
+					minSamples: 5,
+					sentimentBands: DEFAULT_ACCURACY_SETTINGS.sentimentBands,
+					riskBands: {
+						"4h": { rough: 1, wild: 1.5 },
+						"24h": { rough: 2, wild: 3 },
+					},
+				}),
+			],
+		);
+		const res = await t.app.request("/api/scoring/accuracy/settings");
+		expect(await res.json()).toEqual({
+			...DEFAULT_ACCURACY_SETTINGS,
 			horizon: "4h",
-			minSamples: 5,
-			riskBands: { rough: 1, wild: 1.5 },
-			sentimentBands: { small: 0.2, large: 0.7 },
 		});
-		expect(r.to - r.from).toBe(7 * 24 * H);
 	});
 
 	test("範囲外の値は 400 で、保存しない", async () => {
 		const t = createTestApp();
-		const bad = await put(t, { ...DEFAULT_ACCURACY_SETTINGS, days: 93 });
-		expect(bad.status).toBe(400);
-		expect(await bad.json()).toMatchObject({ field: "days" });
 		expect(
 			(await put(t, { ...DEFAULT_ACCURACY_SETTINGS, horizon: "1h" })).status,
 		).toBe(400);
-		expect(
-			(await put(t, { ...DEFAULT_ACCURACY_SETTINGS, minSamples: 0 })).status,
-		).toBe(400);
+		const bad = await put(t, {
+			...DEFAULT_ACCURACY_SETTINGS,
+			riskBands: {
+				...DEFAULT_ACCURACY_SETTINGS.riskBands,
+				"24h": { slight: 1, rough: 3, heavy: 2, wild: 5 },
+			},
+		});
+		expect(bad.status).toBe(400);
+		expect(await bad.json()).toMatchObject({ field: "riskBands" });
 		const now = await t.app.request("/api/scoring/accuracy/settings");
-		expect(await now.json()).toMatchObject({ days: 30 });
+		expect(await now.json()).toEqual(DEFAULT_ACCURACY_SETTINGS);
 	});
 });

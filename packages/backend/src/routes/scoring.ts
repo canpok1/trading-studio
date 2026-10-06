@@ -5,7 +5,7 @@ import type {
 	AccuracyHorizon,
 	AccuracyService,
 } from "../scoring-analysis/types";
-import { ACCURACY_HORIZONS } from "../scoring-analysis/types";
+import { ACCURACY_IDS_MAX } from "../scoring-analysis/types";
 import { parseFilter } from "./news";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -27,19 +27,22 @@ export function scoringRoutes(
 			.get(
 				"/accuracy",
 				validator("query", (v, c) => {
-					// 省けば設定の長さ
-					if (v.horizon === undefined)
-						return {} as { horizon?: AccuracyHorizon };
-					const horizon = ACCURACY_HORIZONS.find((x) => x === v.horizon);
-					if (!horizon) {
+					const ids = (typeof v.ids === "string" ? v.ids : "")
+						.split(",")
+						.filter((x) => x !== "")
+						.map(Number);
+					if (
+						ids.length > ACCURACY_IDS_MAX ||
+						!ids.every((x) => Number.isSafeInteger(x))
+					) {
 						return c.json(
-							{ message: `horizon は ${ACCURACY_HORIZONS.join(" か ")}` },
+							{ message: `ids は ${ACCURACY_IDS_MAX} 件までの記事の ID` },
 							400,
 						);
 					}
-					return { horizon };
+					return { ids };
 				}),
-				(c) => c.json(accuracy.accuracy(c.req.valid("query").horizon)),
+				(c) => c.json(accuracy.articleAccuracy(c.req.valid("query").ids)),
 			)
 			.get("/accuracy/settings", (c) => c.json(accuracy.accuracySettings()))
 			.put(
@@ -47,16 +50,13 @@ export function scoringRoutes(
 				validator("json", (v, c) => {
 					if (
 						!isObj(v) ||
-						typeof v.days !== "number" ||
 						typeof v.horizon !== "string" ||
-						typeof v.minSamples !== "number" ||
 						!isObj(v.sentimentBands) ||
 						!isObj(v.riskBands)
 					) {
 						return c.json(
 							{
-								message:
-									"days・horizon・minSamples・sentimentBands・riskBands が必要",
+								message: "horizon・sentimentBands・riskBands が必要",
 							},
 							400,
 						);
@@ -74,15 +74,15 @@ export function scoringRoutes(
 						"24h": f("24h"),
 					});
 					return {
-						days: v.days,
 						horizon: v.horizon as AccuracyHorizon,
-						minSamples: v.minSamples,
 						sentimentBands: both((h) => ({
 							small: num(sb, h, "small"),
 							large: num(sb, h, "large"),
 						})),
 						riskBands: both((h) => ({
+							slight: num(rb, h, "slight"),
 							rough: num(rb, h, "rough"),
+							heavy: num(rb, h, "heavy"),
 							wild: num(rb, h, "wild"),
 						})),
 					};

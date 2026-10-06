@@ -1,4 +1,8 @@
-import type { NewsItem } from "@trading-studio/backend";
+import type {
+	AccuracyHorizon,
+	ArticleAccuracy,
+	NewsItem,
+} from "@trading-studio/backend";
 import type { AggregationRule } from "@trading-studio/core";
 import { HALF_LIVES_IN_WINDOW, JUDGES } from "@trading-studio/core";
 import { useId, useState } from "react";
@@ -17,11 +21,14 @@ import { ChevronIcon } from "../icons";
 import { DurationChip, ScoreChip } from "../judgment/JudgmentBadge";
 import { EmptyState, Skeleton } from "../States";
 import { Button } from "../ui";
+import type { ArticlePrecisions } from "./Precision";
+import { ArticlePrecision } from "./Precision";
 
 export function NewsTab({
 	data,
 	grouped,
 	filtered,
+	precisions,
 	onClearFilter,
 	onChanged,
 }: {
@@ -30,6 +37,8 @@ export function NewsTab({
 	grouped: boolean;
 	/** 条件で絞っている */
 	filtered: boolean;
+	/** 記事ごとの精度。読めていなければ null */
+	precisions: ArticlePrecisions | null;
 	onClearFilter: () => void;
 	onChanged: () => void;
 }) {
@@ -62,6 +71,8 @@ export function NewsTab({
 			news={n}
 			weight={current.weights[n.id] ?? null}
 			rule={current.rule}
+			precision={precisions?.byId.get(n.id) ?? null}
+			horizon={precisions?.horizon ?? null}
 			scorerStopped={scorer.state === "stopped"}
 			activeVersion={scorer.activeCriteriaVersion}
 			onChanged={onChanged}
@@ -96,6 +107,8 @@ function NewsCard({
 	news: n,
 	weight,
 	rule,
+	precision,
+	horizon,
 	scorerStopped,
 	activeVersion,
 	onChanged,
@@ -103,6 +116,8 @@ function NewsCard({
 	news: NewsItem;
 	weight: number | null;
 	rule: AggregationRule;
+	precision: ArticleAccuracy | null;
+	horizon: AccuracyHorizon | null;
 	scorerStopped: boolean;
 	/** 使用中の採点の基準の版。採点し直すときに使う */
 	activeVersion: number | null;
@@ -190,6 +205,9 @@ function NewsCard({
 						))}
 						<DurationChip duration={duration} />
 					</div>
+					{precision && horizon && (
+						<ArticlePrecision value={precision} horizon={horizon} />
+					)}
 					<button
 						type="button"
 						aria-expanded={open}
