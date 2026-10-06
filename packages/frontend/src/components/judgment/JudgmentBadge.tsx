@@ -10,7 +10,7 @@ import {
 	JUDGE_LABELS,
 	SCORE_RANGES,
 } from "@trading-studio/core";
-import type { Shape } from "./judgment-style";
+import type { Shape, ValueStyle } from "./judgment-style";
 import { valueStyle } from "./judgment-style";
 
 const SHAPES: Record<Shape, (fill: string) => React.ReactNode> = {
@@ -35,16 +35,35 @@ export function ShapeIcon({
 	shape,
 	color,
 	size = 10,
+	edge,
 }: {
 	shape: Shape;
 	color: string;
 	size?: number;
+	/** 背景に沈む色のときの縁取りの色 */
+	edge?: string;
 }) {
 	return (
-		<svg width={size} height={size} viewBox="0 0 12 12" aria-hidden="true">
+		<svg
+			width={size}
+			height={size}
+			viewBox="0 0 12 12"
+			aria-hidden="true"
+			style={edge ? { stroke: edge, strokeWidth: 1 } : undefined}
+		>
 			{SHAPES[shape](color)}
 		</svg>
 	);
+}
+
+/** 塗りが背景に沈む色（ダークの危機）だけ縁取る。-edge が無い色は縁なし */
+function edgeShadow(s: ValueStyle): string {
+	return `inset 0 0 0 1px var(${s.solid}-edge, transparent)`;
+}
+
+/** 記号の縁。カードの地に近い色（ライトの中立・平常、ダークの危機）でも形が見えるようにする */
+export function iconEdge(s: ValueStyle): string {
+	return `var(${s.solid}-edge, var(--color-line))`;
 }
 
 /** 判定の値のバッジ。値の名前（強気・警戒など）で観点が分かるので観点名は付けない */
@@ -63,13 +82,17 @@ export function JudgmentBadge<J extends Judge>({
 			className={`inline-flex h-[26px] items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold whitespace-nowrap ${crisis ? "text-white" : "bg-surface-2 text-text"}`}
 			style={
 				crisis
-					? { background: `var(${s.solid})` }
+					? { background: `var(${s.solid})`, boxShadow: edgeShadow(s) }
 					: judge === "risk" && value !== "calm"
 						? { background: `var(${s.bg})` }
 						: undefined
 			}
 		>
-			<ShapeIcon shape={s.shape} color={crisis ? "#fff" : `var(${s.solid})`} />
+			<ShapeIcon
+				shape={s.shape}
+				color={crisis ? "#fff" : `var(${s.solid})`}
+				edge={crisis ? undefined : iconEdge(s)}
+			/>
 			{s.label}
 		</span>
 	);
@@ -84,7 +107,7 @@ const CHIP_LABELS: Record<Judge, string> = {
 const CHIP =
 	"inline-flex h-[26px] items-center gap-1.5 rounded-full bg-surface-2 px-2.5 text-xs whitespace-nowrap";
 
-/** 観点ごとの点数のチップ */
+/** 観点ごとの点数のチップ。程度が一目で分かるよう、市場評価の帯と同じ色で塗る */
 export function ScoreChip({
 	judge,
 	score,
@@ -96,20 +119,30 @@ export function ScoreChip({
 }) {
 	const s = valueStyle(judge, classify(judge, score, rule));
 	return (
-		<span className={CHIP}>
-			<ShapeIcon
-				shape={s.shape === "oct" ? "tri" : s.shape}
-				color={`var(${s.solid})`}
-			/>
+		<span
+			data-testid={`score-chip-${judge}`}
+			className={CHIP}
+			style={{
+				background: `var(${s.solid})`,
+				color: `var(${s.solid}-ink)`,
+				boxShadow: edgeShadow(s),
+			}}
+		>
 			{CHIP_LABELS[judge]} <b className="num">{score}</b>
 		</span>
 	);
 }
 
-/** 影響の持続のチップ。none（相場に関係ない）は薄く出す */
+/** 影響の持続のチップ。中立・平常のチップと同じ色にする。none（相場に関係ない）は薄く出す */
 export function DurationChip({ duration }: { duration: Duration }) {
 	return (
-		<span className={`${CHIP} ${duration === "none" ? "text-text-2" : ""}`}>
+		<span
+			className={`${CHIP} ${duration === "none" ? "opacity-60" : ""}`}
+			style={{
+				background: "var(--color-s0)",
+				color: "var(--color-s0-ink)",
+			}}
+		>
 			持続 <b>{DURATION_LABELS[duration]}</b>
 		</span>
 	);
@@ -152,8 +185,11 @@ export function ZoneBar({
 		<div className="flex flex-col gap-1.5">
 			<div
 				aria-hidden="true"
-				className="relative h-2 rounded opacity-80"
-				style={{ background: `linear-gradient(to right,${gradient})` }}
+				className="relative h-2 rounded"
+				style={{
+					background: `linear-gradient(to right,${gradient})`,
+					boxShadow: "0 0 0 1px var(--color-line)",
+				}}
 			>
 				{score !== null && (
 					<i
@@ -172,7 +208,12 @@ export function ZoneBar({
 							key={st.label}
 							className="inline-flex items-center gap-1 whitespace-nowrap"
 						>
-							<ShapeIcon shape={st.shape} color={`var(${st.solid})`} size={8} />
+							<ShapeIcon
+								shape={st.shape}
+								color={`var(${st.solid})`}
+								size={8}
+								edge={iconEdge(st)}
+							/>
 							{st.label}
 						</li>
 					);

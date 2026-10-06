@@ -66,25 +66,36 @@
 	--color-down: #d2484f;
 	--color-range: #9a9fa5;
 	--color-normal-bg: rgba(0, 0, 0, 0);
-	--color-mild-bg: rgba(200, 180, 60, 0.16);
-	--color-caution-bg: rgba(214, 150, 20, 0.2);
-	--color-severe-bg: rgba(215, 95, 20, 0.2);
-	--color-crisis-bg: rgba(200, 30, 45, 0.22);
-	--color-normal: #b9beb6;
-	--color-mild: #c9b24a;
-	--color-caution: #d89a12;
-	--color-severe: #d4621a;
-	--color-crisis: #b3131f;
+	--color-mild-bg: rgba(242, 231, 0, 0.2);
+	--color-caution-bg: rgba(255, 40, 0, 0.16);
+	--color-severe-bg: rgba(170, 0, 170, 0.16);
+	--color-crisis-bg: rgba(12, 0, 12, 0.22);
+	--color-normal: #e9ebe6;
+	--color-mild: #f2e700;
+	--color-caution: #ff2800;
+	--color-severe: #aa00aa;
+	--color-crisis: #0c000c;
 	--color-sm2: #7a2e86;
-	--color-sm1: #be8bc7;
-	--color-s0: #c7cbc4;
-	--color-sp1: #74bfaf;
+	--color-sm1: #cfa8d6;
+	--color-s0: #e9ebe6;
+	--color-sp1: #96d3c5;
 	--color-sp2: #0f7a66;
-	--color-sm2-bg: rgba(122, 46, 134, 0.15);
-	--color-sm1-bg: rgba(190, 139, 199, 0.16);
+	--color-sm2-bg: rgba(122, 46, 134, 0.18);
+	--color-sm1-bg: rgba(207, 168, 214, 0.18);
 	--color-s0-bg: rgba(120, 125, 130, 0.06);
-	--color-sp1-bg: rgba(116, 191, 175, 0.2);
-	--color-sp2-bg: rgba(15, 122, 102, 0.15);
+	--color-sp1-bg: rgba(150, 211, 197, 0.18);
+	--color-sp2-bg: rgba(15, 122, 102, 0.18);
+	/* 記号・帯の色で塗ったときの文字の色 */
+	--color-normal-ink: #1a1d1f;
+	--color-mild-ink: #1a1d1f;
+	--color-caution-ink: #ffffff;
+	--color-severe-ink: #ffffff;
+	--color-crisis-ink: #ffffff;
+	--color-sm2-ink: #ffffff;
+	--color-sm1-ink: #1a1d1f;
+	--color-s0-ink: #1a1d1f;
+	--color-sp1-ink: #1a1d1f;
+	--color-sp2-ink: #ffffff;
 }
 
 .dark {
@@ -137,25 +148,39 @@
 	--color-up: #3fb874;
 	--color-down: #e4585f;
 	--color-range: #7f858b;
-	--color-mild-bg: rgba(210, 195, 90, 0.14);
-	--color-caution-bg: rgba(240, 180, 40, 0.17);
-	--color-severe-bg: rgba(245, 120, 50, 0.2);
-	--color-crisis-bg: rgba(240, 50, 65, 0.24);
-	--color-normal: #50565c;
-	--color-mild: #b5a75a;
-	--color-caution: #e8b02f;
-	--color-severe: #f0803a;
-	--color-crisis: #f04a57;
-	--color-sm2: #b46cc0;
-	--color-sm1: #7e5687;
-	--color-s0: #4a4f54;
-	--color-sp1: #3e8f80;
-	--color-sp2: #4fc7ae;
-	--color-sm2-bg: rgba(180, 108, 192, 0.18);
-	--color-sm1-bg: rgba(126, 86, 135, 0.2);
-	--color-s0-bg: rgba(170, 175, 180, 0.05);
-	--color-sp1-bg: rgba(62, 143, 128, 0.2);
-	--color-sp2-bg: rgba(79, 199, 174, 0.16);
+	--color-normal-bg: rgba(0, 0, 0, 0);
+	--color-mild-bg: rgba(242, 231, 0, 0.2);
+	--color-caution-bg: rgba(255, 40, 0, 0.16);
+	--color-severe-bg: rgba(170, 0, 170, 0.16);
+	--color-crisis-bg: rgba(0, 0, 0, 0.45);
+	--color-normal: #e7e9e5;
+	--color-mild: #f2e700;
+	--color-caution: #ff2800;
+	--color-severe: #aa00aa;
+	--color-crisis: #0c000c;
+	--color-sm2: #9a45a8;
+	--color-sm1: #cfa8d6;
+	--color-s0: #e7e9e5;
+	--color-sp1: #96d3c5;
+	--color-sp2: #18937b;
+	--color-sm2-bg: rgba(154, 69, 168, 0.18);
+	--color-sm1-bg: rgba(207, 168, 214, 0.18);
+	--color-s0-bg: rgba(231, 233, 229, 0.05);
+	--color-sp1-bg: rgba(150, 211, 197, 0.18);
+	--color-sp2-bg: rgba(24, 147, 123, 0.18);
+	/* 記号・帯の色で塗ったときの文字の色 */
+	--color-normal-ink: #1a1d1f;
+	--color-mild-ink: #1a1d1f;
+	--color-caution-ink: #ffffff;
+	--color-severe-ink: #ffffff;
+	--color-crisis-ink: #ffffff;
+	/* 背景に沈む色の縁取り */
+	--color-crisis-edge: #80868c;
+	--color-sm2-ink: #ffffff;
+	--color-sm1-ink: #1a1d1f;
+	--color-s0-ink: #1a1d1f;
+	--color-sp1-ink: #1a1d1f;
+	--color-sp2-ink: #ffffff;
 }
 
 @layer base {

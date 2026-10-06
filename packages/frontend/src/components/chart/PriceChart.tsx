@@ -32,7 +32,7 @@ import { formatDateTime } from "../../format";
 import type { ChartIndicators } from "../../lib/chart-indicators";
 import { formatInt } from "../../lib/number";
 import { Help } from "../Help";
-import { ShapeIcon } from "../judgment/JudgmentBadge";
+import { iconEdge, ShapeIcon } from "../judgment/JudgmentBadge";
 import { valueStyle } from "../judgment/judgment-style";
 import type { ChartBar, ChartMarker } from "./chart-data";
 import {
@@ -909,7 +909,11 @@ export function PriceChart({
 											data-testid={`chart-judgment-${j}`}
 											className="flex items-center gap-1"
 										>
-											<ShapeIcon shape={st.shape} color={`var(${st.solid})`} />
+											<ShapeIcon
+												shape={st.shape}
+												color={`var(${st.solid})`}
+												edge={iconEdge(st)}
+											/>
 											{JUDGE_LABELS[j]} {st.label}
 										</span>
 									);
