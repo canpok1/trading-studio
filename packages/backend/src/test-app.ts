@@ -158,7 +158,6 @@ export function createTestApp(
 		marketData,
 		judgments,
 		scorer,
-		activeVersion: () => scoreRepo.activeCriteriaVersion(),
 		now: () => clock.now,
 	});
 	const app = createApp({

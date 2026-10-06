@@ -36,7 +36,7 @@ export function PromptTab({
 }: {
 	rule: AggregationRule;
 	onChanged: () => void;
-	/** 試す記事の初期値（ニュース画面の精度分析から渡す記事の ID） */
+	/** 試す記事の初期値（URL の trial で渡す記事の ID） */
 	initialTrialIds?: readonly number[];
 }) {
 	const api = useApi();
@@ -661,7 +661,7 @@ function PickNewsModal({
 	);
 }
 
-/** ニュース画面の精度分析から渡した記事のうち、直近の一覧に無いもの。一覧で外せないので、まとめて外せるようにする */
+/** URL で渡した記事のうち、直近の一覧に無いもの。一覧で外せないので、まとめて外せるようにする */
 function OutsidePicked({
 	selected,
 	listed,

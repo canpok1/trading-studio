@@ -12,22 +12,16 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useApi } from "../api";
-import { AccuracyCard } from "../components/ai/AccuracyCard";
 import { BulkRescore } from "../components/ai/BulkRescore";
 import { NewsFilterBar } from "../components/ai/NewsFilter";
 import { NewsTab } from "../components/ai/NewsTab";
-import {
-	PrecisionLink,
-	PrecisionSummary,
-	precisionOf,
-	usePrecisionReport,
-} from "../components/ai/Precision";
+import { useArticlePrecisions } from "../components/ai/Precision";
 import { Help } from "../components/Help";
 import { SettingsIcon } from "../components/icons";
 import { JudgmentBadge, ZoneBar } from "../components/judgment/JudgmentBadge";
 import { Page } from "../components/Page";
 import { ErrorState, Skeleton } from "../components/States";
-import { Button, buttonClass, Tabs } from "../components/ui";
+import { Button, buttonClass } from "../components/ui";
 import { formatDateTime } from "../format";
 import type { AiData } from "../lib/ai";
 import { aiTroubles } from "../lib/ai";
@@ -54,31 +48,11 @@ const NEWS_PAGE = 100;
 /** 読み込める件数の上限（API の上限） */
 const NEWS_MAX = 1000;
 
-const VIEWS = [
-	["list", "一覧"],
-	["accuracy", "精度分析"],
-] as const;
-type View = (typeof VIEWS)[number][0];
-
 export function NewsPage() {
 	const api = useApi();
 	const visible = usePageVisible();
 
 	const [params, setParams] = useSearchParams();
-	const view: View = params.get("tab") === "accuracy" ? "accuracy" : "list";
-	// 絞り込みの条件は残したまま切り替える
-	const viewParams = (v: View) => {
-		const next = new URLSearchParams(params);
-		if (v === "list") next.delete("tab");
-		else next.set("tab", v);
-		return next;
-	};
-	const setView = (v: View) => setParams(viewParams(v), { replace: true });
-	const precisionReport = usePrecisionReport();
-	const precision =
-		precisionReport.state.kind === "ok"
-			? precisionOf(precisionReport.state.data)
-			: null;
 	const filter = parseNewsFilter(params);
 	const filterKey = newsFilterParams(filter).toString();
 	const setFilter = useCallback(
@@ -130,6 +104,7 @@ export function NewsPage() {
 		if (visible) load();
 	}, [visible, load]);
 	useInterval(load, POLL_MS, visible);
+	const precisions = useArticlePrecisions(data?.news ?? [], visible);
 
 	if (!data) {
 		return (
@@ -157,48 +132,8 @@ export function NewsPage() {
 
 	const { current } = data;
 	const troubles = aiTroubles(data.collector, data.scorer);
-	if (view === "accuracy") {
-		return (
-			<Page title="ニュース" actions={<SettingsLink />}>
-				<Tabs
-					label="ニュースの表示"
-					items={VIEWS}
-					current={view}
-					onSelect={setView}
-				/>
-				{precisionReport.state.kind === "error" ? (
-					<ErrorState
-						what="精度を読み込めなかった"
-						next={precisionReport.state.message}
-						action={
-							<Button onClick={precisionReport.reload}>もう一度読み込む</Button>
-						}
-					/>
-				) : precisionReport.state.kind === "loading" ? (
-					<Skeleton className="h-[120px] w-full" />
-				) : (
-					<>
-						<PrecisionSummary
-							precision={precision}
-							basis={precisionReport.state.data}
-						/>
-						<AccuracyCard
-							report={precisionReport.state.data}
-							rule={current.rule}
-						/>
-					</>
-				)}
-			</Page>
-		);
-	}
 	return (
 		<Page title="ニュース" actions={<SettingsLink />}>
-			<Tabs
-				label="ニュースの表示"
-				items={VIEWS}
-				current={view}
-				onSelect={setView}
-			/>
 			<div className="flex items-center gap-1.5">
 				<h2 className="text-[15px] font-bold">
 					{data.at === null ? "今の市場評価" : "過去の時点の市場評価"}
@@ -232,12 +167,6 @@ export function NewsPage() {
 											? "対象のニュースなし"
 											: `${r.average}点 · ${r.count}件から算出`}
 									</span>
-									{precision && (
-										<PrecisionLink
-											precision={precision[j]}
-											to={`/news?${viewParams("accuracy")}`}
-										/>
-									)}
 								</span>
 								<JudgmentBadge judge={j} value={r.value} />
 							</div>
@@ -299,6 +228,14 @@ export function NewsPage() {
 						0%（集計の対象外）。
 					</p>
 					<p>
+						精度は、採点した時刻から（）の時間がたった後の値動きと点数の段階を比べたもの。一致で
+						5、1段ずれるごとに 1 下げる。センチメントは かなり弱気〜かなり強気を
+						大きく下落〜大きく上昇 と比べる。リスクは値動きの大きさを
+						静か・やや荒れ・荒れた・かなり荒れ・大荒れ
+						に分け、平常＝静か・警戒＝荒れた・危機＝大荒れ
+						として比べる。時間と段階の境目は設定の「ニュース」→「精度」で変える。
+					</p>
+					<p>
 						強気材料・弱気材料・リスク高は、評価基準のやや強気以上・やや弱気以下・警戒以上の点数が付いたもの。影響の大きい順は、センチメントの点数の絶対値とリスクの点数の大きい方で並べる。
 					</p>
 				</Help>
@@ -321,6 +258,7 @@ export function NewsPage() {
 				data={data}
 				grouped={filter.sort === "new"}
 				filtered={isFiltered(filter)}
+				precisions={precisions}
 				onClearFilter={() => setFilter(EMPTY_FILTER)}
 				onChanged={load}
 			/>

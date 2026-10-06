@@ -3,7 +3,7 @@
 import type { Duration } from "@trading-studio/core";
 import type { Db } from "../db/open";
 import type { AccuracySettings } from "./types";
-import { DEFAULT_ACCURACY_SETTINGS } from "./types";
+import { ACCURACY_HORIZONS, DEFAULT_ACCURACY_SETTINGS } from "./types";
 
 /** ニュースと採点。採点の行が無ければ status は null */
 export type AnalysisNewsRow = {
@@ -25,21 +25,6 @@ export type AnalysisNewsRow = {
 	model: string | null;
 	appBuiltAt: number | null;
 	error: string | null;
-};
-
-/** ある版の採点。scoredAt は運用の採点時刻（判定に使い始める時刻） */
-export type VersionScoreRow = {
-	id: number;
-	title: string;
-	url: string;
-	sourceName: string;
-	publishedAt: number;
-	scoredAt: number;
-	version: number;
-	sentiment: number;
-	risk: number;
-	duration: Duration;
-	comment: string | null;
 };
 
 /** 絞り込み。status の unscored は採点の行が無いもの */
@@ -70,9 +55,23 @@ export class ScoringAnalysisRepository {
 				"select value from settings where key = ?",
 			)
 			.get(ACCURACY_SETTINGS_KEY);
+		const d = DEFAULT_ACCURACY_SETTINGS;
+		if (!r) return d;
+		const v = JSON.parse(r.value) as Partial<AccuracySettings>;
+		// リスクの境目は3段階（rough・wild の2つ）だった頃の保存値を読まず、既定にする
+		const riskOk = ACCURACY_HORIZONS.every((h) => {
+			const b = v.riskBands?.[h];
+			return (
+				b !== undefined &&
+				[b.slight, b.rough, b.heavy, b.wild].every((x) => typeof x === "number")
+			);
+		});
 		return {
-			...DEFAULT_ACCURACY_SETTINGS,
-			...(r ? (JSON.parse(r.value) as Partial<AccuracySettings>) : {}),
+			horizon: v.horizon ?? d.horizon,
+			sentimentBands: v.sentimentBands ?? d.sentimentBands,
+			riskBands: riskOk
+				? (v.riskBands as AccuracySettings["riskBands"])
+				: d.riskBands,
 		};
 	}
 
@@ -148,36 +147,5 @@ export class ScoringAnalysisRepository {
 			.all(...ids);
 		const byId = new Map(rows.map((r) => [r.id, r]));
 		return ids.flatMap((id) => byId.get(id) ?? []);
-	}
-
-	/**
-	 * 新しさの時刻が [from, to) の記事の、版ごとの採点。運用の採点と採点し直したものを合わせ、同じ記事と版の組は運用の採点を優先する。
-	 * 運用で採点済みでない記事は、値動きを測る起点が無いので除く
-	 */
-	versionScores(from: number, to: number): VersionScoreRow[] {
-		const rows = this.sql
-			.query<VersionScoreRow & { pri: number }, number[]>(
-				`select n.id, n.title, n.url, n.source_name as sourceName, n.published_at as publishedAt,
-				   s.scored_at as scoredAt, v.version, v.sentiment, v.risk, v.duration, v.comment, v.pri
-				 from news n
-				 join news_scores s on s.news_id = n.id and s.status = 'done' and s.scored_at is not null
-				 join (
-				   select news_id, criteria_version as version, sentiment, risk, duration, comment, 0 as pri
-				     from news_scores where status = 'done' and criteria_version is not null
-				   union all
-				   select news_id, criteria_version, sentiment, risk, duration, comment, 1
-				     from news_rescores where status = 'done'
-				 ) v on v.news_id = n.id
-				 where min(n.published_at, n.fetched_at) >= ? and min(n.published_at, n.fetched_at) < ?
-				 order by n.id, v.version, v.pri`,
-			)
-			.all(from, to);
-		const seen = new Set<string>();
-		return rows.flatMap(({ pri: _, ...r }) => {
-			const key = `${r.id}:${r.version}`;
-			if (seen.has(key)) return [];
-			seen.add(key);
-			return [r];
-		});
 	}
 }
