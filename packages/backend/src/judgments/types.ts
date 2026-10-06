@@ -2,6 +2,7 @@
 
 import type {
 	AggregationRule,
+	BreakdownRow,
 	Judge,
 	JudgeResult,
 	JudgmentValue,
@@ -15,6 +16,8 @@ export type CurrentJudgment = {
 	results: { [J in Judge]: JudgeResult<J> };
 	/** 期間内のニュースの重み（ニュースの ID → 0〜1） */
 	weights: Record<string, number>;
+	/** 判定に使った記事を、記事の点数の段階ごとに数えた内訳 */
+	breakdown: { [J in Judge]: BreakdownRow<J>[] };
 	/** 最初に採点した時刻。まだ無ければ null */
 	firstScoredAt: number | null;
 };

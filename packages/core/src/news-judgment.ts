@@ -464,6 +464,49 @@ export function judgeAt(
 	return { time, results: summarize(active, time, rule), weights };
 }
 
+/** 市場評価の内訳の1行。記事の点数を評価基準で段階にしたときの、その段階の記事 */
+export type BreakdownRow<J extends Judge = Judge> = {
+	value: JudgmentValue<J>;
+	/** 記事の件数 */
+	count: number;
+	/** 重みの合計に占める割合（0〜1）。記事が無ければ 0 */
+	share: number;
+};
+
+/**
+ * 判定に使った記事（重みが 0 より大きいもの）を、観点ごとに記事の点数の段階へ分けた件数と重みの割合。
+ * 段階は評価基準の上の値から順（judgmentBands と同じ並び）。件数 0 の段階も出す
+ */
+export function judgmentBreakdown(
+	news: readonly ScoredNews[],
+	weights: ReadonlyMap<number, number>,
+	rule: AggregationRule,
+): { [J in Judge]: BreakdownRow<J>[] } {
+	const rows = <J extends Judge>(j: J): BreakdownRow<J>[] => {
+		const acc = new Map<string, { count: number; weight: number }>();
+		let total = 0;
+		for (const n of news) {
+			const w = weights.get(n.id) ?? 0;
+			if (w <= 0) continue;
+			const v = classify(j, n.scores[j], rule);
+			const a = acc.get(v) ?? { count: 0, weight: 0 };
+			a.count += 1;
+			a.weight += w;
+			acc.set(v, a);
+			total += w;
+		}
+		return judgmentBands(j, rule).map(({ value }) => {
+			const a = acc.get(value);
+			return {
+				value,
+				count: a?.count ?? 0,
+				share: a && total > 0 ? a.weight / total : 0,
+			};
+		});
+	};
+	return { sentiment: rows("sentiment"), risk: rows("risk") };
+}
+
 export type JudgmentPoint = {
 	time: number;
 	values: { [J in Judge]: JudgmentValue<J> };

@@ -58,7 +58,7 @@ test("取得して採点したニュースが一覧に出て、市場評価が�
 	);
 });
 
-test("採点した記事に、値動きを測るまでは精度の測定中を出す。精度分析のタブは無い", async ({
+test("採点した記事に、値動きを測るまでは精度の測定中を出す", async ({
 	page,
 }) => {
 	await page.goto("/news");
@@ -70,8 +70,35 @@ test("採点した記事に、値動きを測るまでは精度の測定中を�
 	await expect(scored.getByTestId("article-precision")).toHaveText(
 		"精度（24h） 測定中",
 	);
-	await expect(page.getByRole("tab", { name: "精度分析" })).toHaveCount(0);
 	await expect(page.getByTestId("judge-sentiment")).not.toContainText("精度");
+});
+
+test("精度分析のタブに、市場評価に使った記事の段階ごとの件数と重みの割合を出す", async ({
+	page,
+}) => {
+	await page.goto("/news");
+	await expect(
+		page.getByTestId("news-card").filter({ hasText: "デモの採点。" }).first(),
+	).toBeVisible({ timeout: 20_000 });
+	await page.getByRole("tab", { name: "精度分析" }).click();
+	await expect(page).toHaveURL(/tab=accuracy/);
+	await expect(
+		page.getByRole("heading", { name: "今の市場評価の内訳" }),
+	).toBeVisible();
+	const sentiment = page.getByTestId("breakdown-sentiment");
+	await expect(sentiment.getByRole("row")).toHaveText([
+		/記事の点数の段階.*件数.*重みの割合/,
+		/かなり強気\s*\d+件\s*(\d+%|1%未満)/,
+		/やや強気\s*\d+件/,
+		/中立\s*\d+件/,
+		/やや弱気\s*\d+件/,
+		/かなり弱気\s*\d+件/,
+	]);
+	await expect(page.getByTestId("breakdown-risk").getByRole("row")).toHaveCount(
+		6,
+	);
+	await page.getByRole("tab", { name: "一覧" }).click();
+	await expect(page).not.toHaveURL(/tab=/);
 });
 
 test("精度の測り方を設定すると、記事の精度の長さが変わる", async ({ page }) => {

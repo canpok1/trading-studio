@@ -11,6 +11,7 @@ import {
 	DURATIONS,
 	judgeAt,
 	judgmentBands,
+	judgmentBreakdown,
 	judgmentSeries,
 	legacyRiskValues,
 	newsTime,
@@ -401,4 +402,43 @@ test("同じ入力で2回実行すると結果が一致する", () => {
 		judgmentSeries(list, times, rule),
 	);
 	expect(judgeAt(list, NOW, rule)).toEqual(judgeAt(list, NOW, rule));
+});
+
+describe("judgmentBreakdown", () => {
+	test("重みが 0 より大きい記事を、記事の点数の段階ごとに件数と重みの割合で数える", () => {
+		const list = [
+			// 今の記事（重み 1）
+			news(1, 0, { sentiment: 30, risk: 45 }),
+			// 半減期1つ分前（重み 0.5）
+			news(2, 6, { sentiment: 0, risk: 0 }),
+			news(3, 6, { sentiment: -70, risk: 0 }),
+			// 持続なしは重み 0 で数えない
+			news(4, 0, { sentiment: 80, risk: 90 }, { duration: "none" }),
+		];
+		const s = judgeAt(list, NOW, rule);
+		const b = judgmentBreakdown(list, s.weights, rule);
+		expect(b.sentiment).toEqual([
+			{ value: "+2", count: 0, share: 0 },
+			{ value: "+1", count: 1, share: 0.5 },
+			{ value: "0", count: 1, share: 0.25 },
+			{ value: "-1", count: 0, share: 0 },
+			{ value: "-2", count: 1, share: 0.25 },
+		]);
+		expect(b.risk).toEqual([
+			{ value: "crisis", count: 0, share: 0 },
+			{ value: "severe", count: 0, share: 0 },
+			{ value: "alert", count: 1, share: 0.5 },
+			{ value: "mild", count: 0, share: 0 },
+			{ value: "calm", count: 2, share: 0.5 },
+		]);
+		// 件数の合計は平均に使った件数と同じ
+		expect(b.sentiment.reduce((a, r) => a + r.count, 0)).toBe(
+			s.results.sentiment.count,
+		);
+	});
+
+	test("記事が無ければどの段階も 0 件・0%", () => {
+		const b = judgmentBreakdown([], new Map(), rule);
+		expect(b.risk.every((r) => r.count === 0 && r.share === 0)).toBe(true);
+	});
 });
