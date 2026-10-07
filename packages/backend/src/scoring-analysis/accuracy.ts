@@ -38,6 +38,20 @@ const RISK_LEVEL = {
 const precisionOf = (predicted: number, actual: number) =>
 	5 - Math.abs(predicted - actual);
 
+/**
+ * 騰落率（%）を、観点ごとの値動きの段階の番号（0〜4）にする。
+ * センチメントは 0 が大きく下落〜4 が大きく上昇、リスクは 0 が静か〜4 が大荒れ（記事の段階の番号と同じ向き）
+ */
+export function actualLevels(
+	returnPct: number,
+	bands: { sentiment: SentimentBands; risk: RiskBands },
+): { sentiment: number; risk: number } {
+	return {
+		sentiment: moveLevel(returnPct, bands.sentiment) + 2,
+		risk: roughLevel(returnPct, bands.risk),
+	};
+}
+
 /** 点数と騰落率（%）から、センチメントとリスクの精度 */
 export function articlePrecision(
 	scores: Scores,

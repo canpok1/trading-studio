@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_AGGREGATION_RULE } from "@trading-studio/core";
-import { articlePrecision, moveLevel, roughLevel } from "./accuracy";
+import {
+	actualLevels,
+	articlePrecision,
+	moveLevel,
+	roughLevel,
+} from "./accuracy";
 
 const BANDS = {
 	sentiment: { small: 0.5, large: 2 },
@@ -21,6 +26,11 @@ describe("値動きの段階", () => {
 				roughLevel(p, BANDS.risk),
 			),
 		).toEqual([0, 0, 1, 1, 2, 2, 3, 3, 4, 4]);
+	});
+	test("段階の番号は 0〜4 で、センチメントは大きく下落が 0、リスクは静かが 0", () => {
+		expect(actualLevels(-3, BANDS)).toEqual({ sentiment: 0, risk: 3 });
+		expect(actualLevels(0.1, BANDS)).toEqual({ sentiment: 2, risk: 0 });
+		expect(actualLevels(6, BANDS)).toEqual({ sentiment: 4, risk: 4 });
 	});
 });
 

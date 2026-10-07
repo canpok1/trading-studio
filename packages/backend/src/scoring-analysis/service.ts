@@ -19,7 +19,7 @@ import type { JudgmentService } from "../judgments/types";
 import type { MarketDataService } from "../market-data/types";
 import type { Scorer } from "../news/scorer";
 import { CRITERIA_MAX } from "../news/scoring-service";
-import { articlePrecision } from "./accuracy";
+import { actualLevels, articlePrecision } from "./accuracy";
 import type {
 	AnalysisNewsRow,
 	NewsFilter,
@@ -276,6 +276,7 @@ export function createScoringAnalysis({
 					rule,
 					bands,
 				),
+				moves: actualLevels(ret, bands),
 			};
 		});
 	}
@@ -460,9 +461,11 @@ export function createScoringAnalysis({
 					const r = byId.get(x.id) as AnalysisNewsRow;
 					return {
 						precision: x[j],
+						move: x.moves[j],
 						value: judgmentOf(j, r[j] as number, rule),
 					};
 				});
+				const values = JUDGMENT_VALUES[j] as readonly JudgmentValue<J>[];
 				return {
 					count: items.length,
 					average:
@@ -477,14 +480,19 @@ export function createScoringAnalysis({
 						return {
 							precision,
 							count: at.length,
-							levels: (JUDGMENT_VALUES[j] as readonly JudgmentValue<J>[]).map(
-								(value) => ({
-									value,
-									count: at.filter((x) => x.value === value).length,
-								}),
-							),
+							levels: values.map((value) => ({
+								value,
+								count: at.filter((x) => x.value === value).length,
+							})),
 						};
 					}),
+					matrix: values.map((value) => ({
+						value,
+						moves: [0, 1, 2, 3, 4].map(
+							(m) =>
+								items.filter((x) => x.value === value && x.move === m).length,
+						),
+					})),
 				};
 			};
 			const results = {
