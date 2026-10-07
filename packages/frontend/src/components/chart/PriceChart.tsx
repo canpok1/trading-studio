@@ -1,9 +1,9 @@
 // 価格チャート。バックテスト結果とホーム（のちにデモ・リアルも）で使う
 
-import type { Judge } from "@trading-studio/core";
 import {
 	bollinger,
 	ema,
+	formatBtc,
 	formatRsi,
 	JUDGE_LABELS,
 	JUDGES,
@@ -22,6 +22,7 @@ import {
 	CandlestickSeries,
 	createChart,
 	createSeriesMarkers,
+	HistogramSeries,
 	LineSeries,
 	LineStyle,
 	TickMarkType,
@@ -49,14 +50,14 @@ import {
 	toSlots,
 	zoomRange,
 } from "./chart-data";
-import { useChartStyle, useShowEntry } from "./chart-style";
+import { useChartStyle, useShowEntry, useShowVolume } from "./chart-style";
 import {
 	BbSettingsModal,
 	EmaSettingsModal,
 	RsiSettingsModal,
 } from "./IndicatorSettings";
 import { JudgeLayer, stripArea } from "./judge-layer";
-import type { BarJudgments } from "./judgment-data";
+import type { BarJudgments, ChartBg } from "./judgment-data";
 import { slotAligned } from "./judgment-data";
 import { PriceTags } from "./price-tags";
 
@@ -94,9 +95,9 @@ type Props = {
 	viewKey?: string;
 	/** 足ごとの AI 判定（足の並びと同じ長さ）。無ければ背景と帯を出さない */
 	judgments?: BarJudgments | null;
-	/** 背景に塗る判定。残りは下の帯に並べる */
-	bg?: Judge;
-	onBgChange?: (j: Judge) => void;
+	/** 背景に塗る判定。残りは下の帯に並べる。none は背景に塗らず、すべて帯に並べる */
+	bg?: ChartBg;
+	onBgChange?: (j: ChartBg) => void;
 };
 
 const EMA_VARS = ["--color-ema1", "--color-ema2"] as const;
@@ -106,6 +107,20 @@ const INDICATOR_LABELS = { ema: "EMA", bb: "BB", rsi: "RSI" } as const;
 const rsiVar = (j: number) => RSI_VARS[j % 2] as string;
 
 type RsiLine = { period: number; thresholds: readonly number[] };
+
+/** 出来高の棒が使う、価格の区画の下からの高さの割合 */
+const VOLUME_SHARE = 0.2;
+
+/** #rrggbb に透明度を付ける */
+function withAlpha(hex: string, alpha: number): string {
+	if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex;
+	return `${hex}${Math.round(alpha * 255)
+		.toString(16)
+		.padStart(2, "0")}`;
+}
+
+/** 出来高の棒の色。上げ下げは塗り分けない（向きはローソク足で分かる） */
+const volumeColor = () => withAlpha(cssVar("--color-text-2"), 0.35);
 
 /** RSI の小窓の高さの割合。価格 : RSI = 3 : 1 */
 const PRICE_STRETCH = 3;
@@ -210,6 +225,7 @@ export function PriceChart({
 		/** ボリンジャーバンドの上限・中央・下限 */
 		bbs: ISeriesApi<"Line">[];
 		rsis: ISeriesApi<"Line">[];
+		volume: ISeriesApi<"Histogram">;
 		layer: JudgeLayer;
 		/** 価格の軸の「現」「買」の値 */
 		tags: PriceTags;
@@ -230,10 +246,14 @@ export function PriceChart({
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [style, setStyle] = useChartStyle();
 	const [showEntry, setShowEntry] = useShowEntry();
+	// 出来高を持たない足（バックテストの結果に残した足）は棒を描かない
+	const [showVolume, setShowVolume] = useShowVolume();
 	const hasEntry = entryProp !== undefined;
 	// 隠すと線も軸の値も消え、縦の範囲にも含めない
 	const entryPrices = (showEntry && entryProp) || NO_PERIODS;
 	const [cursor, setCursor] = useState<number | null>(null);
+	// 価格の区画の高さ（px）。出来高の棒を帯のすぐ上に置くのに使う
+	const [paneH, setPaneH] = useState(MIN_CHART_PX - 28);
 	const [themeTick, setThemeTick] = useState(0);
 	// 価格の系列を付け替えたら、注文のアイコンを置き直す
 	const [marksTick, setMarksTick] = useState(0);
@@ -329,6 +349,15 @@ export function PriceChart({
 			...candleColors(),
 			visible: false,
 		});
+		// 出来高は価格の区画の下に、価格とは別の目盛り（表示しない）で重ねる
+		const volume = chart.addSeries(HistogramSeries, {
+			priceScaleId: "volume",
+			priceLineVisible: false,
+			lastValueVisible: false,
+			priceFormat: { type: "volume" },
+			color: volumeColor(),
+			visible: false,
+		});
 		const marks = createSeriesMarkers(line, []);
 		const layer = new JudgeLayer(cssVar);
 		line.attachPrimitive(layer);
@@ -343,6 +372,7 @@ export function PriceChart({
 			emas: [],
 			bbs: [],
 			rsis: [],
+			volume,
 			layer,
 			tags,
 			now: null,
@@ -405,6 +435,29 @@ export function PriceChart({
 		};
 	}, []);
 
+	// 価格の区画の高さを測る。画面幅と RSI の小窓の有無で変わる
+	// biome-ignore lint/correctness/useExhaustiveDependencies: RSI の小窓を出し入れしたら測り直す
+	useEffect(() => {
+		const el = box.current;
+		if (!el) return;
+		let frame = 0;
+		const measure = () => {
+			cancelAnimationFrame(frame);
+			// 描画ライブラリが大きさを合わせ終えてから読む
+			frame = requestAnimationFrame(() => {
+				const h = chartRef.current?.chart.paneSize(0).height;
+				if (h) setPaneH(h);
+			});
+		};
+		const ro = new ResizeObserver(measure);
+		ro.observe(el);
+		measure();
+		return () => {
+			ro.disconnect();
+			cancelAnimationFrame(frame);
+		};
+	}, [showRsi]);
+
 	// 価格。線とローソク足の両方に入れておき、見せる方だけを表示する
 	useEffect(() => {
 		const c = chartRef.current;
@@ -434,6 +487,22 @@ export function PriceChart({
 			}),
 		);
 	}, [bars, slots]);
+
+	// 出来高の棒。価格の区画の下に灰色で塗る
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		c.volume.applyOptions({ visible: showVolume });
+		c.volume.setData(
+			showVolume
+				? slots.map((s) => {
+						const time = toChartTime(s.time) as UTCTimestamp;
+						const v = s.bar === null ? undefined : bars[s.bar]?.volume;
+						return v === undefined ? { time } : { time, value: v };
+					})
+				: [],
+		);
+	}, [bars, slots, showVolume]);
 
 	// 線とローソク足の切り替え。注文のアイコンと AI 判定の描画を見せる方へ付け替える
 	useEffect(() => {
@@ -607,11 +676,18 @@ export function PriceChart({
 		if (!c) return;
 		c.layer.setData(slotJudgments, bg);
 		// 帯の高さは px で決まるが余白は割合で渡すので、チャートが最も低いとき（スマホ幅）に合わせる
-		const bottom = hasJudgments
-			? (stripArea(true) + 14) / (MIN_CHART_PX - 28)
-			: 0.1;
+		const area = stripArea(hasJudgments, bg);
+		// 出来高を出すときは、その分だけ価格の線を上へ寄せる
+		const bottom =
+			(hasJudgments ? (area + 14) / (MIN_CHART_PX - 28) : 0.1) +
+			(showVolume ? VOLUME_SHARE : 0);
 		c.price.priceScale().applyOptions({ scaleMargins: { top: 0.1, bottom } });
-	}, [slotJudgments, bg, hasJudgments, themeTick]);
+		// 出来高は帯のすぐ上に置く。帯の高さは px なので、測った区画の高さで割合にする
+		const strip = Math.min(0.5, area / paneH);
+		c.volume.priceScale().applyOptions({
+			scaleMargins: { top: 1 - strip - VOLUME_SHARE, bottom: strip },
+		});
+	}, [slotJudgments, bg, hasJudgments, showVolume, paneH, themeTick]);
 
 	// 今のレート。組み込みの最後の値の表示を消し、今のレートの線に置き換える。
 	// 組み込みの線の名前は描画領域の右端に出て最新の足に重なるので、軸の値（「現」付き）は PriceTags で出す
@@ -732,6 +808,7 @@ export function PriceChart({
 			s.applyOptions({ color: cssVar(emaVar(j)) });
 		});
 		for (const s of c.bbs) s.applyOptions({ color: cssVar("--color-bb") });
+		c.volume.applyOptions({ color: volumeColor() });
 	}, [themeTick]);
 
 	const slot = slots[cursor ?? slots.length - 1] ?? null;
@@ -745,7 +822,7 @@ export function PriceChart({
 			<span aria-hidden="true" className="text-xs text-text-2">
 				背景
 			</span>
-			{JUDGES.map((j) => (
+			{[...JUDGES, "none" as const].map((j) => (
 				<button
 					key={j}
 					type="button"
@@ -753,7 +830,7 @@ export function PriceChart({
 					onClick={() => onBgChange?.(j)}
 					className={CHIP}
 				>
-					{JUDGE_LABELS[j]}
+					{j === "none" ? "なし" : JUDGE_LABELS[j]}
 				</button>
 			))}
 		</fieldset>
@@ -762,7 +839,7 @@ export function PriceChart({
 		<select
 			aria-label="背景に使う判定"
 			value={bg}
-			onChange={(e) => onBgChange?.(e.target.value as Judge)}
+			onChange={(e) => onBgChange?.(e.target.value as ChartBg)}
 			className={DROP}
 		>
 			{JUDGES.map((j) => (
@@ -770,6 +847,7 @@ export function PriceChart({
 					背景 {JUDGE_LABELS[j]}
 				</option>
 			))}
+			<option value="none">背景 なし</option>
 		</select>
 	);
 	const displayButtons = (
@@ -787,6 +865,14 @@ export function PriceChart({
 				className={CHIP}
 			>
 				ローソク足
+			</button>
+			<button
+				type="button"
+				aria-pressed={showVolume}
+				onClick={() => setShowVolume(!showVolume)}
+				className={CHIP}
+			>
+				出来高
 			</button>
 			{hasEntry && (
 				<button
@@ -830,6 +916,7 @@ export function PriceChart({
 	);
 	const shownLabels = [
 		...(candle ? ["ローソク足"] : []),
+		...(showVolume ? ["出来高"] : []),
 		...(hasEntry && showEntry ? ["買値"] : []),
 		...(["ema", "bb", "rsi"] as const)
 			.filter((k) => indicators[k].on)
@@ -841,7 +928,7 @@ export function PriceChart({
 				<h2 className="text-[15px] font-bold">チャート</h2>
 				<Help label="チャート">
 					{onMarker && <p>アイコンをタップで詳細。</p>}
-					{judgments && <p>下の帯をタップで背景と入れ替え。</p>}
+					{judgments && <p>下の帯をタップでその判定を背景に塗る。</p>}
 					<p>ピンチ / ホイール / ＋−で拡大・縮小。</p>
 				</Help>
 			</div>
@@ -913,6 +1000,11 @@ export function PriceChart({
 								{formatInt(bar.close)}円
 							</span>
 							{atLastSlot && latestNote}
+							{showVolume && bar.volume !== undefined && (
+								<span data-testid="chart-volume" className="text-text-2">
+									出来高 {formatBtc(bar.volume)} BTC
+								</span>
+							)}
 							{judgments &&
 								JUDGES.map((j) => {
 									const v = judgments[j][shown as number] ?? null;

@@ -88,6 +88,8 @@ export type BacktestChart = {
 		open?: number;
 		high?: number;
 		low?: number;
+		/** 出来高（satoshi）。結果に残した足には無い */
+		volume?: number;
 	}[];
 	markers: BacktestMarker[];
 	/** 足ごとの AI 判定（実行したときの集計ルールで計算）。ルールを記録する前の実行は null */

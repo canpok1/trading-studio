@@ -233,6 +233,27 @@ test("買値は最初は出し、隠すと再読み込み後も隠したまま",
 	await expect(toggle).toHaveAttribute("aria-pressed", "false");
 });
 
+test("出来高は最初は出し、隠すと再読み込み後も隠したまま", async ({ page }) => {
+	await page.goto("/home");
+	await expect(page.getByTestId("chart-close")).toHaveText(/^[\d,]+円$/, {
+		timeout: 15_000,
+	});
+	const menu = page.getByRole("button", { name: /^表示/ });
+	const toggle = page.getByRole("button", { name: "出来高", exact: true });
+	await expect(menu).toContainText("出来高");
+	await openDisplay(page);
+	await expect(toggle).toHaveAttribute("aria-pressed", "true");
+	await toggle.click();
+	await expect(toggle).toHaveAttribute("aria-pressed", "false");
+	await expect(menu).not.toContainText("出来高");
+
+	await page.reload();
+	await expect(menu).not.toContainText("出来高");
+	await openDisplay(page);
+	await toggle.click();
+	await expect(toggle).toHaveAttribute("aria-pressed", "true");
+});
+
 test("ホームは横にはみ出さない", async ({ page }) => {
 	await page.goto("/home");
 	await expect(page.getByTestId("chart-close")).toBeVisible();

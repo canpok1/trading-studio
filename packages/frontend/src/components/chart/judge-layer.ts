@@ -1,7 +1,8 @@
-// 価格チャートに AI 判定を重ねる描画拡張。背景に選んだ判定1つを薄く、残りをチャートの下の帯に濃く塗る
+// 価格チャートに AI 判定を重ねる描画拡張。背景に選んだ判定1つを薄く、残りをチャートの下の帯に濃く塗る。
+// 背景をなしにすると、すべてを帯に塗る
 
 import type { Judge } from "@trading-studio/core";
-import { JUDGE_LABELS, JUDGES } from "@trading-studio/core";
+import { JUDGE_LABELS } from "@trading-studio/core";
 import type {
 	IChartApi,
 	IPrimitivePaneRenderer,
@@ -11,7 +12,7 @@ import type {
 	Time,
 } from "lightweight-charts";
 import { valueStyle } from "../judgment/judgment-style";
-import type { BarJudgments, JudgmentRun } from "./judgment-data";
+import type { BarJudgments, ChartBg, JudgmentRun } from "./judgment-data";
 import { judgmentRuns, stripJudges } from "./judgment-data";
 
 type Target = Parameters<IPrimitivePaneRenderer["draw"]>[0];
@@ -29,9 +30,9 @@ const STRIP_GAP = 3;
 const STRIP_PAD = 4;
 
 /** 帯の領域の高さ（px）。判定が無ければ 0 */
-export function stripArea(hasJudgments: boolean): number {
+export function stripArea(hasJudgments: boolean, bg: ChartBg): number {
 	return hasJudgments
-		? (JUDGES.length - 1) * (STRIP_H + STRIP_GAP) + STRIP_PAD
+		? stripJudges(bg).length * (STRIP_H + STRIP_GAP) + STRIP_PAD
 		: 0;
 }
 
@@ -40,7 +41,7 @@ export class JudgeLayer implements ISeriesPrimitive<Time> {
 	private requestUpdate: (() => void) | null = null;
 	private runs: { [J in Judge]?: JudgmentRun[] } = {};
 	private has = false;
-	private bg: Judge = "sentiment";
+	private bg: ChartBg = "sentiment";
 	private height = 0;
 	private readonly bgView: IPrimitivePaneView;
 	private readonly stripView: IPrimitivePaneView;
@@ -70,7 +71,7 @@ export class JudgeLayer implements ISeriesPrimitive<Time> {
 		return this.has ? [this.bgView, this.stripView] : [];
 	}
 
-	setData(judgments: BarJudgments | null, bg: Judge) {
+	setData(judgments: BarJudgments | null, bg: ChartBg) {
 		this.has = judgments !== null;
 		this.bg = bg;
 		this.runs = judgments
@@ -89,7 +90,7 @@ export class JudgeLayer implements ISeriesPrimitive<Time> {
 	/** 帯の上なら、その帯の判定 */
 	stripAt(y: number): Judge | null {
 		if (!this.has) return null;
-		const top = this.height - stripArea(true) + STRIP_PAD;
+		const top = this.height - stripArea(true, this.bg) + STRIP_PAD;
 		if (y < top) return null;
 		const k = Math.floor((y - top) / (STRIP_H + STRIP_GAP));
 		return stripJudges(this.bg)[k] ?? null;
@@ -134,7 +135,14 @@ export class JudgeLayer implements ISeriesPrimitive<Time> {
 	private drawBg(t: Target) {
 		inBitmap(t, (scope) => {
 			this.height = scope.mediaSize.height;
-			this.fillRuns(scope, this.bg, "bg", 0, this.height - stripArea(true));
+			if (this.bg === "none") return;
+			this.fillRuns(
+				scope,
+				this.bg,
+				"bg",
+				0,
+				this.height - stripArea(true, this.bg),
+			);
 		});
 	}
 
@@ -147,7 +155,7 @@ export class JudgeLayer implements ISeriesPrimitive<Time> {
 			} = scope;
 			const { width: W, height: H } = scope.mediaSize;
 			this.height = H;
-			const area = stripArea(true);
+			const area = stripArea(true, this.bg);
 			c.fillStyle = this.cssVar("--color-surface");
 			c.fillRect(
 				0,

@@ -61,10 +61,16 @@ export function judgmentRuns<V extends string>(
 	return out;
 }
 
+/** 背景に塗る判定。none は背景に塗らず、すべて帯に並べる */
+export type ChartBg = Judge | "none";
+
 /** 背景以外の判定。帯に上から並べる順 */
-export function stripJudges(bg: Judge): Judge[] {
+export function stripJudges(bg: ChartBg): Judge[] {
 	return JUDGES.filter((j) => j !== bg);
 }
 
 export const isJudge = (v: unknown): v is Judge =>
 	(JUDGES as readonly unknown[]).includes(v);
+
+export const isChartBg = (v: unknown): v is ChartBg =>
+	v === "none" || isJudge(v);

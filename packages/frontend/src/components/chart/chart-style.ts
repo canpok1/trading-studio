@@ -47,3 +47,25 @@ export function useShowEntry(): [boolean, (on: boolean) => void] {
 	}, []);
 	return [on, set];
 }
+
+const VOLUME_KEY = "chart-volume";
+
+/** 出来高の棒を出すか。既定は出す。選んだものをブラウザに保存する */
+export function useShowVolume(): [boolean, (on: boolean) => void] {
+	const [on, setOn] = useState(() => {
+		try {
+			return localStorage.getItem(VOLUME_KEY) !== "off";
+		} catch {
+			return true;
+		}
+	});
+	const set = useCallback((v: boolean) => {
+		setOn(v);
+		try {
+			localStorage.setItem(VOLUME_KEY, v ? "on" : "off");
+		} catch {
+			// 保存できない環境では、この画面を開いている間だけ効く
+		}
+	}, []);
+	return [on, set];
+}
