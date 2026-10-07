@@ -1,4 +1,4 @@
-// 採点の分析で読むニュースと採点。読むだけで書き換えない。書くのは精度の設定だけ
+// 精度を測るニュースと採点。読むだけで書き換えない。書くのは精度の設定だけ
 
 import type { Duration } from "@trading-studio/core";
 import type { Db } from "../db/open";
@@ -29,14 +29,6 @@ export type AnalysisNewsRow = {
 	model: string | null;
 	appBuiltAt: number | null;
 	error: string | null;
-};
-
-/** 絞り込み。status の unscored は採点の行が無いもの */
-export type NewsFilter = {
-	from: number;
-	to: number;
-	criteriaVersion?: number;
-	status?: "done" | "retry" | "failed" | "skipped" | "unscored";
 };
 
 const COLUMNS = `n.id, n.source_name as sourceName, n.language, n.url, n.title, n.summary,
@@ -89,60 +81,6 @@ export class ScoringAnalysisRepository {
 			"insert into settings (key, value) values (?, ?) on conflict (key) do update set value = excluded.value",
 			[ACCURACY_SETTINGS_KEY, JSON.stringify(s)],
 		);
-	}
-
-	private where(f: NewsFilter): { clause: string; args: (number | string)[] } {
-		// 新しさの時刻（公開時刻と取得時刻の早いほう）で期間を絞る。集計・エクスポートと同じ基準
-		const conds = [
-			"min(n.published_at, n.fetched_at) >= ?",
-			"min(n.published_at, n.fetched_at) < ?",
-		];
-		const args: (number | string)[] = [f.from, f.to];
-		if (f.criteriaVersion !== undefined) {
-			conds.push("s.criteria_version = ?");
-			args.push(f.criteriaVersion);
-		}
-		if (f.status === "unscored") {
-			conds.push("s.news_id is null");
-		} else if (f.status !== undefined) {
-			conds.push("s.status = ?");
-			args.push(f.status);
-		}
-		return { clause: conds.join(" and "), args };
-	}
-
-	/** 新しい順（新しさの時刻） */
-	news(
-		f: NewsFilter,
-		offset: number,
-		limit: number,
-	): { total: number; rows: AnalysisNewsRow[] } {
-		const { clause, args } = this.where(f);
-		const from = "from news n left join news_scores s on s.news_id = n.id";
-		const total =
-			this.sql
-				.query<{ c: number }, (number | string)[]>(
-					`select count(*) as c ${from} where ${clause}`,
-				)
-				.get(...args)?.c ?? 0;
-		const rows = this.sql
-			.query<AnalysisNewsRow, (number | string)[]>(
-				`select ${COLUMNS} ${from} where ${clause}
-				 order by min(n.published_at, n.fetched_at) desc, n.id desc limit ? offset ?`,
-			)
-			.all(...args, limit, offset);
-		return { total, rows };
-	}
-
-	/** 採点済みのものを古い順（採点時刻）にすべて */
-	scored(f: Omit<NewsFilter, "status">): AnalysisNewsRow[] {
-		const { clause, args } = this.where({ ...f, status: "done" });
-		return this.sql
-			.query<AnalysisNewsRow, (number | string)[]>(
-				`select ${COLUMNS} from news n join news_scores s on s.news_id = n.id
-				 where ${clause} order by s.scored_at, n.id`,
-			)
-			.all(...args);
 	}
 
 	/** 採点済みのものを、採点時刻が (from, to] の範囲で。from が null なら to 以前すべて */

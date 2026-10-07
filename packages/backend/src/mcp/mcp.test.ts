@@ -3,6 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Candle, SingleBuyConditionSet } from "@trading-studio/core";
 import {
+	DEFAULT_AGGREGATION_RULE,
 	DEFAULT_BUY_ORDER,
 	DEFAULT_PARTIAL_SELL,
 	singleBuy,
@@ -72,8 +73,9 @@ async function setup() {
 			backtests: t.backtests,
 			marketData: t.marketData,
 			scoring: t.scoring,
+			news: t.news,
 			judgments: t.judgments,
-			scoringAnalysis: t.scoringAnalysis,
+			accuracy: t.scoringAnalysis,
 			inUse: (id) => t.trading.inUse(id),
 			sleep: async () => {},
 		}),
@@ -118,17 +120,18 @@ describe("MCP", () => {
 		expect(names).toEqual([
 			"add_scoring_criteria",
 			"create_strategy",
-			"evaluate_judgments",
-			"evaluate_news_scores",
 			"get_backtest",
 			"get_backtest_orders",
 			"get_data_coverage",
 			"get_guide",
+			"get_market_evaluation",
+			"get_market_evaluation_analysis",
 			"get_scoring_setup",
 			"get_strategy",
 			"list_backtests",
 			"list_news_scores",
 			"list_strategies",
+			"preview_aggregation_rule",
 			"rescore_news",
 			"run_backtest",
 			"set_active_scoring_criteria",
@@ -326,83 +329,113 @@ describe("MCP", () => {
 			expect(r.text).toContain("{criteria}");
 		});
 
-		test("採点とその後の値動きを並べて読める", async () => {
+		test("採点・重み・精度を、画面と同じ条件で絞って読める", async () => {
 			const { call } = await scored();
 			const r = await call("list_news_scores", {
 				from: "2026-08-01",
-				to: "2026-08-03",
+				to: "2026-08-02",
 			});
 			const body = r.json as {
 				total: number;
-				priceTimeframe: string;
+				evaluationTime: string;
+				precisionHorizon: string;
 				items: {
 					title: string;
 					status: string;
 					criteriaVersion: number;
-					returnsAfterScoredPct: Record<string, number | null>;
+					weight: number;
+					precision: { sentiment: number; risk: number };
 				}[];
 			};
 			expect(body.total).toBe(3);
-			expect(body.priceTimeframe).toBe("1h");
+			// to が今より前なので、市場評価の時点は to
+			expect(body.evaluationTime).toBe("2026-08-02T00:00:00+09:00");
+			expect(body.precisionHorizon).toBe("24h");
 			expect(body.items[0]).toMatchObject({
 				title: "三",
 				status: "done",
 				criteriaVersion: 1,
 			});
-			expect(body.items[0]?.returnsAfterScoredPct["1h"]).toBeGreaterThan(0);
+			expect(body.items[0]?.weight).toBeGreaterThan(0);
+			expect(body.items[0]?.precision.sentiment).toBeGreaterThanOrEqual(1);
 
-			const none = await call("list_news_scores", {
-				from: "2026-08-01",
-				to: "2026-08-03",
-				status: "failed",
-			});
-			expect(none.json).toMatchObject({ total: 0, items: [] });
+			const q = await call("list_news_scores", { q: "二" });
+			expect(q.json).toMatchObject({ total: 1, items: [{ title: "二" }] });
+			// 今は短期の半減期の4倍より後なので、評価に使っている記事は無い
+			const active = await call("list_news_scores", { active: true });
+			expect(active.json).toMatchObject({ total: 0 });
+			const page = await call("list_news_scores", { offset: 2, limit: 5 });
+			expect(page.json).toMatchObject({ total: 3, items: [{ title: "一" }] });
+			const bad = await call("list_news_scores", { from: "8/1" });
+			expect(bad.isError).toBe(true);
 		});
 
-		test("点数と判定を値動きと突き合わせて集計できる", async () => {
+		test("市場評価と内訳、評価ルールの案での市場評価を読める", async () => {
 			const { call } = await scored();
-			const scores = await call("evaluate_news_scores", {
-				from: "2026-08-01",
-				to: "2026-08-03",
-			});
-			expect(scores.json).toMatchObject({
-				newsCount: 3,
-				baseline: { "1h": { n: 3, upRatio: 1 } },
-				versions: [{ criteriaVersion: 1, count: 3 }],
-			});
-
-			const judged = await call("evaluate_judgments", {
-				from: "2026-08-02",
-				to: "2026-08-03",
-			});
-			const j = judged.json as {
-				hours: number;
-				judgedHours: number;
-				byJudge: { sentiment: { hours: number }[] };
+			const r = await call("get_market_evaluation", { at: "2026-08-02" });
+			const body = r.json as {
+				time: string;
+				results: { sentiment: { label: string; count: number } };
+				breakdown: { risk: { label: string; count: number }[] };
 			};
-			expect(j.hours).toBe(24);
-			expect(j.judgedHours).toBe(24);
-			expect(j.byJudge.sentiment.reduce((a, x) => a + x.hours, 0)).toBe(24);
+			expect(body.time).toBe("2026-08-02T00:00:00+09:00");
+			expect(body.results.sentiment.count).toBe(3);
+			expect(body.breakdown.risk.map((x) => x.label)).toEqual([
+				"危機",
+				"かなり警戒",
+				"警戒",
+				"やや警戒",
+				"平常",
+			]);
+			expect(body.breakdown.risk.reduce((a, x) => a + x.count, 0)).toBe(3);
 
-			const bad = await call("evaluate_judgments", {
-				from: "2026-08-02",
-				to: "2026-08-03",
-				rule: { windowHours: 0, halfLifeHours: 6, thresholds: {} },
-			});
+			const bad = await call("get_market_evaluation", { at: "あした" });
 			expect(bad.isError).toBe(true);
-			const long = await call("evaluate_news_scores", {
-				from: "2026-01-01",
-				to: "2026-08-03",
+
+			const preview = await call("preview_aggregation_rule", {
+				rule: DEFAULT_AGGREGATION_RULE,
 			});
-			expect(long.isError).toBe(true);
+			expect(preview.isError).toBe(false);
+			expect(preview.json).toMatchObject({
+				results: { risk: { count: 0, label: "平常" } },
+			});
+			const wrong = await call("preview_aggregation_rule", {
+				rule: { halfLifeHours: 6, thresholds: {} },
+			});
+			expect(wrong.isError).toBe(true);
+		});
+
+		test("市場評価の分析を画面の3つの見せ方で読める", async () => {
+			const { call } = await scored();
+			const r = await call("get_market_evaluation_analysis");
+			const body = r.json as {
+				settings: { horizon: string; periodDays: number };
+				results: {
+					sentiment: {
+						count: number;
+						byPrecision: { precision: number; count: number }[];
+						byLevel: { count: number }[];
+						byLevelAndMove: { moves: { move: string; count: number }[] }[];
+					};
+				};
+			};
+			expect(body.settings).toMatchObject({ horizon: "24h", periodDays: 30 });
+			const s = body.results.sentiment;
+			expect(s.count).toBe(3);
+			expect(s.byPrecision.map((x) => x.precision)).toEqual([5, 4, 3, 2, 1]);
+			expect(s.byPrecision.reduce((a, x) => a + x.count, 0)).toBe(3);
+			expect(s.byLevel.reduce((a, x) => a + x.count, 0)).toBe(3);
+			// 値動きはずっと上がっている
+			expect(
+				s.byLevelAndMove.flatMap((x) =>
+					x.moves.filter((m) => m.count > 0).map((m) => m.move),
+				),
+			).toEqual(expect.arrayContaining([expect.stringContaining("上昇")]));
 		});
 
 		test("基準の案で試し採点し、版を足して切り替えられる", async () => {
 			const { t, call } = await scored();
-			const list = await call("list_news_scores", {
-				from: "2026-08-01",
-				to: "2026-08-03",
-			});
+			const list = await call("list_news_scores");
 			const ids = (list.json as { items: { id: number }[] }).items.map(
 				(x) => x.id,
 			);
@@ -413,8 +446,8 @@ describe("MCP", () => {
 			expect(trial.isError).toBe(false);
 			expect(trial.json).toMatchObject([
 				{
-					news: { id: ids[0], status: "done" },
-					trial: { comment: "デモの採点。" },
+					news: { id: ids[0] },
+					result: { ok: true, comment: "デモの採点。" },
 				},
 				{ news: { id: ids[1] } },
 			]);

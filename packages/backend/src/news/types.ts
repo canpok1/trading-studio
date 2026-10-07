@@ -132,6 +132,9 @@ export interface NewsService {
 	searchNews(filter: NewsFilter): NewsSearchResult;
 }
 
+/** 一覧で一度に読める件数の上限 */
+export const NEWS_LIST_MAX = 1000;
+
 /** bull: 強気材料（やや強気以上）、bear: 弱気材料（やや弱気以下）、risk: リスク高（警戒以上） */
 export const NEWS_IMPACTS = ["bull", "bear", "risk"] as const;
 export type NewsImpact = (typeof NEWS_IMPACTS)[number];

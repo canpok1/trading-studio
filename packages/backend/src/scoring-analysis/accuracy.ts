@@ -4,6 +4,12 @@ import type { AggregationRule, Scores } from "@trading-studio/core";
 import { classify as judgmentOf } from "@trading-studio/core";
 import type { RiskBands, SentimentBands } from "./types";
 
+/** 値動きの段階の名前。番号（0〜4）は actualLevels と同じ */
+export const MOVE_LABELS = {
+	sentiment: ["大きく下落", "下落", "横ばい", "上昇", "大きく上昇"],
+	risk: ["静か", "やや荒れ", "荒れた", "かなり荒れ", "大荒れ"],
+} as const;
+
 /** 値動きの5段階。-2 が大きく下落、2 が大きく上昇 */
 export function moveLevel(pct: number, b: SentimentBands): number {
 	const a = Math.abs(pct);
