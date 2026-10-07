@@ -752,25 +752,13 @@ describe("運用の採点を置き換える採点し直し", () => {
 		t.service.setActiveCriteria(v2.version.version);
 		return ids as [number, ...number[]];
 	}
-	const filter = {
-		from: null,
-		to: null,
-		q: "",
-		impacts: [],
-		durations: [],
-		activeAt: null,
-		sort: "new" as const,
-		limit: 100,
-	};
-
 	test("使用中の版で採点し直して運用の採点を置き換え、使い始める時刻は変えず、元の採点は版の採点として残す", async () => {
 		const t = setup();
 		const [a] = await scoredThenV2(t, 1);
-		expect(t.service.rescoreLive({ newsId: a })).toEqual({
+		expect(t.service.rescoreLive(a)).toEqual({
 			ok: true,
 			version: 2,
-			requested: 1,
-			skipped: 0,
+			requested: true,
 		});
 		expect(t.service.status().rescorePending).toBe(1);
 		expect(t.newsRepo.newsByIds([a])[0]?.rescore).toEqual({
@@ -810,10 +798,7 @@ describe("運用の採点を置き換える採点し直し", () => {
 			}),
 		]);
 		// 使用中の版で採点済みなら頼まない
-		expect(t.service.rescoreLive({ newsId: a })).toMatchObject({
-			requested: 0,
-			skipped: 1,
-		});
+		expect(t.service.rescoreLive(a)).toMatchObject({ requested: false });
 	});
 
 	test("その版の採点が既にあれば、問い合わせずにすぐ置き換える", async () => {
@@ -830,8 +815,8 @@ describe("運用の採点を置き換える採点し直し", () => {
 		await t.at(T0 + 10_000);
 		expect(t.repo.getScore(a)?.criteriaVersion).toBe(1);
 		const calls = t.calls.length;
-		expect(t.service.rescoreLive({ newsId: a })).toMatchObject({
-			requested: 1,
+		expect(t.service.rescoreLive(a)).toMatchObject({
+			requested: true,
 		});
 		expect(t.calls).toHaveLength(calls);
 		expect(t.repo.getScore(a)).toMatchObject({
@@ -846,7 +831,7 @@ describe("運用の採点を置き換える採点し直し", () => {
 		const [a] = await scoredThenV2(t, 1);
 		const from = T0 + 24 * H;
 		t.service.requestRescore(from, from + H, 2);
-		t.service.rescoreLive({ newsId: a });
+		t.service.rescoreLive(a);
 		await t.at(T0 + 10_000);
 		expect(t.repo.getScore(a)?.criteriaVersion).toBe(2);
 	});
@@ -854,14 +839,14 @@ describe("運用の採点を置き換える採点し直し", () => {
 	test("後から別の版で頼んだ置き換えを優先し、前の頼みが後で終わっても戻さない", async () => {
 		const t = setup();
 		const [a] = await scoredThenV2(t, 1);
-		t.service.rescoreLive({ newsId: a });
+		t.service.rescoreLive(a);
 		t.replies.push(new Error("503"));
 		await t.at(T0 + 10_000);
 		// v2 が再試行を待っている間に v3 へ切り替えて頼み直す
 		const v3 = t.service.addCriteria("基準3", "改善");
 		if (!v3.ok) throw new Error();
 		t.service.setActiveCriteria(v3.version.version);
-		t.service.rescoreLive({ newsId: a });
+		t.service.rescoreLive(a);
 		t.replies.push({
 			sentiment: 30,
 			risk: 0,
@@ -889,7 +874,7 @@ describe("運用の採点を置き換える採点し直し", () => {
 	test("失敗して止まると理由を出し、頼み直すと採点し直す", async () => {
 		const t = setup();
 		const [a] = await scoredThenV2(t, 1);
-		t.service.rescoreLive({ newsId: a });
+		t.service.rescoreLive(a);
 		t.replies.push(
 			...RETRY_DELAYS_MS.map(() => new Error("503")),
 			new Error("503"),
@@ -906,8 +891,8 @@ describe("運用の採点を置き換える採点し直し", () => {
 			error: "503",
 		});
 		expect(t.repo.getScore(a)?.criteriaVersion).toBe(1);
-		expect(t.service.rescoreLive({ newsId: a })).toMatchObject({
-			requested: 1,
+		expect(t.service.rescoreLive(a)).toMatchObject({
+			requested: true,
 		});
 		expect(t.newsRepo.newsByIds([a])[0]?.rescore?.status).toBe("pending");
 		await t.at(time + 1000);
@@ -917,12 +902,9 @@ describe("運用の採点を置き換える採点し直し", () => {
 		});
 	});
 
-	test("絞り込みの条件に当てはまるものをまとめて頼み、運用で採点済みでないものと使用中の版のものは飛ばす", async () => {
+	test("運用で採点済みでないものは頼まない", async () => {
 		const t = setup();
-		const [a, b] = (await scoredThenV2(t, 2)) as [number, number];
-		// v2 で運用の採点をした記事
-		const c = t.addNews("c");
-		await t.at(T0 + 10_000);
+		await scoredThenV2(t, 1);
 		// 採点に失敗して止まっている記事
 		const d = t.addNews("d");
 		t.replies.push(
@@ -936,25 +918,14 @@ describe("運用の採点を置き換える採点し直し", () => {
 			await t.at(time);
 		}
 		expect(t.repo.getScore(d)?.status).toBe("failed");
-		expect(t.service.rescoreLive({ filter })).toEqual({
-			ok: true,
-			version: 2,
-			requested: 2,
-			skipped: 2,
-		});
-		// キーワードで絞ると当てはまるものだけ
-		expect(
-			t.service.rescoreLive({ filter: { ...filter, q: "n0" } }),
-		).toMatchObject({ requested: 1, skipped: 0 });
-		expect(
-			t.newsRepo.newsByIds([a, b, c, d]).map((n) => n.rescore?.status ?? null),
-		).toEqual(["pending", "pending", null, null]);
+		expect(t.service.rescoreLive(d)).toMatchObject({ requested: false });
+		expect(t.newsRepo.newsByIds([d])[0]?.rescore).toBeNull();
 	});
 
 	test("使用中の版が無ければ理由を返す", () => {
 		const t = setup();
 		t.repo.setActiveCriteria(999);
-		expect(t.service.rescoreLive({ newsId: 1 })).toMatchObject({
+		expect(t.service.rescoreLive(1)).toMatchObject({
 			ok: false,
 			status: 409,
 		});
@@ -965,9 +936,7 @@ describe("運用の採点を置き換える採点し直し", () => {
 		const post = (path: string) =>
 			app.request(`/api/scoring/news/${path}`, { method: "POST" });
 		expect((await post("1/rescore")).status).toBe(409);
-		expect((await post("rescore?sort=x")).status).toBe(400);
-		const r = await post("rescore?q=abc");
-		expect(r.status).toBe(200);
-		expect(await r.json()).toEqual({ version: 1, requested: 0, skipped: 0 });
+		// まとめて採点し直す API は無い
+		expect((await post("rescore?q=abc")).status).toBe(404);
 	});
 });

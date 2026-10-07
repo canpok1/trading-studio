@@ -1,22 +1,15 @@
 import { Hono } from "hono";
 import { validator } from "hono/validator";
-import type { LiveRescoreResult, ScoringService } from "../news/types";
+import type { ScoringService } from "../news/types";
 import type {
 	AccuracyHorizon,
 	AccuracyPeriod,
 	AccuracyService,
 } from "../scoring-analysis/types";
 import { ACCURACY_IDS_MAX } from "../scoring-analysis/types";
-import { parseFilter } from "./news";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
 	typeof v === "object" && v !== null;
-
-const liveRescoreBody = (r: LiveRescoreResult & { ok: true }) => ({
-	version: r.version,
-	requested: r.requested,
-	skipped: r.skipped,
-});
 
 export function scoringRoutes(
 	service: ScoringService,
@@ -182,20 +175,12 @@ export function scoringRoutes(
 					? c.json({ ok: true as const }, 200)
 					: c.json({ message: "採点に失敗したニュースではない" }, 409),
 			)
-			// 運用の採点を使用中の版で採点し直す（ニュース画面から）。絞り込みの条件は一覧と同じ形
-			.post("/news/rescore", (c) => {
-				const f = parseFilter(c.req.query());
-				if (typeof f === "string") return c.json({ message: f }, 400);
-				const r = service.rescoreLive({ filter: f });
-				return r.ok
-					? c.json(liveRescoreBody(r), 200)
-					: c.json({ message: r.message }, r.status);
-			})
+			// 運用の採点を使用中の版で採点し直す（ニュース画面から）
 			.post("/news/:id/rescore", (c) => {
-				const r = service.rescoreLive({ newsId: Number(c.req.param("id")) });
+				const r = service.rescoreLive(Number(c.req.param("id")));
 				if (!r.ok) return c.json({ message: r.message }, r.status);
-				return r.requested > 0
-					? c.json(liveRescoreBody(r), 200)
+				return r.requested
+					? c.json({ version: r.version }, 200)
 					: c.json(
 							{ message: "使用中の版で採点済みか、採点済みのニュースではない" },
 							409,
