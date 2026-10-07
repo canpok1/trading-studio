@@ -51,7 +51,7 @@ const NEWS_MAX = 1000;
 
 const VIEWS = [
 	["list", "一覧"],
-	["accuracy", "精度分析"],
+	["evaluation", "評価詳細"],
 ] as const;
 type View = (typeof VIEWS)[number][0];
 
@@ -60,7 +60,7 @@ export function NewsPage() {
 	const visible = usePageVisible();
 
 	const [params, setParams] = useSearchParams();
-	const view: View = params.get("tab") === "accuracy" ? "accuracy" : "list";
+	const view: View = params.get("tab") === "evaluation" ? "evaluation" : "list";
 	// 絞り込みの条件は残したまま切り替える
 	const setView = (v: View) => {
 		const next = new URLSearchParams(params);
@@ -159,7 +159,7 @@ export function NewsPage() {
 			onSelect={setView}
 		/>
 	);
-	if (view === "accuracy") {
+	if (view === "evaluation") {
 		return (
 			<Page title="ニュース" actions={<SettingsLink />}>
 				{tabs}
