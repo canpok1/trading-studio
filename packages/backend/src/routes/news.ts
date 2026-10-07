@@ -10,12 +10,16 @@ import type {
 	NewsSort,
 	NewsSourceResult,
 } from "../news/types";
-import { NEWS_IMPACTS, NEWS_LANGUAGES, NEWS_SORTS } from "../news/types";
+import {
+	NEWS_IMPACTS,
+	NEWS_LANGUAGES,
+	NEWS_LIST_MAX,
+	NEWS_SORTS,
+} from "../news/types";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
 	typeof v === "object" && v !== null;
 
-const MAX_LIST = 1000;
 /** キーワードの長さの上限 */
 const MAX_Q = 200;
 
@@ -36,7 +40,7 @@ export function parseFilter(
 	q: Record<string, string | undefined>,
 ): NewsFilter | string {
 	const limit = Math.min(
-		MAX_LIST,
+		NEWS_LIST_MAX,
 		Math.max(1, Math.floor(Number(q.limit ?? 100)) || 100),
 	);
 	const time = (v: string | undefined) =>

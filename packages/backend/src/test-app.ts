@@ -157,7 +157,6 @@ export function createTestApp(
 		repo: new ScoringAnalysisRepository(db),
 		marketData,
 		judgments,
-		scorer,
 		now: () => clock.now,
 	});
 	const app = createApp({

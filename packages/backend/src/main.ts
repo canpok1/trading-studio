@@ -182,7 +182,11 @@ const scoringAnalysis = createScoringAnalysis({
 	repo: new ScoringAnalysisRepository(db),
 	marketData,
 	judgments,
-	scorer,
+});
+const news = createNewsService({
+	repo: newsRepo,
+	collector: newsCollector,
+	rule: () => scoreRepo.aggregationRule(),
 });
 const server = new Hono()
 	.use("/api/*", slowRequestLog())
@@ -194,8 +198,9 @@ const server = new Hono()
 			backtests,
 			marketData,
 			scoring,
+			news,
 			judgments,
-			scoringAnalysis,
+			accuracy: scoringAnalysis,
 			inUse: (id) => tradingEngine.inUse(id),
 		}),
 	)
@@ -209,11 +214,7 @@ const server = new Hono()
 			strategies,
 			backtests,
 			advice,
-			news: createNewsService({
-				repo: newsRepo,
-				collector: newsCollector,
-				rule: () => scoreRepo.aggregationRule(),
-			}),
+			news,
 			scoring,
 			judgments,
 			trading: tradingEngine,
