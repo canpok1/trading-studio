@@ -136,7 +136,7 @@ export function AccuracySummarySection({
 			{data ? (
 				JUDGES.map((j) => (
 					<SummaryCard
-						key={`${j}-${view}`}
+						key={j}
 						judge={j}
 						result={data.results[j]}
 						view={view}
@@ -369,19 +369,14 @@ function ByPrecision<J extends Judge>({
 	);
 }
 
-/** 記事の段階ごとの、精度 1〜5 の件数（添字が精度） */
+/** 記事の段階ごとの、精度 1〜5 の件数（添字が精度）。精度ごとの集計（rows）から読み替える */
 function precisionCounts<J extends Judge>(
-	judge: J,
 	result: AccuracySummaryResult<J>,
 	v: JudgmentValue<J>,
 ): number[] {
 	const counts = [0, 0, 0, 0, 0, 0];
-	const i = levelIndex(judge, v);
-	const moves = result.matrix.find((x) => x.value === v)?.moves ?? [];
-	moves.forEach((n, m) => {
-		const p = 5 - Math.abs(i - m);
-		counts[p] = (counts[p] ?? 0) + n;
-	});
+	for (const r of result.rows)
+		counts[r.precision] = r.levels.find((x) => x.value === v)?.count ?? 0;
 	return counts;
 }
 
@@ -397,7 +392,7 @@ function ByLevel<J extends Judge>({
 }) {
 	const [open, setOpen] = useState<string | null>(null);
 	const levels = LEVEL_ORDER[judge].map((v) => {
-		const counts = precisionCounts(judge, result, v);
+		const counts = precisionCounts(result, v);
 		const total = counts.reduce((a, b) => a + b, 0);
 		const average =
 			total === 0 ? null : counts.reduce((a, n, p) => a + n * p, 0) / total;
@@ -494,9 +489,8 @@ function Matrix<J extends Judge>({
 							scope="col"
 							className="px-0.5 align-bottom font-normal leading-tight text-text-2"
 						>
-							{parts.map((x, i) => (
+							{parts.map((x) => (
 								<span key={x} className="inline-block">
-									{i > 0 && <wbr />}
 									{x}
 								</span>
 							))}

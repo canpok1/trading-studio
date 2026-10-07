@@ -232,7 +232,13 @@ export function createScoringAnalysis({
 	}
 
 	/** 記事ごとの精度。採点済みでない記事・持続なしの記事は飛ばす */
-	function measure(all: readonly AnalysisNewsRow[]): ArticleAccuracy[] {
+	/** 記事ごとの精度。精度を出せた記事には値動きの段階の番号（0〜4）も付ける（集計の表に使う） */
+	function measure(all: readonly AnalysisNewsRow[]): (
+		| ArticleAccuracy
+		| (Extract<ArticleAccuracy, { status: "ok" }> & {
+				moves: { sentiment: number; risk: number };
+		  })
+	)[] {
 		const { horizon, sentimentBands, riskBands } = repo.accuracySettings();
 		const rule = judgments.rule();
 		const rows = all.filter(
@@ -257,7 +263,7 @@ export function createScoringAnalysis({
 			sentiment: sentimentBands[horizon],
 			risk: riskBands[horizon],
 		};
-		return rows.map((r): ArticleAccuracy => {
+		return rows.map((r) => {
 			const at = r.scoredAt as number;
 			if (at + HORIZONS[horizon] > to) return { id: r.id, status: "measuring" };
 			const ret = p.returnsFrom(at)[horizon];
@@ -444,7 +450,19 @@ export function createScoringAnalysis({
 		/** 記事ごとの精度（ニュース画面）。運用の採点の点数と、採点時刻から設定の長さの後の値動きを突き合わせる */
 		articleAccuracy(ids: readonly number[]): ArticleAccuracyReport {
 			const { horizon } = repo.accuracySettings();
-			return { horizon, items: measure(repo.byIds(ids)) };
+			// 値動きの段階は集計の表にだけ使うので、記事ごとの精度には載せない
+			const items = measure(repo.byIds(ids)).map(
+				(x): ArticleAccuracy =>
+					x.status === "ok"
+						? {
+								id: x.id,
+								status: x.status,
+								sentiment: x.sentiment,
+								risk: x.risk,
+							}
+						: x,
+			);
+			return { horizon, items };
 		},
 
 		/** 評価詳細のタブの精度の集計。採点時刻が期間内の記事の精度を、観点ごとに 5〜1 で数える */
@@ -455,7 +473,9 @@ export function createScoringAnalysis({
 			const rows = repo.scoredBetween(from, time);
 			const byId = new Map(rows.map((r) => [r.id, r]));
 			const rule = judgments.rule();
-			const ok = measure(rows).flatMap((x) => (x.status === "ok" ? [x] : []));
+			const ok = measure(rows).flatMap((x) =>
+				x.status === "ok" && "moves" in x ? [x] : [],
+			);
 			const summarize = <J extends Judge>(j: J): AccuracySummaryResult<J> => {
 				const items = ok.map((x) => {
 					const r = byId.get(x.id) as AnalysisNewsRow;
@@ -486,13 +506,12 @@ export function createScoringAnalysis({
 							})),
 						};
 					}),
-					matrix: values.map((value) => ({
-						value,
-						moves: [0, 1, 2, 3, 4].map(
-							(m) =>
-								items.filter((x) => x.value === value && x.move === m).length,
-						),
-					})),
+					matrix: values.map((value) => {
+						const moves = [0, 0, 0, 0, 0];
+						for (const x of items)
+							if (x.value === value) moves[x.move] = (moves[x.move] ?? 0) + 1;
+						return { value, moves };
+					}),
 				};
 			};
 			const results = {

@@ -67,14 +67,7 @@ export type SetAccuracySettingsResult =
  * measuring: 測る長さがまだたっていない / unknown: たったが価格が無い
  */
 export type ArticleAccuracy =
-	| {
-			id: number;
-			status: "ok";
-			sentiment: number;
-			risk: number;
-			/** 値動きの段階の番号（0〜4）。センチメントは 0 が大きく下落〜4 が大きく上昇、リスクは 0 が静か〜4 が大荒れ */
-			moves: { sentiment: number; risk: number };
-	  }
+	| { id: number; status: "ok"; sentiment: number; risk: number }
 	| { id: number; status: "measuring" | "unknown" };
 
 export type ArticleAccuracyReport = {
@@ -98,7 +91,7 @@ export type AccuracySummaryResult<J extends Judge = Judge> = {
 	}[];
 	/**
 	 * 記事の点数の段階 × 値動きの段階の件数。並びは JUDGMENT_VALUES と同じで、0 件の段階も含める。
-	 * moves は値動きの段階の番号（0〜4、ArticleAccuracy の moves と同じ）ごとの件数
+	 * moves は値動きの段階の番号（0〜4）ごとの件数。センチメントは 0 が大きく下落〜4 が大きく上昇、リスクは 0 が静か〜4 が大荒れ
 	 */
 	matrix: { value: JudgmentValue<J>; moves: number[] }[];
 };
