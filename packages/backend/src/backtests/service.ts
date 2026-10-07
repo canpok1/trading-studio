@@ -303,12 +303,13 @@ export function createBacktestService({
 					timeframe: tf,
 					bars:
 						loaded.length > 0
-							? loaded.map(({ time, open, high, low, close }) => ({
+							? loaded.map(({ time, open, high, low, close, volume }) => ({
 									time,
 									open,
 									high,
 									low,
 									close,
+									volume,
 								}))
 							: chart.bars,
 					judgments:

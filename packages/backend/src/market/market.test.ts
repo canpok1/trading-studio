@@ -103,6 +103,20 @@ describe("チャートの足の API", () => {
 		expect(bars.map((b) => b.close)).toEqual([1, 2, 3, 4]);
 	});
 
+	test("足ごとの出来高を返す", async () => {
+		const t = createTestApp();
+		t.clock.now = T0 + DAY;
+		const id = t.marketDataRepo.createImport("1h", "a.csv", 0);
+		t.marketDataRepo.insertImported(
+			"1h",
+			[{ ...candle(T0 + 3_600_000, 1), volume: 12_345_678 }],
+			id,
+		);
+		const res = await t.app.request("/api/market/bars?timeframe=1h&range=1d");
+		const { bars } = (await res.json()) as { bars: { volume: number }[] };
+		expect(bars.map((b) => b.volume)).toEqual([12_345_678]);
+	});
+
 	test("日足で1日を選んでも当日の足が入る", async () => {
 		const t = createTestApp();
 		t.clock.now = T0;

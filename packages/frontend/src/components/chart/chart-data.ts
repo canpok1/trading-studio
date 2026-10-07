@@ -10,6 +10,8 @@ export type ChartBar = {
 	open?: number;
 	high?: number;
 	low?: number;
+	/** 出来高（satoshi）。結果に残した足には無い */
+	volume?: number;
 };
 
 export type ChartStyle = "line" | "candle";

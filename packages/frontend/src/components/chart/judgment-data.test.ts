@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	alignJudgments,
+	isChartBg,
 	judgmentRuns,
 	slotAligned,
 	stripJudges,
@@ -53,6 +54,15 @@ describe("judgmentRuns", () => {
 test("帯は背景以外の判定", () => {
 	expect(stripJudges("risk")).toEqual(["sentiment"]);
 	expect(stripJudges("sentiment")).toEqual(["risk"]);
+	// 背景なしは、すべてを帯に並べる
+	expect(stripJudges("none")).toEqual(["sentiment", "risk"]);
+});
+
+test("背景の選択として保存できる値", () => {
+	expect(isChartBg("sentiment")).toBe(true);
+	expect(isChartBg("none")).toBe(true);
+	expect(isChartBg("trend")).toBe(false);
+	expect(isChartBg(null)).toBe(false);
 });
 
 describe("slotAligned", () => {

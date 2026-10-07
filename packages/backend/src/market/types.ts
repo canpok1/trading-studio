@@ -26,6 +26,8 @@ export type MarketBarsResult =
 				high: number;
 				low: number;
 				close: number;
+				/** 出来高（satoshi） */
+				volume: number;
 			}[];
 	  }
 	| { ok: false; kind: "too_many"; count: number; max: number };

@@ -1,23 +1,23 @@
-// チャートの背景に塗る判定の選択。ブラウザに保存し、ホームとバックテスト結果で共有する
+// チャートの背景に塗る判定の選択（なしも選べる）。ブラウザに保存し、ホームとバックテスト結果で共有する
 
-import type { Judge } from "@trading-studio/core";
 import { useState } from "react";
-import { isJudge } from "../components/chart/judgment-data";
+import type { ChartBg } from "../components/chart/judgment-data";
+import { isChartBg } from "../components/chart/judgment-data";
 
 const STORAGE_KEY = "chart-bg";
 
-function read(): Judge {
+function read(): ChartBg {
 	try {
 		const v = localStorage.getItem(STORAGE_KEY);
-		return isJudge(v) ? v : "sentiment";
+		return isChartBg(v) ? v : "sentiment";
 	} catch {
 		return "sentiment";
 	}
 }
 
-export function useChartBg(): [Judge, (j: Judge) => void] {
-	const [bg, setBg] = useState<Judge>(read);
-	const change = (j: Judge) => {
+export function useChartBg(): [ChartBg, (j: ChartBg) => void] {
+	const [bg, setBg] = useState<ChartBg>(read);
+	const change = (j: ChartBg) => {
 		setBg(j);
 		try {
 			localStorage.setItem(STORAGE_KEY, j);
