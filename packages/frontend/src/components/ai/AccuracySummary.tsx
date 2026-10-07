@@ -99,7 +99,7 @@ export function AccuracySummarySection({
 					</p>
 					<p>
 						精度ごと: 棒は精度ごとの件数で、記事の段階で色分けする。評価ごと:
-						棒は記事の段階ごとの件数で、精度で色分けする（濃いほど精度が高い）。棒を押すと内訳を出す。割合にすると、棒の高さをそろえて中身の割合を比べられる。
+						棒は記事の段階ごとの件数で、精度で色分けする（緑ほど高く、赤ほど低い）。棒を押すと内訳を出す。割合にすると、棒の高さをそろえて中身の割合を比べられる。
 					</p>
 					<p>
 						評価×値動き:
@@ -167,10 +167,17 @@ function percent(n: number, total: number): string {
 	return p === 0 ? "1%未満" : `${p}%`;
 }
 
-/** 精度の色。精度が高いほど濃い（1 が薄く 5 がテーマカラー） */
-const PRECISION_MIX = [0, 18, 36, 56, 78, 100];
+/** 精度の色。損益と同じく良いほど緑・悪いほど赤（5 が濃い緑、4 が薄い緑、3 が灰、2 が薄い赤、1 が濃い赤） */
+const PRECISION_COLOR = [
+	"",
+	"var(--color-loss)",
+	"color-mix(in srgb, var(--color-loss) 45%, var(--color-surface))",
+	"color-mix(in srgb, var(--color-range) 55%, var(--color-surface))",
+	"color-mix(in srgb, var(--color-profit) 45%, var(--color-surface))",
+	"var(--color-profit)",
+];
 const precisionFill = (p: number): React.CSSProperties => ({
-	background: `color-mix(in srgb, var(--color-accent) ${PRECISION_MIX[p]}%, var(--color-surface))`,
+	background: PRECISION_COLOR[p],
 	boxShadow: "inset 0 0 0 1px var(--color-line)",
 });
 
@@ -518,8 +525,12 @@ function Matrix<J extends Judge>({
 									data-hit={m === r.i ? "" : undefined}
 									className={`num h-8 rounded-md text-xs ${m === r.i ? "outline-2 -outline-offset-2 outline-text" : ""} ${n === 0 ? "text-text-2" : ""}`}
 									style={{
-										background: `color-mix(in srgb, var(--color-accent) ${mix}%, var(--color-surface-2))`,
-										color: mix > 55 ? "var(--color-accent-ink)" : undefined,
+										background:
+											n === 0
+												? undefined
+												: `color-mix(in srgb, var(--color-heat) ${mix}%, var(--color-surface))`,
+										boxShadow: "inset 0 0 0 1px var(--color-line)",
+										color: mix > 55 ? "var(--color-heat-ink)" : undefined,
 									}}
 								>
 									{unit === "ratio"
