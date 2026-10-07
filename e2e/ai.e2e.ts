@@ -107,11 +107,11 @@ test("評価詳細のタブに、市場評価に使った記事の段階ごと�
 	const precision = page.getByTestId("accuracy-summary-sentiment");
 	await expect(precision).toContainText("精度を出せた記事なし");
 	await expect(precision.getByRole("button")).toHaveText([
-		"0",
-		"0",
-		"0",
-		"0",
-		"0",
+		"0件",
+		"0件",
+		"0件",
+		"0件",
+		"0件",
 	]);
 	await expect(
 		page.getByTestId("accuracy-summary-risk").getByRole("button"),

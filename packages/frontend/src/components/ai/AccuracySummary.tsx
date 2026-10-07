@@ -154,7 +154,7 @@ function SummaryCard<J extends Judge>({
 						className={`flex flex-1 flex-col items-center justify-end gap-1 rounded-t-md pt-1 ${open === r.precision ? "bg-surface-2" : ""}`}
 						style={{ height: CHART_H + 24 }}
 					>
-						<span className="num text-xs">{r.count}</span>
+						<span className="num text-xs whitespace-nowrap">{r.count}件</span>
 						<span
 							className="flex w-3/5 max-w-10 flex-col-reverse overflow-hidden rounded-t-sm"
 							style={{ height: (r.count / max) * CHART_H }}
