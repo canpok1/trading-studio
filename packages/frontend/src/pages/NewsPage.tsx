@@ -165,11 +165,7 @@ export function NewsPage() {
 			<Page title="ニュース" actions={<SettingsLink />}>
 				{tabs}
 				<div className="flex items-center gap-1.5">
-					<h2 className="text-[15px] font-bold">
-						{data.at === null
-							? "今の市場評価の内訳"
-							: "過去の時点の市場評価の内訳"}
-					</h2>
+					<h2 className="text-[15px] font-bold">市場評価の内訳</h2>
 					<Help label="市場評価の内訳">
 						<p>
 							市場評価に使っている記事（重みが 0%

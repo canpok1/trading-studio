@@ -83,7 +83,7 @@ test("評価詳細のタブに、市場評価に使った記事の段階ごと�
 	await page.getByRole("tab", { name: "評価詳細" }).click();
 	await expect(page).toHaveURL(/tab=evaluation/);
 	await expect(
-		page.getByRole("heading", { name: "今の市場評価の内訳" }),
+		page.getByRole("heading", { name: "市場評価の内訳" }),
 	).toBeVisible();
 	const sentiment = page.getByTestId("breakdown-sentiment");
 	await expect(sentiment.getByRole("row")).toHaveText([
