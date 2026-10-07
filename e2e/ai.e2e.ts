@@ -73,15 +73,15 @@ test("採点した記事に、値動きを測るまでは精度の測定中を�
 	await expect(page.getByTestId("judge-sentiment")).not.toContainText("精度");
 });
 
-test("精度分析のタブに、市場評価に使った記事の段階ごとの件数・平均点・重みの割合を出す", async ({
+test("評価詳細のタブに、市場評価に使った記事の段階ごとの件数・平均点・重みの割合を出す", async ({
 	page,
 }) => {
 	await page.goto("/news");
 	await expect(
 		page.getByTestId("news-card").filter({ hasText: "デモの採点。" }).first(),
 	).toBeVisible({ timeout: 20_000 });
-	await page.getByRole("tab", { name: "精度分析" }).click();
-	await expect(page).toHaveURL(/tab=accuracy/);
+	await page.getByRole("tab", { name: "評価詳細" }).click();
+	await expect(page).toHaveURL(/tab=evaluation/);
 	await expect(
 		page.getByRole("heading", { name: "今の市場評価の内訳" }),
 	).toBeVisible();
