@@ -12,6 +12,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useApi } from "../api";
+import { AccuracySummarySection } from "../components/ai/AccuracySummary";
 import { BreakdownCards } from "../components/ai/Breakdown";
 import { BulkRescore } from "../components/ai/BulkRescore";
 import { NewsFilterBar } from "../components/ai/NewsFilter";
@@ -190,6 +191,7 @@ export function NewsPage() {
 						最新の状態を読み込めなかった（{error}）。5秒ごとに読み直している
 					</p>
 				)}
+				<AccuracySummarySection at={data.at} active={visible} />
 			</Page>
 		);
 	}

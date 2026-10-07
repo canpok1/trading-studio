@@ -21,13 +21,19 @@ import type {
 } from "./repository";
 import type {
 	AccuracySettings,
+	AccuracySummary,
 	ArticleAccuracy,
 	ArticleAccuracyReport,
 	SetAccuracySettingsResult,
 } from "./types";
-import { ACCURACY_BAND_MAX, ACCURACY_HORIZONS } from "./types";
+import {
+	ACCURACY_BAND_MAX,
+	ACCURACY_HORIZONS,
+	ACCURACY_PERIODS,
+} from "./types";
 
 const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
 
 /** 段階の境目が 0 < 小さい順に増える ≦ 上限 か */
 const validBands = (b: readonly number[]) =>
@@ -218,6 +224,55 @@ export function createScoringAnalysis({
 		return priceSeries(candles, pick.tf);
 	}
 
+	/** 記事ごとの精度。採点済みでない記事・持続なしの記事は飛ばす */
+	function measure(all: readonly AnalysisNewsRow[]): ArticleAccuracy[] {
+		const { horizon, sentimentBands, riskBands } = repo.accuracySettings();
+		const rule = judgments.rule();
+		const rows = all.filter(
+			(r) =>
+				r.status === "done" &&
+				r.scoredAt !== null &&
+				r.sentiment !== null &&
+				r.risk !== null &&
+				r.duration !== "none",
+		);
+		// 「すべて」の期間では件数が多くなるので、引数に展開する Math.min(...) は使わない
+		let first = Number.POSITIVE_INFINITY;
+		let last = Number.NEGATIVE_INFINITY;
+		for (const r of rows) {
+			first = Math.min(first, r.scoredAt as number);
+			last = Math.max(last, r.scoredAt as number);
+		}
+		const to = now();
+		const p =
+			rows.length === 0 ? priceSeries([], null) : prices(first, last + 1);
+		const bands = {
+			sentiment: sentimentBands[horizon],
+			risk: riskBands[horizon],
+		};
+		return rows.map((r): ArticleAccuracy => {
+			const at = r.scoredAt as number;
+			if (at + HORIZONS[horizon] > to) return { id: r.id, status: "measuring" };
+			const ret = p.returnsFrom(at)[horizon];
+			// 測る時刻の足は確定して取り込まれるまで少し遅れるので、その間は測定中にしておく
+			if (ret === null)
+				return {
+					id: r.id,
+					status: at + HORIZONS[horizon] + HOUR > to ? "measuring" : "unknown",
+				};
+			return {
+				id: r.id,
+				status: "ok",
+				...articlePrecision(
+					{ sentiment: r.sentiment as number, risk: r.risk as number },
+					ret,
+					rule,
+					bands,
+				),
+			};
+		});
+	}
+
 	function view(r: AnalysisNewsRow, p: PriceSeries): ScoredNewsView {
 		return {
 			...r,
@@ -380,52 +435,38 @@ export function createScoringAnalysis({
 
 		/** 記事ごとの精度（ニュース画面）。運用の採点の点数と、採点時刻から設定の長さの後の値動きを突き合わせる */
 		articleAccuracy(ids: readonly number[]): ArticleAccuracyReport {
-			const { horizon, sentimentBands, riskBands } = repo.accuracySettings();
-			const rule = judgments.rule();
-			const rows = repo
-				.byIds(ids)
-				.filter(
-					(r) =>
-						r.status === "done" &&
-						r.scoredAt !== null &&
-						r.sentiment !== null &&
-						r.risk !== null &&
-						r.duration !== "none",
-				);
-			const times = rows.map((r) => r.scoredAt as number);
-			const to = now();
-			const p =
-				times.length === 0
-					? priceSeries([], null)
-					: prices(Math.min(...times), Math.max(...times) + 1);
-			const bands = {
-				sentiment: sentimentBands[horizon],
-				risk: riskBands[horizon],
-			};
-			const items = rows.map((r): ArticleAccuracy => {
-				const at = r.scoredAt as number;
-				if (at + HORIZONS[horizon] > to)
-					return { id: r.id, status: "measuring" };
-				const ret = p.returnsFrom(at)[horizon];
-				// 測る時刻の足は確定して取り込まれるまで少し遅れるので、その間は測定中にしておく
-				if (ret === null)
-					return {
-						id: r.id,
-						status:
-							at + HORIZONS[horizon] + HOUR > to ? "measuring" : "unknown",
-					};
-				return {
-					id: r.id,
-					status: "ok",
-					...articlePrecision(
-						{ sentiment: r.sentiment as number, risk: r.risk as number },
-						ret,
-						rule,
-						bands,
-					),
-				};
-			});
-			return { horizon, items };
+			const { horizon } = repo.accuracySettings();
+			return { horizon, items: measure(repo.byIds(ids)) };
+		},
+
+		/** 評価詳細のタブの精度の集計。採点時刻が期間内の記事の精度を、観点ごとに 5〜1 で数える */
+		accuracySummary(at?: number): AccuracySummary {
+			const { horizon, periodDays } = repo.accuracySettings();
+			const time = at ?? now();
+			const from = periodDays === null ? null : time - periodDays * DAY;
+			const ok = measure(repo.scoredBetween(from, time)).flatMap((x) =>
+				x.status === "ok" ? [x] : [],
+			);
+			const results = Object.fromEntries(
+				JUDGES.map((j) => {
+					const vs = ok.map((x) => x[j]);
+					return [
+						j,
+						{
+							count: vs.length,
+							average:
+								vs.length === 0
+									? null
+									: round(vs.reduce((a, b) => a + b, 0) / vs.length, 1),
+							rows: [5, 4, 3, 2, 1].map((precision) => ({
+								precision,
+								count: vs.filter((v) => v === precision).length,
+							})),
+						},
+					];
+				}),
+			) as AccuracySummary["results"];
+			return { horizon, periodDays, time, results };
 		},
 
 		accuracySettings(): AccuracySettings {
@@ -438,6 +479,12 @@ export function createScoringAnalysis({
 					ok: false,
 					field: "horizon",
 					message: `測る長さは ${ACCURACY_HORIZONS.join(" か ")}`,
+				};
+			if (!ACCURACY_PERIODS.includes(s.periodDays))
+				return {
+					ok: false,
+					field: "periodDays",
+					message: "集計する期間は 7・30・90 日かすべて",
 				};
 			for (const h of ACCURACY_HORIZONS) {
 				const b = s.sentimentBands?.[h];
@@ -480,6 +527,7 @@ export function createScoringAnalysis({
 						];
 					}),
 				) as AccuracySettings["riskBands"],
+				periodDays: s.periodDays,
 			});
 			return { ok: true };
 		},

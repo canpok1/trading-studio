@@ -97,14 +97,39 @@ test("評価詳細のタブに、市場評価に使った記事の段階ごと�
 	await expect(page.getByTestId("breakdown-risk").getByRole("row")).toHaveCount(
 		6,
 	);
+	await expect(
+		page.getByRole("heading", { name: "市場評価の精度" }),
+	).toBeVisible();
+	await expect(page.getByTestId("accuracy-summary-setting")).toHaveText(
+		"直近30日・24h",
+	);
+	// デモの採点は値動きを測るまで測定中なので数えない
+	const precision = page.getByTestId("accuracy-summary-sentiment");
+	await expect(precision).toContainText("精度を出せた記事なし");
+	await expect(precision.getByRole("row")).toHaveText([
+		/精度\s*件数/,
+		/5\s*0件/,
+		/4\s*0件/,
+		/3\s*0件/,
+		/2\s*0件/,
+		/1\s*0件/,
+	]);
+	await expect(
+		page.getByTestId("accuracy-summary-risk").getByRole("row"),
+	).toHaveCount(6);
 	await page.getByRole("tab", { name: "一覧" }).click();
 	await expect(page).not.toHaveURL(/tab=/);
 });
 
-test("精度の測り方を設定すると、記事の精度の長さが変わる", async ({ page }) => {
+test("精度の測り方を設定すると、記事の精度と評価詳細の精度の条件が変わる", async ({
+	page,
+}) => {
 	try {
 		await page.goto("/settings?section=news&tab=accuracy");
-		await expect(page.getByLabel("集計する期間")).toHaveCount(0);
+		await page
+			.getByRole("group", { name: "集計する期間" })
+			.getByText("7日", { exact: true })
+			.click();
 		await page
 			.getByRole("group", { name: "値動きを測る長さ" })
 			.getByText("4時間後", { exact: true })
@@ -125,6 +150,10 @@ test("精度の測り方を設定すると、記事の精度の長さが変わ�
 			"精度（4h）",
 			{ timeout: 20_000 },
 		);
+		await page.getByRole("tab", { name: "評価詳細" }).click();
+		await expect(page.getByTestId("accuracy-summary-setting")).toHaveText(
+			"直近7日・4h",
+		);
 	} finally {
 		await page.request.put("/api/scoring/accuracy/settings", {
 			data: {
@@ -137,6 +166,7 @@ test("精度の測り方を設定すると、記事の精度の長さが変わ�
 					"4h": { slight: 0.4, rough: 0.7, heavy: 1.1, wild: 1.8 },
 					"24h": { slight: 1, rough: 2, heavy: 3, wild: 5 },
 				},
+				periodDays: 30,
 			},
 		});
 	}
