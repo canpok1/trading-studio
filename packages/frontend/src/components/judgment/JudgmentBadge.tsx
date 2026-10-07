@@ -198,27 +198,53 @@ export function ZoneBar({
 					/>
 				)}
 			</div>
-			<ul
-				aria-label={`${JUDGE_LABELS[judge]}の色の意味`}
-				className="flex justify-between gap-1 text-[10px] text-text-2"
-			>
-				{styles.map((st) => {
-					return (
-						<li
-							key={st.label}
-							className="inline-flex items-center gap-1 whitespace-nowrap"
-						>
-							<ShapeIcon
-								shape={st.shape}
-								color={`var(${st.solid})`}
-								size={8}
-								edge={iconEdge(st)}
-							/>
-							{st.label}
-						</li>
-					);
-				})}
-			</ul>
+			<JudgmentLegend judge={judge} />
 		</div>
 	);
+}
+
+/** 段階の低い順（帯の左から）。凡例・積み上げの並び */
+export const LEVEL_ORDER: { [J in Judge]: readonly JudgmentValue<J>[] } = {
+	risk: ["calm", "mild", "alert", "severe", "crisis"],
+	sentiment: ["-2", "-1", "0", "+1", "+2"],
+};
+
+/** 段階の色の意味を1行で出す */
+export function JudgmentLegend({ judge }: { judge: Judge }) {
+	return (
+		<ul
+			aria-label={`${JUDGE_LABELS[judge]}の色の意味`}
+			className="flex justify-between gap-1 text-[10px] text-text-2"
+		>
+			{LEVEL_ORDER[judge].map((v) => {
+				const st = valueStyle(judge, v);
+				return (
+					<li
+						key={v}
+						className="inline-flex items-center gap-1 whitespace-nowrap"
+					>
+						<ShapeIcon
+							shape={st.shape}
+							color={`var(${st.solid})`}
+							size={8}
+							edge={iconEdge(st)}
+						/>
+						{st.label}
+					</li>
+				);
+			})}
+		</ul>
+	);
+}
+
+/** 積み上げの塗り。地に沈む色（ライトの中立・平常など）も縁で見えるようにする */
+export function levelFill(
+	judge: Judge,
+	value: JudgmentValue,
+): React.CSSProperties {
+	const st = valueStyle(judge, value);
+	return {
+		background: `var(${st.solid})`,
+		boxShadow: `inset 0 0 0 1px ${iconEdge(st)}`,
+	};
 }

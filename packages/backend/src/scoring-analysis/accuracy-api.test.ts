@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { AccuracySettings, ArticleAccuracyReport } from "../index";
+import type {
+	AccuracySettings,
+	AccuracySummary,
+	ArticleAccuracyReport,
+} from "../index";
 import { createTestApp } from "../test-app";
 import { DEFAULT_ACCURACY_SETTINGS } from "./types";
 
@@ -164,5 +168,113 @@ describe("/api/scoring/accuracy/settings", () => {
 		expect(await bad.json()).toMatchObject({ field: "riskBands" });
 		const now = await t.app.request("/api/scoring/accuracy/settings");
 		expect(await now.json()).toEqual(DEFAULT_ACCURACY_SETTINGS);
+	});
+});
+
+describe("GET /api/scoring/accuracy/summary", () => {
+	const summary = async (t: ReturnType<typeof createTestApp>, at?: number) => {
+		const res = await t.app.request(
+			`/api/scoring/accuracy/summary${at === undefined ? "" : `?at=${at}`}`,
+		);
+		expect(res.status).toBe(200);
+		return (await res.json()) as AccuracySummary;
+	};
+
+	test("精度を出せた記事を観点ごとに 5〜1 で数え、測定中の記事は数えない", async () => {
+		const { t } = await scored();
+		const r1 = await summary(t);
+		expect(r1.results.sentiment as unknown).toEqual({
+			count: 0,
+			average: null,
+			rows: [5, 4, 3, 2, 1].map((precision) => ({
+				precision,
+				count: 0,
+				levels: ["+2", "+1", "0", "-1", "-2"].map((value) => ({
+					value,
+					count: 0,
+				})),
+			})),
+		});
+
+		t.clock.now = START + 4 * 24 * H;
+		const r2 = await summary(t);
+		expect(r2.horizon).toBe("24h");
+		expect(r2.periodDays).toBe(30);
+		expect(r2.time).toBe(t.clock.now);
+		for (const j of ["sentiment", "risk"] as const) {
+			const r = r2.results[j];
+			expect(r.count).toBe(3);
+			expect(r.rows.map((x) => x.precision)).toEqual([5, 4, 3, 2, 1]);
+			expect(r.rows.reduce((a, x) => a + x.count, 0)).toBe(3);
+			const sum = r.rows.reduce((a, x) => a + x.precision * x.count, 0);
+			expect(r.average).toBe(Math.round((sum / 3) * 10) / 10);
+		}
+	});
+
+	test("精度ごとの件数を、記事の点数の段階で分ける", async () => {
+		const { t } = await scored();
+		// 価格は 24時間で 20% 余り上がるので、かなり強気は精度 5、平常は精度 1
+		t.db.$client.run("update news_scores set sentiment = 80, risk = 0");
+		t.clock.now = START + 4 * 24 * H;
+		const r = await summary(t);
+		const s5 = r.results.sentiment.rows[0];
+		expect(s5?.count).toBe(3);
+		expect(s5?.levels.find((x) => x.value === "+2")?.count).toBe(3);
+		const r1 = r.results.risk.rows[4];
+		expect(r1?.precision).toBe(1);
+		expect(r1?.levels.map((x) => [x.value, x.count])).toEqual([
+			["calm", 3],
+			["mild", 0],
+			["alert", 0],
+			["severe", 0],
+			["crisis", 0],
+		]);
+	});
+
+	test("持続なしの記事は数えない", async () => {
+		const { t, ids } = await scored();
+		t.db.$client
+			.query("update news_scores set duration = 'none' where news_id = ?")
+			.run(ids[0] as number);
+		t.clock.now = START + 4 * 24 * H;
+		expect((await summary(t)).results.risk.count).toBe(2);
+	});
+
+	test("時点から設定の期間より前に採点した記事は数えず、すべてなら数える", async () => {
+		const { t } = await scored();
+		t.clock.now = START + 4 * 24 * H;
+		// 採点は START + 24h ごろ。7日の期間なら 9日後の時点からは外れる
+		await t.app.request("/api/scoring/accuracy/settings", {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ ...DEFAULT_ACCURACY_SETTINGS, periodDays: 7 }),
+		});
+		expect((await summary(t, START + 9 * 24 * H)).results.risk.count).toBe(0);
+		expect((await summary(t, START + 3 * 24 * H)).results.risk.count).toBe(3);
+		// 時点より後に採点した記事も数えない
+		expect((await summary(t, START + 12 * H)).results.risk.count).toBe(0);
+
+		await t.app.request("/api/scoring/accuracy/settings", {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ ...DEFAULT_ACCURACY_SETTINGS, periodDays: null }),
+		});
+		const all = await summary(t, START + 400 * 24 * H);
+		expect(all.periodDays).toBeNull();
+		expect(all.results.risk.count).toBe(3);
+	});
+
+	test("時点の形が違えば 400、期間が選択肢に無ければ 400", async () => {
+		const t = createTestApp();
+		expect(
+			(await t.app.request("/api/scoring/accuracy/summary?at=x")).status,
+		).toBe(400);
+		const bad = await t.app.request("/api/scoring/accuracy/settings", {
+			method: "PUT",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ ...DEFAULT_ACCURACY_SETTINGS, periodDays: 14 }),
+		});
+		expect(bad.status).toBe(400);
+		expect(await bad.json()).toMatchObject({ field: "periodDays" });
 	});
 });

@@ -41,7 +41,10 @@ export type {
 } from "./retention/types";
 export type {
 	AccuracyHorizon,
+	AccuracyPeriod,
 	AccuracySettings,
+	AccuracySummary,
+	AccuracySummaryResult,
 	ArticleAccuracy,
 	ArticleAccuracyReport,
 	RiskBands,

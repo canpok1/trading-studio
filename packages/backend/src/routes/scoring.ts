@@ -3,6 +3,7 @@ import { validator } from "hono/validator";
 import type { LiveRescoreResult, ScoringService } from "../news/types";
 import type {
 	AccuracyHorizon,
+	AccuracyPeriod,
 	AccuracyService,
 } from "../scoring-analysis/types";
 import { ACCURACY_IDS_MAX } from "../scoring-analysis/types";
@@ -44,6 +45,18 @@ export function scoringRoutes(
 				}),
 				(c) => c.json(accuracy.articleAccuracy(c.req.valid("query").ids)),
 			)
+			.get(
+				"/accuracy/summary",
+				validator("query", (v, c) => {
+					if (v.at === undefined || v.at === "") return { at: undefined };
+					const at = Number(v.at);
+					if (typeof v.at !== "string" || !Number.isSafeInteger(at)) {
+						return c.json({ message: "at はエポックミリ秒の整数" }, 400);
+					}
+					return { at };
+				}),
+				(c) => c.json(accuracy.accuracySummary(c.req.valid("query").at)),
+			)
 			.get("/accuracy/settings", (c) => c.json(accuracy.accuracySettings()))
 			.put(
 				"/accuracy/settings",
@@ -52,11 +65,13 @@ export function scoringRoutes(
 						!isObj(v) ||
 						typeof v.horizon !== "string" ||
 						!isObj(v.sentimentBands) ||
-						!isObj(v.riskBands)
+						!isObj(v.riskBands) ||
+						!(v.periodDays === null || typeof v.periodDays === "number")
 					) {
 						return c.json(
 							{
-								message: "horizon・sentimentBands・riskBands が必要",
+								message:
+									"horizon・sentimentBands・riskBands・periodDays が必要",
 							},
 							400,
 						);
@@ -75,6 +90,7 @@ export function scoringRoutes(
 					});
 					return {
 						horizon: v.horizon as AccuracyHorizon,
+						periodDays: v.periodDays as AccuracyPeriod,
 						sentimentBands: both((h) => ({
 							small: num(sb, h, "small"),
 							large: num(sb, h, "large"),

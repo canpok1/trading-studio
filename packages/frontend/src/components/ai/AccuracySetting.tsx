@@ -8,6 +8,8 @@ import { errorMessage, readJson, useAsync } from "../../lib/useAsync";
 import { Help } from "../Help";
 import { NumberInput } from "../NumberInput";
 import { Button, Card, Segmented } from "../ui";
+import type { PeriodKey } from "./AccuracySummary";
+import { PERIOD_OPTIONS, periodKey, periodOf } from "./AccuracySummary";
 import { HORIZON_LABELS } from "./Precision";
 
 /** 入力の範囲。backend の検査と合わせる */
@@ -82,7 +84,7 @@ export function AccuracySetting() {
 				.then((r) => readJson(r));
 			setMessage({
 				ok: true,
-				text: "保存した。ニュース画面の精度に反映する",
+				text: "保存した。ニュース画面の精度と評価詳細のタブに反映する",
 			});
 			reload();
 		} catch (e) {
@@ -156,11 +158,17 @@ export function AccuracySetting() {
 			<div className="flex items-center gap-1.5">
 				<h2 className="text-[15px] font-bold">精度の測り方</h2>
 				<Help label="精度の測り方">
-					<p>ニュース画面の各記事の精度に使う。</p>
+					<p>
+						ニュース画面の各記事の精度と、評価詳細のタブの「市場評価の精度」に使う。
+					</p>
 					<p>値動きを測る長さ: 採点した時刻から何時間後の値動きと比べるか。</p>
 					<p>
 						値動きの段階の境目:
 						点数の段階と突き合わせる値動きの段階を分ける騰落率（%、上下とも同じ幅）。測る長さごとに決める。センチメントは横ばい（未満）・大きく動いた（以上）の2つ、リスクはやや荒れ・荒れた・かなり荒れ・大荒れ（それぞれ以上）の4つ。
+					</p>
+					<p>
+						集計する期間:
+						評価詳細のタブで、市場評価の時点から遡ってどこまでに採点した記事を数えるか。
 					</p>
 				</Help>
 			</div>
@@ -189,6 +197,19 @@ export function AccuracySetting() {
 				["heavy", "かなり荒れ（以上）"],
 				["wild", "大荒れ（以上）"],
 			])}
+			<div className="flex flex-wrap items-center gap-2">
+				<span className="min-w-[120px]">集計する期間</span>
+				<div className="w-60">
+					<Segmented
+						name="accuracy-setting-period"
+						label="集計する期間"
+						size="sm"
+						options={PERIOD_OPTIONS}
+						value={periodKey(draft.periodDays)}
+						onChange={(k: PeriodKey) => edit({ periodDays: periodOf(k) })}
+					/>
+				</div>
+			</div>
 			<div className="flex justify-end">
 				<Button size="sm" disabled={busy || !changed || invalid} onClick={save}>
 					保存

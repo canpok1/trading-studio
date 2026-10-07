@@ -3,7 +3,11 @@
 import type { Duration } from "@trading-studio/core";
 import type { Db } from "../db/open";
 import type { AccuracySettings } from "./types";
-import { ACCURACY_HORIZONS, DEFAULT_ACCURACY_SETTINGS } from "./types";
+import {
+	ACCURACY_HORIZONS,
+	ACCURACY_PERIODS,
+	DEFAULT_ACCURACY_SETTINGS,
+} from "./types";
 
 /** ニュースと採点。採点の行が無ければ status は null */
 export type AnalysisNewsRow = {
@@ -72,6 +76,11 @@ export class ScoringAnalysisRepository {
 			riskBands: riskOk
 				? (v.riskBands as AccuracySettings["riskBands"])
 				: d.riskBands,
+			// 期間を持つ前の保存値は既定にする。null（すべて）は有効な値
+			periodDays:
+				v.periodDays === undefined || !ACCURACY_PERIODS.includes(v.periodDays)
+					? d.periodDays
+					: v.periodDays,
 		};
 	}
 
@@ -134,6 +143,17 @@ export class ScoringAnalysisRepository {
 				 where ${clause} order by s.scored_at, n.id`,
 			)
 			.all(...args);
+	}
+
+	/** 採点済みのものを、採点時刻が (from, to] の範囲で。from が null なら to 以前すべて */
+	scoredBetween(from: number | null, to: number): AnalysisNewsRow[] {
+		return this.sql
+			.query<AnalysisNewsRow, number[]>(
+				`select ${COLUMNS} from news n join news_scores s on s.news_id = n.id
+				 where s.status = 'done' and s.scored_at <= ?${from === null ? "" : " and s.scored_at > ?"}
+				 order by s.scored_at, n.id`,
+			)
+			.all(...(from === null ? [to] : [to, from]));
 	}
 
 	/** ID で引く。無い ID は飛ばす。並びは ids の順 */
