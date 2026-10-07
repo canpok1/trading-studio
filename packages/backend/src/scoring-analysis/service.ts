@@ -5,10 +5,16 @@ import type {
 	Candle,
 	Duration,
 	Judge,
+	JudgmentValue,
 	Scores,
 	Timeframe,
 } from "@trading-studio/core";
-import { JUDGES, TIMEFRAME_MS } from "@trading-studio/core";
+import {
+	JUDGES,
+	JUDGMENT_VALUES,
+	classify as judgmentOf,
+	TIMEFRAME_MS,
+} from "@trading-studio/core";
 import type { JudgmentService } from "../judgments/types";
 import type { MarketDataService } from "../market-data/types";
 import type { Scorer } from "../news/scorer";
@@ -22,6 +28,7 @@ import type {
 import type {
 	AccuracySettings,
 	AccuracySummary,
+	AccuracySummaryResult,
 	ArticleAccuracy,
 	ArticleAccuracyReport,
 	SetAccuracySettingsResult,
@@ -444,28 +451,46 @@ export function createScoringAnalysis({
 			const { horizon, periodDays } = repo.accuracySettings();
 			const time = at ?? now();
 			const from = periodDays === null ? null : time - periodDays * DAY;
-			const ok = measure(repo.scoredBetween(from, time)).flatMap((x) =>
-				x.status === "ok" ? [x] : [],
-			);
-			const results = Object.fromEntries(
-				JUDGES.map((j) => {
-					const vs = ok.map((x) => x[j]);
-					return [
-						j,
-						{
-							count: vs.length,
-							average:
-								vs.length === 0
-									? null
-									: round(vs.reduce((a, b) => a + b, 0) / vs.length, 1),
-							rows: [5, 4, 3, 2, 1].map((precision) => ({
-								precision,
-								count: vs.filter((v) => v === precision).length,
-							})),
-						},
-					];
-				}),
-			) as AccuracySummary["results"];
+			const rows = repo.scoredBetween(from, time);
+			const byId = new Map(rows.map((r) => [r.id, r]));
+			const rule = judgments.rule();
+			const ok = measure(rows).flatMap((x) => (x.status === "ok" ? [x] : []));
+			const summarize = <J extends Judge>(j: J): AccuracySummaryResult<J> => {
+				const items = ok.map((x) => {
+					const r = byId.get(x.id) as AnalysisNewsRow;
+					return {
+						precision: x[j],
+						value: judgmentOf(j, r[j] as number, rule),
+					};
+				});
+				return {
+					count: items.length,
+					average:
+						items.length === 0
+							? null
+							: round(
+									items.reduce((a, x) => a + x.precision, 0) / items.length,
+									1,
+								),
+					rows: [5, 4, 3, 2, 1].map((precision) => {
+						const at = items.filter((x) => x.precision === precision);
+						return {
+							precision,
+							count: at.length,
+							levels: (JUDGMENT_VALUES[j] as readonly JudgmentValue<J>[]).map(
+								(value) => ({
+									value,
+									count: at.filter((x) => x.value === value).length,
+								}),
+							),
+						};
+					}),
+				};
+			};
+			const results = {
+				sentiment: summarize("sentiment"),
+				risk: summarize("risk"),
+			};
 			return { horizon, periodDays, time, results };
 		},
 

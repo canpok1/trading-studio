@@ -11,6 +11,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useApi } from "../../api";
 import { errorMessage, readJson, useInterval } from "../../lib/useAsync";
 import { Help } from "../Help";
+import {
+	JudgmentLegend,
+	LEVEL_ORDER,
+	levelFill,
+} from "../judgment/JudgmentBadge";
+import { valueStyle } from "../judgment/judgment-style";
 
 /** 測定中の記事が測れるようになるのを拾う間隔。記事ごとの精度と合わせる */
 const POLL_MS = 60_000;
@@ -82,6 +88,9 @@ export function AccuracySummarySection({
 						5、1段ずれるごとに 1 下げる。
 					</p>
 					<p>
+						棒は精度ごとの件数で、記事の点数の段階（評価基準に当てたもの）で色分けする。棒を押すと段階ごとの件数を出す。
+					</p>
+					<p>
 						測る長さがまだたっていない記事（測定中）・値動きが分からない記事・持続が「なし」の記事は数えない。
 					</p>
 				</Help>
@@ -104,13 +113,21 @@ export function AccuracySummarySection({
 	);
 }
 
-function SummaryCard({
+/** 棒の高さの最大（px） */
+const CHART_H = 120;
+
+function SummaryCard<J extends Judge>({
 	judge,
 	result,
 }: {
-	judge: Judge;
-	result: AccuracySummaryResult;
+	judge: J;
+	result: AccuracySummaryResult<J>;
 }) {
+	const [open, setOpen] = useState<number | null>(null);
+	// 横軸は精度の低い順（左が 1）
+	const rows = [...result.rows].sort((a, b) => a.precision - b.precision);
+	const max = Math.max(1, ...rows.map((r) => r.count));
+	const selected = rows.find((r) => r.precision === open);
 	return (
 		<section
 			aria-label={`${JUDGE_LABELS[judge]}の精度`}
@@ -125,25 +142,61 @@ function SummaryCard({
 						: `平均 ${result.average.toFixed(1)} · ${result.count}件`}
 				</span>
 			</span>
-			<table className="w-full text-[13px]">
-				<thead>
-					<tr className="text-xs text-text-2">
-						<th className="py-1 text-left font-normal">精度</th>
-						<th className="py-1 text-right font-normal">件数</th>
-					</tr>
-				</thead>
-				<tbody>
-					{result.rows.map((row) => (
-						<tr
-							key={row.precision}
-							className={`border-t border-line ${row.count === 0 ? "text-text-2" : ""}`}
+			<div className="flex items-end gap-2 border-b border-line">
+				{rows.map((r) => (
+					<button
+						key={r.precision}
+						type="button"
+						aria-label={`精度 ${r.precision}: ${r.count}件`}
+						aria-pressed={open === r.precision}
+						disabled={r.count === 0}
+						onClick={() => setOpen(open === r.precision ? null : r.precision)}
+						className={`flex flex-1 flex-col items-center justify-end gap-1 rounded-t-md pt-1 ${open === r.precision ? "bg-surface-2" : ""}`}
+						style={{ height: CHART_H + 24 }}
+					>
+						<span className="num text-xs">{r.count}</span>
+						<span
+							className="flex w-3/5 max-w-10 flex-col-reverse overflow-hidden rounded-t-sm"
+							style={{ height: (r.count / max) * CHART_H }}
 						>
-							<td className="num py-1.5">{row.precision}</td>
-							<td className="num py-1.5 text-right">{row.count}件</td>
-						</tr>
-					))}
-				</tbody>
-			</table>
+							{LEVEL_ORDER[judge].map((v) => {
+								const n = r.levels.find((x) => x.value === v)?.count ?? 0;
+								return n === 0 ? null : (
+									<i
+										key={v}
+										data-level={v}
+										style={{
+											height: `${(n / r.count) * 100}%`,
+											...levelFill(judge, v),
+										}}
+									/>
+								);
+							})}
+						</span>
+					</button>
+				))}
+			</div>
+			<div aria-hidden="true" className="-mt-1 flex gap-2 text-xs text-text-2">
+				{rows.map((r) => (
+					<span key={r.precision} className="num flex-1 text-center">
+						{r.precision}
+					</span>
+				))}
+			</div>
+			<p className="-mt-1 text-center text-[10px] text-text-2">精度</p>
+			{selected && (
+				<p data-testid="accuracy-summary-detail" className="num text-xs">
+					精度 {selected.precision}:{" "}
+					{[...LEVEL_ORDER[judge]]
+						.reverse()
+						.flatMap((v) => {
+							const n = selected.levels.find((x) => x.value === v)?.count ?? 0;
+							return n === 0 ? [] : [`${valueStyle(judge, v).label} ${n}件`];
+						})
+						.join(" · ")}
+				</p>
+			)}
+			<JudgmentLegend judge={judge} />
 		</section>
 	);
 }

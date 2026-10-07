@@ -183,10 +183,17 @@ describe("GET /api/scoring/accuracy/summary", () => {
 	test("精度を出せた記事を観点ごとに 5〜1 で数え、測定中の記事は数えない", async () => {
 		const { t } = await scored();
 		const r1 = await summary(t);
-		expect(r1.results.sentiment).toEqual({
+		expect(r1.results.sentiment as unknown).toEqual({
 			count: 0,
 			average: null,
-			rows: [5, 4, 3, 2, 1].map((precision) => ({ precision, count: 0 })),
+			rows: [5, 4, 3, 2, 1].map((precision) => ({
+				precision,
+				count: 0,
+				levels: ["+2", "+1", "0", "-1", "-2"].map((value) => ({
+					value,
+					count: 0,
+				})),
+			})),
 		});
 
 		t.clock.now = START + 4 * 24 * H;
@@ -202,6 +209,26 @@ describe("GET /api/scoring/accuracy/summary", () => {
 			const sum = r.rows.reduce((a, x) => a + x.precision * x.count, 0);
 			expect(r.average).toBe(Math.round((sum / 3) * 10) / 10);
 		}
+	});
+
+	test("精度ごとの件数を、記事の点数の段階で分ける", async () => {
+		const { t } = await scored();
+		// 価格は 24時間で 20% 余り上がるので、かなり強気は精度 5、平常は精度 1
+		t.db.$client.run("update news_scores set sentiment = 80, risk = 0");
+		t.clock.now = START + 4 * 24 * H;
+		const r = await summary(t);
+		const s5 = r.results.sentiment.rows[0];
+		expect(s5?.count).toBe(3);
+		expect(s5?.levels.find((x) => x.value === "+2")?.count).toBe(3);
+		const r1 = r.results.risk.rows[4];
+		expect(r1?.precision).toBe(1);
+		expect(r1?.levels.map((x) => [x.value, x.count])).toEqual([
+			["calm", 3],
+			["mild", 0],
+			["alert", 0],
+			["severe", 0],
+			["crisis", 0],
+		]);
 	});
 
 	test("持続なしの記事は数えない", async () => {
