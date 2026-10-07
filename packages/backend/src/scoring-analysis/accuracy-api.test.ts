@@ -194,6 +194,10 @@ describe("GET /api/scoring/accuracy/summary", () => {
 					count: 0,
 				})),
 			})),
+			matrix: ["+2", "+1", "0", "-1", "-2"].map((value) => ({
+				value,
+				moves: [0, 0, 0, 0, 0],
+			})),
 		});
 
 		t.clock.now = START + 4 * 24 * H;
@@ -228,6 +232,17 @@ describe("GET /api/scoring/accuracy/summary", () => {
 			["alert", 0],
 			["severe", 0],
 			["crisis", 0],
+		]);
+		// 値動きは大きく上昇（4）・大荒れ（4）
+		expect(
+			r.results.sentiment.matrix.find((x) => x.value === "+2")?.moves,
+		).toEqual([0, 0, 0, 0, 3]);
+		expect(r.results.risk.matrix.map((x) => [x.value, x.moves])).toEqual([
+			["calm", [0, 0, 0, 0, 3]],
+			["mild", [0, 0, 0, 0, 0]],
+			["alert", [0, 0, 0, 0, 0]],
+			["severe", [0, 0, 0, 0, 0]],
+			["crisis", [0, 0, 0, 0, 0]],
 		]);
 	});
 

@@ -98,7 +98,7 @@ test("評価詳細のタブに、市場評価に使った記事の段階ごと�
 		6,
 	);
 	await expect(
-		page.getByRole("heading", { name: "市場評価の精度" }),
+		page.getByRole("heading", { name: "市場評価の分析" }),
 	).toBeVisible();
 	await expect(page.getByTestId("accuracy-summary-setting")).toHaveText(
 		"直近30日・24h",
@@ -123,7 +123,7 @@ test("評価詳細のタブに、市場評価に使った記事の段階ごと�
 	await expect(page).not.toHaveURL(/tab=/);
 });
 
-test("評価詳細の精度は、棒を押すと記事の点数の段階ごとの件数を出す", async ({
+test("評価詳細の分析は、見せ方を切り替えて棒を押すと内訳を出す", async ({
 	page,
 }) => {
 	// デモの採点は測定中なので、集計の応答を差し替えて棒を出す
@@ -140,6 +140,8 @@ test("評価詳細の精度は、棒を押すと記事の点数の段階ごと�
 				levels: levels(values, c),
 			};
 		});
+	const matrix = (values: string[], moves: Record<string, number[]>) =>
+		values.map((value) => ({ value, moves: moves[value] ?? [0, 0, 0, 0, 0] }));
 	await page.route("**/api/scoring/accuracy/summary**", (r) =>
 		r.fulfill({
 			json: {
@@ -151,8 +153,18 @@ test("評価詳細の精度は、棒を押すと記事の点数の段階ごと�
 						count: 6,
 						average: 3.5,
 						rows: rows(S, [[0, 1, 2], [], [0, 0, 1], [], [2]]),
+						matrix: matrix(S, {
+							"+2": [2, 0, 0, 0, 0],
+							"+1": [0, 0, 0, 1, 0],
+							"0": [0, 0, 2, 0, 1],
+						}),
 					},
-					risk: { count: 0, average: null, rows: rows(R, []) },
+					risk: {
+						count: 0,
+						average: null,
+						rows: rows(R, []),
+						matrix: matrix(R, {}),
+					},
 				},
 			},
 		}),
@@ -165,10 +177,58 @@ test("評価詳細の精度は、棒を押すと記事の点数の段階ごと�
 	).toBeDisabled();
 	await card.getByRole("button", { name: "精度 5: 3件" }).click();
 	await expect(card.getByTestId("accuracy-summary-detail")).toHaveText(
-		"精度 5: やや強気 1件 · 中立 2件",
+		"精度 5: やや強気 1件（33%） · 中立 2件（67%）",
 	);
 	await card.getByRole("button", { name: "精度 5: 3件" }).click();
 	await expect(card.getByTestId("accuracy-summary-detail")).toHaveCount(0);
+
+	// 評価ごと: 横軸が記事の段階で、棒の中は精度
+	const view = page.getByRole("group", { name: "見せ方" });
+	await view.getByText("評価ごと", { exact: true }).click();
+	await expect(card.getByRole("button")).toHaveText([
+		"0件",
+		"0件",
+		"3件",
+		"1件",
+		"2件",
+	]);
+	await card.getByRole("button", { name: "中立: 3件" }).click();
+	await expect(card.getByTestId("accuracy-summary-detail")).toHaveText(
+		"中立（平均 4.3）: 精度 5 2件（67%） · 精度 3 1件（33%）",
+	);
+	await expect(page.getByRole("list", { name: "精度の色の意味" })).toHaveCount(
+		2,
+	);
+
+	// 評価×値動き: 行が記事の段階、列が値動き。割合は行ごと
+	await view.getByText("評価×値動き", { exact: true }).click();
+	const row = card.getByRole("row", { name: /^中立/ });
+	await expect(row.getByRole("cell")).toHaveText([
+		"0件",
+		"0件",
+		"2件",
+		"0件",
+		"1件",
+	]);
+	await page
+		.getByRole("group", { name: "件数か割合か" })
+		.getByText("割合", { exact: true })
+		.click();
+	await expect(row.getByRole("cell")).toHaveText([
+		"0%",
+		"0%",
+		"67%",
+		"0%",
+		"33%",
+	]);
+	await expect(
+		card.getByRole("row", { name: /^やや弱気/ }).getByRole("cell"),
+	).toHaveText(["—", "—", "—", "—", "—"]);
+	// 見せ方はブラウザに保存する
+	await page.reload();
+	await expect(
+		card.getByRole("row", { name: /^中立/ }).getByRole("cell"),
+	).toHaveText(["0%", "0%", "67%", "0%", "33%"]);
 });
 
 test("精度の測り方を設定すると、記事の精度と評価詳細の精度の条件が変わる", async ({
