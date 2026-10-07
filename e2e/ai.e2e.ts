@@ -533,9 +533,7 @@ test("ニュースをキーワード・影響の大きさ・日付で絞り込�
 	await expect(page).toHaveURL(new RegExp(`/news\\?q=${name}$`));
 });
 
-test("使用中の版で1件ずつ・絞り込んだものをまとめて採点し直せる", async ({
-	page,
-}, info) => {
+test("使用中の版で記事ごとに採点し直せる", async ({ page }, info) => {
 	// 取得・採点・採点し直しを順に待つので長めにとる
 	test.setTimeout(90_000);
 	const name = `replace-score-${info.project.name}`;
@@ -560,20 +558,19 @@ test("使用中の版で1件ずつ・絞り込んだものをまとめて採点�
 		).ok(),
 	).toBe(true);
 
+	// 間違って押さないよう、ボタンは「詳しく」を開いたときだけ出す
+	const rescore = page.getByRole("button", { name: `v${v} で採点し直す` });
+	await expect(rescore).toHaveCount(0);
 	const card = cards.first();
 	await card.getByRole("button", { name: /詳しく/ }).click();
 	await card.getByRole("button", { name: `v${v} で採点し直す` }).click();
 	await expect(card).toContainText(`プロンプト v${v}`, { timeout: 20_000 });
 	await expect(card).toContainText("採点し直し");
-
-	await page.getByRole("button", { name: "この 3 件を採点し直す" }).click();
-	const dialog = page.getByRole("dialog", { name: "まとめて採点し直す" });
-	await dialog.getByRole("button", { name: "採点し直す" }).click();
 	await expect(
-		page.getByRole("status").filter({ hasText: `2 件を v${v} で採点し直す` }),
-	).toBeVisible();
-	for (const c of (await cards.all()).slice(1)) {
-		await c.getByRole("button", { name: /詳しく/ }).click();
-		await expect(c).toContainText(`プロンプト v${v}`, { timeout: 20_000 });
-	}
+		card.getByRole("button", { name: `v${v} で採点し直す` }),
+	).toHaveCount(0);
+	// ほかの記事は採点し直さない
+	const other = cards.nth(1);
+	await other.getByRole("button", { name: /詳しく/ }).click();
+	await expect(other).not.toContainText(`プロンプト v${v}`);
 });

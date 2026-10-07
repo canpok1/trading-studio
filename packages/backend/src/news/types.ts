@@ -214,12 +214,10 @@ export type LiveRescoreResult =
 			ok: true;
 			/** 採点し直す版（使用中の版） */
 			version: number;
-			/** 採点し直しを頼んだか、その版の採点が既にあって置き換えた件数 */
-			requested: number;
-			/** 使用中の版で採点済みか、運用で採点済みでないので飛ばした件数 */
-			skipped: number;
+			/** 採点し直しを頼んだか、その版の採点が既にあって置き換えたか。使用中の版で採点済みか、運用で採点済みでなければ false */
+			requested: boolean;
 	  }
-	| { ok: false; status: 400 | 409; message: string };
+	| { ok: false; status: 409; message: string };
 
 export type ApiKeyStatus = { configured: boolean; savedAt: number | null };
 
@@ -252,12 +250,10 @@ export interface ScoringService {
 	/** バックテストの期間 [from, to) の市場評価に使う記事のうち、指定した版の採点が無いもの（失敗を含む）を採点し直す対象に入れる */
 	requestRescore(from: number, to: number, version: number): RescoreResult;
 	/**
-	 * ニュースを使用中の版で採点し直し、運用の採点を置き換えるよう頼む（ニュース画面から）。
-	 * 1件か、絞り込みの条件に当てはまるもの（1000件まで）。判定に使い始める時刻は変えない
+	 * ニュースを1件、使用中の版で採点し直し、運用の採点を置き換えるよう頼む（ニュース画面から）。
+	 * 判定に使い始める時刻は変えない
 	 */
-	rescoreLive(
-		target: { newsId: number } | { filter: NewsFilter },
-	): LiveRescoreResult;
+	rescoreLive(newsId: number): LiveRescoreResult;
 	/** 指定したニュース（省けば最新の1件）を、渡した採点の基準で採点する。保存も集計への反映もしない */
 	trial(criteria: string, newsIds?: readonly number[]): Promise<TrialResult>;
 }

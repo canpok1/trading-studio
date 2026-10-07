@@ -241,7 +241,7 @@ function NewsCard({
 										: `集計の対象外（持続の半減期の${HALF_LIVES_IN_WINDOW}倍、${rule.halfLifeHours[duration] * HALF_LIVES_IN_WINDOW}時間より前）`}
 								</span>
 							)}
-							{canRescore && n.rescore === null && (
+							{canRescore && (
 								<Button
 									size="sm"
 									className="self-start"
@@ -261,19 +261,12 @@ function NewsCard({
 						</div>
 					)}
 					{n.rescore?.status === "failed" && (
-						<div className="flex items-center justify-between gap-2">
-							<span className="text-xs">
-								<span className="font-semibold text-loss">
-									v{n.rescore.version} での採点し直しに失敗
-								</span>
-								（{n.rescore.error}）。今の採点のまま
+						<span className="text-xs">
+							<span className="font-semibold text-loss">
+								v{n.rescore.version} での採点し直しに失敗
 							</span>
-							{canRescore && (
-								<Button size="sm" onClick={rescore} disabled={busy}>
-									採点し直す
-								</Button>
-							)}
-						</div>
+							（{n.rescore.error}）。今の採点のまま
+						</span>
 					)}
 				</>
 			)}
