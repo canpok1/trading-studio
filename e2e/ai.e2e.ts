@@ -179,13 +179,13 @@ test("評価詳細の分析は、見せ方を切り替えて棒を押すと内�
 	const card = page.getByTestId("accuracy-summary-sentiment");
 	await expect(card).toContainText("平均 3.5 · 6件");
 	await expect(
-		card.getByRole("button", { name: "精度 4: 0件" }),
+		card.getByRole("button", { name: "精度 高: 0件" }),
 	).toBeDisabled();
-	await card.getByRole("button", { name: "精度 5: 3件" }).click();
+	await card.getByRole("button", { name: "精度 最高: 3件" }).click();
 	await expect(card.getByTestId("accuracy-summary-detail")).toHaveText(
-		"精度 5: やや強気 1件（33%） · 中立 2件（67%）",
+		"精度 最高: やや強気 1件（33%） · 中立 2件（67%）",
 	);
-	await card.getByRole("button", { name: "精度 5: 3件" }).click();
+	await card.getByRole("button", { name: "精度 最高: 3件" }).click();
 	await expect(card.getByTestId("accuracy-summary-detail")).toHaveCount(0);
 
 	// 評価ごと: 横軸が記事の段階で、棒の中は精度
@@ -200,7 +200,7 @@ test("評価詳細の分析は、見せ方を切り替えて棒を押すと内�
 	]);
 	await card.getByRole("button", { name: "中立: 3件" }).click();
 	await expect(card.getByTestId("accuracy-summary-detail")).toHaveText(
-		"中立（平均 4.3）: 精度 5 2件（67%） · 精度 3 1件（33%）",
+		"中立（平均 4.3）: 精度 最高 2件（67%） · 精度 中 1件（33%）",
 	);
 	await expect(page.getByRole("list", { name: "精度の色の意味" })).toHaveCount(
 		2,
