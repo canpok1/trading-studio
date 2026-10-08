@@ -41,32 +41,38 @@ export function scoringRoutes(
 			.get(
 				"/accuracy/summary",
 				validator("query", (v, c) => {
+					// 省いたもの・空文字は null。undefined にすると、クライアントの引数の型が文字列でなく出力の型になる
 					const int = (x: unknown) => {
-						if (x === undefined || x === "") return undefined;
+						if (x === undefined || x === "") return null;
 						const n = Number(x);
-						return typeof x === "string" && Number.isSafeInteger(n) ? n : null;
+						return typeof x === "string" && Number.isSafeInteger(n) ? n : NaN;
 					};
 					const at = int(v.at);
-					if (at === null) {
+					if (Number.isNaN(at)) {
 						return c.json({ message: "at はエポックミリ秒の整数" }, 400);
 					}
 					const criteriaVersion = int(v.criteriaVersion);
-					if (criteriaVersion === null) {
+					if (Number.isNaN(criteriaVersion)) {
 						return c.json({ message: "criteriaVersion は版の番号" }, 400);
 					}
 					const appBuiltAt =
 						v.appBuiltAt === "none" ? ("none" as const) : int(v.appBuiltAt);
-					if (appBuiltAt === null) {
+					if (Number.isNaN(appBuiltAt)) {
 						return c.json(
 							{ message: "appBuiltAt はエポックミリ秒の整数か none" },
 							400,
 						);
 					}
-					return { at, filter: { criteriaVersion, appBuiltAt } };
+					return { at, criteriaVersion, appBuiltAt };
 				}),
 				(c) => {
 					const q = c.req.valid("query");
-					return c.json(accuracy.accuracySummary(q.at, q.filter));
+					return c.json(
+						accuracy.accuracySummary(q.at ?? undefined, {
+							criteriaVersion: q.criteriaVersion ?? undefined,
+							appBuiltAt: q.appBuiltAt ?? undefined,
+						}),
+					);
 				},
 			)
 			.get("/accuracy/settings", (c) => c.json(accuracy.accuracySettings()))

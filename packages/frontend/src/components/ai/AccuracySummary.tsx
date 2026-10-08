@@ -8,7 +8,9 @@ import type {
 import type { Judge, JudgmentValue } from "@trading-studio/core";
 import { JUDGE_LABELS, JUDGES } from "@trading-studio/core";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 import { useApi } from "../../api";
+import { formatShortVersion } from "../../format";
 import type { AnalysisUnit, AnalysisView } from "../../lib/eval-analysis-view";
 import {
 	ANALYSIS_UNITS,
@@ -45,6 +47,30 @@ export const periodOf = (k: PeriodKey): AccuracyPeriod =>
 const periodText = (p: AccuracyPeriod) =>
 	p === null ? "すべての期間" : `直近${p}日`;
 
+/** 版の絞り込み。URL（?prompt=&server=）に持つ。ブラウザに保存すると、次に開いたとき絞り込み中だと気づかず読み違えるため */
+const PROMPT_PARAM = "prompt";
+const SERVER_PARAM = "server";
+/** サーバーの「記録なし」（記録前・開発版の採点）の値 */
+const SERVER_NONE = "none";
+
+function useVersionFilter() {
+	const [params, setParams] = useSearchParams();
+	const prompt = params.get(PROMPT_PARAM) ?? "";
+	const server = params.get(SERVER_PARAM) ?? "";
+	const set = (key: string, v: string) => {
+		const next = new URLSearchParams(params);
+		if (v === "") next.delete(key);
+		else next.set(key, v);
+		setParams(next, { replace: true });
+	};
+	return {
+		prompt: /^\d+$/.test(prompt) ? prompt : "",
+		server: server === SERVER_NONE || /^\d+$/.test(server) ? server : "",
+		setPrompt: (v: string) => set(PROMPT_PARAM, v),
+		setServer: (v: string) => set(SERVER_PARAM, v),
+	};
+}
+
 /** 見出し「市場評価の分析」と、見せ方の切替、観点ごとのカード。at は集計の時点（null は今） */
 export function AccuracySummarySection({
 	at,
@@ -58,6 +84,7 @@ export function AccuracySummarySection({
 	const [error, setError] = useState<string | null>(null);
 	const [view, setView] = useAnalysisView();
 	const [unit, setUnit] = useAnalysisUnit();
+	const { prompt, server, setPrompt, setServer } = useVersionFilter();
 	// 時点を変えた直後と定期の問い合わせが重なっても、最後に出したものだけ使う
 	const seq = useRef(0);
 	const load = useCallback(async () => {
@@ -65,7 +92,12 @@ export function AccuracySummarySection({
 		try {
 			const r = await api.api.scoring.accuracy.summary
 				.$get({
-					query: at === null ? { at: undefined } : { at: String(at) },
+					// 空文字は省いたのと同じ（すべて・今）
+					query: {
+						at: at === null ? "" : String(at),
+						criteriaVersion: prompt,
+						appBuiltAt: server,
+					},
 				})
 				.then((res) => readJson<AccuracySummary>(res));
 			if (id !== seq.current) return;
@@ -74,7 +106,7 @@ export function AccuracySummarySection({
 		} catch (e) {
 			if (id === seq.current) setError(errorMessage(e));
 		}
-	}, [api, at]);
+	}, [api, at, prompt, server]);
 	useEffect(() => {
 		if (active) load();
 	}, [active, load]);
@@ -90,6 +122,10 @@ export function AccuracySummarySection({
 						className="num text-xs text-text-2"
 					>
 						{periodText(data.periodDays)}・{data.horizon}
+						{data.filter.criteriaVersion !== null &&
+							`・v${data.filter.criteriaVersion}`}
+						{data.filter.appBuiltAt !== null &&
+							`・${formatShortVersion(data.filter.appBuiltAt === "none" ? null : data.filter.appBuiltAt, "記録なし")}`}
 					</span>
 				)}
 				<Help label="市場評価の分析">
@@ -107,10 +143,20 @@ export function AccuracySummarySection({
 						5）。枠より左上は記事の段階が値動きより上（強気・警戒に寄りすぎ）、右下は下（弱気・平常に寄りすぎ）。割合にすると行ごとの割合を出す。
 					</p>
 					<p>
+						プロンプト・サーバーを選ぶと、その版のプロンプト・そのバージョンのアプリで採点した記事だけ数える（採点し直した記事は置き換えた後の版）。選択肢は期間内に数える記事がある版で、（）は絞る前の件数。
+					</p>
+					<p>
 						測る長さがまだたっていない記事（測定中）・値動きが分からない記事・持続が「なし」の記事は数えない。
 					</p>
 				</Help>
 			</div>
+			<VersionSelects
+				data={data}
+				prompt={prompt}
+				server={server}
+				onPrompt={setPrompt}
+				onServer={setServer}
+			/>
 			<div className="flex gap-2">
 				<div className="flex-1">
 					<Segmented
@@ -154,6 +200,70 @@ export function AccuracySummarySection({
 				</p>
 			)}
 		</section>
+	);
+}
+
+/** プロンプトの版とサーバーのバージョンの絞り込み。選んでいる版が選択肢に無くても（期間外など）0件として出す。サーバーはスマホの幅に収めるため年を省く */
+function VersionSelects({
+	data,
+	prompt,
+	server,
+	onPrompt,
+	onServer,
+}: {
+	data: AccuracySummary | null;
+	prompt: string;
+	server: string;
+	onPrompt: (v: string) => void;
+	onServer: (v: string) => void;
+}) {
+	const o = data?.options;
+	const prompts = (o?.criteriaVersions ?? []).map((x) => ({
+		value: String(x.version),
+		label: `v${x.version}（${x.count}件）${x.version === o?.activeCriteriaVersion ? "使用中" : ""}`,
+	}));
+	if (prompt && !prompts.some((x) => x.value === prompt))
+		prompts.unshift({ value: prompt, label: `v${prompt}（0件）` });
+	const servers = (o?.appBuiltAts ?? []).map((x) => {
+		const value = x.builtAt === null ? SERVER_NONE : String(x.builtAt);
+		return {
+			value,
+			label: `${formatShortVersion(x.builtAt, "記録なし")}（${x.count}件）`,
+		};
+	});
+	if (server && !servers.some((x) => x.value === server))
+		servers.unshift({
+			value: server,
+			label: `${formatShortVersion(server === SERVER_NONE ? null : Number(server), "記録なし")}（0件）`,
+		});
+	const select = (
+		label: string,
+		value: string,
+		items: { value: string; label: string }[],
+		onChange: (v: string) => void,
+	) => (
+		<label className="flex min-w-0 flex-1 flex-col gap-0.5">
+			<span className="text-xs text-text-2">{label}</span>
+			<select
+				aria-label={label}
+				value={value}
+				onChange={(e) => onChange(e.target.value)}
+				className="h-9 w-full min-w-0 rounded-[10px] border border-line bg-surface px-2 text-sm"
+			>
+				<option value="">すべて</option>
+				{items.map((x) => (
+					<option key={x.value} value={x.value}>
+						{x.label}
+					</option>
+				))}
+			</select>
+		</label>
+	);
+	return (
+		<div className="flex gap-2">
+			{select("プロンプト", prompt, prompts, onPrompt)}
+			{select("サーバー", server, servers, onServer)}
+		</div>
 	);
 }
 

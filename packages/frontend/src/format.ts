@@ -29,6 +29,16 @@ export function formatVersion(builtAt: number | null, none: string): string {
 	return `Ver ${t.y}-${p2(t.mo)}-${p2(t.d)} ${p2(t.h)}:${p2(t.mi)}`;
 }
 
+/** アプリのバージョンの年を省いた形。例: Ver 09-27 09:10 */
+export function formatShortVersion(
+	builtAt: number | null,
+	none: string,
+): string {
+	if (builtAt === null) return `Ver ${none}`;
+	const t = jstParts(builtAt);
+	return `Ver ${p2(t.mo)}-${p2(t.d)} ${p2(t.h)}:${p2(t.mi)}`;
+}
+
 /** 例: 13:14 */
 export function formatTime(ms: number): string {
 	const t = jstParts(ms);
