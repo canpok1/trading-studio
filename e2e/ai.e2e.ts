@@ -157,7 +157,6 @@ test("評価詳細の分析は、見せ方を切り替えて棒を押すと内�
 				results: {
 					sentiment: {
 						count: 6,
-						average: 3.5,
 						rows: rows(S, [[0, 1, 2], [], [0, 0, 1], [], [2]]),
 						matrix: matrix(S, {
 							"+2": [2, 0, 0, 0, 0],
@@ -167,7 +166,6 @@ test("評価詳細の分析は、見せ方を切り替えて棒を押すと内�
 					},
 					risk: {
 						count: 0,
-						average: null,
 						rows: rows(R, []),
 						matrix: matrix(R, {}),
 					},
