@@ -1,6 +1,6 @@
 // 古いデータの削除。保持期間の設定と前回の結果は settings に持つ
 
-import { DATASET_NEWS_LEAD_MS } from "@trading-studio/core";
+import { DATASET_LEAD_MS } from "@trading-studio/core";
 import type { Db } from "../db/open";
 import { NEWS_DELETED_BEFORE_KEY } from "../news/score-repository";
 import type { RetentionRun, RetentionSettings, RetentionTable } from "./types";
@@ -114,20 +114,23 @@ export class RetentionRepository {
 		).changes;
 	}
 
-	/**
-	 * 公開が before より前のニュースを最大 limit 件、採点・採点し直しごと消す。
-	 * 残っているデータセットの期間（開始の DATASET_NEWS_LEAD_MS 前から）のニュースは残す。消した件数を返す
-	 */
-	deleteNews(before: number, limit: number): number {
+	/** 残っているデータセットのために残す範囲（開始の DATASET_LEAD_MS 前から終了まで） */
+	keptRanges(): { from: number; to: number }[] {
+		return this.sql
+			.query<{ from_time: number; to_time: number }, []>(
+				"select from_time, to_time from datasets",
+			)
+			.all()
+			.map((d) => ({ from: d.from_time - DATASET_LEAD_MS, to: d.to_time }));
+	}
+
+	/** 公開が [from, to) のニュースを最大 limit 件、採点・採点し直しごと消す。消した件数を返す */
+	deleteNews(from: number, to: number, limit: number): number {
 		const ids = this.sql
 			.query<{ id: number }, [number, number, number]>(
-				`select n.id from news n
-				 where n.published_at < ?
-				   and not exists (select 1 from datasets d
-				     where n.published_at >= d.from_time - ? and n.published_at < d.to_time)
-				 limit ?`,
+				"select id from news where published_at >= ? and published_at < ? limit ?",
 			)
-			.all(before, DATASET_NEWS_LEAD_MS, limit)
+			.all(from, to, limit)
 			.map((r) => r.id);
 		if (ids.length === 0) return 0;
 		const marks = ids.map(() => "?").join(", ");

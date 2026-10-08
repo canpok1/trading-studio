@@ -3,6 +3,7 @@
 
 import {
 	classifyMarket,
+	DATASET_LEAD_MS,
 	DATASET_MIN_COVERAGE_PPM,
 	datasetPeriods,
 	TIMEFRAME_MS,
@@ -26,6 +27,7 @@ export type DatasetEngine = DatasetService & {
 export function createDatasetService({
 	repo,
 	marketData,
+	newsDeletedBefore,
 	now = Date.now,
 }: {
 	repo: DatasetRepository;
@@ -33,6 +35,8 @@ export function createDatasetService({
 		MarketDataRepository,
 		"firstCandleTime" | "countCandles" | "loadCandles"
 	>;
+	/** 古いニュースを消した境目（ScoreRepository） */
+	newsDeletedBefore: () => number | null;
 	now?: () => number;
 }): DatasetEngine {
 	let nextAt: number | null = null;
@@ -41,10 +45,13 @@ export function createDatasetService({
 		const t = now();
 		const first = marketData.firstCandleTime("1m");
 		if (first === null) return 0;
+		const deleted = newsDeletedBefore();
 		let created = 0;
 		// 月が替わった直後は前の月の最後の足がまだ確定していないことがあるので、1時間待ってから作る
 		for (const { from, to } of datasetPeriods(first, t - SETTLE_MS)) {
 			if (repo.exists(from, to)) continue;
+			// 古い足を取り込み直しても、ニュースを消した期間はデータセットにしない（市場評価を出せないため）
+			if (deleted !== null && from - DATASET_LEAD_MS < deleted) continue;
 			// 細かい足がそろっていない期間は、細かい足で判定する戦略のバックテストに使えないので作らない
 			const minutes = (to - from) / TIMEFRAME_MS["1m"];
 			const have = marketData.countCandles("1m", from, to);

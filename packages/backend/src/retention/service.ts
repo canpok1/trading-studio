@@ -1,5 +1,6 @@
 // 古いデータの定期削除。毎日 4:00（JST）に、保持期間を過ぎた判断の記録・バックテストの実行・足・ニュースを消す
 
+import { rangesOutside } from "@trading-studio/core";
 import type { MarketDataRepository } from "../market-data/repository";
 import type { RetentionRepository } from "./repository";
 import type {
@@ -63,7 +64,7 @@ export function createRetentionService({
 	};
 
 	async function run(at: number) {
-		const result: RetentionRun = {
+		const result: Required<RetentionRun> = {
 			at,
 			decisions: 0,
 			backtests: 0,
@@ -104,17 +105,20 @@ export function createRetentionService({
 			}
 			if (s.marketDataYears !== null) {
 				const before = yearsBefore(at, s.marketDataYears);
+				// 消している途中や失敗で止まったときも、消した期間を記録の始まりより前として扱うため、先に覚える
+				repo.markNewsDeletedBefore(before);
 				// 先にデータセットを減らす。残ったデータセットの期間の足とニュースは消さない
 				result.datasets = repo.pruneDatasets(before);
-				result.candles = await drain(
-					(n) => marketData.deleteFineCandles(before, n),
-					CANDLE_CHUNK,
-				);
-				result.news = await drain(
-					(n) => repo.deleteNews(before, n),
-					NEWS_CHUNK,
-				);
-				repo.markNewsDeletedBefore(before);
+				for (const r of rangesOutside(before, repo.keptRanges())) {
+					result.candles += await drain(
+						(n) => marketData.deleteFineCandles(r.from, r.to, n),
+						CANDLE_CHUNK,
+					);
+					result.news += await drain(
+						(n) => repo.deleteNews(r.from, r.to, n),
+						NEWS_CHUNK,
+					);
+				}
 			}
 		} catch (e) {
 			console.error("retention: failed to delete old data", e);

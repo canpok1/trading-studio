@@ -60,9 +60,10 @@ const toCriteria = (r: CriteriaRow): CriteriaVersion => ({
 	createdAt: r.created_at,
 });
 
-/** 新しさの時刻（公開時刻と取得時刻の早い方。core の newsTime と同じ）の SQL の式 */
+/** 古いニュースを消した境目を持つ settings のキー */
 export const NEWS_DELETED_BEFORE_KEY = "news_deleted_before";
 
+/** 新しさの時刻（公開時刻と取得時刻の早い方。core の newsTime と同じ）の SQL の式 */
 export const NEWS_TIME_SQL = "min(n.published_at, n.fetched_at)";
 
 /**

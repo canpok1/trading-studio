@@ -114,6 +114,7 @@ export function createTestApp(
 	const datasets = createDatasetService({
 		repo: new DatasetRepository(db),
 		marketData: marketDataRepo,
+		newsDeletedBefore: () => scoreRepo.newsDeletedBefore(),
 		now: () => clock.now,
 	});
 	const backtestRepo = new BacktestRepository(db);

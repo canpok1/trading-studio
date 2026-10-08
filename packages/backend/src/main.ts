@@ -160,6 +160,7 @@ retention.tick();
 const datasets = createDatasetService({
 	repo: new DatasetRepository(db),
 	marketData: marketDataRepo,
+	newsDeletedBefore: () => scoreRepo.newsDeletedBefore(),
 });
 const datasetTimer = setInterval(() => datasets.tick(), 60_000);
 datasets.tick();

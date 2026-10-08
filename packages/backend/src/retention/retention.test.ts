@@ -187,6 +187,7 @@ describe("古いデータの定期削除", () => {
 				backtestsDays: null,
 				marketDataYears: bad,
 			});
+			expect(r.status).toBe(400);
 			expect(((await r.json()) as { field: string }).field).toBe(
 				"marketDataYears",
 			);
@@ -248,9 +249,10 @@ describe("古いデータの定期削除", () => {
 			const keptUp = dataset(CUT - 200 * DAY, CUT - 140 * DAY, "up");
 			const keptDown = dataset(CUT - 400 * DAY, CUT - 340 * DAY, "down");
 			const recent = dataset(CUT + 10 * DAY, CUT + 70 * DAY, "up");
-			// 消える期間・残すデータセットの期間・境目の後
+			// 消える期間・残すデータセットの開始の31日前から・期間・境目の後
 			for (const t of [
 				CUT - 280 * DAY,
+				CUT - 220 * DAY,
 				CUT - 190 * DAY,
 				CUT - 390 * DAY,
 				CUT + DAY,
@@ -267,7 +269,7 @@ describe("古いデータの定期削除", () => {
 			expect(s.ids("datasets")).toEqual([keptUp, keptDown, recent]);
 			expect(oldUp).toBeLessThan(keptUp);
 			// 1時間足は残し、1分・15分足は残すデータセットの期間と境目の後だけ残す
-			expect(count(s, "candles where timeframe = '1h'")).toBe(4);
+			expect(count(s, "candles where timeframe = '1h'")).toBe(5);
 			expect(
 				s.sql
 					.query<{ time: number }, []>(
@@ -275,7 +277,7 @@ describe("古いデータの定期削除", () => {
 					)
 					.all()
 					.map((r) => r.time),
-			).toEqual([CUT - 390 * DAY, CUT - 190 * DAY, CUT + DAY]);
+			).toEqual([CUT - 390 * DAY, CUT - 220 * DAY, CUT - 190 * DAY, CUT + DAY]);
 			expect(s.ids("news")).toEqual([lead, inKept, after]);
 			expect(gone).toBeLessThan(lead);
 			expect(count(s, "news_scores")).toBe(3);
@@ -285,10 +287,10 @@ describe("古いデータの定期削除", () => {
 				news: 1,
 			});
 
-			// 記録の始まりは境目から。残したデータセットではその期間の31日前（より後に採点が始まっていればその時点）から
-			expect(s.t.judgments.firstScoredAt()).toBe(CUT);
+			// 記録の始まりは境目の31日後から。残したデータセットではその開始から
+			expect(s.t.judgments.firstScoredAt()).toBe(CUT + 31 * DAY);
 			expect(s.t.judgments.firstScoredAt(CUT - 200 * DAY)).toBe(
-				CUT - 230 * DAY,
+				CUT - 200 * DAY,
 			);
 		});
 
