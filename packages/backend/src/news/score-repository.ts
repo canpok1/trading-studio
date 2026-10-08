@@ -61,6 +61,8 @@ const toCriteria = (r: CriteriaRow): CriteriaVersion => ({
 });
 
 /** 新しさの時刻（公開時刻と取得時刻の早い方。core の newsTime と同じ）の SQL の式 */
+export const NEWS_DELETED_BEFORE_KEY = "news_deleted_before";
+
 export const NEWS_TIME_SQL = "min(n.published_at, n.fetched_at)";
 
 /**
@@ -702,7 +704,17 @@ export class ScoreRepository {
 		);
 	}
 
-	/** 最初に採点した時刻。採点の記録の始まり */
+	/** 古いニュースを消した境目。消したことが無ければ null（retention/repository が書く） */
+	newsDeletedBefore(): number | null {
+		const r = this.sql
+			.query<{ value: string }, [string]>(
+				"select value from settings where key = ?",
+			)
+			.get(NEWS_DELETED_BEFORE_KEY);
+		return r ? (JSON.parse(r.value) as number) : null;
+	}
+
+	/** 最初に採点した時刻。古いニュースを消した後の記録の始まりは judgmentRecordStart で求める */
 	firstScoredAt(): number | null {
 		return (
 			this.sql

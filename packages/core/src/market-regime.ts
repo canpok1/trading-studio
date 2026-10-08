@@ -94,3 +94,25 @@ export function datasetPeriods(
 		out.push({ from, to });
 	}
 }
+
+/** 古いニュースを消した後もデータセットで残すときに、期間の開始より前に残す長さ。市場評価は公開から長期の半減期の4倍まで遡って記事を使うため */
+export const DATASET_NEWS_LEAD_MS = 31 * 86_400_000;
+
+/**
+ * 市場評価の記録の始まり。古いニュースを消した後は、消した境目より前は記録が無いものとする。
+ * ただしデータセットで選んだ期間は、そのデータセットのニュースを残しているので、開始の DATASET_NEWS_LEAD_MS 前から
+ */
+export function judgmentRecordStart(
+	firstScoredAt: number | null,
+	newsDeletedBefore: number | null,
+	datasetFrom: number | null = null,
+): number | null {
+	if (firstScoredAt === null || newsDeletedBefore === null) {
+		return firstScoredAt;
+	}
+	const kept =
+		datasetFrom !== null && datasetFrom < newsDeletedBefore
+			? datasetFrom - DATASET_NEWS_LEAD_MS
+			: newsDeletedBefore;
+	return Math.max(firstScoredAt, kept);
+}

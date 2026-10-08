@@ -18,6 +18,7 @@ import {
 	HALF_LIVES_IN_WINDOW,
 	JUDGES,
 	judgeAt,
+	judgmentRecordStart,
 	LASTING_DURATIONS,
 	maxWindowMs,
 } from "@trading-studio/core";
@@ -768,7 +769,17 @@ export function createAnalysisExportService({
 			const scored = scoreRepo.scoredNews(from - windowMs, to + 1);
 			add(
 				judgmentsTable,
-				hourlyJudgments(scored, from, to, t, rule, scoreRepo.firstScoredAt()),
+				hourlyJudgments(
+					scored,
+					from,
+					to,
+					t,
+					rule,
+					judgmentRecordStart(
+						scoreRepo.firstScoredAt(),
+						scoreRepo.newsDeletedBefore(),
+					),
+				),
 			);
 
 			const candles = marketData.exportCandles("1m", from, to);

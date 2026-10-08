@@ -154,7 +154,9 @@ export function createBacktestService({
 			// 判定の条件が効いていない結果を正しいものと誤読しやすいので実行しない
 			const rule = judgments.rule();
 			const usesJudgments = conditionStrategy.requiredJudges(params).length > 0;
-			const firstScoredAt = usesJudgments ? judgments.firstScoredAt() : null;
+			const firstScoredAt = usesJudgments
+				? judgments.firstScoredAt(dataset?.from ?? null)
+				: null;
 			if (
 				usesJudgments &&
 				(firstScoredAt === null || from < firstScoredAt) &&
@@ -356,6 +358,8 @@ export function createBacktestService({
 									rule,
 									run.criteriaVersion,
 									run.newsDelayMs,
+									// 残っているデータセットはニュースも残しているので、古いニュースを消した後も背景を出せる
+									run.dataset && datasets.get(run.dataset.id) ? run.from : null,
 								)
 							: null,
 				},

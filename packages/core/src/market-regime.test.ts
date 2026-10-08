@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { classifyMarket, datasetPeriods } from "./market-regime";
+import {
+	classifyMarket,
+	datasetPeriods,
+	judgmentRecordStart,
+} from "./market-regime";
 
 /** 終値が毎日 r ずつ（対数で）動く日足 */
 const steady = (days: number, r: number, start = 10_000_000) =>
@@ -70,5 +74,22 @@ describe("datasetPeriods", () => {
 		expect(
 			datasetPeriods(jst("2026-09-01T00:00:00"), jst("2026-10-31T23:59:00")),
 		).toEqual([]);
+	});
+});
+
+describe("judgmentRecordStart", () => {
+	const D = 86_400_000;
+	test("ニュースを消していなければ最初の採点から", () => {
+		expect(judgmentRecordStart(100 * D, null)).toBe(100 * D);
+		expect(judgmentRecordStart(null, 50 * D)).toBeNull();
+	});
+	test("消した後は境目から。境目より後に採点が始まっていればその時点から", () => {
+		expect(judgmentRecordStart(100 * D, 300 * D)).toBe(300 * D);
+		expect(judgmentRecordStart(400 * D, 300 * D)).toBe(400 * D);
+	});
+	test("残したデータセットは開始の31日前から", () => {
+		expect(judgmentRecordStart(100 * D, 300 * D, 200 * D)).toBe(169 * D);
+		// 境目より後のデータセットは特別扱いしない
+		expect(judgmentRecordStart(100 * D, 300 * D, 350 * D)).toBe(300 * D);
 	});
 });
