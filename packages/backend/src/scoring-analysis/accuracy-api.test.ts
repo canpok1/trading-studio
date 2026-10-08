@@ -197,7 +197,6 @@ describe("GET /api/scoring/accuracy/summary", () => {
 		const r1 = await summary(t);
 		expect(r1.results.sentiment as unknown).toEqual({
 			count: 0,
-			average: null,
 			rows: [5, 4, 3, 2, 1].map((precision) => ({
 				precision,
 				count: 0,
@@ -222,8 +221,6 @@ describe("GET /api/scoring/accuracy/summary", () => {
 			expect(r.count).toBe(3);
 			expect(r.rows.map((x) => x.precision)).toEqual([5, 4, 3, 2, 1]);
 			expect(r.rows.reduce((a, x) => a + x.count, 0)).toBe(3);
-			const sum = r.rows.reduce((a, x) => a + x.precision * x.count, 0);
-			expect(r.average).toBe(Math.round((sum / 3) * 10) / 10);
 		}
 	});
 

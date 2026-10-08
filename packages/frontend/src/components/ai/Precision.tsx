@@ -15,6 +15,15 @@ export const HORIZON_LABELS: Record<AccuracyHorizon, string> = {
 	"24h": "24時間後",
 };
 
+/** 精度（5〜1）の呼び名。数字が並ぶ分析画面で見分けやすいよう、画面では漢字で出す（MCP・エクスポートは数字のまま） */
+export const PRECISION_LABELS: Record<number, string> = {
+	5: "最高",
+	4: "高",
+	3: "中",
+	2: "低",
+	1: "最低",
+};
+
 /** 測定中の記事が測れるようになるのを拾う間隔。値動きは足の確定ごとにしか変わらないので、一覧の問い合わせより粗くする */
 const POLL_MS = 60_000;
 
@@ -69,8 +78,9 @@ export function ArticlePrecision({
 			精度（{horizon}）{" "}
 			{value.status === "ok" ? (
 				<>
-					センチ <b className="num text-text">{value.sentiment}</b> ・ リスク{" "}
-					<b className="num text-text">{value.risk}</b>
+					センチ{" "}
+					<b className="text-text">{PRECISION_LABELS[value.sentiment]}</b> ・
+					リスク <b className="text-text">{PRECISION_LABELS[value.risk]}</b>
 				</>
 			) : value.status === "measuring" ? (
 				"測定中"

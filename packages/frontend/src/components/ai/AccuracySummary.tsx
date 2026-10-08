@@ -27,6 +27,7 @@ import {
 } from "../judgment/JudgmentBadge";
 import { valueStyle } from "../judgment/judgment-style";
 import { Segmented } from "../ui";
+import { PRECISION_LABELS } from "./Precision";
 
 /** 測定中の記事が測れるようになるのを拾う間隔。記事ごとの精度と合わせる */
 const POLL_MS = 60_000;
@@ -132,7 +133,7 @@ export function AccuracySummarySection({
 				<Help label="市場評価の分析">
 					<p>
 						期間（設定の「精度」）に採点した記事の精度を数える。精度は一覧の各記事に出しているものと同じで、記事の点数の段階（評価基準に当てたもの）と、採点から測る長さの後の値動きの段階が一致で
-						5、1段ずれるごとに 1 下げる。
+						最高、1段ずれるごとに 高・中・低・最低 と下げる。
 					</p>
 					<p>
 						精度ごと: 棒は精度ごとの件数で、記事の段階で色分けする。評価ごと:
@@ -141,7 +142,7 @@ export function AccuracySummarySection({
 					<p>
 						評価×値動き:
 						行が記事の段階、列が実際の値動きの段階。枠のマスが一致（精度
-						5）。枠より左上は記事の段階が値動きより上（強気・警戒に寄りすぎ）、右下は下（弱気・平常に寄りすぎ）。割合にすると行ごとの割合を出す。
+						最高）。枠より左上は記事の段階が値動きより上（強気・警戒に寄りすぎ）、右下は下（弱気・平常に寄りすぎ）。割合にすると行ごとの割合を出す。
 					</p>
 					<p>
 						プロンプト・サーバーを選ぶと、その版のプロンプト・そのバージョンのアプリで採点した記事だけ数える（採点し直した記事は置き換えた後の版）。選択肢は期間内に数える記事がある版で、（）は絞る前の件数。
@@ -340,9 +341,7 @@ function SummaryCard<J extends Judge>({
 			<span className="flex flex-wrap items-center gap-x-2 gap-y-1">
 				<strong>{JUDGE_LABELS[judge]}</strong>
 				<span className="num text-xs text-text-2">
-					{result.average === null
-						? "精度を出せた記事なし"
-						: `平均 ${result.average.toFixed(1)} · ${result.count}件`}
+					{result.count === 0 ? "精度を出せた記事なし" : `${result.count}件`}
 				</span>
 			</span>
 			{view === "precision" ? (
@@ -439,7 +438,7 @@ function StackedBars({
 	);
 }
 
-/** 精度ごと: 横軸は精度（左が 1）、棒の中は記事の段階 */
+/** 精度ごと: 横軸は精度（左が 最低）、棒の中は記事の段階 */
 function ByPrecision<J extends Judge>({
 	judge,
 	result,
@@ -453,8 +452,8 @@ function ByPrecision<J extends Judge>({
 	const rows = [...result.rows].sort((a, b) => a.precision - b.precision);
 	const bars: Bar[] = rows.map((r) => ({
 		key: String(r.precision),
-		label: String(r.precision),
-		name: `精度 ${r.precision}`,
+		label: PRECISION_LABELS[r.precision] ?? "",
+		name: `精度 ${PRECISION_LABELS[r.precision]}`,
 		total: r.count,
 		segments: LEVEL_ORDER[judge].map((v) => ({
 			key: v,
@@ -474,7 +473,7 @@ function ByPrecision<J extends Judge>({
 			/>
 			{selected && (
 				<p data-testid="accuracy-summary-detail" className="num text-xs">
-					精度 {selected.precision}:{" "}
+					精度 {PRECISION_LABELS[selected.precision]}:{" "}
 					{[...LEVEL_ORDER[judge]]
 						.reverse()
 						.flatMap((v) => {
@@ -504,7 +503,7 @@ function precisionCounts<J extends Judge>(
 	return counts;
 }
 
-/** 評価ごと: 横軸は記事の段階（左が かなり弱気・平常）、棒の中は精度（下が 5） */
+/** 評価ごと: 横軸は記事の段階（左が かなり弱気・平常）、棒の中は精度（下が 最高） */
 function ByLevel<J extends Judge>({
 	judge,
 	result,
@@ -518,9 +517,7 @@ function ByLevel<J extends Judge>({
 	const levels = LEVEL_ORDER[judge].map((v) => {
 		const counts = precisionCounts(result, v);
 		const total = counts.reduce((a, b) => a + b, 0);
-		const average =
-			total === 0 ? null : counts.reduce((a, n, p) => a + n * p, 0) / total;
-		return { v, counts, total, average };
+		return { v, counts, total };
 	});
 	const bars: Bar[] = levels.map((l) => ({
 		key: l.v,
@@ -545,16 +542,15 @@ function ByLevel<J extends Judge>({
 			/>
 			{selected && (
 				<p data-testid="accuracy-summary-detail" className="num text-xs">
-					{valueStyle(judge, selected.v).label}
-					{selected.average !== null &&
-						`（平均 ${selected.average.toFixed(1)}）`}
-					:{" "}
+					{valueStyle(judge, selected.v).label}:{" "}
 					{[5, 4, 3, 2, 1]
 						.flatMap((p) => {
 							const n = selected.counts[p] ?? 0;
 							return n === 0
 								? []
-								: [`精度 ${p} ${n}件（${percent(n, selected.total)}）`];
+								: [
+										`精度 ${PRECISION_LABELS[p]} ${n}件（${percent(n, selected.total)}）`,
+									];
 						})
 						.join(" · ")}
 				</p>
@@ -569,7 +565,7 @@ function ByLevel<J extends Judge>({
 							className="inline-block size-2 rounded-[2px]"
 							style={precisionFill(p)}
 						/>
-						精度 {p}
+						{PRECISION_LABELS[p]}
 					</li>
 				))}
 			</ul>
