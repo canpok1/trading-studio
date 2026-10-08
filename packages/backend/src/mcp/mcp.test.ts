@@ -433,6 +433,43 @@ describe("MCP", () => {
 			).toEqual(expect.arrayContaining([expect.stringContaining("上昇")]));
 		});
 
+		test("市場評価の分析をプロンプトの版とアプリのバージョンで絞れる", async () => {
+			const { t, call } = await scored();
+			const built = Date.parse("2026-10-07T12:05:00Z");
+			t.db.$client
+				.query(
+					"update news_scores set criteria_version = 2, app_built_at = ? where news_id = (select min(news_id) from news_scores)",
+				)
+				.run(built);
+			const all = (await call("get_market_evaluation_analysis")).json as {
+				options: {
+					criteriaVersions: { version: number; count: number }[];
+					appVersions: { version: string; count: number }[];
+				};
+			};
+			expect(all.options.criteriaVersions).toMatchObject([
+				{ version: 2, count: 1 },
+				{ version: 1, count: 2 },
+			]);
+			expect(all.options.appVersions).toEqual([
+				{ version: "2026-10-07T21:05:00+09:00", count: 1 },
+				{ version: "none", count: 2 },
+			]);
+			const count = async (a: Record<string, unknown>) =>
+				(
+					(await call("get_market_evaluation_analysis", a)).json as {
+						results: { risk: { count: number } };
+					}
+				).results.risk.count;
+			expect(await count({ criteriaVersion: 1 })).toBe(2);
+			expect(await count({ appVersion: "2026-10-07T21:05:00+09:00" })).toBe(1);
+			expect(await count({ appVersion: "none", criteriaVersion: 2 })).toBe(0);
+			expect(
+				(await call("get_market_evaluation_analysis", { appVersion: "x" }))
+					.isError,
+			).toBe(true);
+		});
+
 		test("基準の案で試し採点し、版を足して切り替えられる", async () => {
 			const { t, call } = await scored();
 			const list = await call("list_news_scores");

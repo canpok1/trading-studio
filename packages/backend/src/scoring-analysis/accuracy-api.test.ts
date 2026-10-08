@@ -279,6 +279,47 @@ describe("GET /api/scoring/accuracy/summary", () => {
 		expect(all.results.risk.count).toBe(3);
 	});
 
+	test("プロンプトの版とアプリのバージョンで絞り、選択肢には絞る前の件数を出す", async () => {
+		const { t, ids } = await scored();
+		t.db.$client
+			.query(
+				"update news_scores set criteria_version = 2, app_built_at = 1000 where news_id = ?",
+			)
+			.run(ids[0] as number);
+		t.clock.now = START + 4 * 24 * H;
+		const get = async (q: string) => {
+			const res = await t.app.request(`/api/scoring/accuracy/summary?${q}`);
+			expect(res.status).toBe(200);
+			return (await res.json()) as AccuracySummary;
+		};
+		const all = await get("");
+		expect(all.filter).toEqual({ criteriaVersion: null, appBuiltAt: null });
+		expect(all.options).toEqual({
+			criteriaVersions: [
+				{ version: 2, count: 1 },
+				{ version: 1, count: 2 },
+			],
+			appBuiltAts: [
+				{ builtAt: 1000, count: 1 },
+				{ builtAt: null, count: 2 },
+			],
+			activeCriteriaVersion: 1,
+		});
+		const v1 = await get("criteriaVersion=1");
+		expect(v1.filter.criteriaVersion).toBe(1);
+		expect(v1.results.sentiment.count).toBe(2);
+		expect(v1.options).toEqual(all.options);
+		expect((await get("appBuiltAt=none")).results.risk.count).toBe(2);
+		expect((await get("appBuiltAt=1000")).results.risk.count).toBe(1);
+		expect(
+			(await get("criteriaVersion=1&appBuiltAt=1000")).results.risk.count,
+		).toBe(0);
+		for (const q of ["criteriaVersion=x", "appBuiltAt=x"])
+			expect(
+				(await t.app.request(`/api/scoring/accuracy/summary?${q}`)).status,
+			).toBe(400);
+	});
+
 	test("時点の形が違えば 400、期間が選択肢に無ければ 400", async () => {
 		const t = createTestApp();
 		expect(

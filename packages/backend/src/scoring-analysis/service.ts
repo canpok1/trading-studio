@@ -16,6 +16,7 @@ import type { MarketDataService } from "../market-data/types";
 import { actualLevels, articlePrecision } from "./accuracy";
 import type { AnalysisNewsRow, ScoringAnalysisRepository } from "./repository";
 import type {
+	AccuracyFilter,
 	AccuracySettings,
 	AccuracySummary,
 	AccuracySummaryResult,
@@ -108,11 +109,13 @@ export function createScoringAnalysis({
 	repo,
 	marketData,
 	judgments,
+	activeCriteriaVersion,
 	now = Date.now,
 }: {
 	repo: ScoringAnalysisRepository;
 	marketData: Pick<MarketDataService, "exportCandles">;
 	judgments: Pick<JudgmentService, "rule">;
+	activeCriteriaVersion: () => number | null;
 	now?: () => number;
 }) {
 	/** [from, to) の時刻から24時間後までの値動き */
@@ -212,16 +215,36 @@ export function createScoringAnalysis({
 		},
 
 		/** 評価詳細のタブの精度の集計。採点時刻が期間内の記事の精度を、観点ごとに 5〜1 で数える */
-		accuracySummary(at?: number): AccuracySummary {
+		accuracySummary(at?: number, filter: AccuracyFilter = {}): AccuracySummary {
 			const { horizon, periodDays } = repo.accuracySettings();
 			const time = at ?? now();
 			const from = periodDays === null ? null : time - periodDays * DAY;
 			const rows = repo.scoredBetween(from, time);
 			const byId = new Map(rows.map((r) => [r.id, r]));
 			const rule = judgments.rule();
-			const ok = measure(rows).flatMap((x) =>
+			const measured = measure(rows).flatMap((x) =>
 				x.status === "ok" && "moves" in x ? [x] : [],
 			);
+			const criteriaCounts = new Map<number, number>();
+			const builtCounts = new Map<number | null, number>();
+			for (const x of measured) {
+				const r = byId.get(x.id) as AnalysisNewsRow;
+				if (r.criteriaVersion !== null)
+					criteriaCounts.set(
+						r.criteriaVersion,
+						(criteriaCounts.get(r.criteriaVersion) ?? 0) + 1,
+					);
+				builtCounts.set(r.appBuiltAt, (builtCounts.get(r.appBuiltAt) ?? 0) + 1);
+			}
+			const builtWant = filter.appBuiltAt === "none" ? null : filter.appBuiltAt;
+			const ok = measured.filter((x) => {
+				const r = byId.get(x.id) as AnalysisNewsRow;
+				return (
+					(filter.criteriaVersion === undefined ||
+						r.criteriaVersion === filter.criteriaVersion) &&
+					(builtWant === undefined || r.appBuiltAt === builtWant)
+				);
+			});
 			const summarize = <J extends Judge>(j: J): AccuracySummaryResult<J> => {
 				const items = ok.map((x) => {
 					const r = byId.get(x.id) as AnalysisNewsRow;
@@ -264,7 +287,25 @@ export function createScoringAnalysis({
 				sentiment: summarize("sentiment"),
 				risk: summarize("risk"),
 			};
-			return { horizon, periodDays, time, results };
+			return {
+				horizon,
+				periodDays,
+				time,
+				filter: {
+					criteriaVersion: filter.criteriaVersion ?? null,
+					appBuiltAt: filter.appBuiltAt ?? null,
+				},
+				options: {
+					criteriaVersions: [...criteriaCounts]
+						.sort(([a], [b]) => b - a)
+						.map(([version, count]) => ({ version, count })),
+					appBuiltAts: [...builtCounts]
+						.sort(([a], [b]) => (a === null ? 1 : b === null ? -1 : b - a))
+						.map(([builtAt, count]) => ({ builtAt, count })),
+					activeCriteriaVersion: activeCriteriaVersion(),
+				},
+				results,
+			};
 		},
 
 		accuracySettings(): AccuracySettings {

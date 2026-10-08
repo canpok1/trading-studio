@@ -158,6 +158,7 @@ export function createTestApp(
 		repo: new ScoringAnalysisRepository(db),
 		marketData,
 		judgments,
+		activeCriteriaVersion: () => scoreRepo.activeCriteriaVersion(),
 		now: () => clock.now,
 	});
 	const app = createApp({
