@@ -4,6 +4,11 @@ export type RetentionSettings = {
 	decisionsDays: number | null;
 	/** バックテストの実行（結果・アドバイスごと）。実行を始めた時刻で数える */
 	backtestsDays: number | null;
+	/**
+	 * 足（1分・5分・15分足）・ニュース・採点（年）。期間を過ぎたデータセットは相場ごとに最新の1件だけ残し、
+	 * その期間の足とニュースも残す
+	 */
+	marketDataYears: number | null;
 };
 
 /** 1回の削除の結果 */
@@ -11,6 +16,10 @@ export type RetentionRun = {
 	at: number;
 	decisions: number;
 	backtests: number;
+	/** 消したデータセット・足・ニュースの数。これらを消す前の結果には無い */
+	datasets?: number;
+	candles?: number;
+	news?: number;
 	/** 失敗したときの理由 */
 	error: string | null;
 };

@@ -114,6 +114,7 @@ export function createTestApp(
 	const datasets = createDatasetService({
 		repo: new DatasetRepository(db),
 		marketData: marketDataRepo,
+		newsDeletedBefore: () => scoreRepo.newsDeletedBefore(),
 		now: () => clock.now,
 	});
 	const backtestRepo = new BacktestRepository(db);
@@ -163,6 +164,7 @@ export function createTestApp(
 	// 定期の削除は動かさず、テストから retention.tick() を呼ぶ
 	const retention = createRetentionService({
 		repo: new RetentionRepository(db),
+		marketData: marketDataRepo,
 		now: () => clock.now,
 	});
 	const scoringAnalysis = createScoringAnalysis({

@@ -15,6 +15,9 @@ export type Dataset = {
 	createdAt: number;
 };
 
+/** 画面に返すデータセット。firstScoredAt はこのデータセットで実行するときの市場評価の記録の始まり */
+export type ListedDataset = Dataset & { firstScoredAt: number | null };
+
 export interface DatasetService {
 	/** 新しい順。regime を渡すとその相場だけ */
 	list(regime?: MarketRegime | null): Dataset[];

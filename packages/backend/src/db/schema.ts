@@ -163,7 +163,7 @@ export const newsSources = sqliteTable("news_sources", {
 	errorSince: integer("error_since"),
 });
 
-/** ニュース。削除しない（バックテストの材料のため） */
+/** ニュース。保持期間を過ぎたら消す（retention） */
 export const news = sqliteTable(
 	"news",
 	{
@@ -192,7 +192,7 @@ export const scoringCriteria = sqliteTable("scoring_criteria", {
 	createdAt: integer("created_at").notNull(),
 });
 
-/** ニュースの採点結果。1件のニュースに1行。削除しない */
+/** ニュースの採点結果。1件のニュースに1行。ニュースと一緒に消す */
 export const newsScores = sqliteTable(
 	"news_scores",
 	{

@@ -2,6 +2,7 @@ import {
 	JUDGES,
 	judgeAt,
 	judgmentBreakdown,
+	judgmentRecordStart,
 	judgmentSeries,
 	maxWindowMs,
 	validateAggregationRule,
@@ -19,6 +20,12 @@ export function createJudgmentService({
 	newsDelayMs: () => number;
 	now?: () => number;
 }): JudgmentService {
+	const recordStart = (datasetFrom: number | null = null) =>
+		judgmentRecordStart(
+			repo.firstScoredAt(),
+			repo.newsDeletedBefore(),
+			datasetFrom,
+		);
 	return {
 		current(rule = repo.aggregationRule(), at?: number): CurrentJudgment {
 			// 先の時刻は今として扱う
@@ -32,7 +39,7 @@ export function createJudgmentService({
 				results: s.results,
 				weights: Object.fromEntries(s.weights),
 				breakdown: judgmentBreakdown(news, s.weights, rule),
-				firstScoredAt: repo.firstScoredAt(),
+				firstScoredAt: recordStart(),
 			};
 		},
 		series(
@@ -42,9 +49,10 @@ export function createJudgmentService({
 			rule = repo.aggregationRule(),
 			version = null,
 			delayMs = null,
+			datasetFrom = null,
 		): JudgmentSeries {
 			const t = now();
-			const firstScoredAt = repo.firstScoredAt();
+			const firstScoredAt = recordStart(datasetFrom);
 			const count = Math.max(0, Math.ceil((to - from) / step));
 			// 足の終わりの時刻で判定する。まだ終わっていない足は今の判定
 			const times = Array.from({ length: count }, (_, i) =>
@@ -81,7 +89,7 @@ export function createJudgmentService({
 			return { from, step, firstScoredAt, values };
 		},
 		rule: () => repo.aggregationRule(),
-		firstScoredAt: () => repo.firstScoredAt(),
+		firstScoredAt: (datasetFrom) => recordStart(datasetFrom),
 		scoredNews: (from, to, version, delayMs) =>
 			repo.scoredNews(from, to, version, delayMs),
 		newsDelayMs,

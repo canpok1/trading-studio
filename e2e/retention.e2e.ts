@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 // 他のテストへ影響しないよう、途中で失敗しても既定へ戻す
 test.afterEach(async ({ request }) => {
 	await request.put("/api/retention", {
-		data: { decisionsDays: 90, backtestsDays: null },
+		data: { decisionsDays: 90, backtestsDays: null, marketDataYears: 5 },
 	});
 });
 
@@ -20,6 +20,9 @@ test("設定の「全般」でデータの保持期間を変えられる", async
 	await expect(
 		card.getByRole("combobox", { name: "バックテストの実行" }),
 	).toHaveValue("null");
+	await expect(
+		card.getByRole("combobox", { name: "足・ニュース・採点" }),
+	).toHaveValue("5");
 	await expect(card).toContainText("まだ削除していない");
 	await expect(card).toContainText("DB の大きさ");
 	await page.screenshot({

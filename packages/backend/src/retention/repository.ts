@@ -1,6 +1,8 @@
 // 古いデータの削除。保持期間の設定と前回の結果は settings に持つ
 
+import { DATASET_LEAD_MS } from "@trading-studio/core";
 import type { Db } from "../db/open";
+import { NEWS_DELETED_BEFORE_KEY } from "../news/score-repository";
 import type { RetentionRun, RetentionSettings, RetentionTable } from "./types";
 
 const SETTINGS_KEY = "retention_settings";
@@ -9,6 +11,7 @@ const LAST_RUN_KEY = "retention_last_run";
 export const DEFAULT_RETENTION: RetentionSettings = {
 	decisionsDays: 90,
 	backtestsDays: null,
+	marketDataYears: 5,
 };
 
 /** 画面に行数を出すテーブル */
@@ -17,6 +20,7 @@ const TABLES: readonly [string, string][] = [
 	["trading_orders", "自動取引の注文"],
 	["backtest_runs", "バックテストの実行"],
 	["candles", "足"],
+	["datasets", "データセット"],
 	["news", "ニュース"],
 ];
 
@@ -99,6 +103,52 @@ export class RetentionRepository {
 			this.sql.run(`delete from backtest_runs where id in (${marks})`, ids);
 		})();
 		return ids.length;
+	}
+
+	/** 開始が before より前のデータセットを、相場ごとに最新の1件を残して消す。消した件数を返す */
+	pruneDatasets(before: number): number {
+		return this.sql.run(
+			`delete from datasets where from_time < ?1 and from_time < (
+			   select max(k.from_time) from datasets k where k.regime = datasets.regime and k.from_time < ?1)`,
+			[before],
+		).changes;
+	}
+
+	/** 残っているデータセットのために残す範囲（開始の DATASET_LEAD_MS 前から終了まで） */
+	keptRanges(): { from: number; to: number }[] {
+		return this.sql
+			.query<{ from_time: number; to_time: number }, []>(
+				"select from_time, to_time from datasets",
+			)
+			.all()
+			.map((d) => ({ from: d.from_time - DATASET_LEAD_MS, to: d.to_time }));
+	}
+
+	/** 公開が [from, to) のニュースを最大 limit 件、採点・採点し直しごと消す。消した件数を返す */
+	deleteNews(from: number, to: number, limit: number): number {
+		const ids = this.sql
+			.query<{ id: number }, [number, number, number]>(
+				"select id from news where published_at >= ? and published_at < ? limit ?",
+			)
+			.all(from, to, limit)
+			.map((r) => r.id);
+		if (ids.length === 0) return 0;
+		const marks = ids.map(() => "?").join(", ");
+		this.sql.transaction(() => {
+			this.sql.run(
+				`delete from news_rescores where news_id in (${marks})`,
+				ids,
+			);
+			this.sql.run(`delete from news_scores where news_id in (${marks})`, ids);
+			this.sql.run(`delete from news where id in (${marks})`, ids);
+		})();
+		return ids.length;
+	}
+
+	/** ニュースを消した境目を覚える。境目より前は市場評価の記録が無いものとする（judgmentRecordStart） */
+	markNewsDeletedBefore(before: number) {
+		const prev = this.read<number>(NEWS_DELETED_BEFORE_KEY);
+		this.write(NEWS_DELETED_BEFORE_KEY, Math.max(prev ?? before, before));
 	}
 
 	/** DB ファイルの大きさと、そのうち空いている領域（バイト） */

@@ -152,6 +152,7 @@ const tradingTimer = setInterval(() => tradingEngine.tick(), 1_000);
 
 const retention = createRetentionService({
 	repo: new RetentionRepository(db),
+	marketData: marketDataRepo,
 });
 const retentionTimer = setInterval(() => retention.tick(), 60_000);
 retention.tick();
@@ -159,6 +160,7 @@ retention.tick();
 const datasets = createDatasetService({
 	repo: new DatasetRepository(db),
 	marketData: marketDataRepo,
+	newsDeletedBefore: () => scoreRepo.newsDeletedBefore(),
 });
 const datasetTimer = setInterval(() => datasets.tick(), 60_000);
 datasets.tick();

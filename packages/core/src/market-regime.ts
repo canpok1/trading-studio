@@ -94,3 +94,45 @@ export function datasetPeriods(
 		out.push({ from, to });
 	}
 }
+
+/**
+ * 古いデータを消すときに、残すデータセットの期間の開始より前にも残す長さ。
+ * 市場評価は公開から長期の半減期の4倍まで遡って記事を使い、指標は期間より前の足で計算し始めるため
+ */
+export const DATASET_LEAD_MS = 31 * 86_400_000;
+
+/**
+ * 市場評価の記録の始まり。古いニュースを消した後は、消した境目から DATASET_LEAD_MS たつまでは
+ * 遡って使う記事が欠けているので記録が無いものとする。
+ * データセットで選んだ期間は、そのデータセットのために開始の DATASET_LEAD_MS 前からニュースを残しているので、開始から
+ */
+export function judgmentRecordStart(
+	firstScoredAt: number | null,
+	newsDeletedBefore: number | null,
+	datasetFrom: number | null = null,
+): number | null {
+	if (firstScoredAt === null || newsDeletedBefore === null) {
+		return firstScoredAt;
+	}
+	const complete = newsDeletedBefore + DATASET_LEAD_MS;
+	const kept =
+		datasetFrom !== null && datasetFrom < complete ? datasetFrom : complete;
+	return Math.max(firstScoredAt, kept);
+}
+
+/** (-∞, before) から keep の範囲を除いた範囲（古い順） */
+export function rangesOutside(
+	before: number,
+	keep: readonly { from: number; to: number }[],
+): { from: number; to: number }[] {
+	const out: { from: number; to: number }[] = [];
+	let cursor = Number.MIN_SAFE_INTEGER;
+	for (const k of [...keep].sort((a, b) => a.from - b.from)) {
+		if (cursor >= before) break;
+		if (k.from > cursor)
+			out.push({ from: cursor, to: Math.min(k.from, before) });
+		cursor = Math.max(cursor, k.to);
+	}
+	if (cursor < before) out.push({ from: cursor, to: before });
+	return out.filter((r) => r.from < r.to);
+}

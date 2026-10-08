@@ -15,16 +15,21 @@ export function retentionRoutes(service: RetentionService) {
 					typeof v !== "object" ||
 					v === null ||
 					!isDays(v.decisionsDays) ||
-					!isDays(v.backtestsDays)
+					!isDays(v.backtestsDays) ||
+					!isDays(v.marketDataYears)
 				) {
 					return c.json(
-						{ message: "decisionsDays と backtestsDays（日数か null）が必要" },
+						{
+							message:
+								"decisionsDays・backtestsDays（日数か null）と marketDataYears（年数か null）が必要",
+						},
 						400,
 					);
 				}
 				return {
 					decisionsDays: v.decisionsDays as number | null,
 					backtestsDays: v.backtestsDays as number | null,
+					marketDataYears: v.marketDataYears as number | null,
 				};
 			}),
 			(c) => {

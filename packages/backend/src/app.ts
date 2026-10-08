@@ -76,7 +76,7 @@ export function createApp({
 			strategyRoutes(strategies, (id) => trading.strategyLock(id)),
 		)
 		.route("/backtests", backtestRoutes(backtests))
-		.route("/datasets", datasetRoutes(datasets))
+		.route("/datasets", datasetRoutes(datasets, judgments))
 		.route("/advice", adviceRoutes(advice))
 		.route("/news", newsRoutes(news))
 		.route("/scoring", scoringRoutes(scoring, accuracy))

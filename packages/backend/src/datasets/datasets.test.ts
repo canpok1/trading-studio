@@ -81,6 +81,19 @@ describe("データセット", () => {
 		expect(t.datasets.build()).toBe(1);
 	});
 
+	test("古いニュースを消した期間は、足があってもデータセットにしない", () => {
+		const t = createTestApp();
+		market(t.db, jst("2026-07-01T00:00:00"), jst("2026-11-01T00:00:00"), 0);
+		// 8/1 より前のニュースを消した。7月始まりと8月始まりは遡る記事が欠けている
+		t.db.$client.run(
+			"insert into settings (key, value) values ('news_deleted_before', ?)",
+			[String(jst("2026-08-01T00:00:00"))],
+		);
+		t.clock.now = jst("2026-11-01T04:00:00");
+		expect(t.datasets.build()).toBe(1);
+		expect(t.datasets.list()[0]?.from).toBe(jst("2026-09-01T00:00:00"));
+	});
+
 	test("相場で絞って返す", async () => {
 		const t = createTestApp();
 		market(t.db, jst("2026-07-01T00:00:00"), jst("2026-09-01T00:00:00"), 0);

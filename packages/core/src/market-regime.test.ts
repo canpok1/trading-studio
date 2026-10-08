@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { classifyMarket, datasetPeriods } from "./market-regime";
+import {
+	classifyMarket,
+	datasetPeriods,
+	judgmentRecordStart,
+	rangesOutside,
+} from "./market-regime";
 
 /** 終値が毎日 r ずつ（対数で）動く日足 */
 const steady = (days: number, r: number, start = 10_000_000) =>
@@ -70,5 +75,48 @@ describe("datasetPeriods", () => {
 		expect(
 			datasetPeriods(jst("2026-09-01T00:00:00"), jst("2026-10-31T23:59:00")),
 		).toEqual([]);
+	});
+});
+
+describe("judgmentRecordStart", () => {
+	const D = 86_400_000;
+	test("ニュースを消していなければ最初の採点から", () => {
+		expect(judgmentRecordStart(100 * D, null)).toBe(100 * D);
+		expect(judgmentRecordStart(null, 50 * D)).toBeNull();
+	});
+	test("消した後は境目の31日後から。それより後に採点が始まっていればその時点から", () => {
+		expect(judgmentRecordStart(100 * D, 300 * D)).toBe(331 * D);
+		expect(judgmentRecordStart(400 * D, 300 * D)).toBe(400 * D);
+	});
+	test("残したデータセットは開始から", () => {
+		expect(judgmentRecordStart(100 * D, 300 * D, 200 * D)).toBe(200 * D);
+		// 境目の31日後より後に始まるデータセットは特別扱いしない
+		expect(judgmentRecordStart(100 * D, 300 * D, 350 * D)).toBe(331 * D);
+	});
+});
+
+describe("rangesOutside", () => {
+	const MIN = Number.MIN_SAFE_INTEGER;
+	test("残す範囲を除き、重なる範囲はまとめて扱う", () => {
+		expect(
+			rangesOutside(100, [
+				{ from: 50, to: 60 },
+				{ from: 10, to: 20 },
+				{ from: 15, to: 30 },
+			]),
+		).toEqual([
+			{ from: MIN, to: 10 },
+			{ from: 30, to: 50 },
+			{ from: 60, to: 100 },
+		]);
+	});
+	test("境目をまたぐ・越える範囲", () => {
+		expect(rangesOutside(100, [{ from: 90, to: 120 }])).toEqual([
+			{ from: MIN, to: 90 },
+		]);
+		expect(rangesOutside(100, [{ from: 150, to: 200 }])).toEqual([
+			{ from: MIN, to: 100 },
+		]);
+		expect(rangesOutside(100, [])).toEqual([{ from: MIN, to: 100 }]);
 	});
 });
