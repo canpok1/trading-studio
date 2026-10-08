@@ -7,6 +7,11 @@ import { parseFeed } from "./rss";
 export type FetchFeed = (url: string) => Promise<string>;
 
 export const DEFAULT_INTERVAL_MINUTES = 15;
+
+/** 取得の間隔（ミリ秒）。バックテストでは、記事を公開からこの長さだけ遅れて知る前提で使う（docs/news.md） */
+export function newsDelayMs(repo: Pick<NewsRepository, "intervalMinutes">) {
+	return repo.intervalMinutes(DEFAULT_INTERVAL_MINUTES) * 60_000;
+}
 const FETCH_TIMEOUT_MS = 20_000;
 
 export const httpFetchFeed: FetchFeed = async (url) => {

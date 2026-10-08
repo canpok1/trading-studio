@@ -34,7 +34,7 @@ function news(
 		id,
 		publishedAt: t,
 		fetchedAt: t,
-		scoredAt: t,
+		usableAt: t,
 		scores: { sentiment: 0, risk: 0, ...scores },
 		duration: "short",
 		...over,
@@ -55,8 +55,8 @@ describe("judgeAt", () => {
 		expect(s.results.sentiment.count).toBe(2);
 	});
 
-	test("採点時刻が評価時刻より後の採点は使わない", () => {
-		const late = news(1, 1, { sentiment: 90 }, { scoredAt: NOW + 1 });
+	test("使い始める時刻が評価時刻より後の採点は使わない", () => {
+		const late = news(1, 1, { sentiment: 90 }, { usableAt: NOW + 1 });
 		const s = judgeAt([late], NOW, rule);
 		expect(s.results.sentiment).toEqual({
 			value: "0",
@@ -184,7 +184,7 @@ describe("judgmentSeries", () => {
 				id: i,
 				publishedAt: t - (i % 3) * 10 * 60_000,
 				fetchedAt: t,
-				scoredAt: t + (i % 5) * 60_000,
+				usableAt: t + (i % 5) * 60_000,
 				scores: {
 					risk: (i * 53) % 101,
 					sentiment: (i * 29) % 101,
@@ -222,7 +222,7 @@ describe("judgmentSeries", () => {
 					{
 						publishedAt: t,
 						fetchedAt: t,
-						scoredAt: t + 60_000,
+						usableAt: t + 60_000,
 					},
 				),
 			);
@@ -247,7 +247,7 @@ describe("judgmentSeries", () => {
 					{
 						publishedAt: t,
 						fetchedAt: t,
-						scoredAt: t + 60_000,
+						usableAt: t + 60_000,
 						duration: i % 10 === 0 ? "long" : "short",
 					},
 				),

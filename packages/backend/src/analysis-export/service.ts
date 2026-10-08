@@ -131,7 +131,7 @@ const newsTable: Table<NewsExportRow> = {
 		col("comment", "AI が書いた採点の理由", (r) => r.comment),
 		...time<NewsExportRow>(
 			"scored_at",
-			"採点した時刻。これより前の判定には使わない",
+			"採点した時刻。運用の判定（judgments.csv）ではこれより前には使わない。バックテストは採点時刻でなく、新しさの時刻に backtest_runs.csv の news_delay_ms を足した時刻から使う",
 			(r) => r.scored_at,
 		),
 		col(
@@ -269,7 +269,7 @@ const judgmentsTable: Table<JudgmentRow> = {
 	],
 };
 
-/** 1時間ごとの判定。ニュースは採点時刻の順に並んでいる前提 */
+/** 1時間ごとの判定。ニュースは使い始める時刻の順に並んでいる前提 */
 function hourlyJudgments(
 	news: readonly ScoredNews[],
 	from: number,
@@ -287,9 +287,9 @@ function hourlyJudgments(
 			rows.push({ time: t, results: null });
 			continue;
 		}
-		// 新しさの時刻 <= 採点時刻なので、集計に使うニュースは採点時刻も (t - 一番長い長さ, t] にある
-		while (hi < news.length && (news[hi] as ScoredNews).scoredAt <= t) hi++;
-		while (lo < hi && (news[lo] as ScoredNews).scoredAt <= t - windowMs) lo++;
+		// 新しさの時刻 <= 使い始める時刻なので、集計に使うニュースは使い始める時刻も (t - 一番長い長さ, t] にある
+		while (hi < news.length && (news[hi] as ScoredNews).usableAt <= t) hi++;
+		while (lo < hi && (news[lo] as ScoredNews).usableAt <= t - windowMs) lo++;
 		rows.push({
 			time: t,
 			results: judgeAt(news.slice(lo, hi), t, rule).results,
@@ -529,6 +529,16 @@ const backtestRunsTable: Table<BacktestRun> = {
 			"市場評価に使った採点の基準の版。空は運用どおり（記事ごとに運用で採点した版）",
 			(r) => r.criteriaVersion,
 		),
+		col(
+			"news_delay_ms",
+			"記事を新しさの時刻から何ミリ秒遅れて市場評価に使ったか（実行したときの取得の間隔）。空は市場評価の条件が無い実行か、運用の採点時刻から使っていた頃の実行",
+			(r) => r.newsDelayMs,
+		),
+		...time<BacktestRun>(
+			"news_data_version",
+			"使ったニュースのデータの版（記事の取得・採点・採点し直し・置き換えのうち最新の時刻）。違えば使ったニュースが違う。空は記事が無いか、記録する前の実行",
+			(r) => r.newsDataVersion,
+		),
 		col("bar_count", "期間内の足の数", (r) => r.barCount),
 		col("order_count", "注文の数", (r) => r.orderCount),
 		col("filled_count", "約定の数", (r) => r.filledCount),
@@ -754,7 +764,7 @@ export function createAnalysisExportService({
 					.map((c) => ({ ...c, active: c.version === active })),
 			);
 			add(ruleTable, ruleRows(rule));
-			// 期間内の判定に使うニュースは、採点時刻が (期間の始まり − 集計に使う一番長い長さ, 期間の終わり] にある
+			// 期間内の判定（運用の判定）に使うニュースは、採点時刻が (期間の始まり − 集計に使う一番長い長さ, 期間の終わり] にある
 			const scored = scoreRepo.scoredNews(from - windowMs, to + 1);
 			add(
 				judgmentsTable,

@@ -105,6 +105,10 @@ export const backtestRuns = sqliteTable("backtest_runs", {
 	aggregationRule: text("aggregation_rule"),
 	/** 市場評価に使った採点の基準の版。null は運用どおり（記事ごとに運用で採点した版） */
 	criteriaVersion: integer("criteria_version"),
+	/** 記事を公開から何ミリ秒遅れて使ったか。市場評価の条件が無い実行と、この列を足す前の実行（運用の採点時刻から使っていた）は null */
+	newsDelayMs: integer("news_delay_ms"),
+	/** 使ったニュースのデータの版（記事の取得・採点・採点し直し・置き換えのうち最新の時刻）。記事が無い・この列を足す前の実行は null */
+	newsDataVersion: integer("news_data_version"),
 });
 
 /** バックテストの結果の中身。大きいので gzip した JSON で持つ */
@@ -179,7 +183,7 @@ export const newsScores = sqliteTable(
 		/** 影響の持続（none・short・medium・long）。採点済みでなければ null */
 		duration: text("duration"),
 		comment: text("comment"),
-		/** 採点した時刻。これより前の判定には使わない。採点し直して置き換えても変えない */
+		/** 採点した時刻。運用の判定ではこれより前には使わない。採点し直して置き換えても変えない */
 		scoredAt: integer("scored_at"),
 		/** 採点し直して点数を置き換えた時刻（記録用）。置き換えていなければ null */
 		rescoredAt: integer("rescored_at"),
@@ -202,7 +206,7 @@ export const newsScores = sqliteTable(
 /**
  * 過去のニュースを採点の基準の版を指定して採点し直した結果。1件のニュースと版の組に1行。
  * バックテスト用に頼んだものは運用の採点（news_scores）を上書きしない。ニュース画面から頼んだもの（replace_requested_at あり）は、
- * 採点し直したら運用の採点を置き換え、元の採点をその版の行としてここへ残す。判定に使い始める時刻は運用の採点時刻を引き継ぐ
+ * 採点し直したら運用の採点を置き換え、元の採点をその版の行としてここへ残す
  */
 export const newsRescores = sqliteTable(
 	"news_rescores",

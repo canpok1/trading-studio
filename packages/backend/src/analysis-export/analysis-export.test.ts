@@ -97,6 +97,8 @@ function addBacktest(t: T, startedAt: number): number {
 		fees: { limitPpm: 0, marketPpm: 1000 },
 		skipGaps: false,
 		criteriaVersion: null,
+		newsDelayMs: null,
+		newsDataVersion: null,
 		startedAt,
 		barCount: 24,
 		stepTimeframe: "1h",

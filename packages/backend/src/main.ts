@@ -22,7 +22,11 @@ import { createMarketService } from "./market/service";
 import { MarketDataRepository } from "./market-data/repository";
 import { createMarketDataService } from "./market-data/service";
 import { BACKTEST_WAIT_MS, mcpRoutes } from "./mcp/server";
-import { createNewsCollector, httpFetchFeed } from "./news/collector";
+import {
+	createNewsCollector,
+	httpFetchFeed,
+	newsDelayMs,
+} from "./news/collector";
 import { demoFetchFeed } from "./news/fake-feed";
 import { demoScoreModel } from "./news/fake-model";
 import { geminiModel } from "./news/gemini";
@@ -129,7 +133,10 @@ const scorer = createScorer({
 });
 const scorerTimer = setInterval(() => scorer.tick(), 1_000);
 
-const judgments = createJudgmentService({ repo: scoreRepo });
+const judgments = createJudgmentService({
+	repo: scoreRepo,
+	newsDelayMs: () => newsDelayMs(newsRepo),
+});
 
 const tradingEngine = createTradingService({
 	repo: new TradingRepository(db),

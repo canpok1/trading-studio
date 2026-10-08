@@ -36,19 +36,37 @@ export type JudgmentSeries = {
 export interface JudgmentService {
 	/** 今の判定。rule を渡すとそのルールで計算する（保存しない）。at を渡すとその時点の判定（先の時刻は今） */
 	current(rule?: AggregationRule, at?: number): CurrentJudgment;
-	/** [from, to) の足ごとの判定。rule を省くと今の集計ルール。version は scoredNews と同じ */
+	/** [from, to) の足ごとの判定。rule を省くと今の集計ルール。version・delayMs は scoredNews と同じ */
 	series(
 		from: number,
 		to: number,
 		step: number,
 		rule?: AggregationRule,
 		version?: number | null,
+		delayMs?: number | null,
 	): JudgmentSeries;
 	rule(): AggregationRule;
 	/** 最初に採点した時刻（採点の記録の始まり）。まだ無ければ null */
 	firstScoredAt(): number | null;
-	/** 採点時刻が [from, to) の採点済みのニュース。version を渡すとその版の採点だけを使う（無い記事は除く）。null・省略は運用どおり */
-	scoredNews(from: number, to: number, version?: number | null): ScoredNews[];
+	/**
+	 * 判定に使い始める時刻が [from, to) の採点済みのニュース。version を渡すとその版の採点だけを使う（無い記事は除く）。null・省略は運用どおり。
+	 * delayMs が null・省略なら運用の判定（採点時刻から使う）、数ならバックテスト（新しさの時刻 + delayMs から使う）
+	 */
+	scoredNews(
+		from: number,
+		to: number,
+		version?: number | null,
+		delayMs?: number | null,
+	): ScoredNews[];
+	/** バックテストで記事を使い始めるまでの遅れ（ミリ秒）。今の取得の間隔 */
+	newsDelayMs(): number;
+	/** scoredNews と同じ記事のデータの最終更新時刻（取得・採点・採点し直し・置き換えのうち最新）。記事が無ければ null */
+	newsDataVersion(
+		from: number,
+		to: number,
+		version: number | null,
+		delayMs: number,
+	): number | null;
 	saveRule(
 		rule: AggregationRule,
 	): { ok: true } | { ok: false; errors: ValidationError[] };

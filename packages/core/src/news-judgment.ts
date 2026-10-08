@@ -91,8 +91,8 @@ export type ScoredNews = {
 	publishedAt: number;
 	/** 取得時刻 */
 	fetchedAt: number;
-	/** 採点した時刻。これより前の評価時刻では使わない */
-	scoredAt: number;
+	/** 判定に使い始める時刻。運用では採点した時刻、バックテストでは公開時刻に取得の間隔を足した時刻（docs/news.md） */
+	usableAt: number;
 	scores: Scores;
 	duration: Duration;
 };
@@ -395,14 +395,14 @@ export function maxWindowMs(rule: AggregationRule): number {
 
 /**
  * ある時刻のニュースの重み。新しさの時刻に 1 で、持続の半減期ごとに半分になる。
- * 採点前・持続 none・半減期の HALF_LIVES_IN_WINDOW 倍たったものは 0（集計に使わない）
+ * 使い始める前・持続 none・半減期の HALF_LIVES_IN_WINDOW 倍たったものは 0（集計に使わない）
  */
 export function newsWeight(
 	n: ScoredNews,
 	time: number,
 	rule: AggregationRule,
 ): number {
-	if (n.duration === "none" || n.scoredAt > time) return 0;
+	if (n.duration === "none" || n.usableAt > time) return 0;
 	const age = time - newsTime(n);
 	if (age >= windowMs(n.duration, rule)) return 0;
 	return 0.5 ** (age / (rule.halfLifeHours[n.duration] * HOUR));
@@ -531,12 +531,12 @@ export function judgmentCursor(
 	news: readonly ScoredNews[],
 	rule: AggregationRule,
 ): (time: number) => JudgmentPoint["values"] {
-	// ニュースは [採点時刻, 新しさの時刻 + 集計に使う長さ) の間だけ使う
+	// ニュースは [使い始める時刻, 新しさの時刻 + 集計に使う長さ) の間だけ使う
 	const events: { at: number; news: ScoredNews; add: boolean }[] = [];
 	for (const n of news) {
 		const end = newsTime(n) + windowMs(n.duration, rule);
-		if (n.scoredAt >= end) continue;
-		events.push({ at: n.scoredAt, news: n, add: true });
+		if (n.usableAt >= end) continue;
+		events.push({ at: n.usableAt, news: n, add: true });
 		events.push({ at: end, news: n, add: false });
 	}
 	events.sort((a, b) => a.at - b.at);

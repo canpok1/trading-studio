@@ -10,7 +10,7 @@ import { DEFAULT_ACCURACY_SETTINGS } from "./types";
 const H = 3_600_000;
 const START = Date.UTC(2026, 6, 31, 15);
 
-/** 1時間ごとに 1% ずつ上がる価格と、採点済みの記事3件（採点は記事ごとに1時間ずれる） */
+/** 1時間ごとに 1% ずつ上がる価格と、採点済みの記事3件（公開は START から 20・21・22 時間後、採点はどれも 24 時間後） */
 async function scored() {
 	const t = createTestApp();
 	const rows = Array.from({ length: 5 * 24 }, (_, i) => {
@@ -80,6 +80,18 @@ describe("GET /api/scoring/accuracy", () => {
 			expect(x.risk).toBeGreaterThanOrEqual(1);
 			expect(x.risk).toBeLessThanOrEqual(5);
 		}
+	});
+
+	test("採点時刻ではなく公開時刻から測る", async () => {
+		const { t, ids } = await scored();
+		// 1件目は公開から24時間たった。採点からはまだ
+		t.clock.now = START + 44 * H;
+		const r = await get(t, ids);
+		expect(r.items.map((x) => x.status)).toEqual([
+			"ok",
+			"measuring",
+			"measuring",
+		]);
 	});
 
 	test("持続なしの記事と、無い ID は返さない", async () => {
@@ -255,10 +267,10 @@ describe("GET /api/scoring/accuracy/summary", () => {
 		expect((await summary(t)).results.risk.count).toBe(2);
 	});
 
-	test("時点から設定の期間より前に採点した記事は数えず、すべてなら数える", async () => {
+	test("時点から設定の期間より前に公開した記事は数えず、すべてなら数える", async () => {
 		const { t } = await scored();
 		t.clock.now = START + 4 * 24 * H;
-		// 採点は START + 24h ごろ。7日の期間なら 9日後の時点からは外れる
+		// 公開は START + 20〜22h。7日の期間なら 9日後の時点からは外れる
 		await t.app.request("/api/scoring/accuracy/settings", {
 			method: "PUT",
 			headers: { "content-type": "application/json" },
@@ -266,8 +278,9 @@ describe("GET /api/scoring/accuracy/summary", () => {
 		});
 		expect((await summary(t, START + 9 * 24 * H)).results.risk.count).toBe(0);
 		expect((await summary(t, START + 3 * 24 * H)).results.risk.count).toBe(3);
-		// 時点より後に採点した記事も数えない
+		// 時点より後に公開した記事と、公開は時点以前でも時点より後に採点した記事は数えない
 		expect((await summary(t, START + 12 * H)).results.risk.count).toBe(0);
+		expect((await summary(t, START + 23 * H)).results.risk.count).toBe(0);
 
 		await t.app.request("/api/scoring/accuracy/settings", {
 			method: "PUT",
