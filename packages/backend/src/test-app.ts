@@ -13,6 +13,8 @@ import type { BacktestRunner } from "./backtests/runner";
 import { createBacktestService } from "./backtests/service";
 import type { Collector } from "./collector/collector";
 import type { LiveMarket } from "./collector/types";
+import { DatasetRepository } from "./datasets/repository";
+import { createDatasetService } from "./datasets/service";
 import type { Db } from "./db/open";
 import { createTestDb } from "./db/test-db";
 import { createJudgmentService } from "./judgments/service";
@@ -108,6 +110,12 @@ export function createTestApp(
 		newsDelayMs: () => newsDelayMs(newsRepo),
 		now: () => clock.now,
 	});
+	// 定期の作成は動かさず、テストから datasets.build() を呼ぶ
+	const datasets = createDatasetService({
+		repo: new DatasetRepository(db),
+		marketData: marketDataRepo,
+		now: () => clock.now,
+	});
 	const backtestRepo = new BacktestRepository(db);
 	const backtests = createBacktestService({
 		repo: backtestRepo,
@@ -116,6 +124,7 @@ export function createTestApp(
 		runner,
 		judgments,
 		scoring,
+		datasets,
 		now: () => 3_000,
 	});
 	const adviceRepo = new AdviceRepository(db);
@@ -178,6 +187,7 @@ export function createTestApp(
 		analysisExport,
 		retention,
 		accuracy: scoringAnalysis,
+		datasets,
 		...over,
 	});
 	return {
@@ -188,6 +198,7 @@ export function createTestApp(
 		strategies,
 		backtests,
 		backtestRepo,
+		datasets,
 		advice,
 		adviceRepo,
 		adviceAi,

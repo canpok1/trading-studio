@@ -15,6 +15,8 @@ import { workerRunner } from "./backtests/worker-runner";
 import { coincheckFeed } from "./collector/coincheck";
 import { createCollector } from "./collector/collector";
 import { demoFeed } from "./collector/fake-feed";
+import { DatasetRepository } from "./datasets/repository";
+import { createDatasetService } from "./datasets/service";
 import { migrateDb } from "./db/migrate";
 import { isDbReachable, openDb } from "./db/open";
 import { createJudgmentService } from "./judgments/service";
@@ -154,7 +156,17 @@ const retention = createRetentionService({
 const retentionTimer = setInterval(() => retention.tick(), 60_000);
 retention.tick();
 
-const marketData = createMarketDataService(marketDataRepo);
+const datasets = createDatasetService({
+	repo: new DatasetRepository(db),
+	marketData: marketDataRepo,
+});
+const datasetTimer = setInterval(() => datasets.tick(), 60_000);
+datasets.tick();
+
+const marketData = createMarketDataService(marketDataRepo, {
+	// 過去の足を取り込んだら、その期間のデータセットをすぐ作る
+	onSettled: (job) => job.status === "done" && datasets.refresh(),
+});
 const scoring = createScoringService({
 	repo: scoreRepo,
 	newsRepo,
@@ -167,6 +179,7 @@ const backtests = createBacktestService({
 	runner: workerRunner,
 	judgments,
 	scoring,
+	datasets,
 });
 const adviceRepo = new AdviceRepository(db);
 adviceRepo.failInterrupted();
@@ -206,6 +219,7 @@ const server = new Hono()
 			strategies,
 			backtests,
 			marketData,
+			datasets,
 			scoring,
 			news,
 			judgments,
@@ -235,6 +249,7 @@ const server = new Hono()
 			}),
 			retention,
 			accuracy: scoringAnalysis,
+			datasets,
 		}),
 	);
 serveFrontend(server, distDir);
@@ -263,6 +278,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
 		clearInterval(scorerTimer);
 		clearInterval(tradingTimer);
 		clearInterval(retentionTimer);
+		clearInterval(datasetTimer);
 		stopLagWatch();
 		collector.stop();
 		await http.stop();

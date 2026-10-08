@@ -72,6 +72,7 @@ async function setup() {
 			strategies: t.strategies,
 			backtests: t.backtests,
 			marketData: t.marketData,
+			datasets: t.datasets,
 			scoring: t.scoring,
 			news: t.news,
 			judgments: t.judgments,
@@ -129,6 +130,7 @@ describe("MCP", () => {
 			"get_scoring_setup",
 			"get_strategy",
 			"list_backtests",
+			"list_datasets",
 			"list_news_scores",
 			"list_strategies",
 			"preview_aggregation_rule",
@@ -257,6 +259,33 @@ describe("MCP", () => {
 		expect(detail.json).toMatchObject({ id: r.id, params: singleBuy(PARAMS) });
 		const list = await call("list_backtests");
 		expect(list.json).toMatchObject([{ id: r.id }]);
+
+		// データセットで期間を選ぶ
+		t.db.$client.run(
+			"insert into datasets (id, from_time, to_time, regime, return_ppm, volatility_ppm, created_at) values (3, ?, ?, 'up', 150000, 20000, 0)",
+			[START + 2 * 24 * H, START + 19 * 24 * H],
+		);
+		const datasets = await call("list_datasets", { regime: "up" });
+		expect(datasets.json as unknown[]).toEqual([
+			{
+				id: 3,
+				from: "2026-08-03T00:00:00+09:00",
+				to: "2026-08-20T00:00:00+09:00",
+				regime: "up",
+				label: "上昇相場",
+				returnPercent: 15,
+				volatilityPercent: 2,
+			},
+		]);
+		const byDataset = await call("run_backtest", {
+			name: "データセットで",
+			params: PARAMS,
+			datasetId: 3,
+		});
+		expect(byDataset.json).toMatchObject({
+			from: "2026-08-03T00:00:00+09:00",
+			dataset: { id: 3, regime: "上昇相場" },
+		});
 	});
 
 	test("strategyId と params の両方、日付の誤りはエラー", async () => {
@@ -276,6 +305,14 @@ describe("MCP", () => {
 			to: "2026-08-20",
 		});
 		expect(date.isError).toBe(true);
+		const mixed = await call("run_backtest", {
+			name: "x",
+			params: PARAMS,
+			from: "2026-08-03",
+			to: "2026-08-20",
+			datasetId: 1,
+		});
+		expect(mixed.isError).toBe(true);
 	});
 
 	describe("ニュースの採点", () => {

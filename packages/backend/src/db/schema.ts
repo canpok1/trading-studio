@@ -5,6 +5,7 @@ import {
 	primaryKey,
 	sqliteTable,
 	text,
+	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
 export const settings = sqliteTable("settings", {
@@ -53,6 +54,25 @@ export const candles = sqliteTable(
 		primaryKey({ columns: [t.timeframe, t.time] }),
 		index("candles_import_id").on(t.importId),
 	],
+);
+
+/** データセット。足は写さず、期間と相場のラベルだけを持つ。毎月、直近2か月ぶんを作る */
+export const datasets = sqliteTable(
+	"datasets",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		/** 期間（to は含まない）。JST の月初 */
+		fromTime: integer("from_time").notNull(),
+		toTime: integer("to_time").notNull(),
+		/** 相場（up / down / range / volatile） */
+		regime: text("regime").notNull(),
+		/** 期間の騰落率（ppm） */
+		returnPpm: integer("return_ppm").notNull(),
+		/** 日ごとの騰落率の標準偏差（ppm） */
+		volatilityPpm: integer("volatility_ppm").notNull(),
+		createdAt: integer("created_at").notNull(),
+	},
+	(t) => [uniqueIndex("datasets_period").on(t.fromTime, t.toTime)],
 );
 
 /** 戦略（名前を付けた条件のセット） */
@@ -109,6 +129,10 @@ export const backtestRuns = sqliteTable("backtest_runs", {
 	newsDelayMs: integer("news_delay_ms"),
 	/** 使ったニュースのデータの版（記事の取得・採点・採点し直し・置き換えのうち最新の時刻）。記事が無い・この列を足す前の実行は null */
 	newsDataVersion: integer("news_data_version"),
+	/** 期間をデータセットで選んだときのデータセット。期間を指定した実行・この列を足す前の実行は null。データセットを消しても残す */
+	datasetId: integer("dataset_id"),
+	/** そのときのデータセットの相場（up / down / range / volatile） */
+	datasetRegime: text("dataset_regime"),
 });
 
 /** バックテストの結果の中身。大きいので gzip した JSON で持つ */
