@@ -567,15 +567,15 @@ describe("AI 判定", () => {
 			judgments,
 		});
 
-	test("評価時刻までに採点済みの点数だけで判定を作って渡す", () => {
+	test("評価時刻までに使い始めた点数だけで判定を作って渡す", () => {
 		const r = run({
 			news: [
 				{
 					id: 1,
-					// 公開は早いが、採点が 5時30分なので 6時の評価から使う
+					// 公開は早いが、使い始めが 5時30分なので 6時の評価から使う
 					publishedAt: 2 * H,
 					fetchedAt: 2 * H,
-					scoredAt: 5.5 * H,
+					usableAt: 5.5 * H,
 					scores: { sentiment: 90, risk: 0 },
 					duration: "short",
 				},

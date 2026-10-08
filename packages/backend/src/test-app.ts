@@ -19,6 +19,7 @@ import { createJudgmentService } from "./judgments/service";
 import { createMarketService } from "./market/service";
 import { MarketDataRepository } from "./market-data/repository";
 import { createMarketDataService } from "./market-data/service";
+import { newsDelayMs } from "./news/collector";
 import { demoScoreModel } from "./news/fake-model";
 import type { GeminiModel } from "./news/gemini";
 import { DEFAULT_CRITERIA } from "./news/prompt";
@@ -104,6 +105,7 @@ export function createTestApp(
 	});
 	const judgments = createJudgmentService({
 		repo: scoreRepo,
+		newsDelayMs: () => newsDelayMs(newsRepo),
 		now: () => clock.now,
 	});
 	const backtestRepo = new BacktestRepository(db);

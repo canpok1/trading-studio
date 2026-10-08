@@ -124,6 +124,11 @@ function runView(r: BacktestRun) {
 		initialCash: r.initialCash,
 		fees: r.fees,
 		criteriaVersion: r.criteriaVersion,
+		// 記事を公開から何分後に使ったか。市場評価の条件が無い・公開時刻から使う前の実行は null
+		newsDelayMinutes:
+			r.newsDelayMs === null ? null : Math.round(r.newsDelayMs / 60_000),
+		// 使ったニュースのデータの版。違えば使ったニュースが違う
+		newsDataVersion: r.newsDataVersion === null ? null : jst(r.newsDataVersion),
 		startedAt: jst(r.startedAt),
 		summary: s && {
 			...s,
@@ -564,7 +569,7 @@ function createServer({
 					pending: st.pending,
 				},
 				rules:
-					"運用の採点は1記事1回で、採点済みは基準や版を変えても採点し直さない。使用する版を切り替えると次に採点するニュースから使う。採点時刻より前の判定には使わない。過去の記事を別の版で試すには rescore_news で採点し直し、run_backtest の criteriaVersion で版を指定する（採点し直した記事も、判定に使い始める時刻は運用の採点時刻のまま）",
+					"運用の採点は1記事1回で、採点済みは基準や版を変えても採点し直さない。使用する版を切り替えると次に採点するニュースから使う。運用の判定では採点時刻より前には使わない。バックテストでは公開時刻に取得の間隔を足した時刻から使う。過去の記事を別の版で試すには rescore_news で採点し直し、run_backtest の criteriaVersion で版を指定する",
 			});
 		},
 	);
@@ -648,7 +653,7 @@ function createServer({
 		"get_market_evaluation_analysis",
 		{
 			description:
-				"市場評価の分析（ニュース画面の評価詳細のタブと同じ）。記事ごとの精度（運用の採点の点数の段階と、採点時刻から測る長さの後の値動きの段階のずれ。一致で 5、1段ずれるごとに 1 下げる）を観点ごとに集計する。byPrecision は精度ごと、byLevel は記事の段階ごと、byLevelAndMove は記事の段階×値動きの段階の件数。期間と測る長さ、値動きの段階の境目は設定画面の「精度」の値（settings）。at で過去の時点を指定できる",
+				"市場評価の分析（ニュース画面の評価詳細のタブと同じ）。記事ごとの精度（運用の採点の点数の段階と、公開時刻から測る長さの後の値動きの段階のずれ。一致で 5、1段ずれるごとに 1 下げる）を観点ごとに集計する。byPrecision は精度ごと、byLevel は記事の段階ごと、byLevelAndMove は記事の段階×値動きの段階の件数。期間と測る長さ、値動きの段階の境目は設定画面の「精度」の値（settings）。at で過去の時点を指定できる",
 			inputSchema: { at: atSchema },
 			annotations: readOnly,
 		},
@@ -669,7 +674,7 @@ function createServer({
 					sentiment: analysisView("sentiment", r.results.sentiment),
 					risk: analysisView("risk", r.results.risk),
 				},
-				note: "数えるのは採点時刻が time から periodDays 日（null はすべて）遡った時刻より後で time 以前の記事。測定中・値動き不明・持続なし・採点済みでない記事は数えない。記事の段階は今の評価基準で点数から出す。センチメントは値動きの5段階（大きく下落〜大きく上昇）と、リスクは値動きの大きさの5段階（静か〜大荒れ）と、平常＝静か・…・危機＝大荒れ として比べる。sentimentBandsPct は small 未満が横ばい・large 以上が大きく動いた、riskBandsPct はそれぞれの段階の始まり（上下とも同じ幅の騰落率 %）",
+				note: "数えるのは公開時刻が time から periodDays 日（null はすべて）遡った時刻より後で time 以前の記事。測定中・値動き不明・持続なし・採点済みでない記事は数えない。記事の段階は今の評価基準で点数から出す。センチメントは値動きの5段階（大きく下落〜大きく上昇）と、リスクは値動きの大きさの5段階（静か〜大荒れ）と、平常＝静か・…・危機＝大荒れ として比べる。sentimentBandsPct は small 未満が横ばい・large 以上が大きく動いた、riskBandsPct はそれぞれの段階の始まり（上下とも同じ幅の騰落率 %）",
 			});
 		},
 	);

@@ -475,7 +475,7 @@ describe("AI 判定の条件", () => {
 		},
 	});
 
-	function score(t: T, at: number, sentiment: number) {
+	function score(t: T, at: number, sentiment: number, scoredAt = at) {
 		const source = t.newsRepo.insertSource(
 			{ name: `S${at}`, url: `https://a.example/${at}/feed`, language: "ja" },
 			0,
@@ -501,7 +501,7 @@ describe("AI 判定の条件", () => {
 			id,
 			{ scores: { sentiment, risk: 0 }, duration: "short", comment: "c" },
 			{
-				scoredAt: at,
+				scoredAt,
 				criteriaVersion: 1,
 				model: "m",
 				appBuiltAt: null,
@@ -581,7 +581,39 @@ describe("AI 判定の条件", () => {
 		}
 	});
 
-	test("採点の版を指定すると、その版の採点が期間の記事にそろっているときだけ実行し、使い始める時刻は運用の採点時刻", async () => {
+	test("記事は採点時刻によらず、公開から取得の間隔の後に使い始め、実行に間隔とニュースの版を残す", async () => {
+		const t = setup();
+		t.clock.now = START + 30 * 24 * H;
+		score(t, START, 0);
+		// 公開から10時間たって採点した記事も、公開の15分後（既定の取得の間隔）から使う
+		const up = START + 5 * 24 * H;
+		const scoredAt = up + 10 * H;
+		score(t, up, 80, scoredAt);
+		const r = await post(t, body({ params: withJudgment }));
+		expect(r.status).toBe(202);
+		const run = r.json.run as BacktestRun;
+		expect(run.newsDelayMs).toBe(15 * 60_000);
+		// 取得・採点のうち最新
+		expect(run.newsDataVersion).toBe(scoredAt);
+		await t.backtests.running();
+		const orders = await getJson<{
+			orders: { side: string; placedAt: number }[];
+		}>(t, `/api/backtests/${run.id}/orders?filter=all&limit=200`);
+		const buys = orders.orders.filter((o) => o.side === "buy");
+		expect(buys.some((o) => o.placedAt < scoredAt)).toBe(true);
+		for (const o of buys)
+			expect(o.placedAt).toBeGreaterThanOrEqual(up + 15 * 60_000);
+
+		// 取得の間隔を変えると、遅れもそれに合わせる。判定の条件が無ければ残さない
+		t.newsRepo.setIntervalMinutes(60);
+		const slow = await post(t, body({ params: withJudgment }));
+		expect((slow.json.run as BacktestRun).newsDelayMs).toBe(60 * 60_000);
+		const plain = (await post(t, body())).json.run as BacktestRun;
+		expect(plain.newsDelayMs).toBeNull();
+		expect(plain.newsDataVersion).toBeNull();
+	});
+
+	test("採点の版を指定すると、その版の採点が期間の記事にそろっているときだけ実行し、採点し直した時刻は使い始める時刻に関係しない", async () => {
 		const t = setup();
 		t.clock.now = START + 30 * 24 * H;
 		// 集計に使う一番長い長さを 24 時間にする
@@ -622,7 +654,7 @@ describe("AI 判定の条件", () => {
 		const [, a, c] = t.scoreRepo
 			.scoredNews(0, Number.MAX_SAFE_INTEGER)
 			.map((n) => n.id) as [number, number, number];
-		// 採点し直した時刻は後でも、使い始めるのは運用の採点時刻
+		// 採点し直した時刻は後でも、使い始めるのは公開から取得の間隔の後
 		const meta = {
 			scoredAt: START + 30 * 24 * H,
 			model: "m",
@@ -643,6 +675,8 @@ describe("AI 判定の条件", () => {
 		expect(r.status).toBe(202);
 		const run = r.json.run as BacktestRun;
 		expect(run.criteriaVersion).toBe(v2);
+		// 採点し直しもニュースの版に入る
+		expect(run.newsDataVersion).toBe(START + 30 * 24 * H);
 		await t.backtests.running();
 		const orders = await getJson<{
 			orders: { side: string; placedAt: number }[];

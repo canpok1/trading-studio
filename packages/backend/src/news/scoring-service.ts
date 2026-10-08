@@ -1,4 +1,5 @@
 import { maxWindowMs } from "@trading-studio/core";
+import { newsDelayMs } from "./collector";
 import { DEFAULT_SCORING_MODEL, SCORING_MODELS } from "./gemini";
 import { PROMPT_TEMPLATE } from "./prompt";
 import type { NewsRepository } from "./repository";
@@ -39,10 +40,19 @@ export function createScoringService({
 			return { ok: false, status: 404, message: "版が見つからない" };
 		return null;
 	};
-	/** 期間 [from, to) の市場評価に使う記事の採点時刻の範囲。期間の頭では評価ルールで集計に使う一番長い長さだけ前までの記事を使う */
-	const usedBy = (from: number, to: number): [number, number] => [
+	/**
+	 * バックテストの期間 [from, to) の市場評価に使う記事を選ぶ引数（使い始める時刻の範囲・版・取得の間隔）。
+	 * 期間の頭では評価ルールで集計に使う一番長い長さだけ前までの記事を使う
+	 */
+	const rescoreArgs = (
+		from: number,
+		to: number,
+		version: number,
+	): [number, number, number, number] => [
 		from - maxWindowMs(repo.aggregationRule()),
 		to,
+		version,
+		newsDelayMs(newsRepo),
 	];
 	return {
 		status() {
@@ -120,17 +130,17 @@ export function createScoringService({
 			if (bad) return bad;
 			return {
 				ok: true,
-				coverage: repo.rescoreCoverage(...usedBy(from, to), version),
+				coverage: repo.rescoreCoverage(...rescoreArgs(from, to, version)),
 			};
 		},
 
 		requestRescore(from, to, version) {
 			const bad = checkRescore(from, to, version);
 			if (bad) return bad;
-			repo.queueRescore(...usedBy(from, to), version, now());
+			repo.queueRescore(...rescoreArgs(from, to, version), now());
 			return {
 				ok: true,
-				coverage: repo.rescoreCoverage(...usedBy(from, to), version),
+				coverage: repo.rescoreCoverage(...rescoreArgs(from, to, version)),
 			};
 		},
 

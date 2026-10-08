@@ -2,6 +2,7 @@
 
 import type { Duration } from "@trading-studio/core";
 import type { Db } from "../db/open";
+import { NEWS_TIME_SQL } from "../news/score-repository";
 import type { AccuracySettings } from "./types";
 import {
 	ACCURACY_HORIZONS,
@@ -83,15 +84,21 @@ export class ScoringAnalysisRepository {
 		);
 	}
 
-	/** 採点済みのものを、採点時刻が (from, to] の範囲で。from が null なら to 以前すべて */
-	scoredBetween(from: number | null, to: number): AnalysisNewsRow[] {
+	/**
+	 * 採点済みのものを、新しさの時刻（公開時刻と取得時刻の早い方）が (from, to] の範囲で。from が null なら to 以前すべて。
+	 * to より後に採点したものは、その時点ではまだ無かったので除く
+	 */
+	publishedBetween(from: number | null, to: number): AnalysisNewsRow[] {
+		const t = NEWS_TIME_SQL;
+		// 公開時刻は新しさの時刻以上なので、下限は公開時刻のインデックスでも絞れる
+		const lower = from === null ? "" : ` and n.published_at > ? and ${t} > ?`;
 		return this.sql
 			.query<AnalysisNewsRow, number[]>(
 				`select ${COLUMNS} from news n join news_scores s on s.news_id = n.id
-				 where s.status = 'done' and s.scored_at <= ?${from === null ? "" : " and s.scored_at > ?"}
-				 order by s.scored_at, n.id`,
+				 where s.status = 'done' and s.scored_at <= ? and ${t} <= ?${lower}
+				 order by ${t}, n.id`,
 			)
-			.all(...(from === null ? [to] : [to, from]));
+			.all(to, to, ...(from === null ? [] : [from, from]));
 	}
 
 	/** ID で引く。無い ID は飛ばす。並びは ids の順 */

@@ -64,6 +64,13 @@ export type BacktestRun = {
 	aggregationRule: AggregationRule | null;
 	/** 市場評価に使った採点の基準の版。null は運用どおり */
 	criteriaVersion: number | null;
+	/**
+	 * 記事を公開から何ミリ秒遅れて使ったか（実行したときの取得の間隔）。市場評価の条件が無い実行と、
+	 * 公開時刻から使う前の実行（運用の採点時刻から使っていた）は null
+	 */
+	newsDelayMs: number | null;
+	/** 使ったニュースのデータの版（記事の取得・採点・採点し直し・置き換えのうち最新の時刻）。記事が無い・記録する前の実行は null */
+	newsDataVersion: number | null;
 	/** 1日の損失上限を効かせて実行したか。上限を持つ前の実行は false（params には既定の上限が入って読まれる） */
 	dailyLossLimitApplied: boolean;
 };

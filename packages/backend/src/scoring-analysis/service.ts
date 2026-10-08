@@ -9,6 +9,7 @@ import type {
 import {
 	JUDGMENT_VALUES,
 	classify as judgmentOf,
+	newsTime,
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
 import type { JudgmentService } from "../judgments/types";
@@ -158,8 +159,8 @@ export function createScoringAnalysis({
 		let first = Number.POSITIVE_INFINITY;
 		let last = Number.NEGATIVE_INFINITY;
 		for (const r of rows) {
-			first = Math.min(first, r.scoredAt as number);
-			last = Math.max(last, r.scoredAt as number);
+			first = Math.min(first, newsTime(r));
+			last = Math.max(last, newsTime(r));
 		}
 		const to = now();
 		const p =
@@ -169,7 +170,8 @@ export function createScoringAnalysis({
 			risk: riskBands[horizon],
 		};
 		return rows.map((r) => {
-			const at = r.scoredAt as number;
+			// 市場の人が記事を知るのは公開から。採点を待つ分は点数の当たり外れと関係ないので含めない
+			const at = newsTime(r);
 			if (at + HORIZONS[horizon] > to) return { id: r.id, status: "measuring" };
 			const ret = p.returnsFrom(at)[horizon];
 			// 測る時刻の足は確定して取り込まれるまで少し遅れるので、その間は測定中にしておく
@@ -193,7 +195,7 @@ export function createScoringAnalysis({
 	}
 
 	return {
-		/** 記事ごとの精度（ニュース画面）。運用の採点の点数と、採点時刻から設定の長さの後の値動きを突き合わせる */
+		/** 記事ごとの精度（ニュース画面）。運用の採点の点数と、新しさの時刻（公開時刻）から設定の長さの後の値動きを突き合わせる */
 		articleAccuracy(ids: readonly number[]): ArticleAccuracyReport {
 			const { horizon } = repo.accuracySettings();
 			// 値動きの段階は集計の表にだけ使うので、記事ごとの精度には載せない
@@ -211,12 +213,12 @@ export function createScoringAnalysis({
 			return { horizon, items };
 		},
 
-		/** 評価詳細のタブの精度の集計。採点時刻が期間内の記事の精度を、観点ごとに 5〜1 で数える */
+		/** 評価詳細のタブの精度の集計。新しさの時刻（公開時刻）が期間内の記事の精度を、観点ごとに 5〜1 で数える */
 		accuracySummary(at?: number): AccuracySummary {
 			const { horizon, periodDays } = repo.accuracySettings();
 			const time = at ?? now();
 			const from = periodDays === null ? null : time - periodDays * DAY;
-			const rows = repo.scoredBetween(from, time);
+			const rows = repo.publishedBetween(from, time);
 			const byId = new Map(rows.map((r) => [r.id, r]));
 			const rule = judgments.rule();
 			const ok = measure(rows).flatMap((x) =>

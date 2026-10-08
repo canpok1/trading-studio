@@ -11,16 +11,19 @@ import type { CurrentJudgment, JudgmentSeries, JudgmentService } from "./types";
 
 export function createJudgmentService({
 	repo,
+	newsDelayMs,
 	now = Date.now,
 }: {
 	repo: ScoreRepository;
+	/** バックテストで記事を使い始めるまでの遅れ（取得の間隔） */
+	newsDelayMs: () => number;
 	now?: () => number;
 }): JudgmentService {
 	return {
 		current(rule = repo.aggregationRule(), at?: number): CurrentJudgment {
 			// 先の時刻は今として扱う
 			const t = at === undefined ? now() : Math.min(at, now());
-			// 集計に使うニュースは採点時刻もその長さの内にある（採点は取得より後、取得は公開より後か同時のため）
+			// 集計に使うニュースは使い始める時刻もその長さの内にある（使い始める時刻は新しさの時刻より後か同時のため）
 			const news = repo.scoredNews(t - maxWindowMs(rule), t + 1);
 			const s = judgeAt(news, t, rule);
 			return {
@@ -38,6 +41,7 @@ export function createJudgmentService({
 			step,
 			rule = repo.aggregationRule(),
 			version = null,
+			delayMs = null,
 		): JudgmentSeries {
 			const t = now();
 			const firstScoredAt = repo.firstScoredAt();
@@ -54,8 +58,13 @@ export function createJudgmentService({
 				firstScoredAt === null
 					? []
 					: judgmentSeries(
-							// 集計に使うニュースは採点時刻もその長さの内にある（current と同じ理由）
-							repo.scoredNews(from - maxWindowMs(rule), to + 1, version),
+							// 集計に使うニュースは使い始める時刻もその長さの内にある（current と同じ理由）
+							repo.scoredNews(
+								from - maxWindowMs(rule),
+								to + 1,
+								version,
+								delayMs,
+							),
 							times,
 							rule,
 						);
@@ -73,7 +82,11 @@ export function createJudgmentService({
 		},
 		rule: () => repo.aggregationRule(),
 		firstScoredAt: () => repo.firstScoredAt(),
-		scoredNews: (from, to, version) => repo.scoredNews(from, to, version),
+		scoredNews: (from, to, version, delayMs) =>
+			repo.scoredNews(from, to, version, delayMs),
+		newsDelayMs,
+		newsDataVersion: (from, to, version, delayMs) =>
+			repo.newsDataVersion(from, to, version, delayMs),
 		saveRule(rule) {
 			const errors = validateAggregationRule(rule);
 			if (errors.length) return { ok: false, errors };

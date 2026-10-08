@@ -42,7 +42,12 @@ export type BacktestServiceDeps = {
 	runner: BacktestRunner;
 	judgments: Pick<
 		JudgmentService,
-		"rule" | "series" | "firstScoredAt" | "scoredNews"
+		| "rule"
+		| "series"
+		| "firstScoredAt"
+		| "scoredNews"
+		| "newsDelayMs"
+		| "newsDataVersion"
 	>;
 	scoring: Pick<ScoringService, "rescoreCoverage">;
 	now?: () => number;
@@ -152,6 +157,10 @@ export function createBacktestService({
 			// 版を指定したら、期間の市場評価に使う記事がすべてその版で採点されているときだけ実行する。
 			// 一部の記事だけで比べると、成績の差が版の違いによるのか記事の数の違いによるのか分からないため
 			const criteriaVersion = usesJudgments ? input.criteriaVersion : null;
+			// 記事は公開から取得の間隔だけ遅れて知る前提で使う（運用で採点を待つ分を見込む。docs/news.md）
+			const newsDelayMs = usesJudgments ? judgments.newsDelayMs() : null;
+			// 期間の頭で使うニュースは、期間の開始から集計に使う一番長い長さだけ前から使い始めている
+			const newsFrom = from - maxWindowMs(rule);
 			if (criteriaVersion !== null) {
 				const r = scoring.rescoreCoverage(from, to, criteriaVersion);
 				if (!r.ok) {
@@ -212,6 +221,16 @@ export function createBacktestService({
 				stepLimited: step.limited,
 				aggregationRule: rule,
 				criteriaVersion,
+				newsDelayMs,
+				newsDataVersion:
+					newsDelayMs === null
+						? null
+						: judgments.newsDataVersion(
+								newsFrom,
+								to,
+								criteriaVersion,
+								newsDelayMs,
+							),
 				startedAt: now(),
 				barCount,
 			});
@@ -229,11 +248,11 @@ export function createBacktestService({
 					fees: input.fees,
 					judgments: usesJudgments
 						? {
-								// 期間の頭で使うニュースは、期間の開始から集計に使う一番長い長さだけ前までに採点されている
 								news: judgments.scoredNews(
-									from - maxWindowMs(rule),
+									newsFrom,
 									to,
 									criteriaVersion,
+									newsDelayMs,
 								),
 								rule,
 								since: firstScoredAt,
@@ -320,6 +339,7 @@ export function createBacktestService({
 									tfMs,
 									rule,
 									run.criteriaVersion,
+									run.newsDelayMs,
 								)
 							: null,
 				},

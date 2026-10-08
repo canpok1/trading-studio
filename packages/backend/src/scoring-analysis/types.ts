@@ -2,7 +2,7 @@
 
 import type { Judge, JudgmentValue } from "@trading-studio/core";
 
-/** 精度を測る、採点時刻からの長さ */
+/** 精度を測る、公開時刻からの長さ */
 export const ACCURACY_HORIZONS = ["4h", "24h"] as const;
 export type AccuracyHorizon = (typeof ACCURACY_HORIZONS)[number];
 
@@ -12,13 +12,13 @@ export type AccuracyPeriod = (typeof ACCURACY_PERIODS)[number];
 
 /** 精度の設定。設定画面の「ニュース」区分の「精度」で変える */
 export type AccuracySettings = {
-	/** 精度に使う、採点時刻からの長さ */
+	/** 精度に使う、公開時刻からの長さ */
 	horizon: AccuracyHorizon;
 	/** センチメントと比べる値動きの段階の境目（%）。測る長さごと */
 	sentimentBands: Record<AccuracyHorizon, SentimentBands>;
 	/** リスクと比べる値動きの段階の境目（%）。測る長さごと */
 	riskBands: Record<AccuracyHorizon, RiskBands>;
-	/** 評価詳細のタブで精度を集計する期間。採点時刻で測る */
+	/** 評価詳細のタブで精度を集計する期間。公開時刻で測る */
 	periodDays: AccuracyPeriod;
 };
 
@@ -63,7 +63,7 @@ export type SetAccuracySettingsResult =
 	| { ok: false; message: string; field: keyof AccuracySettings };
 
 /**
- * 記事ごとの精度。運用の採点の点数と、採点時刻から測る長さの後の値動きの段階のずれで 5〜1（一致で 5、1段ずれるごとに 1 下げる）。
+ * 記事ごとの精度。運用の採点の点数と、公開時刻から測る長さの後の値動きの段階のずれで 5〜1（一致で 5、1段ずれるごとに 1 下げる）。
  * measuring: 測る長さがまだたっていない / unknown: たったが価格が無い
  */
 export type ArticleAccuracy =
@@ -99,7 +99,7 @@ export type AccuracySummaryResult<J extends Judge = Judge> = {
 export type AccuracySummary = {
 	horizon: AccuracyHorizon;
 	periodDays: AccuracyPeriod;
-	/** 集計の時点。採点時刻がこれ以前で、期間内の記事を数える */
+	/** 集計の時点。公開時刻がこれ以前で、期間内の記事を数える */
 	time: number;
 	results: { [J in Judge]: AccuracySummaryResult<J> };
 };

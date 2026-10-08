@@ -675,10 +675,10 @@ describe("版を指定した採点し直し", () => {
 		expect(t.repo.scoredNews(0, T0 + 5000, version)).toEqual([
 			expect.objectContaining({
 				id: a,
-				scoredAt: T0 + 1000,
+				usableAt: T0 + 1000,
 				scores: { sentiment: -80, risk: 5 },
 			}),
-			expect.objectContaining({ id: b, scoredAt: T0 + 2000 }),
+			expect.objectContaining({ id: b, usableAt: T0 + 2000 }),
 		]);
 		// 運用で v2 で採点した記事は、採点し直さずにその採点を使う
 		t.service.setActiveCriteria(version);
@@ -688,9 +688,10 @@ describe("版を指定した採点し直し", () => {
 			expect.objectContaining({ id: d }),
 		]);
 		expect(
+			// d は T0 + 12秒に公開。バックテストでは取得の間隔（既定15分）の後から使う
 			t.service.rescoreCoverage(
-				T0 + 13_000 + 288 * H,
-				T0 + 14_000 + 288 * H,
+				T0 + 12_000 + 15 * 60_000 + 288 * H,
+				T0 + 13_000 + 15 * 60_000 + 288 * H,
 				version,
 			),
 		).toMatchObject({ coverage: { total: 1, done: 1 } });
@@ -790,13 +791,13 @@ describe("運用の採点を置き換える採点し直し", () => {
 		// 運用どおりは置き換えた点数、v1 を指定すると元の点数。どちらも使い始める時刻は運用の採点時刻
 		expect(t.repo.scoredNews(0, T0 + 5000)).toEqual([
 			expect.objectContaining({
-				scoredAt: T0 + 1000,
+				usableAt: T0 + 1000,
 				scores: { sentiment: -70, risk: 10 },
 			}),
 		]);
 		expect(t.repo.scoredNews(0, T0 + 5000, 1)).toEqual([
 			expect.objectContaining({
-				scoredAt: T0 + 1000,
+				usableAt: T0 + 1000,
 				scores: { sentiment: 60, risk: 30 },
 			}),
 		]);

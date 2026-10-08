@@ -30,7 +30,7 @@ import { Modal } from "../components/Modal";
 import { Page } from "../components/Page";
 import { EmptyState, ErrorState, LoadingCard } from "../components/States";
 import { Button, Card, Note, ProgressBar, Segmented } from "../components/ui";
-import { formatDate, toDateInputValue } from "../format";
+import { formatDate, formatDateTime, toDateInputValue } from "../format";
 import { useBacktestJob } from "../lib/backtest-job";
 import { useChartBg } from "../lib/chart-bg";
 import { useChartIndicators } from "../lib/chart-indicators";
@@ -229,6 +229,13 @@ function RunHeader({ run }: { run: BacktestRun }) {
 		...(run.aggregationRule ? [ruleText(run.aggregationRule)] : []),
 		...(run.criteriaVersion !== null
 			? [`採点の版 v${run.criteriaVersion}`]
+			: []),
+		...(run.newsDelayMs !== null
+			? [`ニュースは公開の${Math.round(run.newsDelayMs / 60_000)}分後から`]
+			: []),
+		// 版が違う結果は使ったニュースが違うので、比べるときの目安にする
+		...(run.newsDataVersion !== null
+			? [`ニュースの版 ${formatDateTime(run.newsDataVersion)}`]
 			: []),
 	];
 	return (

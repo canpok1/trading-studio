@@ -60,6 +60,39 @@ const toCriteria = (r: CriteriaRow): CriteriaVersion => ({
 	createdAt: r.created_at,
 });
 
+/** 新しさの時刻（公開時刻と取得時刻の早い方。core の newsTime と同じ）の SQL の式 */
+export const NEWS_TIME_SQL = "min(n.published_at, n.fetched_at)";
+
+/**
+ * 判定に使い始める時刻の SQL の式（expr）と、それが [from, to) に入る条件（where）。
+ * delayMs が null なら採点時刻、数なら新しさの時刻 + delayMs（scoredNews）
+ */
+function usableAt(
+	delayMs: number | null,
+	from: number,
+	to: number,
+): {
+	expr: string;
+	exprParams: number[];
+	where: string;
+	whereParams: number[];
+} {
+	if (delayMs === null)
+		return {
+			expr: "s.scored_at",
+			exprParams: [],
+			where: "s.scored_at >= ? and s.scored_at < ?",
+			whereParams: [from, to],
+		};
+	// 公開時刻は新しさの時刻以上なので、下限は公開時刻のインデックスでも絞れる
+	return {
+		expr: `(${NEWS_TIME_SQL} + ?)`,
+		exprParams: [delayMs],
+		where: `n.published_at >= ? and ${NEWS_TIME_SQL} >= ? and ${NEWS_TIME_SQL} < ?`,
+		whereParams: [from - delayMs, from - delayMs, to - delayMs],
+	};
+}
+
 const ACTIVE_CRITERIA_KEY = "scoring_criteria_active";
 const MODEL_KEY = "scoring_model";
 const RULE_KEY = "aggregation_rule";
@@ -315,92 +348,137 @@ export class ScoreRepository {
 	}
 
 	/**
-	 * 採点時刻が [from, to) の採点済みのニュース（集計の入力）。
-	 * version を渡すと、点数をその版の採点（運用の採点がその版ならそれ、無ければ採点し直した結果）にする。
-	 * その版の採点が無い記事は除く。採点時刻は版によらず運用の採点時刻（判定に使い始める時刻を運用とそろえるため）
+	 * 判定に使い始める時刻が [from, to) の採点済みのニュース（集計の入力）。
+	 * 使い始める時刻は、delayMs が null なら運用の採点時刻（運用の判定）、数なら新しさの時刻に delayMs を足した時刻
+	 * （バックテスト。取得の間隔ぶん遅れて知る前提。docs/news.md）。
+	 * version を渡すと、点数をその版の採点（運用の採点がその版ならそれ、無ければ採点し直した結果）にする。その版の採点が無い記事は除く
 	 */
 	scoredNews(
 		from: number,
 		to: number,
 		version: number | null = null,
+		delayMs: number | null = null,
 	): ScoredNews[] {
 		type Row = {
 			id: number;
 			published_at: number;
 			fetched_at: number;
-			scored_at: number;
+			usable_at: number;
 			sentiment: number;
 			risk: number;
 			duration: Duration;
 		};
+		const u = usableAt(delayMs, from, to);
 		const rows =
 			version === null
 				? this.sql
-						.query<Row, [number, number]>(
-							`select n.id, n.published_at, n.fetched_at, s.scored_at, s.sentiment, s.risk, s.duration
+						.query<Row, number[]>(
+							`select n.id, n.published_at, n.fetched_at, ${u.expr} as usable_at, s.sentiment, s.risk, s.duration
 							 from news_scores s join news n on n.id = s.news_id
-							 where s.status = 'done' and s.scored_at >= ? and s.scored_at < ?
-							 order by s.scored_at, n.id`,
+							 where s.status = 'done' and ${u.where}
+							 order by usable_at, n.id`,
 						)
-						.all(from, to)
+						.all(...u.exprParams, ...u.whereParams)
 				: this.sql
-						.query<
-							Row,
-							[number, number, number, number, number, number, number]
-						>(
-							`select n.id, n.published_at, n.fetched_at, s.scored_at,
+						.query<Row, number[]>(
+							`select n.id, n.published_at, n.fetched_at, ${u.expr} as usable_at,
 							   case when s.criteria_version = ? then s.sentiment else r.sentiment end as sentiment,
 							   case when s.criteria_version = ? then s.risk else r.risk end as risk,
 							   case when s.criteria_version = ? then s.duration else r.duration end as duration
 							 from news_scores s join news n on n.id = s.news_id
 							 left join news_rescores r on r.news_id = s.news_id and r.criteria_version = ? and r.status = 'done'
-							 where s.status = 'done' and s.scored_at >= ? and s.scored_at < ?
+							 where s.status = 'done' and ${u.where}
 							   and (s.criteria_version = ? or r.news_id is not null)
-							 order by s.scored_at, n.id`,
+							 order by usable_at, n.id`,
 						)
-						.all(version, version, version, version, from, to, version);
+						.all(
+							...u.exprParams,
+							version,
+							version,
+							version,
+							version,
+							...u.whereParams,
+							version,
+						);
 		return rows.map((r) => ({
 			id: r.id,
 			publishedAt: r.published_at,
 			fetchedAt: r.fetched_at,
-			scoredAt: r.scored_at,
+			usableAt: r.usable_at,
 			scores: { sentiment: r.sentiment, risk: r.risk },
 			duration: r.duration,
 		}));
 	}
 
 	/**
-	 * 運用の採点時刻が [from, to) の採点済みのニュースについて、指定した版の採点が揃っているか。
-	 * 運用で採点されなかった記事（古くて採点しない・失敗）は運用でも使われないので数えない
+	 * scoredNews と同じ記事の、データの最終更新時刻（取得・採点・採点し直し・置き換えのうち最新）。記事が無ければ null。
+	 * バックテストの結果に、使ったニュースのデータの版として残す
 	 */
-	rescoreCoverage(from: number, to: number, version: number): RescoreCoverage {
+	newsDataVersion(
+		from: number,
+		to: number,
+		version: number | null,
+		delayMs: number,
+	): number | null {
+		const u = usableAt(delayMs, from, to);
+		return (
+			this.sql
+				.query<{ t: number | null }, (number | null)[]>(
+					`select max(max(n.fetched_at, s.scored_at, coalesce(s.rescored_at, 0), coalesce(r.scored_at, 0))) as t
+					 from news_scores s join news n on n.id = s.news_id
+					 left join news_rescores r on r.news_id = s.news_id and r.criteria_version = ? and r.status = 'done'
+					 where s.status = 'done' and ${u.where}
+					   and (? is null or s.criteria_version = ? or r.news_id is not null)`,
+				)
+				.get(version ?? -1, ...u.whereParams, version, version ?? -1)?.t ?? null
+		);
+	}
+
+	/**
+	 * バックテストで使い始める時刻（scoredNews の delayMs）が [from, to) の採点済みのニュースについて、指定した版の採点が揃っているか。
+	 * 運用で採点されなかった記事（古くて採点しない・失敗）は使わないので数えない
+	 */
+	rescoreCoverage(
+		from: number,
+		to: number,
+		version: number,
+		delayMs: number,
+	): RescoreCoverage {
+		const u = usableAt(delayMs, from, to);
 		return this.sql
-			.query<RescoreCoverage, [number, number, number, number]>(
+			.query<RescoreCoverage, number[]>(
 				`select count(*) as total,
 				   coalesce(sum(case when s.criteria_version = ? or r.status = 'done' then 1 else 0 end), 0) as done,
 				   coalesce(sum(case when r.status in ('queued', 'retry') then 1 else 0 end), 0) as pending,
 				   coalesce(sum(case when r.status = 'failed' then 1 else 0 end), 0) as failed
-				 from news_scores s
+				 from news_scores s join news n on n.id = s.news_id
 				 left join news_rescores r on r.news_id = s.news_id and r.criteria_version = ?
-				 where s.status = 'done' and s.scored_at >= ? and s.scored_at < ?`,
+				 where s.status = 'done' and ${u.where}`,
 			)
-			.get(version, version, from, to) as RescoreCoverage;
+			.get(version, version, ...u.whereParams) as RescoreCoverage;
 	}
 
 	/**
-	 * 運用の採点時刻が [from, to) の採点済みのニュースのうち、指定した版の採点が無いものを採点し直す対象に入れる。
+	 * rescoreCoverage と同じ記事のうち、指定した版の採点が無いものを採点し直す対象に入れる。
 	 * 失敗したものも入れ直す。入れた件数を返す
 	 */
-	queueRescore(from: number, to: number, version: number, now: number): number {
+	queueRescore(
+		from: number,
+		to: number,
+		version: number,
+		delayMs: number,
+		now: number,
+	): number {
+		const u = usableAt(delayMs, from, to);
 		return this.sql.run(
 			`insert into news_rescores (news_id, criteria_version, status, attempts, requested_at)
-			 select s.news_id, ?, 'queued', 0, ? from news_scores s
-			 where s.status = 'done' and s.scored_at >= ? and s.scored_at < ?
+			 select s.news_id, ?, 'queued', 0, ? from news_scores s join news n on n.id = s.news_id
+			 where s.status = 'done' and ${u.where}
 			   and (s.criteria_version is null or s.criteria_version != ?)
 			 on conflict (news_id, criteria_version) do update set status = 'queued', attempts = 0,
 			   next_attempt_at = null, error = null, requested_at = excluded.requested_at
 			 where news_rescores.status = 'failed'`,
-			[version, now, from, to, version],
+			[version, now, ...u.whereParams, version],
 		).changes;
 	}
 
