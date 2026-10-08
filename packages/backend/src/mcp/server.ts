@@ -220,7 +220,11 @@ function newsView(
 				: accuracy.status === "ok"
 					? { sentiment: accuracy.sentiment, risk: accuracy.risk }
 					: accuracy.status,
-		rescore: n.rescore,
+		rescore: n.rescore && {
+			...n.rescore,
+			nextAttemptAt:
+				n.rescore.nextAttemptAt === null ? null : jst(n.rescore.nextAttemptAt),
+		},
 	};
 }
 
@@ -674,7 +678,7 @@ function createServer({
 		"list_news_scores",
 		{
 			description:
-				"ニュースと AI の採点（点数・持続・理由・基準の版・モデル）、市場評価での重み、記事ごとの精度。ニュース画面の一覧と同じ条件で絞れる。weight は市場評価の時点（to が今より前ならその時刻、それ以外は今）での重み（0〜1）。precision は get_market_evaluation_analysis と同じ精度で、measuring は測る長さがまだたっていない、unknown は価格が無い、null は持続なし・採点済みでない記事",
+				"ニュースと AI の採点（点数・持続・理由・基準の版・モデル）、市場評価での重み、記事ごとの精度。ニュース画面の一覧と同じ条件で絞れる。weight は市場評価の時点（to が今より前ならその時刻、それ以外は今）での重み（0〜1）。precision は get_market_evaluation_analysis と同じ精度で、measuring は測る長さがまだたっていない、unknown は価格が無い、null は持続なし・採点済みでない記事。rescore は画面から頼んだ運用の採点の置き換え（採点し直し）で終わっていないもの。status は running: 採点し直し中 / waiting: 順番待ち（ahead は先に採点し直す件数。採点し直し中の1件とバックテスト用の分を含む。新着の採点が先） / retry: 失敗して nextAttemptAt に再試行 / failed: 失敗して止まっている",
 			inputSchema: {
 				from: z
 					.string()

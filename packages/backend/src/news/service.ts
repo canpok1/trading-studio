@@ -4,6 +4,7 @@ import { DEFAULT_INTERVAL_MINUTES } from "./collector";
 import type { NewsRepository } from "./repository";
 import type {
 	NewsCollectorStatus,
+	NewsItem,
 	NewsService,
 	NewsSourceInput,
 	NewsSourceResult,
@@ -54,14 +55,30 @@ export function createNewsService({
 	repo,
 	collector,
 	rule,
+	rescoring = () => null,
 	now = Date.now,
 }: {
 	repo: NewsRepository;
 	collector: Pick<NewsCollector, "lastRunAt" | "nextRunAt">;
 	/** 影響の大きさで絞るときの評価基準（今の評価ルール） */
 	rule: () => AggregationRule;
+	/** いま採点し直している記事と版（Scorer.rescoring） */
+	rescoring?: () => { newsId: number; version: number } | null;
 	now?: () => number;
 }): NewsService {
+	/** 順番待ちのうち、いま採点し直しているものを採点し直し中にする */
+	const withRunning = (items: NewsItem[]): NewsItem[] => {
+		const cur = rescoring();
+		if (!cur) return items;
+		return items.map((n) =>
+			n.id === cur.newsId &&
+			n.rescore?.version === cur.version &&
+			n.rescore.status === "waiting"
+				? { ...n, rescore: { ...n.rescore, status: "running", ahead: null } }
+				: n,
+		);
+	};
+
 	const found = (id: number): NewsSourceResult => {
 		const source = repo.getSource(id);
 		return source ? { ok: true, source } : { ok: false, kind: "not_found" };
@@ -159,7 +176,10 @@ export function createNewsService({
 			};
 		},
 
-		listNews: (limit) => repo.listNews(limit),
-		searchNews: (filter) => repo.searchNews(filter, rule()),
+		listNews: (limit) => withRunning(repo.listNews(limit)),
+		searchNews(filter) {
+			const r = repo.searchNews(filter, rule());
+			return { ...r, news: withRunning(r.news) };
+		},
 	};
 }

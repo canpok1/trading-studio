@@ -187,6 +187,7 @@ const news = createNewsService({
 	repo: newsRepo,
 	collector: newsCollector,
 	rule: () => scoreRepo.aggregationRule(),
+	rescoring: () => scorer.rescoring(),
 });
 const server = new Hono()
 	.use("/api/*", slowRequestLog())
