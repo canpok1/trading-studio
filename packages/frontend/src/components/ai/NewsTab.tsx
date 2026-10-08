@@ -162,7 +162,7 @@ function NewsCard({
 		state.kind === "done" &&
 		activeVersion !== null &&
 		n.score?.criteriaVersion !== activeVersion &&
-		n.rescore?.status !== "pending";
+		(n.rescore === null || n.rescore.status === "failed");
 
 	return (
 		<article
@@ -253,12 +253,31 @@ function NewsCard({
 							)}
 						</div>
 					)}
-					{n.rescore?.status === "pending" && (
+					{n.rescore?.status === "running" && (
 						<div className="flex items-center gap-2 text-xs text-text-2">
 							<Skeleton className="h-4 w-16" />v{n.rescore.version}{" "}
 							で採点し直し中
-							{scorerStopped && "（採点が止まっている）"}
 						</div>
+					)}
+					{n.rescore?.status === "waiting" && (
+						<span className="num text-xs text-text-2">
+							v{n.rescore.version} での採点し直し待ち
+							{scorerStopped
+								? "（採点が止まっている）"
+								: n.rescore.ahead
+									? `（前に ${n.rescore.ahead} 件）`
+									: "（次に採点し直す）"}
+						</span>
+					)}
+					{n.rescore?.status === "retry" && (
+						<span className="text-xs">
+							<span className="font-semibold text-loss">
+								v{n.rescore.version} での採点し直しに失敗
+							</span>
+							（{n.rescore.error}）。
+							{n.rescore.nextAttemptAt !== null &&
+								`${formatDateTime(n.rescore.nextAttemptAt)} に自動で再試行する`}
+						</span>
 					)}
 					{n.rescore?.status === "failed" && (
 						<span className="text-xs">

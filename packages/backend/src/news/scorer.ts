@@ -23,6 +23,8 @@ export type Scorer = {
 	problem(): { error: string; since: number } | null;
 	/** 続いている失敗の記録を消す。キーを替えた後に前のキーでの失敗を出し続けないため */
 	clearFailure(): void;
+	/** いま採点し直している記事と版。採点し直していなければ null */
+	rescoring(): { newsId: number; version: number } | null;
 	/** 保存も集計への反映もせずに採点する（試し採点）。常駐の採点と合わせて問い合わせの間を空ける */
 	trial(
 		news: PromptNews,
@@ -60,6 +62,7 @@ export function createScorer({
 	let failing: { error: string; since: number } | null = null;
 	let noKeySince: number | null = null;
 	let lastAskedAt = Number.NEGATIVE_INFINITY;
+	let rescoring: { newsId: number; version: number } | null = null;
 
 	async function ask(news: PromptNews, criteria: string, modelId: string) {
 		const raw = await model.generate(
@@ -124,6 +127,7 @@ export function createScorer({
 		}
 		const modelId = repo.model(DEFAULT_SCORING_MODEL);
 		lastAskedAt = now();
+		rescoring = { newsId: next.id, version: next.criteriaVersion };
 		try {
 			const r = await ask(next, criteria.text, modelId);
 			repo.saveRescore(next.id, next.criteriaVersion, r, {
@@ -145,6 +149,8 @@ export function createScorer({
 				delay === undefined ? null : now() + delay,
 			);
 			failing = { error, since: failing?.since ?? now() };
+		} finally {
+			rescoring = null;
 		}
 	}
 
@@ -172,6 +178,7 @@ export function createScorer({
 		clearFailure() {
 			failing = null;
 		},
+		rescoring: () => rescoring,
 		problem() {
 			const reason = model.unavailable();
 			if (reason) return { error: reason, since: noKeySince ?? now() };

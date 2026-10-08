@@ -9,6 +9,7 @@ import { NewsRepository } from "./repository";
 import { ScoreRepository } from "./score-repository";
 import { createScorer, RETRY_DELAYS_MS } from "./scorer";
 import { createScoringService } from "./scoring-service";
+import { createNewsService } from "./service";
 
 const H = 3_600_000;
 const T0 = Date.UTC(2026, 8, 26, 3);
@@ -90,7 +91,7 @@ const BUILT_AT = Date.UTC(2026, 8, 27, 0, 10);
 function setup(opts: { key?: boolean } = {}) {
 	let clock = T0;
 	const db = createTestDb();
-	const newsRepo = new NewsRepository(db);
+	const newsRepo = new NewsRepository(db, () => clock);
 	const repo = new ScoreRepository(db);
 	repo.seedCriteria(DEFAULT_CRITERIA, T0);
 	const source = newsRepo.insertSource(
@@ -763,7 +764,9 @@ describe("運用の採点を置き換える採点し直し", () => {
 		expect(t.service.status().rescorePending).toBe(1);
 		expect(t.newsRepo.newsByIds([a])[0]?.rescore).toEqual({
 			version: 2,
-			status: "pending",
+			status: "waiting",
+			ahead: 0,
+			nextAttemptAt: null,
 			error: null,
 		});
 		t.replies.push({
@@ -871,6 +874,44 @@ describe("運用の採点を置き換える採点し直し", () => {
 		expect(t.service.status().rescorePending).toBe(0);
 	});
 
+	test("待っている間は先に採点し直す件数を、採点し直している間は採点し直し中を出す", async () => {
+		const t = setup();
+		const ids = await scoredThenV2(t, 3);
+		for (const id of ids) t.service.rescoreLive(id);
+		const news = createNewsService({
+			repo: t.newsRepo,
+			collector: { lastRunAt: () => null, nextRunAt: () => null },
+			rule: () => t.repo.aggregationRule(),
+			rescoring: () => t.scorer.rescoring(),
+		});
+		const rescores = () =>
+			news
+				.listNews(10)
+				.map((n) => [n.title, n.rescore?.status, n.rescore?.ahead]);
+		expect(rescores()).toEqual([
+			["n2", "waiting", 2],
+			["n1", "waiting", 1],
+			["n0", "waiting", 0],
+		]);
+		let answer = (_: unknown) => {};
+		t.replies.push(new Promise((r) => (answer = r)));
+		t.scorer.tick();
+		expect(t.scorer.rescoring()).toEqual({ newsId: ids[0], version: 2 });
+		expect(rescores()).toEqual([
+			["n2", "waiting", 2],
+			["n1", "waiting", 1],
+			["n0", "running", null],
+		]);
+		answer({ sentiment: 0, risk: 0, duration: "short", comment: "c" });
+		await t.scorer.idle();
+		expect(t.scorer.rescoring()).toBeNull();
+		expect(rescores()).toEqual([
+			["n2", "waiting", 1],
+			["n1", "waiting", 0],
+			["n0", undefined, undefined],
+		]);
+	});
+
 	test("失敗して止まると理由を出し、頼み直すと採点し直す", async () => {
 		const t = setup();
 		const [a] = await scoredThenV2(t, 1);
@@ -881,6 +922,13 @@ describe("運用の採点を置き換える採点し直し", () => {
 		);
 		let time = T0 + 10_000;
 		await t.at(time);
+		expect(t.newsRepo.newsByIds([a])[0]?.rescore).toEqual({
+			version: 2,
+			status: "retry",
+			ahead: null,
+			nextAttemptAt: time + (RETRY_DELAYS_MS[0] as number),
+			error: "503",
+		});
 		for (const d of RETRY_DELAYS_MS) {
 			time += d;
 			await t.at(time);
@@ -888,13 +936,15 @@ describe("運用の採点を置き換える採点し直し", () => {
 		expect(t.newsRepo.newsByIds([a])[0]?.rescore).toEqual({
 			version: 2,
 			status: "failed",
+			ahead: null,
+			nextAttemptAt: null,
 			error: "503",
 		});
 		expect(t.repo.getScore(a)?.criteriaVersion).toBe(1);
 		expect(t.service.rescoreLive(a)).toMatchObject({
 			requested: true,
 		});
-		expect(t.newsRepo.newsByIds([a])[0]?.rescore?.status).toBe("pending");
+		expect(t.newsRepo.newsByIds([a])[0]?.rescore?.status).toBe("waiting");
 		await t.at(time + 1000);
 		expect(t.newsRepo.newsByIds([a])[0]).toMatchObject({
 			rescore: null,

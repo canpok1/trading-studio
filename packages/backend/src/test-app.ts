@@ -71,7 +71,7 @@ export function createTestApp(
 		now: () => clock.now,
 	});
 	// 収集は動かさず、テストから newsRepo に書き込む
-	const newsRepo = new NewsRepository(db);
+	const newsRepo = new NewsRepository(db, () => clock.now);
 	const newsRun = {
 		lastRunAt: null as number | null,
 		nextRunAt: null as number | null,
@@ -84,6 +84,7 @@ export function createTestApp(
 			lastRunAt: () => newsRun.lastRunAt,
 			nextRunAt: () => newsRun.nextRunAt,
 		},
+		rescoring: () => scorer.rescoring(),
 		now: () => 5_000,
 	});
 	scoreRepo.seedCriteria(DEFAULT_CRITERIA, 0);

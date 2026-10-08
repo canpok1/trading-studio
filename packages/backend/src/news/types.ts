@@ -38,8 +38,12 @@ export type NewsItem = {
 export type LiveRescore = {
 	/** 採点し直す版 */
 	version: number;
-	/** pending: 待っている（再試行待ちを含む） / failed: 失敗して止まっている */
-	status: "pending" | "failed";
+	/** running: 採点し直している / waiting: 順番を待っている / retry: 失敗して再試行の時刻を待っている / failed: 失敗して止まっている */
+	status: "running" | "waiting" | "retry" | "failed";
+	/** waiting のとき、先に採点し直す件数（採点し直している1件と、バックテスト用に頼んだ分を含む）。それ以外は null */
+	ahead: number | null;
+	/** retry のとき、次に再試行する時刻。それ以外は null */
+	nextAttemptAt: number | null;
 	error: string | null;
 };
 

@@ -4,6 +4,7 @@ import type { Db } from "../db/open";
 import type { FeedItem } from "./rss";
 import { toNewsScore } from "./score-repository";
 import type {
+	LiveRescore,
 	NewsFilter,
 	NewsItem,
 	NewsLanguage,
@@ -41,6 +42,8 @@ type NewsRow = Omit<ScoreRow, "status"> & {
 	rescore_version: number | null;
 	rescore_status: string | null;
 	rescore_error: string | null;
+	rescore_requested_at: number | null;
+	rescore_next_attempt_at: number | null;
 };
 
 /**
@@ -52,7 +55,7 @@ const NEWS_FROM = `from news n left join news_scores s on s.news_id = n.id
 	  select x.rowid from news_rescores x where x.news_id = n.id and x.replace_requested_at is not null
 	  order by x.replace_requested_at desc, x.criteria_version desc limit 1)`;
 const NEWS_COLUMNS =
-	"n.*, s.*, r.criteria_version as rescore_version, r.status as rescore_status, r.error as rescore_error";
+	"n.*, s.*, r.criteria_version as rescore_version, r.status as rescore_status, r.error as rescore_error, r.requested_at as rescore_requested_at, r.next_attempt_at as rescore_next_attempt_at";
 
 const toSource = (r: SourceRow): NewsSource => ({
 	id: r.id,
@@ -66,7 +69,7 @@ const toSource = (r: SourceRow): NewsSource => ({
 	errorSince: r.error_since,
 });
 
-export const toNewsItem = (r: NewsRow): NewsItem => ({
+const toNewsItem = (r: NewsRow): Omit<NewsItem, "rescore"> => ({
 	id: r.id,
 	sourceId: r.source_id,
 	sourceName: r.source_name,
@@ -77,24 +80,53 @@ export const toNewsItem = (r: NewsRow): NewsItem => ({
 	publishedAt: r.published_at,
 	fetchedAt: r.fetched_at,
 	score: r.status === null ? null : toNewsScore({ ...r, status: r.status }),
-	rescore:
-		r.rescore_version === null
-			? null
-			: {
-					version: r.rescore_version,
-					status: r.rescore_status === "failed" ? "failed" : "pending",
-					error: r.rescore_error,
-				},
 });
 
 const INTERVAL_KEY = "news_interval_minutes";
 const SEEDED_KEY = "news_sources_seeded";
 
 export class NewsRepository {
-	constructor(private readonly db: Db) {}
+	constructor(
+		private readonly db: Db,
+		private readonly now: () => number = Date.now,
+	) {}
 
 	private get sql() {
 		return this.db.$client;
+	}
+
+	/** 行を記事にする。採点し直しの順番は ScoreRepository.nextToRescore と同じ並びで数える */
+	private toItems(rows: NewsRow[]): NewsItem[] {
+		const now = this.now();
+		const ahead = this.sql.query<
+			{ c: number },
+			[number, number, number, number]
+		>(
+			`select count(*) as c from news_rescores y join news m on m.id = y.news_id
+			 where (y.status = 'queued' or (y.status = 'retry' and y.next_attempt_at <= ?1))
+			   and (y.requested_at, m.fetched_at, m.id) < (?2, ?3, ?4)`,
+		);
+		const rescore = (r: NewsRow): LiveRescore | null => {
+			if (r.rescore_version === null) return null;
+			const base = {
+				version: r.rescore_version,
+				ahead: null,
+				nextAttemptAt: null,
+				error: r.rescore_error,
+			};
+			if (r.rescore_status === "failed") return { ...base, status: "failed" };
+			const next = r.rescore_next_attempt_at;
+			if (r.rescore_status === "retry" && next !== null && next > now)
+				return { ...base, status: "retry", nextAttemptAt: next };
+			return {
+				...base,
+				status: "waiting",
+				ahead:
+					ahead.get(now, r.rescore_requested_at ?? 0, r.fetched_at, r.id)?.c ??
+					0,
+			};
+		};
+		return rows.map((r) => ({ ...toNewsItem(r), rescore: rescore(r) }));
 	}
 
 	listSources(): NewsSource[] {
@@ -226,12 +258,12 @@ export class NewsRepository {
 	}
 
 	listNews(limit: number): NewsItem[] {
-		return this.sql
+		const rows = this.sql
 			.query<NewsRow, [number]>(
 				`select ${NEWS_COLUMNS} ${NEWS_FROM} order by n.published_at desc, n.id desc limit ?`,
 			)
-			.all(limit)
-			.map(toNewsItem);
+			.all(limit);
+		return this.toItems(rows);
 	}
 
 	/** 条件で絞る。影響の大きさは rule の評価基準で測る */
@@ -301,13 +333,12 @@ export class NewsRepository {
 					`select count(*) as c ${from}`,
 				)
 				.get(...args)?.c ?? 0;
-		const news = this.sql
+		const rows = this.sql
 			.query<NewsRow, (number | string)[]>(
 				`select ${NEWS_COLUMNS} ${from} order by ${order} limit ?`,
 			)
-			.all(...args, f.limit)
-			.map(toNewsItem);
-		return { news, total };
+			.all(...args, f.limit);
+		return { news: this.toItems(rows), total };
 	}
 
 	/** ID で引く。無い ID は飛ばす。並びは ids の順 */
@@ -317,9 +348,8 @@ export class NewsRepository {
 			.query<NewsRow, number[]>(
 				`select ${NEWS_COLUMNS} ${NEWS_FROM} where n.id in (${ids.map(() => "?").join(",")})`,
 			)
-			.all(...ids)
-			.map(toNewsItem);
-		const byId = new Map(rows.map((r) => [r.id, r]));
+			.all(...ids);
+		const byId = new Map(this.toItems(rows).map((r) => [r.id, r]));
 		return ids.flatMap((id) => byId.get(id) ?? []);
 	}
 }
