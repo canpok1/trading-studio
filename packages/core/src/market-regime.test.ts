@@ -1,0 +1,74 @@
+import { describe, expect, test } from "bun:test";
+import { classifyMarket, datasetPeriods } from "./market-regime";
+
+/** 終値が毎日 r ずつ（対数で）動く日足 */
+const steady = (days: number, r: number, start = 10_000_000) =>
+	Array.from({ length: days }, (_, i) => {
+		const open = Math.round(start * Math.exp(r * i));
+		return { open, close: Math.round(start * Math.exp(r * (i + 1))) };
+	});
+
+describe("classifyMarket", () => {
+	test("騰落率が +12% 以上なら上昇、−12% 以下なら下落、その間はレンジ", () => {
+		expect(classifyMarket(steady(60, 0.003))?.regime).toBe("up");
+		expect(classifyMarket(steady(60, -0.003))?.regime).toBe("down");
+		expect(classifyMarket(steady(60, 0.001))?.regime).toBe("range");
+	});
+
+	test("境目の騰落率はちょうどでも上昇・下落に入れる", () => {
+		const bars = [
+			{ open: 1_000_000, close: 1_000_000 },
+			{ open: 1_000_000, close: 1_120_000 },
+		];
+		expect(classifyMarket(bars)).toEqual({
+			regime: "up",
+			returnPpm: 120_000,
+			volatilityPpm: 0,
+		});
+	});
+
+	test("日ごとの値動きの標準偏差が 3.5% 以上なら、騰落率によらず乱高下", () => {
+		// 交互に ±4% 動く。期間の騰落率はほぼ 0
+		const bars = Array.from({ length: 60 }, (_, i) => {
+			const up = i % 2 === 0;
+			return up
+				? { open: 10_000_000, close: 10_400_000 }
+				: { open: 10_400_000, close: 10_000_000 };
+		});
+		const r = classifyMarket(bars);
+		expect(r?.regime).toBe("volatile");
+		expect(r?.volatilityPpm).toBeGreaterThanOrEqual(35_000);
+	});
+
+	test("足が2本未満なら判定しない", () => {
+		expect(classifyMarket([])).toBeNull();
+		expect(classifyMarket([{ open: 1, close: 1 }])).toBeNull();
+	});
+});
+
+describe("datasetPeriods", () => {
+	const jst = (s: string) => Date.parse(`${s}+09:00`);
+
+	test("最初の足を含む月から、今月の初めまでに終わる2か月を1か月ずつずらす", () => {
+		expect(
+			datasetPeriods(jst("2026-07-15T12:00:00"), jst("2026-10-01T04:00:00")),
+		).toEqual([
+			{ from: jst("2026-07-01T00:00:00"), to: jst("2026-09-01T00:00:00") },
+			{ from: jst("2026-08-01T00:00:00"), to: jst("2026-10-01T00:00:00") },
+		]);
+	});
+
+	test("年をまたぐ", () => {
+		expect(
+			datasetPeriods(jst("2025-12-01T00:00:00"), jst("2026-02-10T00:00:00")),
+		).toEqual([
+			{ from: jst("2025-12-01T00:00:00"), to: jst("2026-02-01T00:00:00") },
+		]);
+	});
+
+	test("まだ2か月たっていなければ無い", () => {
+		expect(
+			datasetPeriods(jst("2026-09-01T00:00:00"), jst("2026-10-31T23:59:00")),
+		).toEqual([]);
+	});
+});
