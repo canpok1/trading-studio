@@ -10,7 +10,7 @@ import { JUDGE_LABELS, JUDGES } from "@trading-studio/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { useApi } from "../../api";
-import { formatShortVersion } from "../../format";
+import { formatVersion } from "../../format";
 import type { AnalysisUnit, AnalysisView } from "../../lib/eval-analysis-view";
 import {
 	ANALYSIS_UNITS,
@@ -50,6 +50,7 @@ const periodText = (p: AccuracyPeriod) =>
 /** 版の絞り込み。URL（?prompt=&server=）に持つ。ブラウザに保存すると、次に開いたとき絞り込み中だと気づかず読み違えるため */
 const PROMPT_PARAM = "prompt";
 const SERVER_PARAM = "server";
+export const ANALYSIS_FILTER_PARAMS = [PROMPT_PARAM, SERVER_PARAM] as const;
 /** サーバーの「記録なし」（記録前・開発版の採点）の値 */
 const SERVER_NONE = "none";
 
@@ -125,7 +126,7 @@ export function AccuracySummarySection({
 						{data.filter.criteriaVersion !== null &&
 							`・v${data.filter.criteriaVersion}`}
 						{data.filter.appBuiltAt !== null &&
-							`・${formatShortVersion(data.filter.appBuiltAt === "none" ? null : data.filter.appBuiltAt, "記録なし")}`}
+							`・${formatVersion(data.filter.appBuiltAt === "none" ? null : data.filter.appBuiltAt, "記録なし", { year: false })}`}
 					</span>
 				)}
 				<Help label="市場評価の分析">
@@ -203,7 +204,10 @@ export function AccuracySummarySection({
 	);
 }
 
-/** プロンプトの版とサーバーのバージョンの絞り込み。選んでいる版が選択肢に無くても（期間外など）0件として出す。サーバーはスマホの幅に収めるため年を省く */
+/**
+ * プロンプトの版とサーバーのバージョンの絞り込み。選んでいる版が選択肢に無くても（期間外など）0件として出す。
+ * 読み込む前は件数が分からないので添えない。サーバーはスマホの幅に収めるため年を省く
+ */
 function VersionSelects({
 	data,
 	prompt,
@@ -223,18 +227,21 @@ function VersionSelects({
 		label: `v${x.version}（${x.count}件）${x.version === o?.activeCriteriaVersion ? "使用中" : ""}`,
 	}));
 	if (prompt && !prompts.some((x) => x.value === prompt))
-		prompts.unshift({ value: prompt, label: `v${prompt}（0件）` });
+		prompts.unshift({
+			value: prompt,
+			label: `v${prompt}${o ? "（0件）" : ""}`,
+		});
 	const servers = (o?.appBuiltAts ?? []).map((x) => {
 		const value = x.builtAt === null ? SERVER_NONE : String(x.builtAt);
 		return {
 			value,
-			label: `${formatShortVersion(x.builtAt, "記録なし")}（${x.count}件）`,
+			label: `${formatVersion(x.builtAt, "記録なし", { year: false })}（${x.count}件）`,
 		};
 	});
 	if (server && !servers.some((x) => x.value === server))
 		servers.unshift({
 			value: server,
-			label: `${formatShortVersion(server === SERVER_NONE ? null : Number(server), "記録なし")}（0件）`,
+			label: `${formatVersion(server === SERVER_NONE ? null : Number(server), "記録なし", { year: false })}${o ? "（0件）" : ""}`,
 		});
 	const select = (
 		label: string,

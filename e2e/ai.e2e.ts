@@ -299,8 +299,13 @@ test("評価詳細の分析は、プロンプトとサーバーの版で絞り�
 	);
 	expect(asked.at(-1)?.get("criteriaVersion")).toBe("2");
 	expect(asked.at(-1)?.get("appBuiltAt")).toBe(String(built));
-	// 絞り込みは URL に持つので、開き直しても残る
+	// 絞り込みは URL に持つので、開き直しても、一覧の絞り込みを変えても残る
 	await page.reload();
+	await expect(prompt).toHaveValue("2");
+	await page.getByRole("tab", { name: "一覧" }).click();
+	await page.getByRole("button", { name: "強気材料" }).click();
+	await expect(page).toHaveURL(/impact=/);
+	await page.getByRole("tab", { name: "評価詳細" }).click();
 	await expect(prompt).toHaveValue("2");
 	await prompt.selectOption({ label: "すべて" });
 	await expect(page).not.toHaveURL(/prompt=/);
