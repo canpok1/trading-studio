@@ -118,3 +118,13 @@ test("横にはみ出さない", async ({ page }) => {
 	);
 	expect(overflow).toBeLessThanOrEqual(0);
 });
+
+test("インポート画面にデータセットの一覧があり、相場で絞れる", async ({
+	page,
+}) => {
+	await page.goto("/data");
+	const list = page.getByRole("region", { name: "データセット" });
+	await expect(list.getByText("データセットはまだ無い")).toBeVisible();
+	await list.getByText("上昇", { exact: true }).click();
+	await expect(list.getByText("上昇相場のデータセットは無い")).toBeVisible();
+});

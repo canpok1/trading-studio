@@ -45,6 +45,7 @@ import {
 	ruleText,
 	stepLimitedText,
 } from "../lib/condition-text";
+import { datasetName } from "../lib/dataset";
 import {
 	buyHoldPercentOf,
 	gradeMaxDrawdown,
@@ -158,6 +159,8 @@ function rerunState(run: BacktestRun): Partial<BacktestDraft> {
 		initialCash: run.initialCash,
 		fees: run.fees,
 		criteriaVersion: run.criteriaVersion,
+		periodMode: run.dataset ? "dataset" : "range",
+		datasetId: run.dataset?.id ?? null,
 	};
 }
 
@@ -245,6 +248,8 @@ function RunHeader({ run }: { run: BacktestRun }) {
 		>
 			<strong className="text-[15px]">{run.name}</strong>
 			<span className="num text-xs text-text-2">
+				{run.dataset &&
+					`データセット ${datasetName({ ...run, regime: run.dataset.regime })} · `}
 				{formatDate(run.from)}〜{formatDate(run.to - 1)} · 初期資金{" "}
 				{formatInt(run.initialCash)}円
 				{run.skipGaps ? " · 欠損を飛ばして実行" : ""}

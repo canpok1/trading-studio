@@ -1,6 +1,7 @@
 import type {
 	BacktestRun,
 	CriteriaVersion,
+	Dataset,
 	RescoreCoverage,
 	StoredStrategy,
 	TimeframeCoverage,
@@ -61,6 +62,7 @@ import {
 	Card,
 	Note,
 	ProgressBar,
+	Segmented,
 	Tabs,
 } from "../components/ui";
 import {
@@ -71,6 +73,7 @@ import {
 } from "../format";
 import { useBacktestJob } from "../lib/backtest-job";
 import { stepLimitedText } from "../lib/condition-text";
+import { datasetName, signedPercent } from "../lib/dataset";
 import { formatInt } from "../lib/number";
 import { errorMessage, readJson, useAsync } from "../lib/useAsync";
 
@@ -106,6 +109,10 @@ export type BacktestDraft = {
 	fees: { limitPpm: number; marketPpm: number };
 	/** 市場評価に使う採点の基準の版。null・省略は運用どおり */
 	criteriaVersion?: number | null;
+	/** 期間の決め方。dataset=データセットを選ぶ、range（省略）=日付で指定する */
+	periodMode?: "dataset" | "range";
+	/** 選んだデータセット。null・省略や消えたデータセットは一番新しいもの */
+	datasetId?: number | null;
 };
 
 /** 戦略と結び付いていた頃の下書き（名前もテンプレートも無く、strategyId を持つ）も読む */
@@ -138,6 +145,8 @@ function loadDraft(strategies: StoredStrategy[]): BacktestDraft | null {
 			initialCash: v.initialCash,
 			fees: v.fees,
 			criteriaVersion: v.criteriaVersion ?? null,
+			periodMode: v.periodMode ?? "range",
+			datasetId: v.datasetId ?? null,
 		};
 	} catch {
 		return null;
@@ -190,6 +199,11 @@ const TABS = [
 ] as const;
 type BacktestTab = (typeof TABS)[number][0];
 
+const PERIOD_MODES = [
+	["dataset", "データセット"],
+	["range", "期間を指定"],
+] as const;
+
 const PRESETS = [
 	["2w", "直近2週", 14],
 	["1m", "直近1か月", 30],
@@ -207,6 +221,8 @@ type Data = {
 	/** AI 判定の採点の記録の始まり。まだ無ければ null */
 	firstScoredAt: number | null;
 	criteriaVersions: CriteriaVersion[];
+	/** 新しい順 */
+	datasets: Dataset[];
 };
 
 export function BacktestRunPage() {
@@ -217,7 +233,7 @@ export function BacktestRunPage() {
 	const job = useBacktestJob();
 
 	const load = useCallback(async (): Promise<Data> => {
-		const [s, c, l, j, cv] = await Promise.all([
+		const [s, c, l, j, cv, ds] = await Promise.all([
 			api.api.strategies
 				.$get()
 				.then((res) => readJson<{ strategies: StoredStrategy[] }>(res)),
@@ -233,6 +249,9 @@ export function BacktestRunPage() {
 			api.api.scoring.criteria
 				.$get()
 				.then((res) => readJson<{ versions: CriteriaVersion[] }>(res)),
+			api.api.datasets
+				.$get({ query: {} })
+				.then((res) => readJson<{ datasets: Dataset[] }>(res)),
 		]);
 		return {
 			strategies: s.strategies,
@@ -240,6 +259,7 @@ export function BacktestRunPage() {
 			latest: l.latest?.close ?? null,
 			firstScoredAt: j.firstScoredAt,
 			criteriaVersions: cv.versions,
+			datasets: ds.datasets,
 		};
 	}, [api]);
 	const { state, reload } = useAsync(load);
@@ -290,6 +310,11 @@ export function BacktestRunPage() {
 					passed?.criteriaVersion !== undefined
 						? passed.criteriaVersion
 						: (base?.criteriaVersion ?? null),
+				periodMode: passed?.periodMode ?? base?.periodMode ?? "range",
+				datasetId:
+					passed?.datasetId !== undefined
+						? passed.datasetId
+						: (base?.datasetId ?? null),
 			});
 			// 再読み込みで同じ条件に戻さないよう、渡された条件を消す
 			navigate(location.pathname, { replace: true, state: null });
@@ -365,6 +390,7 @@ export function BacktestRunPage() {
 			latest={state.data.latest}
 			firstScoredAt={state.data.firstScoredAt}
 			criteriaVersions={state.data.criteriaVersions}
+			datasets={state.data.datasets}
 		/>
 	);
 }
@@ -377,6 +403,7 @@ function RunForm({
 	latest,
 	firstScoredAt,
 	criteriaVersions,
+	datasets,
 }: {
 	draft: BacktestDraft;
 	setDraft: (d: BacktestDraft) => void;
@@ -385,6 +412,7 @@ function RunForm({
 	latest: number | null;
 	firstScoredAt: number | null;
 	criteriaVersions: CriteriaVersion[];
+	datasets: Dataset[];
 }) {
 	const api = useApi();
 	const job = useBacktestJob();
@@ -397,6 +425,7 @@ function RunForm({
 		to: useId(),
 		cash: useId(),
 		version: useId(),
+		dataset: useId(),
 	};
 
 	const p = draft.params;
@@ -431,9 +460,17 @@ function RunForm({
 			? toDateInputValue(dataEnd - 1)
 			: toDateInputValue(Date.now());
 	const toDate = draft.toDate ?? defaultTo;
-	const toMs = (fromDateInputValue(toDate) ?? 0) + DAY;
-	const fromDate = draft.fromDate ?? toDateInputValue(toMs - 30 * DAY);
-	const fromMs = fromDateInputValue(fromDate) ?? 0;
+	const rangeTo = (fromDateInputValue(toDate) ?? 0) + DAY;
+	const fromDate = draft.fromDate ?? toDateInputValue(rangeTo - 30 * DAY);
+	// データセットを選ぶときは、その期間で実行する。まだ選んでいなければ一番新しいもの
+	const byDataset = draft.periodMode === "dataset";
+	const dataset = byDataset
+		? draft.datasetId == null
+			? (datasets[0] ?? null)
+			: (datasets.find((d) => d.id === draft.datasetId) ?? null)
+		: null;
+	const toMs = dataset ? dataset.to : rangeTo;
+	const fromMs = dataset ? dataset.from : (fromDateInputValue(fromDate) ?? 0);
 	const shortfalls = useMemo(
 		() =>
 			historyShortfalls(
@@ -511,7 +548,14 @@ function RunForm({
 		return Math.max(0, slots - missing);
 	}, [cov, fromMs, toMs, tfMs]);
 
-	const periodError = fromMs >= toMs ? "終了日は開始日以降にする" : null;
+	const periodError =
+		byDataset && datasets.length === 0
+			? "データセットがまだ無い。毎月1日に直近2か月ぶんを作る。それまでは期間を指定する"
+			: byDataset && !dataset
+				? "選んでいたデータセットは消えている。選び直す"
+				: fromMs >= toMs
+					? "終了日は開始日以降にする"
+					: null;
 	const cashError =
 		Number.isSafeInteger(draft.initialCash) && draft.initialCash > 0
 			? null
@@ -548,6 +592,7 @@ function RunForm({
 					fees: draft.fees,
 					skipGaps,
 					criteriaVersion,
+					datasetId: dataset?.id ?? null,
 				},
 			});
 			const body = (await res.json()) as {
@@ -687,62 +732,117 @@ function RunForm({
 					</Card>
 				</div>
 				<Card className="flex flex-col gap-3.5">
-					<h2 className="text-[15px] font-bold">期間</h2>
-					<div className="flex flex-wrap gap-2">
-						{PRESETS.map(([k, label, days]) => {
-							return (
-								<button
-									key={k}
-									type="button"
-									aria-pressed={
-										toDate === defaultTo && fromMs === toMs - days * DAY
+					<div className="flex items-center gap-1.5">
+						<h2 className="text-[15px] font-bold">期間</h2>
+						<Help label="期間">
+							<p>
+								データセットは、毎月1日に直近2か月の期間を値動きで「上昇相場」「下落相場」「レンジ相場」「乱高下相場」のどれかに分けて作る。同じ相場の別の時期で試すときに使う。
+							</p>
+							<p>
+								乱高下は日ごとの値動き（終値の変化）のばらつきが3.5%以上。それ以外は期間の騰落率が+12%以上で上昇、−12%以下で下落、その間はレンジ。
+							</p>
+						</Help>
+					</div>
+					<Segmented
+						name="period-mode"
+						label="期間の決め方"
+						options={PERIOD_MODES}
+						value={byDataset ? "dataset" : "range"}
+						onChange={(v) => update({ periodMode: v })}
+					/>
+					{byDataset ? (
+						datasets.length > 0 && (
+							<div className="flex flex-col gap-1">
+								<label htmlFor={ids.dataset} className="text-xs text-text-2">
+									データセット
+								</label>
+								<select
+									id={ids.dataset}
+									value={dataset?.id ?? ""}
+									onChange={(e) =>
+										update({ datasetId: Number(e.target.value) })
 									}
-									onClick={() =>
-										update({
-											toDate: defaultTo,
-											fromDate: toDateInputValue(
-												(fromDateInputValue(defaultTo) ?? 0) + DAY - days * DAY,
-											),
-										})
-									}
-									className="h-8 rounded-full border border-line px-3 text-xs font-semibold text-text-2 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-white dark:aria-pressed:text-accent-ink"
+									className="h-11 rounded-[10px] border border-line bg-surface px-2 text-sm"
 								>
-									{label}
-								</button>
-							);
-						})}
-					</div>
-					<div className="grid grid-cols-[minmax(0,1fr)_20px_minmax(0,1fr)] items-end gap-1.5">
-						<div className="flex flex-col gap-1">
-							<label htmlFor={ids.from} className="text-xs text-text-2">
-								開始
-							</label>
-							<input
-								id={ids.from}
-								type="date"
-								value={fromDate}
-								onChange={(e) =>
-									e.target.value && update({ fromDate: e.target.value, toDate })
-								}
-								className="num h-11 min-w-0 rounded-[10px] border border-line bg-surface px-2 text-sm"
-							/>
-						</div>
-						<span className="pb-3 text-center text-text-2">〜</span>
-						<div className="flex flex-col gap-1">
-							<label htmlFor={ids.to} className="text-xs text-text-2">
-								終了
-							</label>
-							<input
-								id={ids.to}
-								type="date"
-								value={toDate}
-								onChange={(e) =>
-									e.target.value && update({ toDate: e.target.value, fromDate })
-								}
-								className="num h-11 min-w-0 rounded-[10px] border border-line bg-surface px-2 text-sm"
-							/>
-						</div>
-					</div>
+									{!dataset && <option value="">選ぶ</option>}
+									{datasets.map((d) => (
+										<option key={d.id} value={d.id}>
+											{datasetName(d)}
+										</option>
+									))}
+								</select>
+								{dataset && (
+									<span className="num text-xs text-text-2">
+										{formatDate(dataset.from)}〜{formatDate(dataset.to - 1)} ·
+										騰落率 {signedPercent(dataset.returnPpm)} · 日ごとの値動き{" "}
+										{(dataset.volatilityPpm / 10_000).toFixed(1)}%
+									</span>
+								)}
+							</div>
+						)
+					) : (
+						<>
+							<div className="flex flex-wrap gap-2">
+								{PRESETS.map(([k, label, days]) => {
+									return (
+										<button
+											key={k}
+											type="button"
+											aria-pressed={
+												toDate === defaultTo && fromMs === toMs - days * DAY
+											}
+											onClick={() =>
+												update({
+													toDate: defaultTo,
+													fromDate: toDateInputValue(
+														(fromDateInputValue(defaultTo) ?? 0) +
+															DAY -
+															days * DAY,
+													),
+												})
+											}
+											className="h-8 rounded-full border border-line px-3 text-xs font-semibold text-text-2 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-white dark:aria-pressed:text-accent-ink"
+										>
+											{label}
+										</button>
+									);
+								})}
+							</div>
+							<div className="grid grid-cols-[minmax(0,1fr)_20px_minmax(0,1fr)] items-end gap-1.5">
+								<div className="flex flex-col gap-1">
+									<label htmlFor={ids.from} className="text-xs text-text-2">
+										開始
+									</label>
+									<input
+										id={ids.from}
+										type="date"
+										value={fromDate}
+										onChange={(e) =>
+											e.target.value &&
+											update({ fromDate: e.target.value, toDate })
+										}
+										className="num h-11 min-w-0 rounded-[10px] border border-line bg-surface px-2 text-sm"
+									/>
+								</div>
+								<span className="pb-3 text-center text-text-2">〜</span>
+								<div className="flex flex-col gap-1">
+									<label htmlFor={ids.to} className="text-xs text-text-2">
+										終了
+									</label>
+									<input
+										id={ids.to}
+										type="date"
+										value={toDate}
+										onChange={(e) =>
+											e.target.value &&
+											update({ toDate: e.target.value, fromDate })
+										}
+										className="num h-11 min-w-0 rounded-[10px] border border-line bg-surface px-2 text-sm"
+									/>
+								</div>
+							</div>
+						</>
+					)}
 					{periodError && (
 						<span className="text-xs font-semibold text-loss">
 							{periodError}
