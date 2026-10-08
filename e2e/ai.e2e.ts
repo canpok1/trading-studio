@@ -148,6 +148,12 @@ test("評価詳細の分析は、見せ方を切り替えて棒を押すと内�
 				horizon: "24h",
 				periodDays: 30,
 				time: Date.now(),
+				filter: { criteriaVersion: null, appBuiltAt: null },
+				options: {
+					criteriaVersions: [],
+					appBuiltAts: [],
+					activeCriteriaVersion: 1,
+				},
 				results: {
 					sentiment: {
 						count: 6,
@@ -229,6 +235,83 @@ test("評価詳細の分析は、見せ方を切り替えて棒を押すと内�
 	await expect(
 		card.getByRole("row", { name: /^中立/ }).getByRole("cell"),
 	).toHaveText(["0%", "0%", "67%", "0%", "33%"]);
+});
+
+test("評価詳細の分析は、プロンプトとサーバーの版で絞り込み、URL に持つ", async ({
+	page,
+}) => {
+	const built = Date.parse("2026-10-07T12:05:00Z");
+	const asked: URLSearchParams[] = [];
+	await page.route("**/api/scoring/accuracy/summary**", (r) => {
+		const q = new URL(r.request().url()).searchParams;
+		asked.push(q);
+		const cv = q.get("criteriaVersion");
+		const app = q.get("appBuiltAt");
+		const empty = {
+			count: 0,
+			average: null,
+			rows: [],
+			matrix: [],
+		};
+		return r.fulfill({
+			json: {
+				horizon: "24h",
+				periodDays: 30,
+				time: Date.now(),
+				filter: {
+					criteriaVersion: cv ? Number(cv) : null,
+					appBuiltAt: app === "none" ? "none" : app ? Number(app) : null,
+				},
+				options: {
+					criteriaVersions: [
+						{ version: 3, count: 12 },
+						{ version: 2, count: 40 },
+					],
+					appBuiltAts: [
+						{ builtAt: built, count: 30 },
+						{ builtAt: null, count: 22 },
+					],
+					activeCriteriaVersion: 3,
+				},
+				results: { sentiment: empty, risk: empty },
+			},
+		});
+	});
+	await page.goto("/news?tab=evaluation");
+	const prompt = page.getByRole("combobox", { name: "プロンプト" });
+	const server = page.getByRole("combobox", { name: "サーバー" });
+	await expect(prompt.getByRole("option")).toHaveText([
+		"すべて",
+		"v3（12件）使用中",
+		"v2（40件）",
+	]);
+	await expect(server.getByRole("option")).toHaveText([
+		"すべて",
+		"Ver 10-07 21:05（30件）",
+		"Ver 記録なし（22件）",
+	]);
+	await prompt.selectOption({ label: "v2（40件）" });
+	await server.selectOption({ label: "Ver 10-07 21:05（30件）" });
+	await expect(page).toHaveURL(/prompt=2/);
+	await expect(page).toHaveURL(new RegExp(`server=${built}`));
+	await expect(page.getByTestId("accuracy-summary-setting")).toHaveText(
+		"直近30日・24h・v2・Ver 10-07 21:05",
+	);
+	expect(asked.at(-1)?.get("criteriaVersion")).toBe("2");
+	expect(asked.at(-1)?.get("appBuiltAt")).toBe(String(built));
+	// 絞り込みは URL に持つので、開き直しても、一覧の絞り込みを変えても残る
+	await page.reload();
+	await expect(prompt).toHaveValue("2");
+	await page.getByRole("tab", { name: "一覧" }).click();
+	await page.getByRole("button", { name: "強気材料" }).click();
+	await expect(page).toHaveURL(/impact=/);
+	await page.getByRole("tab", { name: "評価詳細" }).click();
+	await expect(prompt).toHaveValue("2");
+	await prompt.selectOption({ label: "すべて" });
+	await expect(page).not.toHaveURL(/prompt=/);
+	await expect(page.getByTestId("accuracy-summary-setting")).toHaveText(
+		"直近30日・24h・Ver 10-07 21:05",
+	);
 });
 
 test("精度の測り方を設定すると、記事の精度と評価詳細の精度の条件が変わる", async ({

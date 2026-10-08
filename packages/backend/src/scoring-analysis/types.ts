@@ -96,11 +96,31 @@ export type AccuracySummaryResult<J extends Judge = Judge> = {
 	matrix: { value: JudgmentValue<J>; moves: number[] }[];
 };
 
+/** 集計を絞る版。undefined はすべて。appBuiltAt の "none" は記録前・開発版の採点（記録なし） */
+export type AccuracyFilter = {
+	criteriaVersion?: number;
+	appBuiltAt?: number | "none";
+};
+
 export type AccuracySummary = {
 	horizon: AccuracyHorizon;
 	periodDays: AccuracyPeriod;
 	/** 集計の時点。公開時刻がこれ以前で、期間内の記事を数える */
 	time: number;
+	/** 絞り込んだ版。null はすべて */
+	filter: {
+		criteriaVersion: number | null;
+		appBuiltAt: number | "none" | null;
+	};
+	/**
+	 * 絞り込みの選択肢。期間内で数える記事がある版を新しい順に、絞り込む前の件数とともに。
+	 * appBuiltAt の null（記録なし）は最後
+	 */
+	options: {
+		criteriaVersions: { version: number; count: number }[];
+		appBuiltAts: { builtAt: number | null; count: number }[];
+		activeCriteriaVersion: number | null;
+	};
 	results: { [J in Judge]: AccuracySummaryResult<J> };
 };
 
@@ -108,7 +128,7 @@ export interface AccuracyService {
 	/** 記事ごとの精度。設定の長さで測る */
 	articleAccuracy(ids: readonly number[]): ArticleAccuracyReport;
 	/** 設定の期間に採点した記事の精度の集計。測定中・値動き不明・持続なしの記事は数えない */
-	accuracySummary(at?: number): AccuracySummary;
+	accuracySummary(at?: number, filter?: AccuracyFilter): AccuracySummary;
 	accuracySettings(): AccuracySettings;
 	setAccuracySettings(s: AccuracySettings): SetAccuracySettingsResult;
 }

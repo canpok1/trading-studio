@@ -12,7 +12,10 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useApi } from "../api";
-import { AccuracySummarySection } from "../components/ai/AccuracySummary";
+import {
+	AccuracySummarySection,
+	ANALYSIS_FILTER_PARAMS,
+} from "../components/ai/AccuracySummary";
 import { BreakdownCards } from "../components/ai/Breakdown";
 import { NewsFilterBar } from "../components/ai/NewsFilter";
 import { NewsTab } from "../components/ai/NewsTab";
@@ -74,9 +77,14 @@ export function NewsPage() {
 		(f: NewsFilterState) => {
 			const next = newsFilterParams(f);
 			if (view !== "list") next.set("tab", view);
+			// 評価詳細の分析の版の絞り込みは、一覧の絞り込みを変えても残す
+			for (const k of ANALYSIS_FILTER_PARAMS) {
+				const v = params.get(k);
+				if (v !== null) next.set(k, v);
+			}
 			setParams(next, { replace: true });
 		},
-		[setParams, view],
+		[params, setParams, view],
 	);
 	const [limit, setLimit] = useState(NEWS_PAGE);
 	// 条件を変えたら読む件数を戻す
