@@ -90,7 +90,11 @@ describe("古いデータの定期削除", () => {
 		const recent = s.addDecision(RUN_AT - 89 * DAY);
 		const run = s.addRun(RUN_AT - 1000 * DAY);
 		const before = await s.status();
-		expect(before.settings).toEqual({ decisionsDays: 90, backtestsDays: null });
+		expect(before.settings).toEqual({
+			decisionsDays: 90,
+			backtestsDays: null,
+			marketDataYears: 5,
+		});
 		expect(before.nextRunAt).toBe(RUN_AT);
 		expect(before.lastRun).toBeNull();
 
@@ -107,6 +111,9 @@ describe("古いデータの定期削除", () => {
 			at: RUN_AT,
 			decisions: 1,
 			backtests: 0,
+			datasets: 0,
+			candles: 0,
+			news: 0,
 			error: null,
 		});
 		expect(after.nextRunAt).toBe(RUN_AT + DAY);
@@ -118,7 +125,11 @@ describe("古いデータの定期削除", () => {
 
 	test("バックテストの日数を入れると、古い実行を結果・アドバイスごと消す。実行中とアドバイスの生成中は残す", async () => {
 		const s = setup();
-		const res = await s.put({ decisionsDays: null, backtestsDays: 30 });
+		const res = await s.put({
+			decisionsDays: null,
+			backtestsDays: 30,
+			marketDataYears: null,
+		});
 		expect(res.status).toBe(200);
 		const old = s.addRun(RUN_AT - 31 * DAY);
 		s.addAdvice(old, "done");
@@ -159,17 +170,142 @@ describe("古いデータの定期削除", () => {
 	test("日数は1〜3650の整数か null", async () => {
 		const s = setup();
 		for (const bad of [0, 3651, 1.5]) {
-			const r = await s.put({ decisionsDays: bad, backtestsDays: null });
+			const r = await s.put({
+				decisionsDays: bad,
+				backtestsDays: null,
+				marketDataYears: null,
+			});
 			expect(r.status).toBe(400);
 			expect(((await r.json()) as { field: string }).field).toBe(
 				"decisionsDays",
 			);
 		}
 		expect((await s.put({ decisionsDays: 1 })).status).toBe(400);
-		const ok = await s.put({ decisionsDays: 180, backtestsDays: 365 });
+		for (const bad of [0, 21]) {
+			const r = await s.put({
+				decisionsDays: null,
+				backtestsDays: null,
+				marketDataYears: bad,
+			});
+			expect(((await r.json()) as { field: string }).field).toBe(
+				"marketDataYears",
+			);
+		}
+		const ok = await s.put({
+			decisionsDays: 180,
+			backtestsDays: 365,
+			marketDataYears: 10,
+		});
 		expect(((await ok.json()) as RetentionStatus).settings).toEqual({
 			decisionsDays: 180,
 			backtestsDays: 365,
+			marketDataYears: 10,
+		});
+	});
+
+	describe("足・ニュース・採点", () => {
+		// 2021-09-28 04:00 JST。既定の5年の境目
+		const CUT = Date.UTC(2021, 8, 27, 19);
+
+		function seed(s: ReturnType<typeof setup>) {
+			const candle = (tf: string, time: number) =>
+				s.sql.run(
+					"insert into candles (timeframe, time, open, high, low, close, volume, source) values (?, ?, 1, 1, 1, 1, 0, 'collect')",
+					[tf, time],
+				);
+			const dataset = (from: number, to: number, regime: string) =>
+				Number(
+					s.sql.run(
+						"insert into datasets (from_time, to_time, regime, return_ppm, volatility_ppm, created_at) values (?, ?, ?, 0, 0, 0)",
+						[from, to, regime],
+					).lastInsertRowid,
+				);
+			let url = 0;
+			const news = (publishedAt: number) => {
+				const id = Number(
+					s.sql.run(
+						"insert into news (source_id, source_name, language, url, title, published_at, fetched_at) values (1, 's', 'en', ?, 't', ?, ?)",
+						[`u${url++}`, publishedAt, publishedAt],
+					).lastInsertRowid,
+				);
+				s.sql.run(
+					"insert into news_scores (news_id, status, scored_at) values (?, 'done', ?)",
+					[id, publishedAt],
+				);
+				return id;
+			};
+			return { candle, dataset, news };
+		}
+
+		const count = (s: ReturnType<typeof setup>, where: string) =>
+			s.sql.query<{ n: number }, []>(`select count(*) as n from ${where}`).get()
+				?.n;
+
+		test("5年より前のデータセットは相場ごとに最新だけ残し、その期間の足とニュースを残す", async () => {
+			const s = setup();
+			const { candle, dataset, news } = seed(s);
+			const oldUp = dataset(CUT - 300 * DAY, CUT - 240 * DAY, "up");
+			const keptUp = dataset(CUT - 200 * DAY, CUT - 140 * DAY, "up");
+			const keptDown = dataset(CUT - 400 * DAY, CUT - 340 * DAY, "down");
+			const recent = dataset(CUT + 10 * DAY, CUT + 70 * DAY, "up");
+			// 消える期間・残すデータセットの期間・境目の後
+			for (const t of [
+				CUT - 280 * DAY,
+				CUT - 190 * DAY,
+				CUT - 390 * DAY,
+				CUT + DAY,
+			]) {
+				for (const tf of ["1m", "15m", "1h"]) candle(tf, t);
+			}
+			const gone = news(CUT - 280 * DAY);
+			// データセットの開始の31日前までは残す
+			const lead = news(CUT - 230 * DAY);
+			const inKept = news(CUT - 190 * DAY);
+			const after = news(CUT + DAY);
+
+			await s.runNow();
+			expect(s.ids("datasets")).toEqual([keptUp, keptDown, recent]);
+			expect(oldUp).toBeLessThan(keptUp);
+			// 1時間足は残し、1分・15分足は残すデータセットの期間と境目の後だけ残す
+			expect(count(s, "candles where timeframe = '1h'")).toBe(4);
+			expect(
+				s.sql
+					.query<{ time: number }, []>(
+						"select distinct time from candles where timeframe in ('1m', '15m') order by time",
+					)
+					.all()
+					.map((r) => r.time),
+			).toEqual([CUT - 390 * DAY, CUT - 190 * DAY, CUT + DAY]);
+			expect(s.ids("news")).toEqual([lead, inKept, after]);
+			expect(gone).toBeLessThan(lead);
+			expect(count(s, "news_scores")).toBe(3);
+			expect((await s.status()).lastRun).toMatchObject({
+				datasets: 1,
+				candles: 2,
+				news: 1,
+			});
+
+			// 記録の始まりは境目から。残したデータセットではその期間の31日前（より後に採点が始まっていればその時点）から
+			expect(s.t.judgments.firstScoredAt()).toBe(CUT);
+			expect(s.t.judgments.firstScoredAt(CUT - 200 * DAY)).toBe(
+				CUT - 230 * DAY,
+			);
+		});
+
+		test("無期限にすると消さない", async () => {
+			const s = setup();
+			const { candle, news } = seed(s);
+			candle("1m", CUT - 100 * DAY);
+			news(CUT - 100 * DAY);
+			await s.put({
+				decisionsDays: 90,
+				backtestsDays: null,
+				marketDataYears: null,
+			});
+			await s.runNow();
+			expect(count(s, "candles")).toBe(1);
+			expect(count(s, "news")).toBe(1);
+			expect(s.t.judgments.firstScoredAt()).toBe(CUT - 100 * DAY);
 		});
 	});
 });

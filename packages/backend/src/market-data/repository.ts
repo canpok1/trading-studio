@@ -271,6 +271,23 @@ export class MarketDataRepository {
 		this.gapCache.clear();
 	}
 
+	/**
+	 * before より前の1分・5分・15分足を最大 limit 本消す。残っているデータセットの期間の足は残す。消した本数を返す。
+	 * 粗い足は小さいので残し、長い期間のバックテストに使う
+	 */
+	deleteFineCandles(before: number, limit: number): number {
+		const n = this.sql.run(
+			`delete from candles where rowid in (
+			   select c.rowid from candles c
+			   where c.timeframe in ('1m', '5m', '15m') and c.time < ?
+			     and not exists (select 1 from datasets d where c.time >= d.from_time and c.time < d.to_time)
+			   limit ?)`,
+			[before, limit],
+		).changes;
+		if (n > 0) this.gapCache.clear();
+		return n;
+	}
+
 	loadCandles(timeframe: Timeframe, from: number, to: number): Candle[] {
 		return this.sql
 			.query<Candle, [string, number, number]>(

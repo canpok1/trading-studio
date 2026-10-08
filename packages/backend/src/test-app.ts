@@ -163,6 +163,7 @@ export function createTestApp(
 	// 定期の削除は動かさず、テストから retention.tick() を呼ぶ
 	const retention = createRetentionService({
 		repo: new RetentionRepository(db),
+		marketData: marketDataRepo,
 		now: () => clock.now,
 	});
 	const scoringAnalysis = createScoringAnalysis({

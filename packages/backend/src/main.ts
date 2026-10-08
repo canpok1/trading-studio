@@ -152,6 +152,7 @@ const tradingTimer = setInterval(() => tradingEngine.tick(), 1_000);
 
 const retention = createRetentionService({
 	repo: new RetentionRepository(db),
+	marketData: marketDataRepo,
 });
 const retentionTimer = setInterval(() => retention.tick(), 60_000);
 retention.tick();
