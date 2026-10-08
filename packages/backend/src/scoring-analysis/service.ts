@@ -259,13 +259,6 @@ export function createScoringAnalysis({
 				const values = JUDGMENT_VALUES[j] as readonly JudgmentValue<J>[];
 				return {
 					count: items.length,
-					average:
-						items.length === 0
-							? null
-							: round(
-									items.reduce((a, x) => a + x.precision, 0) / items.length,
-									1,
-								),
 					rows: [5, 4, 3, 2, 1].map((precision) => {
 						const at = items.filter((x) => x.precision === precision);
 						return {

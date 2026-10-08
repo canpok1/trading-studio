@@ -177,7 +177,7 @@ test("評価詳細の分析は、見せ方を切り替えて棒を押すと内�
 	);
 	await page.goto("/news?tab=evaluation");
 	const card = page.getByTestId("accuracy-summary-sentiment");
-	await expect(card).toContainText("平均 3.5 · 6件");
+	await expect(card).toContainText("6件");
 	await expect(
 		card.getByRole("button", { name: "精度 高: 0件" }),
 	).toBeDisabled();
@@ -200,7 +200,7 @@ test("評価詳細の分析は、見せ方を切り替えて棒を押すと内�
 	]);
 	await card.getByRole("button", { name: "中立: 3件" }).click();
 	await expect(card.getByTestId("accuracy-summary-detail")).toHaveText(
-		"中立（平均 4.3）: 精度 最高 2件（67%） · 精度 中 1件（33%）",
+		"中立: 精度 最高 2件（67%） · 精度 中 1件（33%）",
 	);
 	await expect(page.getByRole("list", { name: "精度の色の意味" })).toHaveCount(
 		2,

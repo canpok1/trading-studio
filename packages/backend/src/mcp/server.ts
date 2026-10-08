@@ -254,7 +254,6 @@ function analysisView<J extends Judge>(j: J, r: AccuracySummaryResult<J>) {
 	const values = JUDGMENT_VALUES[j] as readonly JudgmentValue<J>[];
 	return {
 		count: r.count,
-		averagePrecision: r.average,
 		byPrecision: r.rows.map((row) => ({
 			precision: row.precision,
 			count: row.count,
@@ -269,13 +268,6 @@ function analysisView<J extends Judge>(j: J, r: AccuracySummaryResult<J>) {
 			return {
 				...level(value),
 				count: n,
-				averagePrecision:
-					n === 0
-						? null
-						: Math.round(
-								(counts.reduce((a, x) => a + x.precision * x.count, 0) / n) *
-									10,
-							) / 10,
 				byPrecision: counts,
 			};
 		}),

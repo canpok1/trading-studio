@@ -341,9 +341,7 @@ function SummaryCard<J extends Judge>({
 			<span className="flex flex-wrap items-center gap-x-2 gap-y-1">
 				<strong>{JUDGE_LABELS[judge]}</strong>
 				<span className="num text-xs text-text-2">
-					{result.average === null
-						? "精度を出せた記事なし"
-						: `平均 ${result.average.toFixed(1)} · ${result.count}件`}
+					{result.count === 0 ? "精度を出せた記事なし" : `${result.count}件`}
 				</span>
 			</span>
 			{view === "precision" ? (
@@ -519,9 +517,7 @@ function ByLevel<J extends Judge>({
 	const levels = LEVEL_ORDER[judge].map((v) => {
 		const counts = precisionCounts(result, v);
 		const total = counts.reduce((a, b) => a + b, 0);
-		const average =
-			total === 0 ? null : counts.reduce((a, n, p) => a + n * p, 0) / total;
-		return { v, counts, total, average };
+		return { v, counts, total };
 	});
 	const bars: Bar[] = levels.map((l) => ({
 		key: l.v,
@@ -546,10 +542,7 @@ function ByLevel<J extends Judge>({
 			/>
 			{selected && (
 				<p data-testid="accuracy-summary-detail" className="num text-xs">
-					{valueStyle(judge, selected.v).label}
-					{selected.average !== null &&
-						`（平均 ${selected.average.toFixed(1)}）`}
-					:{" "}
+					{valueStyle(judge, selected.v).label}:{" "}
 					{[5, 4, 3, 2, 1]
 						.flatMap((p) => {
 							const n = selected.counts[p] ?? 0;

@@ -80,8 +80,6 @@ export type ArticleAccuracyReport = {
 export type AccuracySummaryResult<J extends Judge = Judge> = {
 	/** 精度を出せた記事の数 */
 	count: number;
-	/** 精度の平均（小数1桁）。0 件は null */
-	average: number | null;
 	/** 精度の高い順（5〜1）。0 件の精度も含める */
 	rows: {
 		precision: number;
