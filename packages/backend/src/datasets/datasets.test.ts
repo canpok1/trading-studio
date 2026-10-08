@@ -61,6 +61,26 @@ describe("データセット", () => {
 		expect(t.datasets.build()).toBe(0);
 	});
 
+	test("日足が1日でも欠ければ作らない", () => {
+		const t = createTestApp();
+		const from = jst("2026-07-01T00:00:00");
+		const to = jst("2026-09-01T00:00:00");
+		// 1分足は97%あるが、日足が2日ぶん無い
+		market(t.db, from, from + 30 * DAY, 0);
+		market(t.db, from + 32 * DAY, to, 0);
+		t.clock.now = jst("2026-09-15T00:00:00");
+		expect(t.datasets.build()).toBe(0);
+	});
+
+	test("月が替わってから1時間は、終わったばかりの期間を作らない", () => {
+		const t = createTestApp();
+		market(t.db, jst("2026-07-01T00:00:00"), jst("2026-09-01T00:00:00"), 0);
+		t.clock.now = jst("2026-09-01T00:30:00");
+		expect(t.datasets.build()).toBe(0);
+		t.clock.now = jst("2026-09-01T01:00:00");
+		expect(t.datasets.build()).toBe(1);
+	});
+
 	test("相場で絞って返す", async () => {
 		const t = createTestApp();
 		market(t.db, jst("2026-07-01T00:00:00"), jst("2026-09-01T00:00:00"), 0);

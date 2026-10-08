@@ -12,6 +12,8 @@ import { nextRunTime } from "../retention/service";
 import type { DatasetRepository } from "./repository";
 import type { DatasetService } from "./types";
 
+const SETTLE_MS = 3_600_000;
+
 export type DatasetEngine = DatasetService & {
 	/** 定期的に呼ぶ（main では1分ごと）。前回から 4:00 をまたいでいれば作る */
 	tick(): void;
@@ -40,13 +42,19 @@ export function createDatasetService({
 		const first = marketData.firstCandleTime("1m");
 		if (first === null) return 0;
 		let created = 0;
-		for (const { from, to } of datasetPeriods(first, t)) {
+		// 月が替わった直後は前の月の最後の足がまだ確定していないことがあるので、1時間待ってから作る
+		for (const { from, to } of datasetPeriods(first, t - SETTLE_MS)) {
 			if (repo.exists(from, to)) continue;
 			// 細かい足がそろっていない期間は、細かい足で判定する戦略のバックテストに使えないので作らない
 			const minutes = (to - from) / TIMEFRAME_MS["1m"];
 			const have = marketData.countCandles("1m", from, to);
 			if (have * 1_000_000 < minutes * DATASET_MIN_COVERAGE_PPM) continue;
-			const r = classifyMarket(marketData.loadCandles("1d", from, to));
+			// 日足が1日でも欠けると、前後の日の変化を1日の変化として数えて値動きが大きく出るので作らない
+			const days = marketData.loadCandles("1d", from, to);
+			if (days.length !== Math.round((to - from) / TIMEFRAME_MS["1d"])) {
+				continue;
+			}
+			const r = classifyMarket(days);
 			if (!r) continue;
 			repo.create({ from, to, ...r, createdAt: t });
 			created++;

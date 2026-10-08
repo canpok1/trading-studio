@@ -3,8 +3,11 @@ import type { MarketRegime } from "@trading-studio/core";
 import { MARKET_REGIME_LABELS, MARKET_REGIMES } from "@trading-studio/core";
 import { useCallback, useState } from "react";
 import { useApi } from "../api";
-import { formatDate } from "../format";
-import { datasetMonths, signedPercent } from "../lib/dataset";
+import {
+	datasetMonths,
+	datasetSummary,
+	REGIME_RULE_TEXT,
+} from "../lib/dataset";
 import { readJson, useAsync } from "../lib/useAsync";
 import { Help } from "./Help";
 import { EmptyState, ErrorState, LoadingCard } from "./States";
@@ -37,15 +40,13 @@ export function DatasetList() {
 				<h2 className="text-[15px] font-bold">データセット</h2>
 				<Help label="データセット">
 					<p>
-						毎月1日に、直近2か月の期間を値動きで相場に分けて作る。足は写さず期間だけを持ち、バックテストの「期間」でデータセットを選ぶとその期間で実行する。
+						月が替わると、直近2か月の期間を値動きで相場に分けて作る。足は写さず期間だけを持ち、バックテストの「期間」でデータセットを選ぶとその期間で実行する。
 					</p>
 					<p>
 						1分足が期間の95%以上そろっている期間だけ作る。後から取り込んだ過去の足からも、次の
 						4:00 に作る。
 					</p>
-					<p>
-						乱高下は日ごとの値動き（終値の変化）のばらつきが3.5%以上。それ以外は期間の騰落率が+12%以上で上昇、−12%以下で下落、その間はレンジ。
-					</p>
+					<p>{REGIME_RULE_TEXT}</p>
 				</Help>
 			</div>
 			<Segmented
@@ -79,7 +80,7 @@ export function DatasetList() {
 									? "データセットはまだ無い"
 									: `${MARKET_REGIME_LABELS[filter]}のデータセットは無い`
 							}
-							description="1分足が2か月そろうと、次の月の1日に作る"
+							description="1分足が2か月そろうと、次の月に入ってから作る"
 						/>
 					</Card>
 				) : (
@@ -92,9 +93,7 @@ export function DatasetList() {
 								<span className="flex min-w-0 flex-col gap-0.5">
 									<span className="num font-semibold">{datasetMonths(d)}</span>
 									<span className="num text-xs text-text-2">
-										{formatDate(d.from)}〜{formatDate(d.to - 1)} · 騰落率{" "}
-										{signedPercent(d.returnPpm)} · 日ごとの値動き{" "}
-										{(d.volatilityPpm / 10_000).toFixed(1)}%
+										{datasetSummary(d)}
 									</span>
 								</span>
 								<span className="shrink-0 rounded-full bg-surface-2 px-2.5 py-1 text-xs font-semibold">
