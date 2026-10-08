@@ -41,14 +41,33 @@ export function scoringRoutes(
 			.get(
 				"/accuracy/summary",
 				validator("query", (v, c) => {
-					if (v.at === undefined || v.at === "") return { at: undefined };
-					const at = Number(v.at);
-					if (typeof v.at !== "string" || !Number.isSafeInteger(at)) {
+					const int = (x: unknown) => {
+						if (x === undefined || x === "") return undefined;
+						const n = Number(x);
+						return typeof x === "string" && Number.isSafeInteger(n) ? n : null;
+					};
+					const at = int(v.at);
+					if (at === null) {
 						return c.json({ message: "at はエポックミリ秒の整数" }, 400);
 					}
-					return { at };
+					const criteriaVersion = int(v.criteriaVersion);
+					if (criteriaVersion === null) {
+						return c.json({ message: "criteriaVersion は版の番号" }, 400);
+					}
+					const appBuiltAt =
+						v.appBuiltAt === "none" ? ("none" as const) : int(v.appBuiltAt);
+					if (appBuiltAt === null) {
+						return c.json(
+							{ message: "appBuiltAt はエポックミリ秒の整数か none" },
+							400,
+						);
+					}
+					return { at, filter: { criteriaVersion, appBuiltAt } };
 				}),
-				(c) => c.json(accuracy.accuracySummary(c.req.valid("query").at)),
+				(c) => {
+					const q = c.req.valid("query");
+					return c.json(accuracy.accuracySummary(q.at, q.filter));
+				},
 			)
 			.get("/accuracy/settings", (c) => c.json(accuracy.accuracySettings()))
 			.put(

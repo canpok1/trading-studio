@@ -182,6 +182,7 @@ const scoringAnalysis = createScoringAnalysis({
 	repo: new ScoringAnalysisRepository(db),
 	marketData,
 	judgments,
+	activeCriteriaVersion: () => scoreRepo.activeCriteriaVersion(),
 });
 const news = createNewsService({
 	repo: newsRepo,
