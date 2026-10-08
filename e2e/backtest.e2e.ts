@@ -603,3 +603,27 @@ test("採点の版を選ぶと、足りない記事をその版で採点し直�
 		`採点の版 v${version}`,
 	);
 });
+
+test("データセットがまだ無いうちにデータセットで期間を選ぶと、理由が出て実行できない", async ({
+	page,
+	request,
+}, info) => {
+	// 過去データが無いと実行の画面が出ないので取り込んでおく
+	await prepare(request, `BT データセット ${info.project.name}`);
+	await page.goto("/backtest");
+	await page
+		.getByRole("group", { name: "期間の決め方" })
+		.getByText("データセット", { exact: true })
+		.click();
+	await expect(page.getByText("データセットがまだ無い。")).toBeVisible();
+	await expect(page.getByLabel("開始")).toBeHidden();
+	await expect(
+		page.getByRole("button", { name: "入力を直すと実行できる" }),
+	).toBeDisabled();
+	// 期間の指定へ戻すと日付の欄が戻る
+	await page
+		.getByRole("group", { name: "期間の決め方" })
+		.getByText("期間を指定", { exact: true })
+		.click();
+	await expect(page.getByLabel("開始")).toBeVisible();
+});

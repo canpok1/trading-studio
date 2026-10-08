@@ -99,6 +99,7 @@ function addBacktest(t: T, startedAt: number): number {
 		criteriaVersion: null,
 		newsDelayMs: null,
 		newsDataVersion: null,
+		dataset: null,
 		startedAt,
 		barCount: 24,
 		stepTimeframe: "1h",

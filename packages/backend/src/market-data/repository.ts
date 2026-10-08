@@ -450,6 +450,17 @@ export class MarketDataRepository {
 		return TIMEFRAMES.filter((t) => covering.has(t));
 	}
 
+	/** その粒度の最も古い足の開始時刻。足が無ければ null */
+	firstCandleTime(timeframe: Timeframe): number | null {
+		return (
+			this.sql
+				.query<{ time: number | null }, [string]>(
+					"select min(time) as time from candles where timeframe = ?",
+				)
+				.get(timeframe)?.time ?? null
+		);
+	}
+
 	lastCandle(timeframe: Timeframe): Candle | null {
 		return (
 			this.sql

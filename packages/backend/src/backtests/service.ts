@@ -13,6 +13,7 @@ import {
 	validateConditionSet,
 	withSellDetails,
 } from "@trading-studio/core";
+import type { DatasetService } from "../datasets/types";
 import type { JudgmentService } from "../judgments/types";
 import { MAX_CHART_BARS } from "../market/service";
 import type { MarketDataRepository } from "../market-data/repository";
@@ -50,6 +51,7 @@ export type BacktestServiceDeps = {
 		| "newsDataVersion"
 	>;
 	scoring: Pick<ScoringService, "rescoreCoverage">;
+	datasets: Pick<DatasetService, "get">;
 	now?: () => number;
 };
 
@@ -91,6 +93,7 @@ export function createBacktestService({
 	runner,
 	judgments,
 	scoring,
+	datasets,
 	now = Date.now,
 }: BacktestServiceDeps): BacktestService & { running(): Promise<void> | null } {
 	let current: { id: number; job: RunningJob; done: Promise<void> } | null =
@@ -107,10 +110,22 @@ export function createBacktestService({
 	};
 
 	return {
-		start(input) {
+		start(requested) {
 			if (current) {
 				return fail({ kind: "busy", run: get(current.id) as BacktestRun });
 			}
+			const dataset =
+				requested.datasetId === null ? null : datasets.get(requested.datasetId);
+			if (requested.datasetId !== null && !dataset) {
+				return fail({
+					kind: "invalid_input",
+					field: "dataset",
+					message: "データセットが見つからない。選び直す",
+				});
+			}
+			const input = dataset
+				? { ...requested, from: dataset.from, to: dataset.to }
+				: requested;
 			const errors = validateConditionSet(input.params);
 			if (errors.length > 0) return fail({ kind: "invalid_params", errors });
 			const invalid = checkInput(input);
@@ -231,6 +246,7 @@ export function createBacktestService({
 								criteriaVersion,
 								newsDelayMs,
 							),
+				dataset: dataset ? { id: dataset.id, regime: dataset.regime } : null,
 				startedAt: now(),
 				barCount,
 			});
