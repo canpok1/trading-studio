@@ -1,7 +1,7 @@
 import type {
 	BacktestRun,
 	CriteriaVersion,
-	Dataset,
+	ListedDataset,
 	RescoreCoverage,
 	StoredStrategy,
 	TimeframeCoverage,
@@ -222,7 +222,7 @@ type Data = {
 	firstScoredAt: number | null;
 	criteriaVersions: CriteriaVersion[];
 	/** 新しい順 */
-	datasets: Dataset[];
+	datasets: ListedDataset[];
 };
 
 export function BacktestRunPage() {
@@ -251,7 +251,7 @@ export function BacktestRunPage() {
 				.then((res) => readJson<{ versions: CriteriaVersion[] }>(res)),
 			api.api.datasets
 				.$get({ query: {} })
-				.then((res) => readJson<{ datasets: Dataset[] }>(res)),
+				.then((res) => readJson<{ datasets: ListedDataset[] }>(res)),
 		]);
 		return {
 			strategies: s.strategies,
@@ -401,7 +401,7 @@ function RunForm({
 	strategies,
 	coverage,
 	latest,
-	firstScoredAt,
+	firstScoredAt: latestFirstScoredAt,
 	criteriaVersions,
 	datasets,
 }: {
@@ -412,7 +412,7 @@ function RunForm({
 	latest: number | null;
 	firstScoredAt: number | null;
 	criteriaVersions: CriteriaVersion[];
-	datasets: Dataset[];
+	datasets: ListedDataset[];
 }) {
 	const api = useApi();
 	const job = useBacktestJob();
@@ -470,6 +470,8 @@ function RunForm({
 			: (datasets.find((d) => d.id === draft.datasetId) ?? null)
 		: null;
 	const toMs = dataset ? dataset.to : rangeTo;
+	// 古いニュースを消した後も、残したデータセットはそのニュースを使えるので記録の始まりが違う
+	const firstScoredAt = dataset ? dataset.firstScoredAt : latestFirstScoredAt;
 	const fromMs = dataset ? dataset.from : (fromDateInputValue(fromDate) ?? 0);
 	const shortfalls = useMemo(
 		() =>
@@ -517,9 +519,11 @@ function RunForm({
 			? null
 			: firstScoredAt === null
 				? "市場評価の条件があるが、ニュースの採点の記録がまだ無いため実行できない。市場評価の条件で「データなし」を選ぶと実行できる"
-				: fromMs < firstScoredAt
-					? `市場評価の記録は ${formatDateTime(firstScoredAt)} から。開始を ${formatDate(firstAllowedFrom(firstScoredAt))} 以降にするか、市場評価の条件で「データなし」を選ぶと実行できる`
-					: null;
+				: fromMs < firstScoredAt && dataset
+					? `市場評価の記録は ${formatDateTime(firstScoredAt)} から。このデータセットはそれより前を含むため、市場評価の条件で「データなし」を選ぶと実行できる`
+					: fromMs < firstScoredAt
+						? `市場評価の記録は ${formatDateTime(firstScoredAt)} から。開始を ${formatDate(firstAllowedFrom(firstScoredAt))} 以降にするか、市場評価の条件で「データなし」を選ぶと実行できる`
+						: null;
 
 	// 版を選んだら、期間の市場評価に使う記事がすべてその版で採点されているときだけ実行できる。
 	// 消した版を下書きに残していても運用どおりに戻す

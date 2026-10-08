@@ -11,8 +11,7 @@ import { Button, Card } from "./ui";
 
 /** 保持期間の選択肢。null は削除しない */
 const DAY_OPTIONS: (number | null)[] = [30, 90, 180, 365, 730, null];
-
-const dayLabel = (d: number | null) => (d === null ? "無期限" : `${d}日`);
+const YEAR_OPTIONS: (number | null)[] = [1, 2, 3, 5, 10, null];
 
 function formatBytes(n: number): string {
 	if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
@@ -24,18 +23,34 @@ const ITEMS: {
 	key: keyof RetentionSettings;
 	label: string;
 	note: string;
+	options: (number | null)[];
+	unit: string;
 }[] = [
 	{
 		key: "decisionsDays",
 		label: "判断の記録",
 		note: "自動取引の判断ごとの記録。注文を出した判断は期間を過ぎても残す",
+		options: DAY_OPTIONS,
+		unit: "日",
 	},
 	{
 		key: "backtestsDays",
 		label: "バックテストの実行",
 		note: "実行を始めた日で数え、結果・アドバイスごと削除する",
+		options: DAY_OPTIONS,
+		unit: "日",
+	},
+	{
+		key: "marketDataYears",
+		label: "足・ニュース・採点",
+		note: "1分・5分・15分足と、公開から期間を過ぎたニュースとその採点を削除する。1時間足より粗い足は残す。期間を過ぎたデータセットは相場ごとに最新の1件だけ残し、その期間の足とニュース（開始の1か月前から）も残す。消した期間は市場評価の記録が無いものとして扱う",
+		options: YEAR_OPTIONS,
+		unit: "年",
 	},
 ];
+
+const periodLabel = (d: number | null, unit: string) =>
+	d === null ? "無期限" : `${d}${unit}`;
 
 /** 古いデータの保持期間。判断の記録（取引）とバックテストにまたがるので、設定画面の「全般」に置く */
 export function RetentionSetting() {
@@ -92,7 +107,7 @@ export function RetentionSetting() {
 				</p>
 			) : (
 				<>
-					{ITEMS.map(({ key, label }) => (
+					{ITEMS.map(({ key, label, options, unit }) => (
 						<div key={key} className="flex flex-col gap-1">
 							<div className="flex items-center justify-between gap-2">
 								<label htmlFor={`retention-${key}`} className="text-[13px]">
@@ -112,13 +127,13 @@ export function RetentionSetting() {
 								>
 									{/* 選択肢に無い日数（API で入れたもの）もそのまま見せる */}
 									{[
-										...DAY_OPTIONS,
-										...(value && !DAY_OPTIONS.includes(value[key])
+										...options,
+										...(value && !options.includes(value[key])
 											? [value[key]]
 											: []),
 									].map((d) => (
 										<option key={String(d)} value={String(d)}>
-											{dayLabel(d)}
+											{periodLabel(d, unit)}
 										</option>
 									))}
 								</select>
@@ -159,7 +174,7 @@ function RetentionInfo({ status }: { status: RetentionStatus }) {
 					? "まだ削除していない"
 					: last.error !== null
 						? `${formatDateTime(last.at)} 失敗（${last.error}）`
-						: `${formatDateTime(last.at)} 判断の記録 ${last.decisions.toLocaleString()} 件・バックテスト ${last.backtests.toLocaleString()} 件`}
+						: `${formatDateTime(last.at)} 判断の記録 ${last.decisions.toLocaleString()} 件・バックテスト ${last.backtests.toLocaleString()} 件${last.candles === undefined ? "" : `・足 ${last.candles.toLocaleString()} 本・ニュース ${(last.news ?? 0).toLocaleString()} 件・データセット ${(last.datasets ?? 0).toLocaleString()} 件`}`}
 			</p>
 			<p>
 				DB の大きさ: {formatBytes(status.dbBytes)}（うち削除で空いた{" "}
