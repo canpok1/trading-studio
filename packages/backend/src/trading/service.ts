@@ -397,7 +397,8 @@ export function createTradingService({
 			const price = currentPrice(live);
 			if (!s || price === null) return { watch: null };
 			const t = now();
-			const a = row.account;
+			// 期限切れの指値は次の判定の前に取り消されるので、取り消した後の口座で試算する
+			const a = expireOrders(row.account, t).account;
 			return {
 				watch: watchConditionSet({
 					now: t,

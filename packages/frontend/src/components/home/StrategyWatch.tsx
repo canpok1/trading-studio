@@ -166,7 +166,7 @@ function ConditionRow({ c, price }: { c: WatchCondition; price: number }) {
 			<span className="num col-start-2 text-xs text-text-2 sm:col-start-3 sm:text-right">
 				{c.detail}
 				{edge &&
-					`${c.detail ? " → " : ""}${formatInt(edge.price)}（${distanceText(edge.price, price)}）`}
+					`${c.detail ? " → " : ""}${formatInt(edge.price)} 円（${distanceText(edge.price, price)}）`}
 			</span>
 		</li>
 	);
@@ -187,7 +187,7 @@ function groupSummary(g: WatchGroup, price: number): string {
 		(a, b) => Math.abs(a - price) - Math.abs(b - price),
 	)[0];
 	if (nearest !== undefined) {
-		return `${formatInt(nearest)}（${distanceText(nearest, price)}）`;
+		return `${formatInt(nearest)} 円（${distanceText(nearest, price)}）`;
 	}
 	const { met, total } = metCount(g);
 	return `${met}/${total} 成立`;

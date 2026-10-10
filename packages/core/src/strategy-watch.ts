@@ -31,7 +31,7 @@ import { limitBuyPriceBelow, notionalYen } from "./money";
 import { JUDGMENT_VALUE_LABELS, NO_JUDGMENT } from "./news-judgment";
 import type { StrategyInput } from "./strategy";
 import type { Timeframe } from "./timeframe";
-import { TIMEFRAME_MS } from "./timeframe";
+import { candleStart, TIMEFRAME_MS } from "./timeframe";
 import type { Candle } from "./types";
 
 /** 発動価格を探す範囲。今の価格からこの割合の上下まで */
@@ -126,6 +126,31 @@ export type WatchInput = Omit<StrategyInput<ConditionSet>, "position"> & {
 
 const signed = (v: number) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}%`;
 
+/**
+ * 最後の足が今の時刻より前に終わっている（今の足の1分足がまだ無い）なら、今の価格だけの途中の足を足す。
+ * 発動価格は最後の足の終値を置き換えて求めるので、確定した足を書き換えないようにする
+ */
+function withForming(
+	candles: readonly Candle[],
+	tf: Timeframe,
+	now: number,
+	price: number,
+): readonly Candle[] {
+	const last = candles.at(-1);
+	if (!last || last.time + TIMEFRAME_MS[tf] >= now) return candles;
+	return [
+		...candles,
+		{
+			time: candleStart(now, tf),
+			open: price,
+			high: price,
+			low: price,
+			close: price,
+			volume: 0,
+		},
+	];
+}
+
 /** 足の最後（途中の足）の終値を x にした足 */
 function withClose(candles: readonly Candle[], x: number): Candle[] {
 	const last = candles.at(-1);
@@ -209,7 +234,7 @@ function detailOf(c: Condition, ctx: Ctx): string {
 		if (c.activatePercent > 0 && rise < c.activatePercent) {
 			return `未発動・最高値 ${signed(rise)}`;
 		}
-		return `最高値 ${formatYen(peak)} から ${signed((ctx.price / peak - 1) * 100)}`;
+		return `最高値 ${formatYen(peak)} 円から ${signed((ctx.price / peak - 1) * 100)}`;
 	}
 	if (c.type === "holdingBars") {
 		if (!ctx.lot) return "";
@@ -225,18 +250,18 @@ function detailOf(c: Condition, ctx: Ctx): string {
 	if ("insufficient" in h) return h.insufficient;
 	switch (c.type) {
 		case "emaCross":
-			return `短期 ${formatYen(emaOf(sr, c.fast)[n - 1] as number)} ・ 長期 ${formatYen(emaOf(sr, c.slow)[n - 1] as number)}`;
+			return `短期 ${formatYen(emaOf(sr, c.fast)[n - 1] as number)} 円 ・ 長期 ${formatYen(emaOf(sr, c.slow)[n - 1] as number)} 円`;
 		case "breakout": {
 			const window = sr.candles.slice(n - 1 - c.lookback, n - 1);
 			return c.direction === "high"
-				? `高値 ${formatYen(Math.max(...window.map((x) => x.high)))}`
-				: `安値 ${formatYen(Math.min(...window.map((x) => x.low)))}`;
+				? `高値 ${formatYen(Math.max(...window.map((x) => x.high)))} 円`
+				: `安値 ${formatYen(Math.min(...window.map((x) => x.low)))} 円`;
 		}
 		case "rsi":
 		case "rsiCross":
 			return `今 ${formatRsi(rsiOf(sr, c.period)[n - 1] as number)}`;
 		case "emaPosition":
-			return `EMA ${formatYen(emaOf(sr, c.period)[n - 1] as number)}`;
+			return `EMA ${formatYen(emaOf(sr, c.period)[n - 1] as number)} 円`;
 		case "emaSlope": {
 			const e = emaOf(sr, c.period);
 			const now = e[n - 1] as number;
@@ -246,8 +271,8 @@ function detailOf(c: Condition, ctx: Ctx): string {
 		case "bollinger": {
 			const b = bollinger(sr.closes, c.period, c.sigma);
 			return c.band === "upper"
-				? `上限 ${formatYen(b.upper[n - 1] as number)}`
-				: `下限 ${formatYen(b.lower[n - 1] as number)}`;
+				? `上限 ${formatYen(b.upper[n - 1] as number)} 円`
+				: `下限 ${formatYen(b.lower[n - 1] as number)} 円`;
 		}
 	}
 }
@@ -325,8 +350,10 @@ function buyStatus(
 		return { kind: "insufficient", reason: why };
 	}
 	// 最大ロット数が 2 以上の買いは、前回の判定で成立していたら一度外れるまで買わない
-	if (b.maxPositions >= 2 && opts.wasHit === true)
+	// （今外れていれば次の判定で外れたと記録されるので、その後に価格が届けば買う）
+	if (b.maxPositions >= 2 && opts.wasHit === true && group.met === true) {
 		return { kind: "continuing" };
+	}
 	// 先頭の注文の額が、未約定の買いを除いた資金で足りるか
 	const line = b.buyOrder.lines[0];
 	if (line) {
@@ -357,7 +384,7 @@ export function watchConditionSet(input: WatchInput): StrategyWatch {
 		series: (tf) => {
 			let v = series.get(tf);
 			if (!v) {
-				v = seriesOf(candles[tf] ?? []);
+				v = seriesOf(withForming(candles[tf] ?? [], tf, now, price));
 				series.set(tf, v);
 			}
 			return v;
@@ -455,7 +482,8 @@ export function watchConditionSet(input: WatchInput): StrategyWatch {
 			const breakeven =
 				partialDone && b.partialSell.breakevenStop ? lot.entryPrice : null;
 			act("stopLoss", groups.stopLoss, lot.id);
-			if (breakeven !== null) {
+			// 損切りの条件が成立済みなら、建値ストップと合わせても売りは1回なので重ねない
+			if (breakeven !== null && groups.stopLoss.met !== true) {
 				actions.push({
 					kind: "stopLoss",
 					price: price < breakeven ? null : breakeven,

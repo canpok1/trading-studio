@@ -112,7 +112,7 @@ describe("watchConditionSet", () => {
 		expect(b?.status).toEqual({ kind: "ready" });
 		expect(b?.buy.met).toBe(false);
 		expect(b?.buy.conditions[0]?.detail).toBe(
-			`高値 ${high.toLocaleString("ja-JP")}`,
+			`高値 ${high.toLocaleString("ja-JP")} 円`,
 		);
 		expect(b?.buy.triggers).toEqual([high + 1]);
 		expect(w.actions).toEqual([
@@ -284,8 +284,19 @@ describe("watchConditionSet", () => {
 		expect(c?.edge).toBeNull();
 	});
 
-	test("損切り後の待ちと、前回成立していた買いは理由を返す", () => {
-		const p = params([rule({ maxPositions: 2 })]);
+	test("損切り後の待ちと、前回から成立が続く買いは理由を返す", () => {
+		const p = params([
+			rule({
+				maxPositions: 2,
+				// 判定がまだ無い（データなし）ので成立する
+				buy: {
+					match: "all",
+					conditions: [
+						{ type: "judgment", judge: "sentiment", values: ["none"] },
+					],
+				},
+			}),
+		]);
 		const cooled = watchConditionSet(
 			input(
 				{ ...p, stopLossCooldownBars: 3 },
@@ -301,6 +312,67 @@ describe("watchConditionSet", () => {
 			input(p, { state: { buyHits: { b1: true } } }),
 		);
 		expect(cont.buys[0]?.status).toEqual({ kind: "continuing" });
+	});
+
+	test("前回成立していても、今外れていれば買いの発動価格を出す", () => {
+		const p = params([
+			rule({
+				maxPositions: 2,
+				buy: {
+					match: "all",
+					conditions: [
+						{
+							type: "breakout",
+							timeframe: "1h",
+							lookback: 5,
+							direction: "high",
+						},
+					],
+				},
+			}),
+		]);
+		const w = watchConditionSet(input(p, { state: { buyHits: { b1: true } } }));
+		expect(w.buys[0]?.status).toEqual({ kind: "ready" });
+		expect(w.actions.map((a) => a.kind)).toEqual(["entry"]);
+	});
+
+	test("建値ストップと損切りの条件が両方成立していれば、次の判定の損切りは1つ", () => {
+		const w = watchConditionSet(
+			input(params([rule()]), {
+				lots: [lot(price + 1_000_000, { partialExitDone: true })],
+			}),
+		);
+		expect(w.actions).toEqual([
+			{
+				kind: "stopLoss",
+				price: null,
+				buyId: "b1",
+				buyName: "買い1",
+				lotId: "o1",
+			},
+		]);
+	});
+
+	test("今の足がまだ無ければ、今の価格の途中の足を足して確定した足を書き換えない", () => {
+		const p = params([
+			rule({
+				buy: {
+					match: "all",
+					conditions: [
+						{
+							type: "breakout",
+							timeframe: "1h",
+							lookback: 5,
+							direction: "high",
+						},
+					],
+				},
+			}),
+		]);
+		// 最後の足が1本前の時刻に終わっている。直近5本は最後の足まで含む
+		const w = watchConditionSet(input(p, { now: (closes.length + 1) * H - 1 }));
+		const high = Math.max(...closes.slice(-5));
+		expect(w.buys[0]?.buy.triggers).toEqual([high + 1]);
 	});
 
 	test("同じ入力なら同じ結果を返す", () => {

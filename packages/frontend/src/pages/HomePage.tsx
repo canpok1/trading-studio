@@ -213,10 +213,8 @@ function HomeBody({
 	const watch = useStrategyWatch(runId, visible && hasAccount);
 	// 見張りは定期的に取り直すので、発動価格が変わったときだけ線を引き直す
 	const triggerKey = JSON.stringify(chartTriggers(watch));
-	const triggers = useMemo(
-		() => JSON.parse(triggerKey) as ReturnType<typeof chartTriggers>,
-		[triggerKey],
-	);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 発動価格が変わったとき（triggerKey）だけ作り直す
+	const triggers = useMemo(() => chartTriggers(watch), [triggerKey]);
 	const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
 	const [toast, setToast] = useState<string | null>(null);
 	const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
