@@ -157,6 +157,40 @@ describe("古いデータの定期削除", () => {
 		expect((await s.status()).lastRun?.backtests).toBe(1);
 	});
 
+	test("まとめた実行は、まとめた実行の開始で判断し、含む実行ごと消す", async () => {
+		const s = setup();
+		await s.put({
+			decisionsDays: null,
+			backtestsDays: 30,
+			marketDataYears: null,
+		});
+		const addDatasetRun = (startedAt: number) =>
+			Number(
+				s.sql.run(
+					"insert into dataset_runs (dataset_id, dataset_name, name, segment_ids, input, status, started_at) values (1, 'd', 'n', '[]', '{}', 'done', ?)",
+					[startedAt],
+				).lastInsertRowid,
+			);
+		const child = (datasetRunId: number, startedAt: number) => {
+			const id = s.addRun(startedAt);
+			s.sql.run("update backtest_runs set dataset_run_id = ? where id = ?", [
+				datasetRunId,
+				id,
+			]);
+			return id;
+		};
+		// 境目をまたいで実行した
+		const old = addDatasetRun(RUN_AT - 30 * DAY - 1000);
+		child(old, RUN_AT - 30 * DAY - 1000);
+		child(old, RUN_AT - 29 * DAY);
+		const recent = addDatasetRun(RUN_AT - 29 * DAY);
+		const kept = child(recent, RUN_AT - 29 * DAY);
+
+		await s.runNow();
+		expect(s.ids("dataset_runs")).toEqual([recent]);
+		expect(s.ids("backtest_runs")).toEqual([kept]);
+	});
+
 	test("多い判断の記録も分けて消しきる", async () => {
 		const s = setup();
 		s.sql.transaction(() => {

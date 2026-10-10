@@ -13,6 +13,8 @@ import type { BacktestRunner } from "./backtests/runner";
 import { createBacktestService } from "./backtests/service";
 import type { Collector } from "./collector/collector";
 import type { LiveMarket } from "./collector/types";
+import { DatasetRepository } from "./datasets/repository";
+import { createDatasetService } from "./datasets/service";
 import type { Db } from "./db/open";
 import { createTestDb } from "./db/test-db";
 import { createJudgmentService } from "./judgments/service";
@@ -128,6 +130,13 @@ export function createTestApp(
 		segments,
 		now: () => 3_000,
 	});
+	const datasets = createDatasetService({
+		repo: new DatasetRepository(db, backtestRepo),
+		backtestRepo,
+		backtests,
+		segments,
+		now: () => 3_000,
+	});
 	const adviceRepo = new AdviceRepository(db);
 	adviceRepo.seedInstructions(DEFAULT_INSTRUCTIONS, 0);
 	// テストから偽物の AI を差し替える
@@ -190,6 +199,7 @@ export function createTestApp(
 		retention,
 		accuracy: scoringAnalysis,
 		segments,
+		datasets,
 		...over,
 	});
 	return {
@@ -201,6 +211,7 @@ export function createTestApp(
 		backtests,
 		backtestRepo,
 		segments,
+		datasets,
 		advice,
 		adviceRepo,
 		adviceAi,

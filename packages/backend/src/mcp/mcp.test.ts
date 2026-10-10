@@ -73,6 +73,7 @@ async function setup() {
 			backtests: t.backtests,
 			marketData: t.marketData,
 			segments: t.segments,
+			datasets: t.datasets,
 			scoring: t.scoring,
 			news: t.news,
 			judgments: t.judgments,
@@ -124,18 +125,22 @@ describe("MCP", () => {
 			"get_backtest",
 			"get_backtest_orders",
 			"get_data_coverage",
+			"get_dataset_run",
 			"get_guide",
 			"get_market_evaluation",
 			"get_market_evaluation_analysis",
 			"get_scoring_setup",
 			"get_strategy",
 			"list_backtests",
+			"list_datasets",
 			"list_news_scores",
 			"list_segments",
 			"list_strategies",
 			"preview_aggregation_rule",
 			"rescore_news",
 			"run_backtest",
+			"run_dataset",
+			"save_dataset",
 			"set_active_scoring_criteria",
 			"trial_scoring",
 			"update_strategy",
@@ -285,6 +290,34 @@ describe("MCP", () => {
 		expect(bySegment.json).toMatchObject({
 			from: "2026-08-03T00:00:00+09:00",
 			segment: { id: 3, regime: "上昇相場" },
+		});
+
+		// 相場データを束ねたデータセットでまとめて実行する
+		const saved = await call("save_dataset", {
+			name: "上昇だけ",
+			segmentIds: [3],
+		});
+		const datasetId = (saved.json as { id: number }).id;
+		expect(await call("list_datasets")).toMatchObject({
+			json: [{ id: datasetId, name: "上昇だけ", missing: 0 }],
+		});
+		const all = await call("run_dataset", {
+			datasetId,
+			name: "まとめ",
+			params: PARAMS,
+		});
+		const grouped = all.json as {
+			id: number;
+			status: string;
+			summary: { count: number; byRegime: { regime: string }[] };
+			runs: { segment: { id: number } }[];
+		};
+		expect(grouped.status).toBe("done");
+		expect(grouped.summary.count).toBe(1);
+		expect(grouped.summary.byRegime[0]?.regime).toBe("上昇相場");
+		expect(grouped.runs.map((x) => x.segment.id)).toEqual([3]);
+		expect(await call("get_dataset_run", { id: grouped.id })).toMatchObject({
+			json: { id: grouped.id, status: "done" },
 		});
 	});
 

@@ -15,6 +15,8 @@ import { workerRunner } from "./backtests/worker-runner";
 import { coincheckFeed } from "./collector/coincheck";
 import { createCollector } from "./collector/collector";
 import { demoFeed } from "./collector/fake-feed";
+import { DatasetRepository } from "./datasets/repository";
+import { createDatasetService } from "./datasets/service";
 import { migrateDb } from "./db/migrate";
 import { isDbReachable, openDb } from "./db/open";
 import { createJudgmentService } from "./judgments/service";
@@ -183,6 +185,14 @@ const backtests = createBacktestService({
 	scoring,
 	segments,
 });
+const datasetRepo = new DatasetRepository(db, backtestRepo);
+datasetRepo.failInterrupted(Date.now());
+const datasets = createDatasetService({
+	repo: datasetRepo,
+	backtestRepo,
+	backtests,
+	segments,
+});
 const adviceRepo = new AdviceRepository(db);
 adviceRepo.failInterrupted();
 adviceRepo.seedInstructions(DEFAULT_INSTRUCTIONS, Date.now());
@@ -222,6 +232,7 @@ const server = new Hono()
 			backtests,
 			marketData,
 			segments,
+			datasets,
 			scoring,
 			news,
 			judgments,
@@ -252,6 +263,7 @@ const server = new Hono()
 			retention,
 			accuracy: scoringAnalysis,
 			segments,
+			datasets,
 		}),
 	);
 serveFrontend(server, distDir);

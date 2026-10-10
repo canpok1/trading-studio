@@ -133,6 +133,40 @@ export const backtestRuns = sqliteTable("backtest_runs", {
 	segmentId: integer("segment_id"),
 	/** そのときの相場データの相場（up / down / range / volatile） */
 	segmentRegime: text("segment_regime"),
+	/** データセットでまとめて実行したときの、まとめた実行。単独の実行は null */
+	datasetRunId: integer("dataset_run_id"),
+});
+
+/** データセット。相場データを名前を付けてまとめたもの。中身は保存したまま変えない */
+export const datasets = sqliteTable("datasets", {
+	id: integer("id").primaryKey({ autoIncrement: true }),
+	name: text("name").notNull().unique(),
+	/** 相場データの id（JSON の配列）。消えた相場データの id も残し、読むときに除く */
+	segmentIds: text("segment_ids").notNull(),
+	createdAt: integer("created_at").notNull(),
+	updatedAt: integer("updated_at").notNull(),
+});
+
+/** データセットのまとめた実行。相場データごとの実行は backtest_runs が dataset_run_id で指す */
+export const datasetRuns = sqliteTable("dataset_runs", {
+	id: integer("id").primaryKey({ autoIncrement: true }),
+	/** 元のデータセット。データセットを消しても残す */
+	datasetId: integer("dataset_id").notNull(),
+	/** 実行したときのデータセット名 */
+	datasetName: text("dataset_name").notNull(),
+	/** バックテスト名 */
+	name: text("name").notNull(),
+	/** 実行する順の相場データの id（JSON の配列） */
+	segmentIds: text("segment_ids").notNull(),
+	/** 実行の条件（JSON）。相場データごとの実行を順に始めるのに使う */
+	input: text("input").notNull(),
+	/** running / done / failed / canceled */
+	status: text("status").notNull(),
+	startedAt: integer("started_at").notNull(),
+	finishedAt: integer("finished_at"),
+	/** 合算した成績（JSON）。完了したときだけ入る */
+	summary: text("summary"),
+	error: text("error"),
 });
 
 /** バックテストの結果の中身。大きいので gzip した JSON で持つ */

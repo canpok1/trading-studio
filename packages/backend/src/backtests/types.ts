@@ -76,6 +76,8 @@ export type BacktestRun = {
 	newsDataVersion: number | null;
 	/** 期間を相場データで選んだときの相場データと、そのときの相場。期間を指定した実行は null */
 	segment: { id: number; regime: MarketRegime } | null;
+	/** データセットでまとめて実行したときの、まとめた実行の id。単独の実行は null */
+	datasetRunId: number | null;
 	/** 1日の損失上限を効かせて実行したか。上限を持つ前の実行は false（params には既定の上限が入って読まれる） */
 	dailyLossLimitApplied: boolean;
 };
@@ -151,8 +153,17 @@ export type SaveRunResult =
 	| { ok: false; kind: "not_found" }
 	| { ok: false; kind: "strategy"; status: 400 | 404 | 409; message: string };
 
+export type StartOptions = {
+	/** データセットでまとめて実行するときの、まとめた実行 */
+	datasetRunId?: number;
+	/** 実行が終わったら（完了・失敗・中止）呼ぶ。次の実行を始められる状態で呼ぶ */
+	onFinish?: (run: BacktestRun) => void;
+};
+
 export interface BacktestService {
-	start(input: BacktestInput): StartBacktestResult;
+	/** 実行の前の検証だけ行う。通れば null。実行中かどうかは見ない */
+	check(input: BacktestInput): StartBacktestFailure | null;
+	start(input: BacktestInput, opts?: StartOptions): StartBacktestResult;
 	get(id: number): BacktestRun | null;
 	/** 実行中のバックテスト。無ければ null */
 	current(): BacktestRun | null;

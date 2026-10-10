@@ -6,7 +6,9 @@ import type {
 	BacktestInput,
 	BacktestService,
 	OrderFilter,
+	RunFilter,
 } from "../backtests/types";
+import type { DatasetService } from "../datasets/types";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
 	typeof v === "object" && v !== null;
@@ -22,24 +24,35 @@ const MAX_RUNS = 1000;
 /** 注文一覧の1ページの上限 */
 const MAX_LIMIT = 200;
 
-export function backtestRoutes(service: BacktestService) {
+function runFilter(q: Record<string, string>): RunFilter | null {
+	const limit = q.limit === undefined ? RUNS_PAGE : Number(q.limit);
+	if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_RUNS) {
+		return null;
+	}
+	return {
+		limit,
+		q: q.q ?? "",
+		hideFailed: q.hideFailed === "1",
+		sort: q.sort === "pnl" ? "pnl" : "new",
+	};
+}
+
+export function backtestRoutes(
+	service: BacktestService,
+	datasets: Pick<DatasetService, "history">,
+) {
 	return (
 		new Hono()
 			.get("/", (c) => {
-				const q = c.req.query();
-				const limit = q.limit === undefined ? RUNS_PAGE : Number(q.limit);
-				if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_RUNS) {
-					return c.json({ message: `件数は 1〜${MAX_RUNS}` }, 400);
-				}
-				return c.json(
-					service.list({
-						limit,
-						q: q.q ?? "",
-						hideFailed: q.hideFailed === "1",
-						sort: q.sort === "pnl" ? "pnl" : "new",
-					}),
-					200,
-				);
+				const f = runFilter(c.req.query());
+				if (!f) return c.json({ message: `件数は 1〜${MAX_RUNS}` }, 400);
+				return c.json(service.list(f), 200);
+			})
+			// 履歴の画面。まとめた実行は1行にし、含む実行は出さない
+			.get("/history", (c) => {
+				const f = runFilter(c.req.query());
+				if (!f) return c.json({ message: `件数は 1〜${MAX_RUNS}` }, 400);
+				return c.json(datasets.history(f), 200);
 			})
 			.post(
 				"/",
