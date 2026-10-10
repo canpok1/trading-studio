@@ -1,5 +1,6 @@
 // 成績の数値の横に出す評価のバッジと、その基準の説明
 
+import type { ReactNode } from "react";
 import type { Grade, GradeBadgeValue } from "../lib/grade";
 import { fewTradesNote } from "../lib/grade";
 import { Help } from "./Help";
@@ -25,10 +26,11 @@ export function GradeBadge({ value }: { value: GradeBadgeValue | null }) {
 	);
 }
 
-/** 成績の見出しの横に置く「？」。評価の基準を説明する */
-export function GradeHelp() {
+/** 成績の見出しの横に置く「？」。評価の基準を説明する。children は基準の前に足す説明 */
+export function GradeHelp({ children }: { children?: ReactNode }) {
 	return (
 		<Help label="成績の評価">
+			{children}
 			<p>数値ごとの評価。優秀・良い・普通・悪い・非常に悪い の5段階。</p>
 			<ul className="flex list-disc flex-col gap-1 pl-4">
 				<li>

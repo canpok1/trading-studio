@@ -13,6 +13,7 @@ import { TradingStatusProvider } from "./lib/trading";
 import { BacktestResultPage } from "./pages/BacktestResultPage";
 import { BacktestRunPage } from "./pages/BacktestRunPage";
 import { DataPage } from "./pages/DataPage";
+import { DatasetRunPage } from "./pages/DatasetRunPage";
 import { ExportPage } from "./pages/ExportPage";
 import { HomePage } from "./pages/HomePage";
 import { NewsPage } from "./pages/NewsPage";
@@ -31,15 +32,27 @@ export function App() {
 }
 
 function Shell() {
-	const { running } = useBacktestJob();
+	const { running, runningDataset } = useBacktestJob();
 	return (
 		<>
 			<Routes>
-				<Route element={<Layout badges={{ "/backtest": running !== null }} />}>
+				<Route
+					element={
+						<Layout
+							badges={{
+								"/backtest": running !== null || runningDataset !== null,
+							}}
+						/>
+					}
+				>
 					<Route index element={<Navigate to="/home" replace />} />
 					<Route path="/home" element={<HomePage />} />
 					<Route path="/backtest" element={<BacktestRunPage />} />
 					<Route path="/backtest/runs/:id" element={<BacktestResultPage />} />
+					<Route
+						path="/backtest/dataset-runs/:id"
+						element={<DatasetRunPage />}
+					/>
 					<Route path="/news" element={<NewsPage />} />
 					{/* 旧名「AI判定」の URL */}
 					<Route path="/ai" element={<Navigate to="/news" replace />} />
@@ -65,22 +78,27 @@ function TradesRedirect() {
 
 /** バックテストが終わったら、バックテストの画面にいれば結果へ移り、他の画面にいれば知らせる */
 function FinishedNotice() {
-	const { finished, clearFinished } = useBacktestJob();
+	const { finished, finishedDataset, clearFinished } = useBacktestJob();
 	const { pathname } = useLocation();
 	const navigate = useNavigate();
 	const onBacktest =
 		pathname === "/backtest" || pathname.startsWith("/backtest/");
-	const done = finished?.status === "done" ? finished : null;
-
 	// 失敗・中止は実行画面が表示する
-	useEffect(() => {
-		if (done && onBacktest) {
-			clearFinished();
-			navigate(`/backtest/runs/${done.id}`);
-		}
-	}, [done, onBacktest, navigate, clearFinished]);
+	const to =
+		finished?.status === "done"
+			? `/backtest/runs/${finished.id}`
+			: finishedDataset?.status === "done"
+				? `/backtest/dataset-runs/${finishedDataset.id}`
+				: null;
 
-	if (!done || onBacktest) return null;
+	useEffect(() => {
+		if (to && onBacktest) {
+			clearFinished();
+			navigate(to);
+		}
+	}, [to, onBacktest, navigate, clearFinished]);
+
+	if (!to || onBacktest) return null;
 	return (
 		<div
 			role="status"
@@ -91,7 +109,7 @@ function FinishedNotice() {
 				size="sm"
 				onClick={() => {
 					clearFinished();
-					navigate(`/backtest/runs/${done.id}`);
+					navigate(to);
 				}}
 			>
 				結果を見る

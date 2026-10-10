@@ -627,3 +627,26 @@ test("相場データがまだ無いうちに相場データで期間を選ぶ�
 		.click();
 	await expect(page.getByLabel("開始")).toBeVisible();
 });
+
+test("相場データがまだ無いうちはデータセットを作れず、理由が出て実行できない", async ({
+	page,
+	request,
+}, info) => {
+	await prepare(request, `BT データセット ${info.project.name}`);
+	await page.goto("/backtest");
+	await page
+		.getByRole("group", { name: "期間の決め方" })
+		.getByText("データセット", { exact: true })
+		.click();
+	await expect(page.getByText("データセットがまだ無い。")).toBeVisible();
+	await expect(page.getByLabel("開始")).toBeHidden();
+	await expect(
+		page.getByRole("button", { name: "入力を直すと実行できる" }),
+	).toBeDisabled();
+	await page.getByRole("button", { name: "新しく作る" }).click();
+	const dialog = page.getByRole("dialog", { name: "データセットを作る" });
+	await expect(dialog.getByText("相場データがまだ無い。")).toBeVisible();
+	await expect(dialog.getByRole("button", { name: "保存" })).toBeDisabled();
+	await dialog.getByRole("button", { name: "やめる" }).click();
+	await expect(dialog).toBeHidden();
+});

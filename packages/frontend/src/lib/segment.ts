@@ -2,6 +2,7 @@ import type { Segment } from "@trading-studio/backend";
 import type { MarketRegime } from "@trading-studio/core";
 import {
 	MARKET_REGIME_LABELS,
+	MARKET_REGIMES,
 	TREND_PPM,
 	VOLATILE_PPM,
 } from "@trading-studio/core";
@@ -34,3 +35,13 @@ export function segmentSummary(d: Segment): string {
 
 /** 相場の分け方の説明 */
 export const REGIME_RULE_TEXT = `乱高下は日ごとの値動き（終値の変化）のばらつきが${VOLATILE_PPM / 10_000}%以上。それ以外は期間の騰落率が+${TREND_PPM / 10_000}%以上で上昇、−${TREND_PPM / 10_000}%以下で下落、その間はレンジ。`;
+
+/** 相場ごとの件数。例: 上昇 1 · 下落 2 · レンジ 1（0 件の相場は出さない） */
+export function regimeCounts(
+	segments: readonly { regime: MarketRegime }[],
+): string {
+	return MARKET_REGIMES.flatMap((r) => {
+		const n = segments.filter((s) => s.regime === r).length;
+		return n > 0 ? [`${MARKET_REGIME_LABELS[r].replace("相場", "")} ${n}`] : [];
+	}).join(" · ");
+}

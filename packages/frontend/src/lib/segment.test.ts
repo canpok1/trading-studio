@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { segmentName, signedPercent } from "./segment";
+import { regimeCounts, segmentName, signedPercent } from "./segment";
 
 const jst = (s: string) => Date.parse(`${s}+09:00`);
 
@@ -29,4 +29,11 @@ test("signedPercent", () => {
 	expect(signedPercent(327_000)).toBe("+32.7%");
 	expect(signedPercent(-120_000)).toBe("-12.0%");
 	expect(signedPercent(0)).toBe("0.0%");
+});
+
+test("regimeCounts は相場の順に、0 件の相場を除いて数える", () => {
+	expect(
+		regimeCounts([{ regime: "range" }, { regime: "up" }, { regime: "range" }]),
+	).toBe("上昇 1 · レンジ 2");
+	expect(regimeCounts([])).toBe("");
 });

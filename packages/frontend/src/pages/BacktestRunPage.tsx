@@ -1,6 +1,9 @@
 import type {
 	BacktestRun,
 	CriteriaVersion,
+	Dataset,
+	DatasetBlocker,
+	DatasetRun,
 	ListedSegment,
 	RescoreCoverage,
 	StoredStrategy,
@@ -41,6 +44,7 @@ import {
 } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { useApi } from "../api";
+import { DatasetPicker } from "../components/backtest/DatasetPicker";
 import {
 	RescoreStatus,
 	rescoreReady,
@@ -109,10 +113,12 @@ export type BacktestDraft = {
 	fees: { limitPpm: number; marketPpm: number };
 	/** 市場評価に使う採点の基準の版。null・省略は運用どおり */
 	criteriaVersion?: number | null;
-	/** 期間の決め方。segment=相場データを選ぶ、range（省略）=日付で指定する */
-	periodMode?: "segment" | "range";
+	/** 期間の決め方。segment=相場データを選ぶ、dataset=データセットでまとめて実行する、range（省略）=日付で指定する */
+	periodMode?: "segment" | "dataset" | "range";
 	/** 選んだ相場データ。null・省略や消えた相場データは一番新しいもの */
 	segmentId?: number | null;
+	/** 選んだデータセット。null・省略や消えたデータセットは一覧の最初のもの */
+	datasetId?: number | null;
 };
 
 /** 戦略と結び付いていた頃の下書き（名前もテンプレートも無く、strategyId を持つ）も読む */
@@ -147,6 +153,7 @@ function loadDraft(strategies: StoredStrategy[]): BacktestDraft | null {
 			criteriaVersion: v.criteriaVersion ?? null,
 			periodMode: v.periodMode ?? "range",
 			segmentId: v.segmentId ?? null,
+			datasetId: v.datasetId ?? null,
 		};
 	} catch {
 		return null;
@@ -201,6 +208,7 @@ type BacktestTab = (typeof TABS)[number][0];
 
 const PERIOD_MODES = [
 	["segment", "相場データ"],
+	["dataset", "データセット"],
 	["range", "期間を指定"],
 ] as const;
 
@@ -212,7 +220,9 @@ const PRESETS = [
 
 type Problem =
 	| { kind: "gaps"; gaps: Gap[]; gapCount: number; missingBars: number }
-	| { kind: "message"; text: string };
+	| { kind: "message"; text: string }
+	/** データセットに実行できない相場データがある */
+	| { kind: "blocked"; blockers: DatasetBlocker[] };
 
 type Data = {
 	strategies: StoredStrategy[];
@@ -223,6 +233,8 @@ type Data = {
 	criteriaVersions: CriteriaVersion[];
 	/** 新しい順 */
 	segments: ListedSegment[];
+	/** 名前の順 */
+	datasets: Dataset[];
 };
 
 export function BacktestRunPage() {
@@ -233,7 +245,7 @@ export function BacktestRunPage() {
 	const job = useBacktestJob();
 
 	const load = useCallback(async (): Promise<Data> => {
-		const [s, c, l, j, cv, ds] = await Promise.all([
+		const [s, c, l, j, cv, ds, dd] = await Promise.all([
 			api.api.strategies
 				.$get()
 				.then((res) => readJson<{ strategies: StoredStrategy[] }>(res)),
@@ -252,6 +264,9 @@ export function BacktestRunPage() {
 			api.api.segments
 				.$get({ query: {} })
 				.then((res) => readJson<{ segments: ListedSegment[] }>(res)),
+			api.api.datasets
+				.$get()
+				.then((res) => readJson<{ datasets: Dataset[] }>(res)),
 		]);
 		return {
 			strategies: s.strategies,
@@ -260,12 +275,13 @@ export function BacktestRunPage() {
 			firstScoredAt: j.firstScoredAt,
 			criteriaVersions: cv.versions,
 			segments: ds.segments,
+			datasets: dd.datasets,
 		};
 	}, [api]);
 	const { state, reload } = useAsync(load);
 
 	// 実行が終わったら一覧を読み直す
-	const runningId = job.running?.id ?? null;
+	const runningId = job.running?.id ?? job.runningDataset?.id ?? null;
 	const prevRunning = useRef(runningId);
 	useEffect(() => {
 		if (prevRunning.current !== null && runningId === null) reload();
@@ -315,6 +331,10 @@ export function BacktestRunPage() {
 					passed?.segmentId !== undefined
 						? passed.segmentId
 						: (base?.segmentId ?? null),
+				datasetId:
+					passed?.datasetId !== undefined
+						? passed.datasetId
+						: (base?.datasetId ?? null),
 			});
 			// 再読み込みで同じ条件に戻さないよう、渡された条件を消す
 			navigate(location.pathname, { replace: true, state: null });
@@ -391,6 +411,7 @@ export function BacktestRunPage() {
 			firstScoredAt={state.data.firstScoredAt}
 			criteriaVersions={state.data.criteriaVersions}
 			segments={state.data.segments}
+			datasets={state.data.datasets}
 		/>
 	);
 }
@@ -404,6 +425,7 @@ function RunForm({
 	firstScoredAt: latestFirstScoredAt,
 	criteriaVersions,
 	segments,
+	datasets: initialDatasets,
 }: {
 	draft: BacktestDraft;
 	setDraft: (d: BacktestDraft) => void;
@@ -413,6 +435,7 @@ function RunForm({
 	firstScoredAt: number | null;
 	criteriaVersions: CriteriaVersion[];
 	segments: ListedSegment[];
+	datasets: Dataset[];
 }) {
 	const api = useApi();
 	const job = useBacktestJob();
@@ -469,10 +492,31 @@ function RunForm({
 			? (segments[0] ?? null)
 			: (segments.find((d) => d.id === draft.segmentId) ?? null)
 		: null;
-	const toMs = segment ? segment.to : rangeTo;
+	// データセットは相場データごとに実行するので、期間に依る確かめはサーバーが相場データごとに行う。
+	// 足の数などの表示は、データセットの一番新しい相場データで出す
+	const [datasets, setDatasets] = useState(initialDatasets);
+	const byDataset = draft.periodMode === "dataset";
+	const dataset = byDataset
+		? (datasets.find((d) => d.id === draft.datasetId) ?? datasets[0] ?? null)
+		: null;
+	const datasetLatest = dataset?.segments[0] ?? null;
+	const reloadDatasets = async (select: number | null) => {
+		const r = await api.api.datasets
+			.$get()
+			.then((res) => readJson<{ datasets: Dataset[] }>(res));
+		setDatasets(r.datasets);
+		if (select !== null) update({ datasetId: select });
+		else if (!r.datasets.some((d) => d.id === draft.datasetId)) {
+			update({ datasetId: r.datasets[0]?.id ?? null });
+		}
+	};
+	const periodSegment = segment ?? datasetLatest;
+	const toMs = periodSegment ? periodSegment.to : rangeTo;
 	// 古いニュースを消した後も、残した相場データはそのニュースを使えるので記録の始まりが違う
 	const firstScoredAt = segment ? segment.firstScoredAt : latestFirstScoredAt;
-	const fromMs = segment ? segment.from : (fromDateInputValue(fromDate) ?? 0);
+	const fromMs = periodSegment
+		? periodSegment.from
+		: (fromDateInputValue(fromDate) ?? 0);
 	const shortfalls = useMemo(
 		() =>
 			historyShortfalls(
@@ -515,7 +559,7 @@ function RunForm({
 	// 記録が始まる前はデータなしで、判定の条件のどれかで「データなし」を選んでいなければ実行できない
 	const usesJudgments = conditionStrategy.requiredJudges(p).length > 0;
 	const judgmentError =
-		!usesJudgments || acceptsNoJudgment(p)
+		byDataset || !usesJudgments || acceptsNoJudgment(p)
 			? null
 			: firstScoredAt === null
 				? "市場評価の条件があるが、ニュースの採点の記録がまだ無いため実行できない。市場評価の条件で「データなし」を選ぶと実行できる"
@@ -534,7 +578,9 @@ function RunForm({
 			: null;
 	const [rescore, setRescore] = useState<RescoreCoverage | null>(null);
 	const rescoreBlocked =
-		criteriaVersion !== null && (rescore === null || !rescoreReady(rescore));
+		!byDataset &&
+		criteriaVersion !== null &&
+		(rescore === null || !rescoreReady(rescore));
 
 	const bars = useMemo(() => {
 		if (!cov || cov.firstTime === null || cov.lastTime === null) return 0;
@@ -553,13 +599,17 @@ function RunForm({
 	}, [cov, fromMs, toMs, tfMs]);
 
 	const periodError =
-		bySegment && segments.length === 0
-			? "相場データがまだ無い。1分足が2か月そろうと、次の月に入ってから作る。それまでは期間を指定する"
-			: bySegment && !segment
-				? "選んでいた相場データは消えている。選び直す"
-				: fromMs >= toMs
-					? "終了日は開始日以降にする"
-					: null;
+		byDataset && datasets.length === 0
+			? "データセットがまだ無い。「新しく作る」で相場データを選んで作る"
+			: byDataset && !datasetLatest
+				? "このデータセットの相場データはすべて消えている。編集して選び直す"
+				: bySegment && segments.length === 0
+					? "相場データがまだ無い。1分足が2か月そろうと、次の月に入ってから作る。それまでは期間を指定する"
+					: bySegment && !segment
+						? "選んでいた相場データは消えている。選び直す"
+						: fromMs >= toMs
+							? "終了日は開始日以降にする"
+							: null;
 	const cashError =
 		Number.isSafeInteger(draft.initialCash) && draft.initialCash > 0
 			? null
@@ -581,7 +631,51 @@ function RunForm({
 		setDraft({ ...draft, ...patch });
 	};
 
+	const runDataset = async (skipGaps: boolean) => {
+		if (!dataset) return;
+		setBusy(true);
+		setProblem(null);
+		job.clearFinished();
+		try {
+			const res = await api.api["dataset-runs"].$post({
+				json: {
+					datasetId: dataset.id,
+					name: draft.name,
+					params: p,
+					initialCash: draft.initialCash,
+					fees: draft.fees,
+					skipGaps,
+					criteriaVersion,
+				},
+			});
+			const body = (await res.json()) as {
+				run?: DatasetRun;
+				kind?: string;
+				message?: string;
+				blockers?: DatasetBlocker[];
+			};
+			if (res.ok && body.run) {
+				job.trackDataset(body.run);
+			} else if (body.kind === "blocked") {
+				setProblem({ kind: "blocked", blockers: body.blockers ?? [] });
+			} else {
+				setProblem({
+					kind: "message",
+					text: body.message ?? `実行できなかった（HTTP ${res.status}）`,
+				});
+			}
+		} catch (e) {
+			setProblem({
+				kind: "message",
+				text: `実行できなかった: ${errorMessage(e)}`,
+			});
+		} finally {
+			setBusy(false);
+		}
+	};
+
 	const run = async (skipGaps: boolean) => {
+		if (byDataset) return runDataset(skipGaps);
 		setBusy(true);
 		setProblem(null);
 		job.clearFinished();
@@ -617,7 +711,7 @@ function RunForm({
 					missingBars: body.missingBars ?? 0,
 				});
 			} else if (body.kind === "busy" && body.run) {
-				job.track(body.run);
+				await trackBusy(body.run);
 				setProblem({ kind: "message", text: body.message ?? "実行中" });
 			} else {
 				setProblem({
@@ -635,7 +729,22 @@ function RunForm({
 		}
 	};
 
+	/** 実行中のものを追う。まとめた実行の一部なら、まとめた実行のほうを追う */
+	const trackBusy = async (run: BacktestRun) => {
+		if (run.datasetRunId === null) return job.track(run);
+		const r = await api.api["dataset-runs"][":id"]
+			.$get({ param: { id: String(run.datasetRunId) } })
+			.then((res) => readJson<{ run: DatasetRun }>(res));
+		if (r.run.status === "running") job.trackDataset(r.run);
+	};
+
 	const cancel = async () => {
+		if (job.runningDataset) {
+			await api.api["dataset-runs"][":id"].cancel
+				.$post({ param: { id: String(job.runningDataset.id) } })
+				.catch(() => {});
+			return;
+		}
 		if (!job.running) return;
 		await api.api.backtests[":id"].cancel
 			.$post({ param: { id: String(job.running.id) } })
@@ -648,8 +757,14 @@ function RunForm({
 		errors,
 	};
 	const running = job.running;
+	const runningDataset = job.runningDataset;
+	const busyRunning = running !== null || runningDataset !== null;
 	const last =
 		job.finished && job.finished.status !== "done" ? job.finished : null;
+	const lastDataset =
+		job.finishedDataset && job.finishedDataset.status !== "done"
+			? job.finishedDataset
+			: null;
 
 	return (
 		<BacktestFrame tab="run">
@@ -743,22 +858,34 @@ function RunForm({
 								相場データは、月が替わると直近2か月の期間を値動きで「上昇相場」「下落相場」「レンジ相場」「乱高下相場」のどれかに分けて作る。同じ相場の別の時期で試すときに使う。
 							</p>
 							<p>{REGIME_RULE_TEXT}</p>
+							<p>
+								データセットは、相場データを束ねて名前を付けたもの。相場データごとに同じ条件でバックテストを1件ずつ実行し、成績を合算する。初期資金は相場データごとに戻す。実行できない相場データが1つでもあれば、組ごとに比べられなくなるので全体を実行しない。
+							</p>
 						</Help>
 					</div>
 					<Segmented
 						name="period-mode"
 						label="期間の決め方"
 						options={PERIOD_MODES}
-						value={bySegment ? "segment" : "range"}
+						value={draft.periodMode ?? "range"}
 						onChange={(v) =>
 							// 一番新しいものを選んだまま残す。後で新しい相場データができても、選んだ期間を変えない
 							update({
 								periodMode: v,
 								segmentId: draft.segmentId ?? segments[0]?.id ?? null,
+								datasetId: dataset?.id ?? datasets[0]?.id ?? null,
 							})
 						}
 					/>
-					{bySegment ? (
+					{byDataset ? (
+						<DatasetPicker
+							datasets={datasets}
+							segments={segments}
+							selected={dataset}
+							onSelect={(datasetId) => update({ datasetId })}
+							onSaved={reloadDatasets}
+						/>
+					) : bySegment ? (
 						segments.length > 0 && (
 							<div className="flex flex-col gap-1">
 								<label htmlFor={ids.segment} className="text-xs text-text-2">
@@ -855,18 +982,20 @@ function RunForm({
 							{periodError}
 						</span>
 					)}
-					<CoverageBar cov={cov} from={fromMs} to={toMs} />
+					{!byDataset && <CoverageBar cov={cov} from={fromMs} to={toMs} />}
 					<div className="flex flex-col gap-1">
 						<span className="text-[13px] font-semibold">足</span>
 						<span className="num text-sm">
 							{needed.length > 0
 								? `条件 ${needed.map((t) => TIMEFRAME_LABELS[t]).join("・")} · `
 								: ""}
-							{TIMEFRAME_LABELS[tf]} {formatInt(bars)} 本
+							{byDataset
+								? TIMEFRAME_LABELS[tf]
+								: `${TIMEFRAME_LABELS[tf]} ${formatInt(bars)} 本`}
 							{step ? ` · ${TIMEFRAME_LABELS[step.timeframe]}で判定` : ""}
 							{usesJudgments && " · 市場評価の履歴を使う"}
 						</span>
-						{usesJudgments && firstScoredAt !== null && (
+						{usesJudgments && !byDataset && firstScoredAt !== null && (
 							<span className="num text-xs text-text-2">
 								市場評価の記録の開始: {formatDateTime(firstScoredAt)}
 								{judgmentError === null &&
@@ -875,6 +1004,7 @@ function RunForm({
 							</span>
 						)}
 						{usesJudgments &&
+							!byDataset &&
 							firstScoredAt === null &&
 							judgmentError === null && (
 								<span className="text-xs text-text-2">
@@ -921,7 +1051,7 @@ function RunForm({
 									</option>
 								))}
 							</select>
-							{criteriaVersion !== null && (
+							{criteriaVersion !== null && !byDataset && (
 								<RescoreStatus
 									from={fromMs}
 									to={toMs}
@@ -1010,6 +1140,41 @@ function RunForm({
 							</Button>
 						</Card>
 					)}
+					{runningDataset && (
+						<Card className="flex flex-col gap-2.5">
+							<div className="flex items-center justify-between">
+								<strong>データセットでまとめて実行中</strong>
+								<span className="num font-semibold">
+									{Math.round(runningDataset.progress * 100)}%
+								</span>
+							</div>
+							<ProgressBar
+								value={runningDataset.progress * 100}
+								label="まとめた実行の進み具合"
+							/>
+							<p className="text-xs text-text-2">
+								{runningDataset.segmentIds.length}{" "}
+								件の相場データを1件ずつ実行する。他の画面へ移っても処理は続く。終わると合算した結果へ移動する。
+							</p>
+							<Button size="sm" className="self-start" onClick={cancel}>
+								実行を中止
+							</Button>
+						</Card>
+					)}
+					{lastDataset && (
+						<Note>
+							<div className="flex items-start gap-2">
+								<span className="flex-1">
+									{lastDataset.status === "canceled"
+										? "まとめた実行を中止した"
+										: `まとめた実行が失敗した: ${lastDataset.error ?? "原因不明"}`}
+								</span>
+								<Button variant="link" onClick={job.clearFinished}>
+									閉じる
+								</Button>
+							</div>
+						</Note>
+					)}
 					{last && (
 						<Note>
 							<div className="flex items-start gap-2">
@@ -1059,6 +1224,13 @@ function RunForm({
 							</div>
 						</div>
 					)}
+					{problem?.kind === "blocked" && (
+						<BlockedSegments
+							blockers={problem.blockers}
+							busy={busy}
+							onSkipGaps={() => run(true)}
+						/>
+					)}
 					{problem?.kind === "message" && (
 						<p role="alert" className="text-[13px] font-semibold text-loss">
 							{problem.text}
@@ -1070,23 +1242,25 @@ function RunForm({
 							className="w-full shadow-lg"
 							disabled={
 								busy ||
-								running !== null ||
+								busyRunning ||
 								hasErr ||
-								bars === 0 ||
+								(!byDataset && bars === 0) ||
 								judgmentError !== null ||
 								rescoreBlocked
 							}
 							onClick={() => run(false)}
 						>
-							{running
+							{busyRunning
 								? "実行中…"
 								: hasErr
 									? "入力を直すと実行できる"
-									: bars === 0
+									: !byDataset && bars === 0
 										? "期間にデータが無い"
 										: rescoreBlocked
 											? `v${criteriaVersion} の採点がそろうと実行できる`
-											: "バックテストを実行"}
+											: byDataset && dataset
+												? `${dataset.segments.length} 件をまとめて実行`
+												: "バックテストを実行"}
 						</Button>
 					</div>
 				</div>
@@ -1105,6 +1279,58 @@ function RunForm({
 			)}
 		</BacktestFrame>
 	);
+}
+
+/** データセットで実行できない相場データと理由。欠損だけなら、承知で実行できる */
+function BlockedSegments({
+	blockers,
+	busy,
+	onSkipGaps,
+}: {
+	blockers: DatasetBlocker[];
+	busy: boolean;
+	onSkipGaps: () => void;
+}) {
+	const onlyGaps = blockers.every((b) => b.error.kind === "gaps");
+	return (
+		<div
+			role="alert"
+			className="flex flex-col gap-2 rounded-[10px] bg-warn px-3.5 py-3 text-xs"
+		>
+			<strong className="text-[13px]">
+				実行できない相場データがあるため、全体を実行しなかった
+			</strong>
+			<ul className="flex list-disc flex-col gap-1 pl-4">
+				{blockers.map((b) => (
+					<li key={b.segment.id}>
+						<span className="num font-semibold">{segmentName(b.segment)}</span>:{" "}
+						{blockerText(b.error)}
+					</li>
+				))}
+			</ul>
+			{onlyGaps ? (
+				<Button
+					size="sm"
+					className="self-start"
+					disabled={busy}
+					onClick={onSkipGaps}
+				>
+					欠損を飛ばして実行
+				</Button>
+			) : (
+				<span>データセットを編集して外すか、条件を直してから実行する。</span>
+			)}
+		</div>
+	);
+}
+
+function blockerText(e: DatasetBlocker["error"]): string {
+	if (e.kind === "gaps") {
+		return `データの欠損が ${e.gapCount} か所（合計 ${formatInt(e.missingBars)} 本）`;
+	}
+	if (e.kind === "invalid_params") return "条件に入力の誤りがある";
+	if (e.kind === "busy") return "別のバックテストを実行中";
+	return e.message;
 }
 
 /** テンプレートを選ぶモーダル。選ぶとその条件で今の条件を置き換える */
