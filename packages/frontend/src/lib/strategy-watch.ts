@@ -9,11 +9,10 @@ import type {
 } from "@trading-studio/core";
 import { TIMEFRAME_LABELS } from "@trading-studio/core";
 
-/** チャートに引く発動価格。near は「次の動き」に出す上側・下側で一番近いもので、縦の範囲に含めて画面に入れる */
+/** チャートに引く発動価格 */
 export type ChartTrigger = {
 	price: number;
 	kind: WatchActionKind;
-	near: boolean;
 };
 
 export const ACTION_LABELS: Record<WatchActionKind, string> = {
@@ -70,7 +69,6 @@ export function nextMoves(w: StrategyWatch): {
 /** チャートに引く発動価格。同じ価格・同じ種類の線は1本にする */
 export function chartTriggers(w: StrategyWatch | null): ChartTrigger[] {
 	if (!w) return [];
-	const { up, down } = nextMoves(w);
 	const seen = new Set<string>();
 	const out: ChartTrigger[] = [];
 	for (const a of w.actions) {
@@ -78,11 +76,7 @@ export function chartTriggers(w: StrategyWatch | null): ChartTrigger[] {
 		const key = `${a.kind}:${a.price}`;
 		if (seen.has(key)) continue;
 		seen.add(key);
-		out.push({
-			price: a.price,
-			kind: a.kind,
-			near: a.price === up?.price || a.price === down?.price,
-		});
+		out.push({ price: a.price, kind: a.kind });
 	}
 	return out;
 }

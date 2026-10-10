@@ -2,7 +2,6 @@
 // 組み込みの価格線の名前は描画領域の内側に出て最新の足に重なるため、名前ごと軸のラベルに入れる
 
 import type {
-	AutoscaleInfo,
 	ISeriesApi,
 	ISeriesPrimitive,
 	ISeriesPrimitiveAxisView,
@@ -21,8 +20,6 @@ export type PriceTag = {
 	label: string;
 	color: string;
 	textColor: string;
-	/** 縦の範囲に含める（足から離れていても画面に入れる） */
-	keepInView: boolean;
 };
 
 export class PriceTags implements ISeriesPrimitive<Time> {
@@ -90,16 +87,5 @@ export class PriceTags implements ISeriesPrimitive<Time> {
 			out[v.i] = prev;
 		}
 		return out;
-	}
-
-	autoscaleInfo(): AutoscaleInfo | null {
-		const prices = this.tags.filter((t) => t.keepInView).map((t) => t.price);
-		if (prices.length === 0) return null;
-		return {
-			priceRange: {
-				minValue: Math.min(...prices),
-				maxValue: Math.max(...prices),
-			},
-		};
 	}
 }

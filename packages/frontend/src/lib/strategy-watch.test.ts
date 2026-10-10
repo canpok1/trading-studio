@@ -48,9 +48,9 @@ describe("chartTriggers", () => {
 				]),
 			),
 		).toEqual([
-			{ price: 900, kind: "stopLoss", near: true },
-			{ price: 800, kind: "stopLoss", near: false },
-			{ price: 1_200, kind: "takeProfit", near: true },
+			{ price: 900, kind: "stopLoss" },
+			{ price: 800, kind: "stopLoss" },
+			{ price: 1_200, kind: "takeProfit" },
 		]);
 		expect(chartTriggers(null)).toEqual([]);
 	});
