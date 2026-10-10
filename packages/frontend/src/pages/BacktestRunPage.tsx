@@ -181,7 +181,7 @@ function templates(strategies: StoredStrategy[]): Template[] {
 	];
 }
 
-/** 初めて開いたときのバックテスト名。テンプレートを読み込み直しても名前は変えない */
+/** 初めて開いたときのバックテスト名。読み込み直したときは、選んだときだけこの名前にする */
 const nameFor = (t: Template) => (t.key === "t:blank" ? BLANK_NAME : t.label);
 
 function checkName(name: string): string | null {
@@ -1270,10 +1270,14 @@ function RunForm({
 					choices={choices}
 					replacing={edited || template === null}
 					onClose={() => setPicking(false)}
-					onPick={(t) => {
+					onPick={(t, rename) => {
 						setPicking(false);
-						// バックテスト名は変えない
-						update({ template: t, params: t.params, improvement: null });
+						update({
+							template: t,
+							params: t.params,
+							improvement: null,
+							...(rename ? { name: nameFor(t) } : {}),
+						});
 					}}
 				/>
 			)}
@@ -1389,8 +1393,11 @@ function TemplateDialog({
 	choices: Template[];
 	replacing: boolean;
 	onClose: () => void;
-	onPick: (t: Template) => void;
+	/** rename: バックテスト名も読み込む条件の名前にする */
+	onPick: (t: Template, rename: boolean) => void;
 }) {
+	// 名前を変えたいのは毎回ではないので、開くたびに OFF から始める
+	const [rename, setRename] = useState(false);
 	const groups = [
 		["ひな形", choices.filter((t) => t.key.startsWith("t:"))],
 		["保存済みの戦略", choices.filter((t) => t.key.startsWith("s:"))],
@@ -1398,6 +1405,15 @@ function TemplateDialog({
 	return (
 		<Modal title="条件を読み込む" onClose={onClose}>
 			{replacing && <Note>今の条件は、選んだ条件に置き換わる。</Note>}
+			<label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm">
+				<input
+					type="checkbox"
+					className="h-4 w-4 accent-accent"
+					checked={rename}
+					onChange={(e) => setRename(e.target.checked)}
+				/>
+				バックテスト名も読み込む戦略の名前にする
+			</label>
 			{groups.map(
 				([label, items]) =>
 					items.length > 0 && (
@@ -1408,7 +1424,7 @@ function TemplateDialog({
 									<button
 										key={t.key}
 										type="button"
-										onClick={() => onPick(t)}
+										onClick={() => onPick(t, rename)}
 										className="flex w-full flex-col gap-0.5 border-b border-line px-4 py-3 text-left last:border-b-0 hover:bg-surface-2"
 									>
 										<strong className="text-sm">{t.label}</strong>

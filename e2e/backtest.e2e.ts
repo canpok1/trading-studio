@@ -91,7 +91,7 @@ async function choose(page: Page, strategy: string, from: string, to: string) {
 	const dialog = page.getByRole("dialog", { name: "条件を読み込む" });
 	await dialog.getByRole("button", { name: strategy }).click();
 	await expect(dialog).toBeHidden();
-	// 条件を読み込んでも名前は変わらないので、読み込み元と同じ名前を付ける
+	// 既定では条件を読み込んでも名前は変わらないので、読み込み元と同じ名前を付ける
 	await page.getByLabel("バックテスト名").fill(strategy);
 	await page.getByLabel("開始").fill(from);
 	await page.getByLabel("終了").fill(to);
@@ -120,6 +120,22 @@ test("ひな形から名前を付けて実行すると結果が出て、注文�
 		.click();
 	await expect(page.getByText("1時間足 552 本")).toBeVisible();
 	await expect(runName).toHaveValue(title);
+	// 選んだときだけ、バックテスト名も戦略の名前にする。チェックは開くたびに OFF に戻る
+	await page.getByRole("button", { name: "条件を読み込む" }).click();
+	const reload = page.getByRole("dialog", { name: "条件を読み込む" });
+	const rename = reload.getByLabel("バックテスト名も読み込む戦略の名前にする");
+	await expect(rename).not.toBeChecked();
+	await rename.check();
+	await reload.getByRole("button", { name }).click();
+	await expect(runName).toHaveValue(name);
+	await page.getByRole("button", { name: "条件を読み込む" }).click();
+	await expect(
+		page
+			.getByRole("dialog", { name: "条件を読み込む" })
+			.getByLabel("バックテスト名も読み込む戦略の名前にする"),
+	).not.toBeChecked();
+	await page.getByRole("button", { name: "やめる" }).click();
+	await runName.fill(title);
 	// 読み込んだ条件から変えて試す
 	await page.getByRole("button", { name: "0.001 増やす" }).click();
 	await expect(page.getByText(`${name}（変更あり）`)).toBeVisible();
