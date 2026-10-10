@@ -23,6 +23,8 @@ claude mcp add --transport http trading-studio https://<サーバー>/mcp
 | `get_data_coverage` | 価格データの粒度ごとの範囲と欠損の数 |
 | `run_backtest` | 戦略か条件セットでバックテストを実行し、終わるまで（最大 2 分）待って成績を返す。待ちきれなければ実行中のまま返す。市場評価に使う採点の版を指定できる。期間は日付か相場データで渡す |
 | `list_segments` | 相場データの一覧。相場で絞れる |
+| `list_datasets` `save_dataset` | データセット（相場データを束ねたもの）の一覧・保存（作成と上書き） |
+| `run_dataset` `get_dataset_run` | データセットの相場データごとにバックテストを実行し、終わるまで（最大 2 分）待って合算した成績と相場データごとの成績を返す・まとめた実行1件 |
 | `list_backtests` `get_backtest` `get_backtest_orders` | バックテストの一覧・1件の条件と成績・注文（発注の理由と往復の損益を含む） |
 | `get_scoring_setup` | 採点のプロンプトの固定のひな形・採点の基準の全版と使用中の版・モデル・評価ルール・採点の状態 |
 | `get_market_evaluation` | 市場評価（評価・平均点・件数）と市場評価の内訳。時点を指定できる（ニュース画面の今の市場評価・評価詳細のタブの内訳） |
