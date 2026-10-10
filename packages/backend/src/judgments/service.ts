@@ -20,11 +20,11 @@ export function createJudgmentService({
 	newsDelayMs: () => number;
 	now?: () => number;
 }): JudgmentService {
-	const recordStart = (datasetFrom: number | null = null) =>
+	const recordStart = (segmentFrom: number | null = null) =>
 		judgmentRecordStart(
 			repo.firstScoredAt(),
 			repo.newsDeletedBefore(),
-			datasetFrom,
+			segmentFrom,
 		);
 	return {
 		current(rule = repo.aggregationRule(), at?: number): CurrentJudgment {
@@ -49,10 +49,10 @@ export function createJudgmentService({
 			rule = repo.aggregationRule(),
 			version = null,
 			delayMs = null,
-			datasetFrom = null,
+			segmentFrom = null,
 		): JudgmentSeries {
 			const t = now();
-			const firstScoredAt = recordStart(datasetFrom);
+			const firstScoredAt = recordStart(segmentFrom);
 			const count = Math.max(0, Math.ceil((to - from) / step));
 			// 足の終わりの時刻で判定する。まだ終わっていない足は今の判定
 			const times = Array.from({ length: count }, (_, i) =>
@@ -89,7 +89,7 @@ export function createJudgmentService({
 			return { from, step, firstScoredAt, values };
 		},
 		rule: () => repo.aggregationRule(),
-		firstScoredAt: (datasetFrom) => recordStart(datasetFrom),
+		firstScoredAt: (segmentFrom) => recordStart(segmentFrom),
 		scoredNews: (from, to, version, delayMs) =>
 			repo.scoredNews(from, to, version, delayMs),
 		newsDelayMs,

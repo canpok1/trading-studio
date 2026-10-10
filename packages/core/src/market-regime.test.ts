@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
 	classifyMarket,
-	datasetPeriods,
 	judgmentRecordStart,
 	rangesOutside,
+	segmentPeriods,
 } from "./market-regime";
 
 /** 終値が毎日 r ずつ（対数で）動く日足 */
@@ -51,12 +51,12 @@ describe("classifyMarket", () => {
 	});
 });
 
-describe("datasetPeriods", () => {
+describe("segmentPeriods", () => {
 	const jst = (s: string) => Date.parse(`${s}+09:00`);
 
 	test("最初の足を含む月から、今月の初めまでに終わる2か月を1か月ずつずらす", () => {
 		expect(
-			datasetPeriods(jst("2026-07-15T12:00:00"), jst("2026-10-01T04:00:00")),
+			segmentPeriods(jst("2026-07-15T12:00:00"), jst("2026-10-01T04:00:00")),
 		).toEqual([
 			{ from: jst("2026-07-01T00:00:00"), to: jst("2026-09-01T00:00:00") },
 			{ from: jst("2026-08-01T00:00:00"), to: jst("2026-10-01T00:00:00") },
@@ -65,7 +65,7 @@ describe("datasetPeriods", () => {
 
 	test("年をまたぐ", () => {
 		expect(
-			datasetPeriods(jst("2025-12-01T00:00:00"), jst("2026-02-10T00:00:00")),
+			segmentPeriods(jst("2025-12-01T00:00:00"), jst("2026-02-10T00:00:00")),
 		).toEqual([
 			{ from: jst("2025-12-01T00:00:00"), to: jst("2026-02-01T00:00:00") },
 		]);
@@ -73,7 +73,7 @@ describe("datasetPeriods", () => {
 
 	test("まだ2か月たっていなければ無い", () => {
 		expect(
-			datasetPeriods(jst("2026-09-01T00:00:00"), jst("2026-10-31T23:59:00")),
+			segmentPeriods(jst("2026-09-01T00:00:00"), jst("2026-10-31T23:59:00")),
 		).toEqual([]);
 	});
 });
@@ -88,9 +88,9 @@ describe("judgmentRecordStart", () => {
 		expect(judgmentRecordStart(100 * D, 300 * D)).toBe(331 * D);
 		expect(judgmentRecordStart(400 * D, 300 * D)).toBe(400 * D);
 	});
-	test("残したデータセットは開始から", () => {
+	test("残した相場データは開始から", () => {
 		expect(judgmentRecordStart(100 * D, 300 * D, 200 * D)).toBe(200 * D);
-		// 境目の31日後より後に始まるデータセットは特別扱いしない
+		// 境目の31日後より後に始まる相場データは特別扱いしない
 		expect(judgmentRecordStart(100 * D, 300 * D, 350 * D)).toBe(331 * D);
 	});
 });

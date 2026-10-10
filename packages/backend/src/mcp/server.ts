@@ -31,7 +31,6 @@ import type {
 	BacktestService,
 	StartBacktestFailure,
 } from "../backtests/types";
-import type { DatasetService } from "../datasets/types";
 import type { JudgmentService } from "../judgments/types";
 import type { MarketDataService } from "../market-data/types";
 import type { NewsItem, NewsService, ScoringService } from "../news/types";
@@ -47,6 +46,7 @@ import type {
 	AccuracySummaryResult,
 	ArticleAccuracy,
 } from "../scoring-analysis/types";
+import type { SegmentService } from "../segments/types";
 import type { StoredStrategy, StrategyService } from "../strategies/types";
 import { conditionSetGuide } from "./guide";
 
@@ -54,7 +54,7 @@ export type McpDeps = {
 	strategies: StrategyService;
 	backtests: BacktestService;
 	marketData: MarketDataService;
-	datasets: DatasetService;
+	segments: SegmentService;
 	scoring: ScoringService;
 	news: Pick<NewsService, "searchNews">;
 	judgments: Pick<JudgmentService, "rule" | "current">;
@@ -134,10 +134,10 @@ function runView(r: BacktestRun) {
 			r.newsDelayMs === null ? null : Math.round(r.newsDelayMs / 60_000),
 		// 使ったニュースのデータの版。違えば使ったニュースが違う
 		newsDataVersion: r.newsDataVersion === null ? null : jst(r.newsDataVersion),
-		// 期間をデータセットで選んだときのデータセットと、そのときの相場
-		dataset: r.dataset && {
-			id: r.dataset.id,
-			regime: MARKET_REGIME_LABELS[r.dataset.regime],
+		// 期間を相場データで選んだときの相場データと、そのときの相場
+		segment: r.segment && {
+			id: r.segment.id,
+			regime: MARKET_REGIME_LABELS[r.segment.regime],
 		},
 		startedAt: jst(r.startedAt),
 		summary: s && {
@@ -292,7 +292,7 @@ function createServer({
 	strategies,
 	backtests,
 	marketData,
-	datasets,
+	segments,
 	scoring,
 	news,
 	judgments,
@@ -412,10 +412,10 @@ function createServer({
 	);
 
 	server.registerTool(
-		"list_datasets",
+		"list_segments",
 		{
 			description:
-				"バックテストのデータセットの一覧（新しい順）。毎月、直近2か月の期間に相場のラベル（上昇・下落・レンジ・乱高下）を1つ付けて作る。run_backtest の datasetId に渡すとその期間で実行する。returnPercent は期間の騰落率、volatilityPercent は日ごとの騰落率の標準偏差",
+				"バックテストの相場データの一覧（新しい順）。毎月、直近2か月の期間に相場のラベル（上昇・下落・レンジ・乱高下）を1つ付けて作る。run_backtest の segmentId に渡すとその期間で実行する。returnPercent は期間の騰落率、volatilityPercent は日ごとの騰落率の標準偏差",
 			inputSchema: {
 				regime: z
 					.enum(MARKET_REGIMES as [MarketRegime, ...MarketRegime[]])
@@ -428,7 +428,7 @@ function createServer({
 		},
 		({ regime }) =>
 			text(
-				datasets.list(regime ?? null).map((d) => ({
+				segments.list(regime ?? null).map((d) => ({
 					id: d.id,
 					from: jst(d.from),
 					to: jst(d.to),
@@ -503,7 +503,7 @@ function createServer({
 		"run_backtest",
 		{
 			description:
-				"バックテストを実行し、終わるまで待って成績を返す。strategyId か params のどちらかで条件を渡す。期間は from・to か datasetId のどちらかで渡す。同時に実行できるのは1つ。待ちきれなければ実行中のまま返すので get_backtest で見る",
+				"バックテストを実行し、終わるまで待って成績を返す。strategyId か params のどちらかで条件を渡す。期間は from・to か segmentId のどちらかで渡す。同時に実行できるのは1つ。待ちきれなければ実行中のまま返すので get_backtest で見る",
 			inputSchema: {
 				name: z.string().describe("バックテスト名（1〜40 文字）"),
 				strategyId: z.number().int().optional(),
@@ -516,11 +516,11 @@ function createServer({
 					.string()
 					.optional()
 					.describe("終了（含まない）。書き方は from と同じ"),
-				datasetId: z
+				segmentId: z
 					.number()
 					.int()
 					.optional()
-					.describe("データセット（list_datasets）。渡すとその期間で実行する"),
+					.describe("相場データ（list_segments）。渡すとその期間で実行する"),
 				initialCash: z.number().int().default(2_000_000).describe("円"),
 				limitFeePpm: z.number().int().default(DEFAULT_FEE_RATES.limitPpm),
 				marketFeePpm: z.number().int().default(DEFAULT_FEE_RATES.marketPpm),
@@ -552,15 +552,15 @@ function createServer({
 			} else {
 				return fail("strategyId か params が必要");
 			}
-			const datasetId = a.datasetId ?? null;
-			if (datasetId !== null && (a.from !== undefined || a.to !== undefined)) {
-				return fail("from・to と datasetId はどちらか一方だけ渡す");
+			const segmentId = a.segmentId ?? null;
+			if (segmentId !== null && (a.from !== undefined || a.to !== undefined)) {
+				return fail("from・to と segmentId はどちらか一方だけ渡す");
 			}
-			const from = datasetId !== null ? 0 : parseTime(a.from ?? "");
-			const to = datasetId !== null ? 0 : parseTime(a.to ?? "");
+			const from = segmentId !== null ? 0 : parseTime(a.from ?? "");
+			const to = segmentId !== null ? 0 : parseTime(a.to ?? "");
 			if (from === null || to === null) {
 				return fail(
-					"from・to はタイムゾーン付きの ISO 8601 か YYYY-MM-DD で書く。またはデータセットを datasetId で渡す",
+					"from・to はタイムゾーン付きの ISO 8601 か YYYY-MM-DD で書く。または相場データを segmentId で渡す",
 				);
 			}
 			const started = backtests.start({
@@ -572,7 +572,7 @@ function createServer({
 				fees: { limitPpm: a.limitFeePpm, marketPpm: a.marketFeePpm },
 				skipGaps: a.skipGaps,
 				criteriaVersion: a.criteriaVersion ?? null,
-				datasetId,
+				segmentId,
 			});
 			if (!started.ok) return startFailure(started.error);
 			const id = started.run.id;

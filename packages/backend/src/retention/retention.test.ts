@@ -111,7 +111,7 @@ describe("古いデータの定期削除", () => {
 			at: RUN_AT,
 			decisions: 1,
 			backtests: 0,
-			datasets: 0,
+			segments: 0,
 			candles: 0,
 			news: 0,
 			error: null,
@@ -214,10 +214,10 @@ describe("古いデータの定期削除", () => {
 					"insert into candles (timeframe, time, open, high, low, close, volume, source) values (?, ?, 1, 1, 1, 1, 0, 'collect')",
 					[tf, time],
 				);
-			const dataset = (from: number, to: number, regime: string) =>
+			const segment = (from: number, to: number, regime: string) =>
 				Number(
 					s.sql.run(
-						"insert into datasets (from_time, to_time, regime, return_ppm, volatility_ppm, created_at) values (?, ?, ?, 0, 0, 0)",
+						"insert into segments (from_time, to_time, regime, return_ppm, volatility_ppm, created_at) values (?, ?, ?, 0, 0, 0)",
 						[from, to, regime],
 					).lastInsertRowid,
 				);
@@ -235,21 +235,21 @@ describe("古いデータの定期削除", () => {
 				);
 				return id;
 			};
-			return { candle, dataset, news };
+			return { candle, segment, news };
 		}
 
 		const count = (s: ReturnType<typeof setup>, where: string) =>
 			s.sql.query<{ n: number }, []>(`select count(*) as n from ${where}`).get()
 				?.n;
 
-		test("5年より前のデータセットは相場ごとに最新だけ残し、その期間の足とニュースを残す", async () => {
+		test("5年より前の相場データは相場ごとに最新だけ残し、その期間の足とニュースを残す", async () => {
 			const s = setup();
-			const { candle, dataset, news } = seed(s);
-			const oldUp = dataset(CUT - 300 * DAY, CUT - 240 * DAY, "up");
-			const keptUp = dataset(CUT - 200 * DAY, CUT - 140 * DAY, "up");
-			const keptDown = dataset(CUT - 400 * DAY, CUT - 340 * DAY, "down");
-			const recent = dataset(CUT + 10 * DAY, CUT + 70 * DAY, "up");
-			// 消える期間・残すデータセットの開始の31日前から・期間・境目の後
+			const { candle, segment, news } = seed(s);
+			const oldUp = segment(CUT - 300 * DAY, CUT - 240 * DAY, "up");
+			const keptUp = segment(CUT - 200 * DAY, CUT - 140 * DAY, "up");
+			const keptDown = segment(CUT - 400 * DAY, CUT - 340 * DAY, "down");
+			const recent = segment(CUT + 10 * DAY, CUT + 70 * DAY, "up");
+			// 消える期間・残す相場データの開始の31日前から・期間・境目の後
 			for (const t of [
 				CUT - 280 * DAY,
 				CUT - 220 * DAY,
@@ -260,15 +260,15 @@ describe("古いデータの定期削除", () => {
 				for (const tf of ["1m", "15m", "1h"]) candle(tf, t);
 			}
 			const gone = news(CUT - 280 * DAY);
-			// データセットの開始の31日前までは残す
+			// 相場データの開始の31日前までは残す
 			const lead = news(CUT - 230 * DAY);
 			const inKept = news(CUT - 190 * DAY);
 			const after = news(CUT + DAY);
 
 			await s.runNow();
-			expect(s.ids("datasets")).toEqual([keptUp, keptDown, recent]);
+			expect(s.ids("segments")).toEqual([keptUp, keptDown, recent]);
 			expect(oldUp).toBeLessThan(keptUp);
-			// 1時間足は残し、1分・15分足は残すデータセットの期間と境目の後だけ残す
+			// 1時間足は残し、1分・15分足は残す相場データの期間と境目の後だけ残す
 			expect(count(s, "candles where timeframe = '1h'")).toBe(5);
 			expect(
 				s.sql
@@ -282,12 +282,12 @@ describe("古いデータの定期削除", () => {
 			expect(gone).toBeLessThan(lead);
 			expect(count(s, "news_scores")).toBe(3);
 			expect((await s.status()).lastRun).toMatchObject({
-				datasets: 1,
+				segments: 1,
 				candles: 2,
 				news: 1,
 			});
 
-			// 記録の始まりは境目の31日後から。残したデータセットではその開始から
+			// 記録の始まりは境目の31日後から。残した相場データではその開始から
 			expect(s.t.judgments.firstScoredAt()).toBe(CUT + 31 * DAY);
 			expect(s.t.judgments.firstScoredAt(CUT - 200 * DAY)).toBe(
 				CUT - 200 * DAY,

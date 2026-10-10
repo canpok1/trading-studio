@@ -72,7 +72,7 @@ async function setup() {
 			strategies: t.strategies,
 			backtests: t.backtests,
 			marketData: t.marketData,
-			datasets: t.datasets,
+			segments: t.segments,
 			scoring: t.scoring,
 			news: t.news,
 			judgments: t.judgments,
@@ -130,8 +130,8 @@ describe("MCP", () => {
 			"get_scoring_setup",
 			"get_strategy",
 			"list_backtests",
-			"list_datasets",
 			"list_news_scores",
+			"list_segments",
 			"list_strategies",
 			"preview_aggregation_rule",
 			"rescore_news",
@@ -260,13 +260,13 @@ describe("MCP", () => {
 		const list = await call("list_backtests");
 		expect(list.json).toMatchObject([{ id: r.id }]);
 
-		// データセットで期間を選ぶ
+		// 相場データで期間を選ぶ
 		t.db.$client.run(
-			"insert into datasets (id, from_time, to_time, regime, return_ppm, volatility_ppm, created_at) values (3, ?, ?, 'up', 150000, 20000, 0)",
+			"insert into segments (id, from_time, to_time, regime, return_ppm, volatility_ppm, created_at) values (3, ?, ?, 'up', 150000, 20000, 0)",
 			[START + 2 * 24 * H, START + 19 * 24 * H],
 		);
-		const datasets = await call("list_datasets", { regime: "up" });
-		expect(datasets.json as unknown[]).toEqual([
+		const segments = await call("list_segments", { regime: "up" });
+		expect(segments.json as unknown[]).toEqual([
 			{
 				id: 3,
 				from: "2026-08-03T00:00:00+09:00",
@@ -277,14 +277,14 @@ describe("MCP", () => {
 				volatilityPercent: 2,
 			},
 		]);
-		const byDataset = await call("run_backtest", {
-			name: "データセットで",
+		const bySegment = await call("run_backtest", {
+			name: "相場データで",
 			params: PARAMS,
-			datasetId: 3,
+			segmentId: 3,
 		});
-		expect(byDataset.json).toMatchObject({
+		expect(bySegment.json).toMatchObject({
 			from: "2026-08-03T00:00:00+09:00",
-			dataset: { id: 3, regime: "上昇相場" },
+			segment: { id: 3, regime: "上昇相場" },
 		});
 	});
 
@@ -310,7 +310,7 @@ describe("MCP", () => {
 			params: PARAMS,
 			from: "2026-08-03",
 			to: "2026-08-20",
-			datasetId: 1,
+			segmentId: 1,
 		});
 		expect(mixed.isError).toBe(true);
 	});

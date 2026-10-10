@@ -13,8 +13,6 @@ import type { BacktestRunner } from "./backtests/runner";
 import { createBacktestService } from "./backtests/service";
 import type { Collector } from "./collector/collector";
 import type { LiveMarket } from "./collector/types";
-import { DatasetRepository } from "./datasets/repository";
-import { createDatasetService } from "./datasets/service";
 import type { Db } from "./db/open";
 import { createTestDb } from "./db/test-db";
 import { createJudgmentService } from "./judgments/service";
@@ -34,6 +32,8 @@ import { RetentionRepository } from "./retention/repository";
 import { createRetentionService } from "./retention/service";
 import { ScoringAnalysisRepository } from "./scoring-analysis/repository";
 import { createScoringAnalysis } from "./scoring-analysis/service";
+import { SegmentRepository } from "./segments/repository";
+import { createSegmentService } from "./segments/service";
 import { createStrategyService } from "./strategies/service";
 import { TradingRepository } from "./trading/repository";
 import { createTradingService } from "./trading/service";
@@ -110,9 +110,9 @@ export function createTestApp(
 		newsDelayMs: () => newsDelayMs(newsRepo),
 		now: () => clock.now,
 	});
-	// 定期の作成は動かさず、テストから datasets.build() を呼ぶ
-	const datasets = createDatasetService({
-		repo: new DatasetRepository(db),
+	// 定期の作成は動かさず、テストから segments.build() を呼ぶ
+	const segments = createSegmentService({
+		repo: new SegmentRepository(db),
 		marketData: marketDataRepo,
 		newsDeletedBefore: () => scoreRepo.newsDeletedBefore(),
 		now: () => clock.now,
@@ -125,7 +125,7 @@ export function createTestApp(
 		runner,
 		judgments,
 		scoring,
-		datasets,
+		segments,
 		now: () => 3_000,
 	});
 	const adviceRepo = new AdviceRepository(db);
@@ -189,7 +189,7 @@ export function createTestApp(
 		analysisExport,
 		retention,
 		accuracy: scoringAnalysis,
-		datasets,
+		segments,
 		...over,
 	});
 	return {
@@ -200,7 +200,7 @@ export function createTestApp(
 		strategies,
 		backtests,
 		backtestRepo,
-		datasets,
+		segments,
 		advice,
 		adviceRepo,
 		adviceAi,

@@ -46,8 +46,8 @@ type RunRow = {
 	criteria_version: number | null;
 	news_delay_ms: number | null;
 	news_data_version: number | null;
-	dataset_id: number | null;
-	dataset_regime: MarketRegime | null;
+	segment_id: number | null;
+	segment_regime: MarketRegime | null;
 };
 
 function toRun(r: RunRow): BacktestRun {
@@ -80,10 +80,10 @@ function toRun(r: RunRow): BacktestRun {
 		criteriaVersion: r.criteria_version,
 		newsDelayMs: r.news_delay_ms,
 		newsDataVersion: r.news_data_version,
-		dataset:
-			r.dataset_id === null || r.dataset_regime === null
+		segment:
+			r.segment_id === null || r.segment_regime === null
 				? null
-				: { id: r.dataset_id, regime: r.dataset_regime },
+				: { id: r.segment_id, regime: r.segment_regime },
 	};
 }
 
@@ -118,7 +118,7 @@ export class BacktestRepository {
 				`insert into backtest_runs (strategy_name, params, timeframe, from_time, to_time,
 				 initial_cash, fee_limit_ppm, fee_market_ppm, skip_gaps, status, started_at, bar_count,
 				 step_timeframe, step_limited, aggregation_rule, criteria_version, news_delay_ms, news_data_version,
-				 dataset_id, dataset_regime)
+				 segment_id, segment_regime)
 				 values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					run.name,
@@ -140,8 +140,8 @@ export class BacktestRepository {
 					run.criteriaVersion,
 					run.newsDelayMs,
 					run.newsDataVersion,
-					run.dataset?.id ?? null,
-					run.dataset?.regime ?? null,
+					run.segment?.id ?? null,
+					run.segment?.regime ?? null,
 				],
 			).lastInsertRowid,
 		);

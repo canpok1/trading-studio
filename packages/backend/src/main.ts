@@ -15,8 +15,6 @@ import { workerRunner } from "./backtests/worker-runner";
 import { coincheckFeed } from "./collector/coincheck";
 import { createCollector } from "./collector/collector";
 import { demoFeed } from "./collector/fake-feed";
-import { DatasetRepository } from "./datasets/repository";
-import { createDatasetService } from "./datasets/service";
 import { migrateDb } from "./db/migrate";
 import { isDbReachable, openDb } from "./db/open";
 import { createJudgmentService } from "./judgments/service";
@@ -42,6 +40,8 @@ import { RetentionRepository } from "./retention/repository";
 import { createRetentionService } from "./retention/service";
 import { ScoringAnalysisRepository } from "./scoring-analysis/repository";
 import { createScoringAnalysis } from "./scoring-analysis/service";
+import { SegmentRepository } from "./segments/repository";
+import { createSegmentService } from "./segments/service";
 import { slowRequestLog, watchEventLoopLag } from "./slow-log";
 import { serveFrontend } from "./static";
 import { createStrategyService } from "./strategies/service";
@@ -157,17 +157,17 @@ const retention = createRetentionService({
 const retentionTimer = setInterval(() => retention.tick(), 60_000);
 retention.tick();
 
-const datasets = createDatasetService({
-	repo: new DatasetRepository(db),
+const segments = createSegmentService({
+	repo: new SegmentRepository(db),
 	marketData: marketDataRepo,
 	newsDeletedBefore: () => scoreRepo.newsDeletedBefore(),
 });
-const datasetTimer = setInterval(() => datasets.tick(), 60_000);
-datasets.tick();
+const segmentTimer = setInterval(() => segments.tick(), 60_000);
+segments.tick();
 
 const marketData = createMarketDataService(marketDataRepo, {
-	// 過去の足を取り込んだら、その期間のデータセットをすぐ作る
-	onSettled: (job) => job.status === "done" && datasets.refresh(),
+	// 過去の足を取り込んだら、その期間の相場データをすぐ作る
+	onSettled: (job) => job.status === "done" && segments.refresh(),
 });
 const scoring = createScoringService({
 	repo: scoreRepo,
@@ -181,7 +181,7 @@ const backtests = createBacktestService({
 	runner: workerRunner,
 	judgments,
 	scoring,
-	datasets,
+	segments,
 });
 const adviceRepo = new AdviceRepository(db);
 adviceRepo.failInterrupted();
@@ -221,7 +221,7 @@ const server = new Hono()
 			strategies,
 			backtests,
 			marketData,
-			datasets,
+			segments,
 			scoring,
 			news,
 			judgments,
@@ -251,7 +251,7 @@ const server = new Hono()
 			}),
 			retention,
 			accuracy: scoringAnalysis,
-			datasets,
+			segments,
 		}),
 	);
 serveFrontend(server, distDir);
@@ -280,7 +280,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
 		clearInterval(scorerTimer);
 		clearInterval(tradingTimer);
 		clearInterval(retentionTimer);
-		clearInterval(datasetTimer);
+		clearInterval(segmentTimer);
 		stopLagWatch();
 		collector.stop();
 		await http.stop();

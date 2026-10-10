@@ -63,10 +63,10 @@ export function backtestRoutes(service: BacktestService) {
 							v.criteriaVersion === undefined || v.criteriaVersion === null
 								? null
 								: num(v.criteriaVersion),
-						datasetId:
-							v.datasetId === undefined || v.datasetId === null
+						segmentId:
+							v.segmentId === undefined || v.segmentId === null
 								? null
-								: num(v.datasetId),
+								: num(v.segmentId),
 					};
 					return input;
 				}),

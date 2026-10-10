@@ -38,7 +38,7 @@ export interface JudgmentService {
 	current(rule?: AggregationRule, at?: number): CurrentJudgment;
 	/**
 	 * [from, to) の足ごとの判定。rule を省くと今の集計ルール。version・delayMs は scoredNews と同じ。
-	 * datasetFrom は firstScoredAt と同じ
+	 * segmentFrom は firstScoredAt と同じ
 	 */
 	series(
 		from: number,
@@ -47,14 +47,14 @@ export interface JudgmentService {
 		rule?: AggregationRule,
 		version?: number | null,
 		delayMs?: number | null,
-		datasetFrom?: number | null,
+		segmentFrom?: number | null,
 	): JudgmentSeries;
 	rule(): AggregationRule;
 	/**
 	 * 採点の記録の始まり。まだ無ければ null。古いニュースを消した後は消した境目から。
-	 * datasetFrom にデータセットの開始を渡すと、そのデータセットのために残したニュースの始まりから
+	 * segmentFrom に相場データの開始を渡すと、その相場データのために残したニュースの始まりから
 	 */
-	firstScoredAt(datasetFrom?: number | null): number | null;
+	firstScoredAt(segmentFrom?: number | null): number | null;
 	/**
 	 * 判定に使い始める時刻が [from, to) の採点済みのニュース。version を渡すとその版の採点だけを使う（無い記事は除く）。null・省略は運用どおり。
 	 * delayMs が null・省略なら運用の判定（採点時刻から使う）、数ならバックテスト（新しさの時刻 + delayMs から使う）

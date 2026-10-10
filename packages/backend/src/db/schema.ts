@@ -56,9 +56,9 @@ export const candles = sqliteTable(
 	],
 );
 
-/** データセット。足は写さず、期間と相場のラベルだけを持つ。毎月、直近2か月ぶんを作る */
-export const datasets = sqliteTable(
-	"datasets",
+/** 相場データ。足は写さず、期間と相場のラベルだけを持つ。毎月、直近2か月ぶんを作る */
+export const segments = sqliteTable(
+	"segments",
 	{
 		id: integer("id").primaryKey({ autoIncrement: true }),
 		/** 期間（to は含まない）。JST の月初 */
@@ -72,7 +72,7 @@ export const datasets = sqliteTable(
 		volatilityPpm: integer("volatility_ppm").notNull(),
 		createdAt: integer("created_at").notNull(),
 	},
-	(t) => [uniqueIndex("datasets_period").on(t.fromTime, t.toTime)],
+	(t) => [uniqueIndex("segments_period").on(t.fromTime, t.toTime)],
 );
 
 /** 戦略（名前を付けた条件のセット） */
@@ -129,10 +129,10 @@ export const backtestRuns = sqliteTable("backtest_runs", {
 	newsDelayMs: integer("news_delay_ms"),
 	/** 使ったニュースのデータの版（記事の取得・採点・採点し直し・置き換えのうち最新の時刻）。記事が無い・この列を足す前の実行は null */
 	newsDataVersion: integer("news_data_version"),
-	/** 期間をデータセットで選んだときのデータセット。期間を指定した実行・この列を足す前の実行は null。データセットを消しても残す */
-	datasetId: integer("dataset_id"),
-	/** そのときのデータセットの相場（up / down / range / volatile） */
-	datasetRegime: text("dataset_regime"),
+	/** 期間を相場データで選んだときの相場データ。期間を指定した実行・この列を足す前の実行は null。相場データを消しても残す */
+	segmentId: integer("segment_id"),
+	/** そのときの相場データの相場（up / down / range / volatile） */
+	segmentRegime: text("segment_regime"),
 });
 
 /** バックテストの結果の中身。大きいので gzip した JSON で持つ */

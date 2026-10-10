@@ -13,11 +13,11 @@ import {
 	validateConditionSet,
 	withSellDetails,
 } from "@trading-studio/core";
-import type { DatasetService } from "../datasets/types";
 import type { JudgmentService } from "../judgments/types";
 import { MAX_CHART_BARS } from "../market/service";
 import type { MarketDataRepository } from "../market-data/repository";
 import type { ScoringService } from "../news/types";
+import type { SegmentService } from "../segments/types";
 import { checkName } from "../strategies/service";
 import type { StrategyService } from "../strategies/types";
 import type { BacktestRepository } from "./repository";
@@ -51,7 +51,7 @@ export type BacktestServiceDeps = {
 		| "newsDataVersion"
 	>;
 	scoring: Pick<ScoringService, "rescoreCoverage">;
-	datasets: Pick<DatasetService, "get">;
+	segments: Pick<SegmentService, "get">;
 	now?: () => number;
 };
 
@@ -93,7 +93,7 @@ export function createBacktestService({
 	runner,
 	judgments,
 	scoring,
-	datasets,
+	segments,
 	now = Date.now,
 }: BacktestServiceDeps): BacktestService & { running(): Promise<void> | null } {
 	let current: { id: number; job: RunningJob; done: Promise<void> } | null =
@@ -114,17 +114,17 @@ export function createBacktestService({
 			if (current) {
 				return fail({ kind: "busy", run: get(current.id) as BacktestRun });
 			}
-			const dataset =
-				requested.datasetId === null ? null : datasets.get(requested.datasetId);
-			if (requested.datasetId !== null && !dataset) {
+			const segment =
+				requested.segmentId === null ? null : segments.get(requested.segmentId);
+			if (requested.segmentId !== null && !segment) {
 				return fail({
 					kind: "invalid_input",
-					field: "dataset",
-					message: "データセットが見つからない。選び直す",
+					field: "segment",
+					message: "相場データが見つからない。選び直す",
 				});
 			}
-			const input = dataset
-				? { ...requested, from: dataset.from, to: dataset.to }
+			const input = segment
+				? { ...requested, from: segment.from, to: segment.to }
 				: requested;
 			const errors = validateConditionSet(input.params);
 			if (errors.length > 0) return fail({ kind: "invalid_params", errors });
@@ -155,7 +155,7 @@ export function createBacktestService({
 			const rule = judgments.rule();
 			const usesJudgments = conditionStrategy.requiredJudges(params).length > 0;
 			const firstScoredAt = usesJudgments
-				? judgments.firstScoredAt(dataset?.from ?? null)
+				? judgments.firstScoredAt(segment?.from ?? null)
 				: null;
 			if (
 				usesJudgments &&
@@ -248,7 +248,7 @@ export function createBacktestService({
 								criteriaVersion,
 								newsDelayMs,
 							),
-				dataset: dataset ? { id: dataset.id, regime: dataset.regime } : null,
+				segment: segment ? { id: segment.id, regime: segment.regime } : null,
 				startedAt: now(),
 				barCount,
 			});
@@ -358,8 +358,8 @@ export function createBacktestService({
 									rule,
 									run.criteriaVersion,
 									run.newsDelayMs,
-									// 残っているデータセットはニュースも残しているので、古いニュースを消した後も背景を出せる
-									run.dataset && datasets.get(run.dataset.id) ? run.from : null,
+									// 残っている相場データはニュースも残しているので、古いニュースを消した後も背景を出せる
+									run.segment && segments.get(run.segment.id) ? run.from : null,
 								)
 							: null,
 				},

@@ -1,6 +1,6 @@
 // 古いデータの削除。保持期間の設定と前回の結果は settings に持つ
 
-import { DATASET_LEAD_MS } from "@trading-studio/core";
+import { SEGMENT_LEAD_MS } from "@trading-studio/core";
 import type { Db } from "../db/open";
 import { NEWS_DELETED_BEFORE_KEY } from "../news/score-repository";
 import type { RetentionRun, RetentionSettings, RetentionTable } from "./types";
@@ -20,7 +20,7 @@ const TABLES: readonly [string, string][] = [
 	["trading_orders", "自動取引の注文"],
 	["backtest_runs", "バックテストの実行"],
 	["candles", "足"],
-	["datasets", "データセット"],
+	["segments", "相場データ"],
 	["news", "ニュース"],
 ];
 
@@ -105,23 +105,23 @@ export class RetentionRepository {
 		return ids.length;
 	}
 
-	/** 開始が before より前のデータセットを、相場ごとに最新の1件を残して消す。消した件数を返す */
-	pruneDatasets(before: number): number {
+	/** 開始が before より前の相場データを、相場ごとに最新の1件を残して消す。消した件数を返す */
+	pruneSegments(before: number): number {
 		return this.sql.run(
-			`delete from datasets where from_time < ?1 and from_time < (
-			   select max(k.from_time) from datasets k where k.regime = datasets.regime and k.from_time < ?1)`,
+			`delete from segments where from_time < ?1 and from_time < (
+			   select max(k.from_time) from segments k where k.regime = segments.regime and k.from_time < ?1)`,
 			[before],
 		).changes;
 	}
 
-	/** 残っているデータセットのために残す範囲（開始の DATASET_LEAD_MS 前から終了まで） */
+	/** 残っている相場データのために残す範囲（開始の SEGMENT_LEAD_MS 前から終了まで） */
 	keptRanges(): { from: number; to: number }[] {
 		return this.sql
 			.query<{ from_time: number; to_time: number }, []>(
-				"select from_time, to_time from datasets",
+				"select from_time, to_time from segments",
 			)
 			.all()
-			.map((d) => ({ from: d.from_time - DATASET_LEAD_MS, to: d.to_time }));
+			.map((d) => ({ from: d.from_time - SEGMENT_LEAD_MS, to: d.to_time }));
 	}
 
 	/** 公開が [from, to) のニュースを最大 limit 件、採点・採点し直しごと消す。消した件数を返す */

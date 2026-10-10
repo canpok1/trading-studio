@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { datasetName, signedPercent } from "./dataset";
+import { segmentName, signedPercent } from "./segment";
 
 const jst = (s: string) => Date.parse(`${s}+09:00`);
 
-describe("datasetName", () => {
+describe("segmentName", () => {
 	test("同じ年なら終わりの月だけ書く", () => {
 		expect(
-			datasetName({
+			segmentName({
 				from: jst("2026-08-01T00:00:00"),
 				to: jst("2026-10-01T00:00:00"),
 				regime: "up",
@@ -16,7 +16,7 @@ describe("datasetName", () => {
 
 	test("年をまたげば年も書く", () => {
 		expect(
-			datasetName({
+			segmentName({
 				from: jst("2025-12-01T00:00:00"),
 				to: jst("2026-02-01T00:00:00"),
 				regime: "volatile",

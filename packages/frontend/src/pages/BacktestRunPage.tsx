@@ -1,7 +1,7 @@
 import type {
 	BacktestRun,
 	CriteriaVersion,
-	ListedDataset,
+	ListedSegment,
 	RescoreCoverage,
 	StoredStrategy,
 	TimeframeCoverage,
@@ -73,8 +73,8 @@ import {
 } from "../format";
 import { useBacktestJob } from "../lib/backtest-job";
 import { stepLimitedText } from "../lib/condition-text";
-import { datasetName, datasetSummary, REGIME_RULE_TEXT } from "../lib/dataset";
 import { formatInt } from "../lib/number";
+import { REGIME_RULE_TEXT, segmentName, segmentSummary } from "../lib/segment";
 import { errorMessage, readJson, useAsync } from "../lib/useAsync";
 
 const DAY = 86_400_000;
@@ -109,10 +109,10 @@ export type BacktestDraft = {
 	fees: { limitPpm: number; marketPpm: number };
 	/** 市場評価に使う採点の基準の版。null・省略は運用どおり */
 	criteriaVersion?: number | null;
-	/** 期間の決め方。dataset=データセットを選ぶ、range（省略）=日付で指定する */
-	periodMode?: "dataset" | "range";
-	/** 選んだデータセット。null・省略や消えたデータセットは一番新しいもの */
-	datasetId?: number | null;
+	/** 期間の決め方。segment=相場データを選ぶ、range（省略）=日付で指定する */
+	periodMode?: "segment" | "range";
+	/** 選んだ相場データ。null・省略や消えた相場データは一番新しいもの */
+	segmentId?: number | null;
 };
 
 /** 戦略と結び付いていた頃の下書き（名前もテンプレートも無く、strategyId を持つ）も読む */
@@ -146,7 +146,7 @@ function loadDraft(strategies: StoredStrategy[]): BacktestDraft | null {
 			fees: v.fees,
 			criteriaVersion: v.criteriaVersion ?? null,
 			periodMode: v.periodMode ?? "range",
-			datasetId: v.datasetId ?? null,
+			segmentId: v.segmentId ?? null,
 		};
 	} catch {
 		return null;
@@ -200,7 +200,7 @@ const TABS = [
 type BacktestTab = (typeof TABS)[number][0];
 
 const PERIOD_MODES = [
-	["dataset", "データセット"],
+	["segment", "相場データ"],
 	["range", "期間を指定"],
 ] as const;
 
@@ -222,7 +222,7 @@ type Data = {
 	firstScoredAt: number | null;
 	criteriaVersions: CriteriaVersion[];
 	/** 新しい順 */
-	datasets: ListedDataset[];
+	segments: ListedSegment[];
 };
 
 export function BacktestRunPage() {
@@ -249,9 +249,9 @@ export function BacktestRunPage() {
 			api.api.scoring.criteria
 				.$get()
 				.then((res) => readJson<{ versions: CriteriaVersion[] }>(res)),
-			api.api.datasets
+			api.api.segments
 				.$get({ query: {} })
-				.then((res) => readJson<{ datasets: ListedDataset[] }>(res)),
+				.then((res) => readJson<{ segments: ListedSegment[] }>(res)),
 		]);
 		return {
 			strategies: s.strategies,
@@ -259,7 +259,7 @@ export function BacktestRunPage() {
 			latest: l.latest?.close ?? null,
 			firstScoredAt: j.firstScoredAt,
 			criteriaVersions: cv.versions,
-			datasets: ds.datasets,
+			segments: ds.segments,
 		};
 	}, [api]);
 	const { state, reload } = useAsync(load);
@@ -311,10 +311,10 @@ export function BacktestRunPage() {
 						? passed.criteriaVersion
 						: (base?.criteriaVersion ?? null),
 				periodMode: passed?.periodMode ?? base?.periodMode ?? "range",
-				datasetId:
-					passed?.datasetId !== undefined
-						? passed.datasetId
-						: (base?.datasetId ?? null),
+				segmentId:
+					passed?.segmentId !== undefined
+						? passed.segmentId
+						: (base?.segmentId ?? null),
 			});
 			// 再読み込みで同じ条件に戻さないよう、渡された条件を消す
 			navigate(location.pathname, { replace: true, state: null });
@@ -390,7 +390,7 @@ export function BacktestRunPage() {
 			latest={state.data.latest}
 			firstScoredAt={state.data.firstScoredAt}
 			criteriaVersions={state.data.criteriaVersions}
-			datasets={state.data.datasets}
+			segments={state.data.segments}
 		/>
 	);
 }
@@ -403,7 +403,7 @@ function RunForm({
 	latest,
 	firstScoredAt: latestFirstScoredAt,
 	criteriaVersions,
-	datasets,
+	segments,
 }: {
 	draft: BacktestDraft;
 	setDraft: (d: BacktestDraft) => void;
@@ -412,7 +412,7 @@ function RunForm({
 	latest: number | null;
 	firstScoredAt: number | null;
 	criteriaVersions: CriteriaVersion[];
-	datasets: ListedDataset[];
+	segments: ListedSegment[];
 }) {
 	const api = useApi();
 	const job = useBacktestJob();
@@ -425,7 +425,7 @@ function RunForm({
 		to: useId(),
 		cash: useId(),
 		version: useId(),
-		dataset: useId(),
+		segment: useId(),
 	};
 
 	const p = draft.params;
@@ -462,17 +462,17 @@ function RunForm({
 	const toDate = draft.toDate ?? defaultTo;
 	const rangeTo = (fromDateInputValue(toDate) ?? 0) + DAY;
 	const fromDate = draft.fromDate ?? toDateInputValue(rangeTo - 30 * DAY);
-	// データセットを選ぶときは、その期間で実行する。まだ選んでいなければ一番新しいもの
-	const byDataset = draft.periodMode === "dataset";
-	const dataset = byDataset
-		? draft.datasetId == null
-			? (datasets[0] ?? null)
-			: (datasets.find((d) => d.id === draft.datasetId) ?? null)
+	// 相場データを選ぶときは、その期間で実行する。まだ選んでいなければ一番新しいもの
+	const bySegment = draft.periodMode === "segment";
+	const segment = bySegment
+		? draft.segmentId == null
+			? (segments[0] ?? null)
+			: (segments.find((d) => d.id === draft.segmentId) ?? null)
 		: null;
-	const toMs = dataset ? dataset.to : rangeTo;
-	// 古いニュースを消した後も、残したデータセットはそのニュースを使えるので記録の始まりが違う
-	const firstScoredAt = dataset ? dataset.firstScoredAt : latestFirstScoredAt;
-	const fromMs = dataset ? dataset.from : (fromDateInputValue(fromDate) ?? 0);
+	const toMs = segment ? segment.to : rangeTo;
+	// 古いニュースを消した後も、残した相場データはそのニュースを使えるので記録の始まりが違う
+	const firstScoredAt = segment ? segment.firstScoredAt : latestFirstScoredAt;
+	const fromMs = segment ? segment.from : (fromDateInputValue(fromDate) ?? 0);
 	const shortfalls = useMemo(
 		() =>
 			historyShortfalls(
@@ -519,8 +519,8 @@ function RunForm({
 			? null
 			: firstScoredAt === null
 				? "市場評価の条件があるが、ニュースの採点の記録がまだ無いため実行できない。市場評価の条件で「データなし」を選ぶと実行できる"
-				: fromMs < firstScoredAt && dataset
-					? `市場評価の記録は ${formatDateTime(firstScoredAt)} から。このデータセットはそれより前を含むため、市場評価の条件で「データなし」を選ぶと実行できる`
+				: fromMs < firstScoredAt && segment
+					? `市場評価の記録は ${formatDateTime(firstScoredAt)} から。この相場データはそれより前を含むため、市場評価の条件で「データなし」を選ぶと実行できる`
 					: fromMs < firstScoredAt
 						? `市場評価の記録は ${formatDateTime(firstScoredAt)} から。開始を ${formatDate(firstAllowedFrom(firstScoredAt))} 以降にするか、市場評価の条件で「データなし」を選ぶと実行できる`
 						: null;
@@ -553,10 +553,10 @@ function RunForm({
 	}, [cov, fromMs, toMs, tfMs]);
 
 	const periodError =
-		byDataset && datasets.length === 0
-			? "データセットがまだ無い。1分足が2か月そろうと、次の月に入ってから作る。それまでは期間を指定する"
-			: byDataset && !dataset
-				? "選んでいたデータセットは消えている。選び直す"
+		bySegment && segments.length === 0
+			? "相場データがまだ無い。1分足が2か月そろうと、次の月に入ってから作る。それまでは期間を指定する"
+			: bySegment && !segment
+				? "選んでいた相場データは消えている。選び直す"
 				: fromMs >= toMs
 					? "終了日は開始日以降にする"
 					: null;
@@ -596,7 +596,7 @@ function RunForm({
 					fees: draft.fees,
 					skipGaps,
 					criteriaVersion,
-					datasetId: dataset?.id ?? null,
+					segmentId: segment?.id ?? null,
 				},
 			});
 			const body = (await res.json()) as {
@@ -740,7 +740,7 @@ function RunForm({
 						<h2 className="text-[15px] font-bold">期間</h2>
 						<Help label="期間">
 							<p>
-								データセットは、月が替わると直近2か月の期間を値動きで「上昇相場」「下落相場」「レンジ相場」「乱高下相場」のどれかに分けて作る。同じ相場の別の時期で試すときに使う。
+								相場データは、月が替わると直近2か月の期間を値動きで「上昇相場」「下落相場」「レンジ相場」「乱高下相場」のどれかに分けて作る。同じ相場の別の時期で試すときに使う。
 							</p>
 							<p>{REGIME_RULE_TEXT}</p>
 						</Help>
@@ -749,40 +749,40 @@ function RunForm({
 						name="period-mode"
 						label="期間の決め方"
 						options={PERIOD_MODES}
-						value={byDataset ? "dataset" : "range"}
+						value={bySegment ? "segment" : "range"}
 						onChange={(v) =>
-							// 一番新しいものを選んだまま残す。後で新しいデータセットができても、選んだ期間を変えない
+							// 一番新しいものを選んだまま残す。後で新しい相場データができても、選んだ期間を変えない
 							update({
 								periodMode: v,
-								datasetId: draft.datasetId ?? datasets[0]?.id ?? null,
+								segmentId: draft.segmentId ?? segments[0]?.id ?? null,
 							})
 						}
 					/>
-					{byDataset ? (
-						datasets.length > 0 && (
+					{bySegment ? (
+						segments.length > 0 && (
 							<div className="flex flex-col gap-1">
-								<label htmlFor={ids.dataset} className="text-xs text-text-2">
-									データセット
+								<label htmlFor={ids.segment} className="text-xs text-text-2">
+									相場データ
 								</label>
 								<select
-									id={ids.dataset}
-									value={dataset?.id ?? ""}
+									id={ids.segment}
+									value={segment?.id ?? ""}
 									onChange={(e) =>
 										e.target.value &&
-										update({ datasetId: Number(e.target.value) })
+										update({ segmentId: Number(e.target.value) })
 									}
 									className="h-11 rounded-[10px] border border-line bg-surface px-2 text-sm"
 								>
-									{!dataset && <option value="">選ぶ</option>}
-									{datasets.map((d) => (
+									{!segment && <option value="">選ぶ</option>}
+									{segments.map((d) => (
 										<option key={d.id} value={d.id}>
-											{datasetName(d)}
+											{segmentName(d)}
 										</option>
 									))}
 								</select>
-								{dataset && (
+								{segment && (
 									<span className="num text-xs text-text-2">
-										{datasetSummary(dataset)}
+										{segmentSummary(segment)}
 									</span>
 								)}
 							</div>

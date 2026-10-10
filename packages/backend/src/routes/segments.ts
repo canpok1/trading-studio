@@ -1,10 +1,10 @@
 import { isMarketRegime } from "@trading-studio/core";
 import { Hono } from "hono";
-import type { DatasetService, ListedDataset } from "../datasets/types";
 import type { JudgmentService } from "../judgments/types";
+import type { ListedSegment, SegmentService } from "../segments/types";
 
-export function datasetRoutes(
-	service: DatasetService,
+export function segmentRoutes(
+	service: SegmentService,
 	judgments: Pick<JudgmentService, "firstScoredAt">,
 ) {
 	return new Hono().get("/", (c) => {
@@ -15,10 +15,10 @@ export function datasetRoutes(
 				400,
 			);
 		}
-		// 古いニュースを消した後も、残したデータセットではそのニュースで市場評価を出せるので、記録の始まりはデータセットごとに違う
-		const datasets: ListedDataset[] = service
+		// 古いニュースを消した後も、残した相場データではそのニュースで市場評価を出せるので、記録の始まりは相場データごとに違う
+		const segments: ListedSegment[] = service
 			.list(regime ?? null)
 			.map((d) => ({ ...d, firstScoredAt: judgments.firstScoredAt(d.from) }));
-		return c.json({ datasets }, 200);
+		return c.json({ segments }, 200);
 	});
 }
