@@ -4,6 +4,7 @@ export * from "./backtest";
 export * from "./candles";
 export * from "./condition-strategy";
 export * from "./csv";
+export * from "./dataset";
 export * from "./format";
 export * from "./indicators";
 export * from "./market-regime";
