@@ -13,6 +13,7 @@ export * from "./money";
 export * from "./news-judgment";
 export * from "./screen-text";
 export * from "./strategy";
+export * from "./strategy-watch";
 export * from "./templates";
 export * from "./timeframe";
 export * from "./trading";

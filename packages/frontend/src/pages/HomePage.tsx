@@ -29,6 +29,10 @@ import { PANEL, PanelHeader } from "../components/home/Panel";
 import { PerformancePanel } from "../components/home/PerformancePanel";
 import { AddRunDialog } from "../components/home/RunDialogs";
 import {
+	NextMovesCard,
+	StrategyWatchPanel,
+} from "../components/home/StrategyWatch";
+import {
 	JudgmentTiles,
 	TotalPnlTile,
 	UnrealizedPnlTile,
@@ -51,7 +55,9 @@ import {
 	withLatestPrice,
 } from "../lib/home";
 import { formatSignedPercent } from "../lib/number";
+import { chartTriggers } from "../lib/strategy-watch";
 import {
+	useStrategyWatch,
 	useTradingOrders,
 	useTradingPerformance,
 	useTradingStatus,
@@ -204,6 +210,11 @@ function HomeBody({
 		visible && hasAccount,
 	);
 	const perf = useTradingPerformance(runId, visible && hasAccount);
+	const watch = useStrategyWatch(runId, visible && hasAccount);
+	// 見張りは定期的に取り直すので、発動価格が変わったときだけ線を引き直す
+	const triggerKey = JSON.stringify(chartTriggers(watch));
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 発動価格が変わったとき（triggerKey）だけ作り直す
+	const triggers = useMemo(() => chartTriggers(watch), [triggerKey]);
 	const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
 	const [toast, setToast] = useState<string | null>(null);
 	const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -387,6 +398,7 @@ function HomeBody({
 				)}
 				<JudgmentTiles current={current} />
 			</div>
+			{hasAccount && watch && <NextMovesCard watch={watch} />}
 			{barsError && !bars ? (
 				<section aria-label="価格チャート" className={`${PANEL} lg:col-span-2`}>
 					<PanelHeader title="チャート" />
@@ -413,6 +425,7 @@ function HomeBody({
 					viewKey={bars?.key ?? ""}
 					currentPrice={latest?.price ?? null}
 					entryPrices={entryPrices}
+					triggers={hasAccount ? triggers : undefined}
 					judgments={barJudgments}
 					markers={markers}
 					selectedId={selectedOrder}
@@ -436,6 +449,9 @@ function HomeBody({
 						</select>
 					}
 				/>
+			)}
+			{hasAccount && watch && (
+				<StrategyWatchPanel runId={runId} watch={watch} />
 			)}
 			{hasAccount && run && (
 				<>

@@ -7,6 +7,7 @@ import type {
 	JsonValue,
 	Lot,
 	Position,
+	StrategyWatch,
 	TradeOrder,
 	ValidationError,
 } from "@trading-studio/core";
@@ -164,6 +165,11 @@ export interface TradingService {
 	/** 運用の一覧（作った順） */
 	runs(): AutoTradingStatus[];
 	run(id: number): AutoTradingStatus | null;
+	/**
+	 * 運用する戦略を今の価格で試算した見張り（条件ごとの成立と発動価格）。注文も state の変更もしない。
+	 * 運用が無ければ null、戦略を選んでいないか価格がまだ無ければ watch が null
+	 */
+	watch(id: number): { watch: StrategyWatch | null } | null;
 	/** 運用を足す。数は core の TRADING_RUN_LIMITS まで、リアルは1つまで */
 	create(input: RunInput): TradingResult;
 	/** 名前と運用する戦略を変える。戦略はオン中と保有がある間は変えられない */

@@ -368,10 +368,13 @@ export const DEFAULT_STOP_LOSS_COOLDOWN_BARS = 0;
 /** EMA・RSI を途中から計算しても値がほぼ一致するよう、本数のこの倍の足を渡してもらう */
 const EMA_HISTORY_FACTOR = 10;
 
-type Hit = { ok: true; why: string } | { ok: false } | { insufficient: string };
+export type Hit =
+	| { ok: true; why: string }
+	| { ok: false }
+	| { insufficient: string };
 
 /** 1つの粒度の足と、その足で計算した指標 */
-type Series = {
+export type Series = {
 	candles: readonly Candle[];
 	closes: number[];
 	emaCache: Map<number, number[]>;
@@ -379,7 +382,7 @@ type Series = {
 	bollingerCache: Map<string, ReturnType<typeof bollinger>>;
 };
 
-type Ctx = {
+export type Ctx = {
 	/** 粒度ごとの足。渡されていない粒度は足が0本 */
 	series: (timeframe: Timeframe) => Series;
 	/** 判定器ごとの今の判定。まだ無ければ入らない */
@@ -394,7 +397,7 @@ type Ctx = {
 	} | null;
 };
 
-function seriesOf(candles: readonly Candle[]): Series {
+export function seriesOf(candles: readonly Candle[]): Series {
 	return {
 		candles,
 		closes: candles.map((c) => c.close),
@@ -404,7 +407,7 @@ function seriesOf(candles: readonly Candle[]): Series {
 	};
 }
 
-function emaOf(ctx: Series, period: number): number[] {
+export function emaOf(ctx: Series, period: number): number[] {
 	let v = ctx.emaCache.get(period);
 	if (!v) {
 		v = ema(ctx.closes, period);
@@ -413,7 +416,7 @@ function emaOf(ctx: Series, period: number): number[] {
 	return v;
 }
 
-function rsiOf(ctx: Series, period: number): number[] {
+export function rsiOf(ctx: Series, period: number): number[] {
 	let v = ctx.rsiCache.get(period);
 	if (!v) {
 		v = rsi(ctx.closes, period);
@@ -476,7 +479,7 @@ export function historyShortfalls(
 	return out;
 }
 
-function checkCondition(c: Condition, ctx: Ctx): Hit {
+export function checkCondition(c: Condition, ctx: Ctx): Hit {
 	if (!needsCandles(c)) return checkOther(c, ctx);
 	const sr = ctx.series(c.timeframe);
 	const n = sr.candles.length;
@@ -1208,7 +1211,7 @@ function nextEval(now: number, p: ConditionSet, holding: boolean): number {
 }
 
 /** 判定器ごとの最新の判定。値として読めないものは無視する */
-function latestJudgments(
+export function latestJudgments(
 	all: StrategyInput<ConditionSet>["judgments"],
 ): Ctx["judgments"] {
 	const out: Ctx["judgments"] = {};
@@ -1228,7 +1231,7 @@ function latestJudgments(
  * 買いごとの、前回の判定で買いの条件が成立していたか。まだ判定していない買いは持たない。
  * 買いを複数持つ前の state（buyHit）は先頭の買いのものとして読む
  */
-function prevBuyHits(
+export function prevBuyHits(
 	state: JsonValue,
 	p: ConditionSet,
 ): Record<string, boolean> {
@@ -1246,7 +1249,7 @@ function prevBuyHits(
 }
 
 /** 最後に損切りの売りを出した判定の時刻。無ければ null */
-function prevStopLossAt(state: JsonValue): number | null {
+export function prevStopLossAt(state: JsonValue): number | null {
 	return isObj(state) &&
 		typeof state.stopLossAt === "number" &&
 		Number.isFinite(state.stopLossAt)
@@ -1254,7 +1257,7 @@ function prevStopLossAt(state: JsonValue): number | null {
 		: null;
 }
 
-function usesCondition(p: ConditionSet, type: ConditionType): boolean {
+export function usesCondition(p: ConditionSet, type: ConditionType): boolean {
 	return allGroups(p).some((g) => g.conditions.some((c) => c.type === type));
 }
 
@@ -1262,7 +1265,7 @@ function usesCondition(p: ConditionSet, type: ConditionType): boolean {
  * ロットごとの、買ってからの最高値。前回までの最高値（state）と、渡された直近の細かい足のうち約定より後の値動きから求める。
  * state は自動取引をオンにし直すと消えるため、足だけでも求められる形にしている
  */
-function lotPeaks(
+export function lotPeaks(
 	lots: StrategyInput<ConditionSet>["lots"],
 	recent: StrategyInput<ConditionSet>["recent"],
 	state: JsonValue,
