@@ -43,11 +43,17 @@
 	--color-warn-strong: #d89a12;
 	--color-paper: #e3a21a;
 	--color-paper-ink: #2a1e00;
-	/* 売りのバッジ。買い（青）・売り（橙）・損益（緑・赤）と被らない色にする */
-	--color-take-profit: #6b3fc0;
-	--color-take-profit-bg: rgba(122, 79, 196, 0.14);
-	--color-stop-loss: #7d5a00;
-	--color-stop-loss-bg: rgba(214, 150, 20, 0.22);
+	/* 売りのバッジ。売り系の暖色で、利確は明るい橙・損切りは暗い赤茶 */
+	--color-take-profit: #b35a00;
+	--color-take-profit-bg: rgba(240, 140, 0, 0.18);
+	--color-stop-loss: #8a2f12;
+	--color-stop-loss-bg: rgba(160, 60, 25, 0.16);
+	/* チャートの発動価格（次の行動）の線と、価格の軸の薄い札。買い系は寒色、売り系は暖色。利確は明るく、損切りは暗く */
+	--color-take-profit-line: #f08c00;
+	--color-take-profit-tag: #fde3bd;
+	--color-stop-loss-line: #8a2f12;
+	--color-stop-loss-tag: #efd6cc;
+	--color-entry-tag: #dbe5fa;
 	--color-scrim: rgba(15, 17, 19, 0.45);
 	/* 成績の評価のバッジ。優秀→非常に悪い の5段階 */
 	--color-grade-excellent: #ffffff;
@@ -131,10 +137,16 @@
 	--color-warn: rgba(240, 180, 40, 0.17);
 	--color-warn-strong: #e8b02f;
 	--color-paper-ink: #1f1600;
-	--color-take-profit: #c0a6f5;
-	--color-take-profit-bg: rgba(181, 149, 240, 0.18);
-	--color-stop-loss: #e8c060;
-	--color-stop-loss-bg: rgba(214, 150, 20, 0.22);
+	--color-take-profit: #f5a840;
+	--color-take-profit-bg: rgba(240, 140, 0, 0.2);
+	--color-stop-loss: #e0805c;
+	--color-stop-loss-bg: rgba(200, 90, 50, 0.22);
+	/* ダークでは損切りの線を背景より明るい赤茶にし、利確とは色相で分ける */
+	--color-take-profit-line: #f5a030;
+	--color-take-profit-tag: #5c3b0c;
+	--color-stop-loss-line: #c8653f;
+	--color-stop-loss-tag: #4d2417;
+	--color-entry-tag: #1f3563;
 	--color-scrim: rgba(0, 0, 0, 0.6);
 	--color-grade-excellent: #0e1012;
 	--color-grade-excellent-bg: #3fc57e;

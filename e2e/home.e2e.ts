@@ -391,3 +391,41 @@ test("ボリンジャーバンドは戦略で使っていなければ隠して�
 	await bb.click();
 	await expect(page.getByTestId("chart-bb")).toHaveCount(0);
 });
+
+test("運用する戦略を選ぶと、次の動きと戦略の見張りが出て、グループの開閉を覚える", async ({
+	page,
+}, info) => {
+	const name = `見張り ${info.project.name}`;
+	const created = await page.request.post("/api/strategies", {
+		data: { name, from: { template: "range" } },
+	});
+	expect(created.ok()).toBe(true);
+	await page.goto("/home");
+	await expect(page.getByTestId("chart-close")).toHaveText(/^[\d,]+円$/, {
+		timeout: 15_000,
+	});
+	await chooseStrategy(page, name);
+	await expect(page.getByRole("region", { name: "次の動き" })).toBeVisible();
+	const panel = page.getByRole("region", { name: "戦略の見張り" });
+	await expect(panel).toContainText("買い1");
+	// グループは最初は閉じ、開いたものは再読み込みしても開いたまま
+	const buyGroup = panel.locator("details").first();
+	await expect(buyGroup).not.toHaveAttribute("open");
+	await buyGroup.locator("summary").click();
+	await expect(buyGroup).toHaveAttribute("open");
+	await expect(page.getByRole("button", { name: /^表示/ })).toContainText(
+		"発動価格",
+	);
+
+	await page.reload();
+	await expect(
+		page
+			.getByRole("region", { name: "戦略の見張り" })
+			.locator("details")
+			.first(),
+	).toHaveAttribute("open");
+	await buyGroup.locator("summary").click();
+	await expect(buyGroup).not.toHaveAttribute("open");
+	await chooseStrategy(page, null);
+	await expect(panel).toBeHidden();
+});

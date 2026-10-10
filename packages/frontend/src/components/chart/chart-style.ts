@@ -69,3 +69,25 @@ export function useShowVolume(): [boolean, (on: boolean) => void] {
 	}, []);
 	return [on, set];
 }
+
+const TRIGGER_KEY = "chart-trigger";
+
+/** 発動価格（戦略の次の行動）の線を出すか。既定は出す。選んだものをブラウザに保存する */
+export function useShowTriggers(): [boolean, (on: boolean) => void] {
+	const [on, setOn] = useState(() => {
+		try {
+			return localStorage.getItem(TRIGGER_KEY) !== "off";
+		} catch {
+			return true;
+		}
+	});
+	const set = useCallback((v: boolean) => {
+		setOn(v);
+		try {
+			localStorage.setItem(TRIGGER_KEY, v ? "on" : "off");
+		} catch {
+			// 保存できない環境では、この画面を開いている間だけ効く
+		}
+	}, []);
+	return [on, set];
+}

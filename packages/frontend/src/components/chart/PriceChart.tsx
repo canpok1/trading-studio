@@ -1,5 +1,6 @@
 // 価格チャート。バックテスト結果とホーム（のちにデモ・リアルも）で使う
 
+import type { WatchActionKind } from "@trading-studio/core";
 import {
 	bollinger,
 	ema,
@@ -32,6 +33,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { formatDateTime } from "../../format";
 import type { ChartIndicators } from "../../lib/chart-indicators";
 import { formatInt } from "../../lib/number";
+import type { ChartTrigger } from "../../lib/strategy-watch";
 import { Help } from "../Help";
 import { iconEdge, ShapeIcon } from "../judgment/JudgmentBadge";
 import { valueStyle } from "../judgment/judgment-style";
@@ -50,7 +52,12 @@ import {
 	toSlots,
 	zoomRange,
 } from "./chart-data";
-import { useChartStyle, useShowEntry, useShowVolume } from "./chart-style";
+import {
+	useChartStyle,
+	useShowEntry,
+	useShowTriggers,
+	useShowVolume,
+} from "./chart-style";
 import {
 	BbSettingsModal,
 	EmaSettingsModal,
@@ -79,6 +86,8 @@ type Props = {
 	currentPrice?: number | null;
 	/** 保有中のロットの買値。ロットごとに線を引く。渡すと「表示」に買値の切り替えを出す（ホーム） */
 	entryPrices?: readonly number[];
+	/** 発動価格（戦略の次の行動）。破線と、価格の軸の薄い札で出す。渡すと「表示」に発動価格の切り替えを出す（ホーム） */
+	triggers?: readonly ChartTrigger[];
 	/** 表示の切り替えの先頭に置く操作（ホームの粒度の切り替えなど） */
 	toolbar?: ReactNode;
 	/**
@@ -107,6 +116,29 @@ const INDICATOR_LABELS = { ema: "EMA", bb: "BB", rsi: "RSI" } as const;
 const rsiVar = (j: number) => RSI_VARS[j % 2] as string;
 
 type RsiLine = { period: number; thresholds: readonly number[] };
+
+/** 発動価格の線の色・軸の札の色・札の字。買い系は寒色、売り系は暖色（一部利確は利確と同じ色で、字で分ける） */
+const TRIGGER_STYLE: Record<
+	WatchActionKind,
+	{ line: string; tag: string; label: string }
+> = {
+	entry: { line: "--color-buy", tag: "--color-entry-tag", label: "入" },
+	partialTakeProfit: {
+		line: "--color-take-profit-line",
+		tag: "--color-take-profit-tag",
+		label: "部",
+	},
+	takeProfit: {
+		line: "--color-take-profit-line",
+		tag: "--color-take-profit-tag",
+		label: "利",
+	},
+	stopLoss: {
+		line: "--color-stop-loss-line",
+		tag: "--color-stop-loss-tag",
+		label: "損",
+	},
+};
 
 /** 出来高の棒が使う、価格の区画の下からの高さの割合 */
 const VOLUME_SHARE = 0.2;
@@ -188,6 +220,7 @@ const ICON_BTN =
 
 const NO_MARKERS: readonly ChartMarker[] = [];
 const NO_PERIODS: readonly number[] = [];
+const NO_TRIGGERS: readonly ChartTrigger[] = [];
 
 /** チャートの高さの最小値（px）。下の className の h-[260px] と揃える */
 const MIN_CHART_PX = 260;
@@ -205,6 +238,7 @@ export function PriceChart({
 	initialSpanMs = null,
 	currentPrice,
 	entryPrices: entryProp,
+	triggers: triggerProp,
 	toolbar,
 	compact = false,
 	latestNote,
@@ -239,6 +273,11 @@ export function PriceChart({
 			series: ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
 			lines: IPriceLine[];
 		} | null;
+		/** 発動価格の線と、それを付けた系列 */
+		triggers: {
+			series: ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
+			lines: IPriceLine[];
+		} | null;
 	} | null>(null);
 	// 最新の足が画面に入っているか。入っていれば「最新へ」のボタンを押せなくする
 	const [atLatest, setAtLatest] = useState(true);
@@ -251,6 +290,9 @@ export function PriceChart({
 	const hasEntry = entryProp !== undefined;
 	// 隠すと線も軸の値も消え、縦の範囲にも含めない
 	const entryPrices = (showEntry && entryProp) || NO_PERIODS;
+	const [showTriggers, setShowTriggers] = useShowTriggers();
+	const hasTriggers = triggerProp !== undefined;
+	const triggers = (showTriggers && triggerProp) || NO_TRIGGERS;
 	const [cursor, setCursor] = useState<number | null>(null);
 	// 価格の区画の高さ（px）。出来高の棒を帯のすぐ上に置くのに使う
 	const [paneH, setPaneH] = useState(MIN_CHART_PX - 28);
@@ -377,6 +419,7 @@ export function PriceChart({
 			tags,
 			now: null,
 			entries: null,
+			triggers: null,
 		};
 
 		chart.subscribeCrosshairMove((p) => {
@@ -745,6 +788,30 @@ export function PriceChart({
 		};
 	}, [entryPrices, marksTick, themeTick]);
 
+	// 発動価格の線。予定なので実績（買値の実線）と分けて破線にする
+	// biome-ignore lint/correctness/useExhaustiveDependencies: marksTick で系列の付け替えを、themeTick で色の変化を拾う
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		if (c.triggers) {
+			for (const l of c.triggers.lines) c.triggers.series.removePriceLine(l);
+			c.triggers = null;
+		}
+		if (triggers.length === 0) return;
+		c.triggers = {
+			series: c.price,
+			lines: triggers.map((t) =>
+				c.price.createPriceLine({
+					price: t.price,
+					color: cssVar(TRIGGER_STYLE[t.kind].line),
+					lineWidth: 2,
+					lineStyle: LineStyle.Dashed,
+					axisLabelVisible: false,
+				}),
+			),
+		};
+	}, [triggers, marksTick, themeTick]);
+
 	// 価格の軸の「現」「買」の値。買値は足から離れていても縦の範囲に含めて画面に入れる
 	// biome-ignore lint/correctness/useExhaustiveDependencies: themeTick で色の変化を拾う
 	useEffect(() => {
@@ -771,8 +838,17 @@ export function PriceChart({
 				textColor: buyInk,
 				keepInView: true,
 			})),
+			// 次の行動は実績より薄く見せる（薄い地に地の文の色の字）。
+			// 縦の範囲には一番近いものだけ含める（離れた価格まで含めると値動きが潰れる）
+			...triggers.map((t) => ({
+				price: t.price,
+				label: TRIGGER_STYLE[t.kind].label,
+				color: cssVar(TRIGGER_STYLE[t.kind].tag),
+				textColor: cssVar("--color-text"),
+				keepInView: t.near,
+			})),
 		]);
-	}, [currentPrice, entryPrices, themeTick]);
+	}, [currentPrice, entryPrices, triggers, themeTick]);
 
 	// 表示範囲。viewKey があれば、足が届き始めたときと viewKey が変わったときだけ合わせ直す
 	const hasBars = barTimes.length > 0;
@@ -884,6 +960,16 @@ export function PriceChart({
 					買値
 				</button>
 			)}
+			{hasTriggers && (
+				<button
+					type="button"
+					aria-pressed={showTriggers}
+					onClick={() => setShowTriggers(!showTriggers)}
+					className={CHIP}
+				>
+					発動価格
+				</button>
+			)}
 			{(["ema", "bb", "rsi"] as const).map((k) => {
 				const label = INDICATOR_LABELS[k];
 				const c = indicators[k];
@@ -918,6 +1004,7 @@ export function PriceChart({
 		...(candle ? ["ローソク足"] : []),
 		...(showVolume ? ["出来高"] : []),
 		...(hasEntry && showEntry ? ["買値"] : []),
+		...(hasTriggers && showTriggers ? ["発動価格"] : []),
 		...(["ema", "bb", "rsi"] as const)
 			.filter((k) => indicators[k].on)
 			.map((k) => INDICATOR_LABELS[k]),
