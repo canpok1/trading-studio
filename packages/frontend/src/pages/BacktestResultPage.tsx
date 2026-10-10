@@ -11,6 +11,7 @@ import {
 	TIMEFRAME_LABELS,
 	TIMEFRAMES,
 } from "@trading-studio/core";
+import type { ReactNode } from "react";
 import {
 	useCallback,
 	useEffect,
@@ -45,7 +46,6 @@ import {
 	ruleText,
 	stepLimitedText,
 } from "../lib/condition-text";
-import { datasetName } from "../lib/dataset";
 import {
 	buyHoldPercentOf,
 	gradeMaxDrawdown,
@@ -59,6 +59,7 @@ import {
 	formatSignedPercent,
 	holdingText,
 } from "../lib/number";
+import { segmentName } from "../lib/segment";
 import { errorMessage, readJson, useAsync } from "../lib/useAsync";
 import type { BacktestDraft } from "./BacktestRunPage";
 import { BACKTEST_NAME_MAX } from "./BacktestRunPage";
@@ -116,8 +117,16 @@ export function BacktestResultPage() {
 	}
 	const { run } = state.data;
 	const done = run.status === "done" && run.summary !== null;
+	// データセットでまとめて実行した中の1件は、まとめた結果へ戻る
+	const back =
+		run.datasetRunId === null
+			? BACK
+			: {
+					to: `/backtest/dataset-runs/${run.datasetRunId}`,
+					label: "まとめた結果",
+				};
 	return (
-		<Page title={title} back={BACK} actions={<RerunButton run={run} />}>
+		<Page title={title} back={back} actions={<RerunButton run={run} />}>
 			{/* 結果があれば、条件は成績と並べて結果の中に出す */}
 			{!done && <RunHeader run={run} />}
 			{run.status === "running" && (
@@ -159,8 +168,8 @@ function rerunState(run: BacktestRun): Partial<BacktestDraft> {
 		initialCash: run.initialCash,
 		fees: run.fees,
 		criteriaVersion: run.criteriaVersion,
-		periodMode: run.dataset ? "dataset" : "range",
-		datasetId: run.dataset?.id ?? null,
+		periodMode: run.segment ? "segment" : "range",
+		segmentId: run.segment?.id ?? null,
 	};
 }
 
@@ -198,7 +207,14 @@ function RerunButton({ run }: { run: BacktestRun }) {
 
 const pct = (ppm: number) => `${ppmToPercent(ppm)}%`;
 
-function RunHeader({ run }: { run: BacktestRun }) {
+/** 実行の条件。subtitle を渡すと、期間・初期資金の行の代わりに出す（データセットのまとめた実行） */
+export function RunHeader({
+	run,
+	subtitle,
+}: {
+	run: BacktestRun;
+	subtitle?: ReactNode;
+}) {
 	const [saving, setSaving] = useState(false);
 	const [savedAs, setSavedAs] = useState<string | null>(null);
 	const p = run.params;
@@ -247,15 +263,17 @@ function RunHeader({ run }: { run: BacktestRun }) {
 			className="flex flex-col gap-1.5 rounded-xl border border-line bg-surface px-4 py-3.5"
 		>
 			<strong className="text-[15px]">{run.name}</strong>
-			<span className="num text-xs text-text-2">
-				{run.dataset &&
-					`データセット ${datasetName({ ...run, regime: run.dataset.regime })} · `}
-				{formatDate(run.from)}〜{formatDate(run.to - 1)} · 初期資金{" "}
-				{formatInt(run.initialCash)}円
-				{run.skipGaps ? " · 欠損を飛ばして実行" : ""}
-				{" · "}
-				{TIMEFRAME_LABELS[run.stepTimeframe]}で判定
-			</span>
+			{subtitle ?? (
+				<span className="num text-xs text-text-2">
+					{run.segment &&
+						`相場データ ${segmentName({ ...run, regime: run.segment.regime })} · `}
+					{formatDate(run.from)}〜{formatDate(run.to - 1)} · 初期資金{" "}
+					{formatInt(run.initialCash)}円
+					{run.skipGaps ? " · 欠損を飛ばして実行" : ""}
+					{" · "}
+					{TIMEFRAME_LABELS[run.stepTimeframe]}で判定
+				</span>
+			)}
 			<ul aria-label="実行条件" className="flex flex-wrap gap-1.5">
 				{chips.map((c) => (
 					<li

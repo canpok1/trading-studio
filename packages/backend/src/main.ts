@@ -42,6 +42,8 @@ import { RetentionRepository } from "./retention/repository";
 import { createRetentionService } from "./retention/service";
 import { ScoringAnalysisRepository } from "./scoring-analysis/repository";
 import { createScoringAnalysis } from "./scoring-analysis/service";
+import { SegmentRepository } from "./segments/repository";
+import { createSegmentService } from "./segments/service";
 import { slowRequestLog, watchEventLoopLag } from "./slow-log";
 import { serveFrontend } from "./static";
 import { createStrategyService } from "./strategies/service";
@@ -157,17 +159,17 @@ const retention = createRetentionService({
 const retentionTimer = setInterval(() => retention.tick(), 60_000);
 retention.tick();
 
-const datasets = createDatasetService({
-	repo: new DatasetRepository(db),
+const segments = createSegmentService({
+	repo: new SegmentRepository(db),
 	marketData: marketDataRepo,
 	newsDeletedBefore: () => scoreRepo.newsDeletedBefore(),
 });
-const datasetTimer = setInterval(() => datasets.tick(), 60_000);
-datasets.tick();
+const segmentTimer = setInterval(() => segments.tick(), 60_000);
+segments.tick();
 
 const marketData = createMarketDataService(marketDataRepo, {
-	// 過去の足を取り込んだら、その期間のデータセットをすぐ作る
-	onSettled: (job) => job.status === "done" && datasets.refresh(),
+	// 過去の足を取り込んだら、その期間の相場データをすぐ作る
+	onSettled: (job) => job.status === "done" && segments.refresh(),
 });
 const scoring = createScoringService({
 	repo: scoreRepo,
@@ -181,7 +183,15 @@ const backtests = createBacktestService({
 	runner: workerRunner,
 	judgments,
 	scoring,
-	datasets,
+	segments,
+});
+const datasetRepo = new DatasetRepository(db, backtestRepo);
+datasetRepo.failInterrupted(Date.now());
+const datasets = createDatasetService({
+	repo: datasetRepo,
+	backtestRepo,
+	backtests,
+	segments,
 });
 const adviceRepo = new AdviceRepository(db);
 adviceRepo.failInterrupted();
@@ -221,6 +231,7 @@ const server = new Hono()
 			strategies,
 			backtests,
 			marketData,
+			segments,
 			datasets,
 			scoring,
 			news,
@@ -251,6 +262,7 @@ const server = new Hono()
 			}),
 			retention,
 			accuracy: scoringAnalysis,
+			segments,
 			datasets,
 		}),
 	);
@@ -280,7 +292,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
 		clearInterval(scorerTimer);
 		clearInterval(tradingTimer);
 		clearInterval(retentionTimer);
-		clearInterval(datasetTimer);
+		clearInterval(segmentTimer);
 		stopLagWatch();
 		collector.stop();
 		await http.stop();

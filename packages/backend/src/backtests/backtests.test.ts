@@ -740,38 +740,38 @@ test("実行の一覧は件数・名前のキーワード・失敗と中止を�
 	expect((await t.app.request("/api/backtests?limit=0")).status).toBe(400);
 });
 
-describe("データセットで期間を選ぶ", () => {
-	test("データセットの期間で実行し、結果にデータセットと相場を残す", async () => {
+describe("相場データで期間を選ぶ", () => {
+	test("相場データの期間で実行し、結果に相場データと相場を残す", async () => {
 		const t = setup();
 		const from = START + 2 * 24 * H;
 		const to = START + 10 * 24 * H;
 		t.db.$client.run(
-			"insert into datasets (id, from_time, to_time, regime, return_ppm, volatility_ppm, created_at) values (7, ?, ?, 'range', 0, 0, 0)",
+			"insert into segments (id, from_time, to_time, regime, return_ppm, volatility_ppm, created_at) values (7, ?, ?, 'range', 0, 0, 0)",
 			[from, to],
 		);
 		// 渡した from・to は使わない
-		const r = await post(t, body({ datasetId: 7, from: 0, to: 1 }));
+		const r = await post(t, body({ segmentId: 7, from: 0, to: 1 }));
 		expect(r.status).toBe(202);
 		const run = r.json.run as BacktestRun;
 		expect(run).toMatchObject({
 			from,
 			to,
-			dataset: { id: 7, regime: "range" },
+			segment: { id: 7, regime: "range" },
 		});
 		await t.backtests.running();
 	});
 
-	test("期間を指定した実行はデータセットを持たない", async () => {
+	test("期間を指定した実行は相場データを持たない", async () => {
 		const t = setup();
 		const r = await post(t, body());
-		expect((r.json.run as BacktestRun).dataset).toBeNull();
+		expect((r.json.run as BacktestRun).segment).toBeNull();
 		await t.backtests.running();
 	});
 
-	test("無いデータセットは実行しない", async () => {
+	test("無い相場データは実行しない", async () => {
 		const t = setup();
-		const r = await post(t, body({ datasetId: 99 }));
+		const r = await post(t, body({ segmentId: 99 }));
 		expect(r.status).toBe(400);
-		expect(r.json).toMatchObject({ kind: "invalid_input", field: "dataset" });
+		expect(r.json).toMatchObject({ kind: "invalid_input", field: "segment" });
 	});
 });

@@ -1,93 +1,380 @@
-// データセットを作る。起動時・毎日 4:00（JST）・取り込みの後に、まだ作っていない期間を作る。
-// 月初に限らず毎日見るのは、月初にサーバーが止まっていた月も拾うため
+// データセットの保存と、まとめた実行。相場データごとに通常のバックテストを1件ずつ順に実行し、終わったら成績を合算する
 
+import type { DatasetMember } from "@trading-studio/core";
 import {
-	classifyMarket,
-	DATASET_LEAD_MS,
-	DATASET_MIN_COVERAGE_PPM,
-	datasetPeriods,
-	TIMEFRAME_MS,
+	MAX_DATASET_SEGMENTS,
+	summarizeDataset,
+	validateConditionSet,
 } from "@trading-studio/core";
-import type { MarketDataRepository } from "../market-data/repository";
-import { nextRunTime } from "../retention/service";
-import type { DatasetRepository } from "./repository";
-import type { DatasetService } from "./types";
+import type { BacktestRepository } from "../backtests/repository";
+import type {
+	BacktestRun,
+	BacktestService,
+	StartBacktestFailure,
+} from "../backtests/types";
+import type { Segment, SegmentService } from "../segments/types";
+import { checkName } from "../strategies/service";
+import type { DatasetRepository, StoredDataset } from "./repository";
+import type {
+	Dataset,
+	DatasetBlocker,
+	DatasetInput,
+	DatasetRun,
+	DatasetService,
+	SaveDatasetResult,
+	StartDatasetFailure,
+	StartDatasetResult,
+} from "./types";
 
-const SETTLE_MS = 3_600_000;
-
-export type DatasetEngine = DatasetService & {
-	/** 定期的に呼ぶ（main では1分ごと）。前回から 4:00 をまたいでいれば作る */
-	tick(): void;
-	/** 作れる期間をすべて作り、作った件数を返す */
-	build(): number;
-	/** build と同じ。失敗しても投げない（常駐処理と取り込みの後に呼ぶ） */
-	refresh(): void;
+export type DatasetServiceDeps = {
+	repo: DatasetRepository;
+	backtestRepo: BacktestRepository;
+	backtests: BacktestService;
+	segments: Pick<SegmentService, "get">;
+	now?: () => number;
 };
+
+const fail = (error: StartDatasetFailure): StartDatasetResult => ({
+	ok: false,
+	error,
+});
+
+/** 相場データに依らない誤り。相場データごとに並べず、そのまま返す */
+function commonError(e: StartBacktestFailure): StartDatasetFailure | null {
+	switch (e.kind) {
+		case "busy":
+			return {
+				kind: "busy",
+				message: "別のバックテストを実行中。終わるか中止してから実行する",
+			};
+		case "invalid_params":
+		case "invalid_input":
+			return e;
+		default:
+			return null;
+	}
+}
 
 export function createDatasetService({
 	repo,
-	marketData,
-	newsDeletedBefore,
+	backtestRepo,
+	backtests,
+	segments,
 	now = Date.now,
-}: {
-	repo: DatasetRepository;
-	marketData: Pick<
-		MarketDataRepository,
-		"firstCandleTime" | "countCandles" | "loadCandles"
-	>;
-	/** 古いニュースを消した境目（ScoreRepository） */
-	newsDeletedBefore: () => number | null;
-	now?: () => number;
-}): DatasetEngine {
-	let nextAt: number | null = null;
+}: DatasetServiceDeps): DatasetService & { running(): Promise<void> | null } {
+	/** 実行中のまとめた実行。index は実行中の相場データの位置 */
+	let current: {
+		id: number;
+		index: number;
+		childId: number | null;
+		cancelRequested: boolean;
+		done: Promise<void>;
+		resolve: () => void;
+	} | null = null;
 
-	function build(): number {
-		const t = now();
-		const first = marketData.firstCandleTime("1m");
-		if (first === null) return 0;
-		const deleted = newsDeletedBefore();
-		let created = 0;
-		// 月が替わった直後は前の月の最後の足がまだ確定していないことがあるので、1時間待ってから作る
-		for (const { from, to } of datasetPeriods(first, t - SETTLE_MS)) {
-			if (repo.exists(from, to)) continue;
-			// 古い足を取り込み直しても、ニュースを消した期間はデータセットにしない（市場評価を出せないため）
-			if (deleted !== null && from - DATASET_LEAD_MS < deleted) continue;
-			// 細かい足がそろっていない期間は、細かい足で判定する戦略のバックテストに使えないので作らない
-			const minutes = (to - from) / TIMEFRAME_MS["1m"];
-			const have = marketData.countCandles("1m", from, to);
-			if (have * 1_000_000 < minutes * DATASET_MIN_COVERAGE_PPM) continue;
-			// 日足が1日でも欠けると、前後の日の変化を1日の変化として数えて値動きが大きく出るので作らない
-			const days = marketData.loadCandles("1d", from, to);
-			if (days.length !== Math.round((to - from) / TIMEFRAME_MS["1d"])) {
-				continue;
-			}
-			const r = classifyMarket(days);
-			if (!r) continue;
-			repo.create({ from, to, ...r, createdAt: t });
-			created++;
+	const existing = (ids: readonly number[]): Segment[] =>
+		ids.flatMap((id) => {
+			const d = segments.get(id);
+			return d ? [d] : [];
+		});
+
+	const view = (s: StoredDataset): Dataset => {
+		const list = existing(s.segmentIds).sort((a, b) => b.from - a.from);
+		return {
+			id: s.id,
+			name: s.name,
+			segments: list,
+			missing: s.segmentIds.length - list.length,
+			createdAt: s.createdAt,
+			updatedAt: s.updatedAt,
+		};
+	};
+
+	function checkDataset(
+		input: DatasetInput,
+		exceptId: number | null,
+	): { name: string; ids: number[] } | SaveDatasetResult {
+		const nameError = checkName(input.name);
+		if (nameError) return { ok: false, kind: "invalid", message: nameError };
+		const name = input.name.trim();
+		if (repo.nameTaken(name, exceptId)) {
+			return {
+				ok: false,
+				kind: "duplicate_name",
+				message: "同じ名前のデータセットがある",
+			};
 		}
-		return created;
+		const ids = [...new Set(input.segmentIds)];
+		if (ids.length === 0) {
+			return { ok: false, kind: "invalid", message: "相場データを選ぶ" };
+		}
+		if (ids.length > MAX_DATASET_SEGMENTS) {
+			return {
+				ok: false,
+				kind: "invalid",
+				message: `相場データは ${MAX_DATASET_SEGMENTS} 件までにする`,
+			};
+		}
+		if (existing(ids).length !== ids.length) {
+			return {
+				ok: false,
+				kind: "invalid",
+				message: "見つからない相場データがある。選び直す",
+			};
+		}
+		return { name, ids };
 	}
 
-	function refresh() {
-		try {
-			build();
-		} catch (e) {
-			// 常駐処理を落とさない。次の 4:00 にやり直す
-			console.error("datasets: failed to build", e);
+	const withProgress = (run: DatasetRun): DatasetRun => {
+		if (current?.id !== run.id || run.status !== "running") return run;
+		const child =
+			current.childId === null ? null : backtests.get(current.childId);
+		const part = child?.status === "running" ? child.progress : 0;
+		return {
+			...run,
+			progress: (current.index + part) / run.segmentIds.length,
+		};
+	};
+
+	const getRun = (id: number) => {
+		const r = repo.getRun(id);
+		return r ? withProgress(r) : null;
+	};
+
+	function finish(
+		status: "done" | "failed" | "canceled",
+		error: string | null,
+	) {
+		if (!current) return;
+		const { id, resolve } = current;
+		let summary = null;
+		if (status === "done") {
+			const members: DatasetMember[] = repo.childIds(id).flatMap((childId) => {
+				const run = backtestRepo.get(childId);
+				const trades = backtestRepo.trades(childId);
+				if (!run?.summary || !run.segment || !trades) return [];
+				return [
+					{
+						regime: run.segment.regime,
+						summary: run.summary,
+						tradePnls: trades.map((t) => t.pnl),
+					},
+				];
+			});
+			summary = summarizeDataset(members);
 		}
+		repo.finishRun(id, status, summary, error, now());
+		current = null;
+		resolve();
+	}
+
+	function runNext() {
+		if (!current) return;
+		const run = repo.getRun(current.id);
+		if (!run) return finish("failed", "まとめた実行が見つからない");
+		if (current.cancelRequested) return finish("canceled", null);
+		const segmentId = run.segmentIds[current.index];
+		if (segmentId === undefined) return finish("done", null);
+		let started: ReturnType<BacktestService["start"]>;
+		try {
+			started = backtests.start(
+				{
+					name: run.name,
+					params: run.params,
+					from: 0,
+					to: 0,
+					initialCash: run.initialCash,
+					fees: run.fees,
+					skipGaps: run.skipGaps,
+					criteriaVersion: run.criteriaVersion,
+					segmentId,
+				},
+				{
+					datasetRunId: run.id,
+					// 終わった実行の後始末が済んでから次を始める
+					onFinish: (child) => queueMicrotask(() => afterChild(child)),
+				},
+			);
+		} catch (e) {
+			// 例外のまま抜けると current が残り、以後ずっと busy になる
+			return finish("failed", e instanceof Error ? e.message : String(e));
+		}
+		if (!started.ok) {
+			const d = segments.get(segmentId);
+			const e = started.error;
+			const reason =
+				"message" in e ? e.message : "実行の前の検証を通らなかった";
+			return finish(
+				"failed",
+				`${d ? segmentLabel(d) : `相場データ ${segmentId}`} を実行できなかった: ${reason}`,
+			);
+		}
+		current.childId = started.run.id;
+	}
+
+	function afterChild(child: BacktestRun) {
+		if (!current || child.datasetRunId !== current.id) return;
+		if (child.status === "canceled" || current.cancelRequested) {
+			return finish("canceled", null);
+		}
+		if (child.status === "failed") {
+			const d = child.segment && segments.get(child.segment.id);
+			return finish(
+				"failed",
+				`${d ? segmentLabel(d) : "相場データ"} で失敗した: ${child.error ?? "原因不明"}`,
+			);
+		}
+		current.index++;
+		current.childId = null;
+		runNext();
 	}
 
 	return {
-		tick() {
-			const t = now();
-			if (nextAt !== null && t < nextAt) return;
-			nextAt = nextRunTime(t);
-			refresh();
+		list: () => repo.list().map(view),
+
+		get(id) {
+			const s = repo.get(id);
+			return s ? view(s) : null;
 		},
-		build,
-		refresh,
-		list: (regime) => repo.list(regime ?? null),
-		get: (id) => repo.get(id),
+
+		create(input) {
+			const c = checkDataset(input, null);
+			if ("ok" in c) return c;
+			const id = repo.create(c.name, c.ids, now());
+			return { ok: true, dataset: view(repo.get(id) as StoredDataset) };
+		},
+
+		update(id, input) {
+			if (!repo.get(id)) {
+				return {
+					ok: false,
+					kind: "not_found",
+					message: "データセットが見つからない",
+				};
+			}
+			const c = checkDataset(input, id);
+			if ("ok" in c) return c;
+			repo.update(id, c.name, c.ids, now());
+			return { ok: true, dataset: view(repo.get(id) as StoredDataset) };
+		},
+
+		remove: (id) => repo.remove(id),
+
+		start(input) {
+			if (current || backtests.current()) {
+				return fail({
+					kind: "busy",
+					message: "別のバックテストを実行中。終わるか中止してから実行する",
+				});
+			}
+			const dataset = repo.get(input.datasetId);
+			if (!dataset) {
+				return fail({
+					kind: "not_found",
+					message: "データセットが見つからない",
+				});
+			}
+			// 古い順に実行する
+			const list = existing(dataset.segmentIds).sort((a, b) => a.from - b.from);
+			if (list.length === 0) {
+				return fail({
+					kind: "empty",
+					message:
+						"データセットの相場データがすべて消えている。相場データを選び直す",
+				});
+			}
+			const errors = validateConditionSet(input.params);
+			if (errors.length > 0) return fail({ kind: "invalid_params", errors });
+			// 一部だけ実行すると、組ごとに成績を比べられなくなるので、実行できない相場データがあれば全体を実行しない
+			const blockers: DatasetBlocker[] = [];
+			for (const segment of list) {
+				const error = backtests.check({
+					...input,
+					from: 0,
+					to: 0,
+					segmentId: segment.id,
+				});
+				if (!error) continue;
+				const common = commonError(error);
+				if (common) return fail(common);
+				blockers.push({ segment, error });
+			}
+			if (blockers.length > 0) return fail({ kind: "blocked", blockers });
+
+			const id = repo.createRun({
+				datasetId: dataset.id,
+				datasetName: dataset.name,
+				name: input.name.trim(),
+				segmentIds: list.map((d) => d.id),
+				input: {
+					params: input.params,
+					initialCash: input.initialCash,
+					fees: input.fees,
+					skipGaps: input.skipGaps,
+					criteriaVersion: input.criteriaVersion,
+				},
+				startedAt: now(),
+			});
+			let resolve = () => {};
+			const done = new Promise<void>((r) => {
+				resolve = r;
+			});
+			current = {
+				id,
+				index: 0,
+				childId: null,
+				cancelRequested: false,
+				done,
+				resolve,
+			};
+			runNext();
+			return { ok: true, run: getRun(id) as DatasetRun };
+		},
+
+		run(id) {
+			const r = getRun(id);
+			if (!r) return null;
+			return {
+				...r,
+				runs: repo
+					.childIds(id)
+					.flatMap((childId) => backtests.get(childId) ?? []),
+			};
+		},
+
+		current() {
+			return current ? getRun(current.id) : null;
+		},
+
+		cancel(id) {
+			if (current?.id === id) {
+				current.cancelRequested = true;
+				if (current.childId !== null) backtests.cancel(current.childId);
+			}
+			return getRun(id);
+		},
+
+		history: (filter) => repo.history(filter),
+
+		running() {
+			return current?.done ?? null;
+		},
 	};
+}
+
+/** 例: 2026/08〜09 上昇相場。サーバーのメッセージ用（JST） */
+function segmentLabel(d: Segment): string {
+	const ym = (t: number) => {
+		const j = new Date(t + 9 * 3_600_000);
+		return `${j.getUTCFullYear()}/${String(j.getUTCMonth() + 1).padStart(2, "0")}`;
+	};
+	const a = ym(d.from);
+	const b = ym(d.to - 1);
+	const regime = {
+		up: "上昇",
+		down: "下落",
+		range: "レンジ",
+		volatile: "乱高下",
+	}[d.regime];
+	return `${a}〜${a.slice(0, 4) === b.slice(0, 4) ? b.slice(5) : b} ${regime}相場`;
 }

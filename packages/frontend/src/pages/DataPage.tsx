@@ -10,10 +10,10 @@ import type { DragEvent } from "react";
 import { useCallback, useId, useState } from "react";
 import { Link } from "react-router";
 import { useApi } from "../api";
-import { DatasetList } from "../components/DatasetList";
 import { Help } from "../components/Help";
 import { DataIcon, ErrorIcon } from "../components/icons";
 import { Page } from "../components/Page";
+import { SegmentList } from "../components/SegmentList";
 import { EmptyState, ErrorState, LoadingCard } from "../components/States";
 import {
 	Button,
@@ -272,7 +272,7 @@ export function DataPage() {
 				</Card>
 			)}
 			{state.kind === "ok" && <Coverage data={state.data} runningJob={job} />}
-			<DatasetList />
+			<SegmentList />
 		</Page>
 	);
 }

@@ -1,6 +1,6 @@
 // 古いデータの削除。保持期間の設定と前回の結果は settings に持つ
 
-import { DATASET_LEAD_MS } from "@trading-studio/core";
+import { SEGMENT_LEAD_MS } from "@trading-studio/core";
 import type { Db } from "../db/open";
 import { NEWS_DELETED_BEFORE_KEY } from "../news/score-repository";
 import type { RetentionRun, RetentionSettings, RetentionTable } from "./types";
@@ -20,7 +20,7 @@ const TABLES: readonly [string, string][] = [
 	["trading_orders", "自動取引の注文"],
 	["backtest_runs", "バックテストの実行"],
 	["candles", "足"],
-	["datasets", "データセット"],
+	["segments", "相場データ"],
 	["news", "ニュース"],
 ];
 
@@ -78,12 +78,15 @@ export class RetentionRepository {
 		).changes;
 	}
 
-	/** before より前に始めたバックテストの実行を最大 limit 件、結果・アドバイスごと消す。実行中・アドバイスの生成中は残す */
+	/** before より前に始めたバックテストの実行を最大 limit 件、結果・アドバイスごと消す。含む実行が無くなったまとめた実行も消す。実行中・アドバイスの生成中は残す */
 	deleteBacktests(before: number, limit: number): number {
 		const ids = this.sql
 			.query<{ id: number }, [number, number]>(
+				// まとめた実行の一部は、まとめた実行の開始で判断する。境目で一部だけ消えると合算と食い違う
 				`select r.id from backtest_runs r
-				 where r.started_at < ? and r.status != 'running'
+				 left join dataset_runs d on d.id = r.dataset_run_id
+				 where coalesce(d.started_at, r.started_at) < ? and r.status != 'running'
+				   and coalesce(d.status, '') != 'running'
 				   and not exists (select 1 from backtest_advice a where a.run_id = r.id and a.status = 'running')
 				 limit ?`,
 			)
@@ -101,27 +104,33 @@ export class RetentionRepository {
 				ids,
 			);
 			this.sql.run(`delete from backtest_runs where id in (${marks})`, ids);
+			// まとめた実行は、含む実行がすべて消えたら消す
+			this.sql.run(
+				`delete from dataset_runs where started_at < ? and status != 'running'
+				 and not exists (select 1 from backtest_runs r where r.dataset_run_id = dataset_runs.id)`,
+				[before],
+			);
 		})();
 		return ids.length;
 	}
 
-	/** 開始が before より前のデータセットを、相場ごとに最新の1件を残して消す。消した件数を返す */
-	pruneDatasets(before: number): number {
+	/** 開始が before より前の相場データを、相場ごとに最新の1件を残して消す。消した件数を返す */
+	pruneSegments(before: number): number {
 		return this.sql.run(
-			`delete from datasets where from_time < ?1 and from_time < (
-			   select max(k.from_time) from datasets k where k.regime = datasets.regime and k.from_time < ?1)`,
+			`delete from segments where from_time < ?1 and from_time < (
+			   select max(k.from_time) from segments k where k.regime = segments.regime and k.from_time < ?1)`,
 			[before],
 		).changes;
 	}
 
-	/** 残っているデータセットのために残す範囲（開始の DATASET_LEAD_MS 前から終了まで） */
+	/** 残っている相場データのために残す範囲（開始の SEGMENT_LEAD_MS 前から終了まで） */
 	keptRanges(): { from: number; to: number }[] {
 		return this.sql
 			.query<{ from_time: number; to_time: number }, []>(
-				"select from_time, to_time from datasets",
+				"select from_time, to_time from segments",
 			)
 			.all()
-			.map((d) => ({ from: d.from_time - DATASET_LEAD_MS, to: d.to_time }));
+			.map((d) => ({ from: d.from_time - SEGMENT_LEAD_MS, to: d.to_time }));
 	}
 
 	/** 公開が [from, to) のニュースを最大 limit 件、採点・採点し直しごと消す。消した件数を返す */

@@ -1,4 +1,9 @@
-import type { RunListResult, RunSort } from "@trading-studio/backend";
+import type {
+	BacktestRun,
+	DatasetRun,
+	HistoryResult,
+	RunSort,
+} from "@trading-studio/backend";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useApi } from "../../api";
@@ -41,16 +46,16 @@ export function RunHistory() {
 	useEffect(() => setLimit(RUNS_PAGE), [filterKey]);
 
 	// 「さらに表示」や条件の変更で読み直す間も、届くまでは今の一覧を出したままにする（一覧が縮んで位置がずれないように）
-	const [data, setData] = useState<RunListResult | null>(null);
+	const [data, setData] = useState<HistoryResult | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const seq = useRef(0);
 	const load = useCallback(async () => {
 		const id = ++seq.current;
 		const f = parseRunFilter(new URLSearchParams(filterKey));
 		try {
-			const r = await api.api.backtests
+			const r = await api.api.backtests.history
 				.$get({ query: runQuery(f, limit) })
-				.then((res) => readJson<RunListResult>(res));
+				.then((res) => readJson<HistoryResult>(res));
 			if (id !== seq.current) return;
 			setData(r);
 			setError(null);
@@ -63,7 +68,7 @@ export function RunHistory() {
 	}, [load]);
 
 	// 実行が終わったら読み直す
-	const runningId = job.running?.id ?? null;
+	const runningId = job.running?.id ?? job.runningDataset?.id ?? null;
 	const prevRunning = useRef(runningId);
 	useEffect(() => {
 		if (prevRunning.current !== null && runningId === null) load();
@@ -104,49 +109,20 @@ export function RunHistory() {
 			)}
 			{data && (
 				<div className="overflow-hidden rounded-xl border border-line bg-surface">
-					{data.runs.length === 0 && (
+					{data.entries.length === 0 && (
 						<p className="px-4 py-3.5 text-xs text-text-2">
 							{filtered
 								? "条件に合う実行が無い。"
 								: "まだ実行していない。「実行」のタブで条件を選んで実行すると、ここに並ぶ。"}
 						</p>
 					)}
-					{data.runs.map((r) => {
-						const pct = r.summary?.pnlPercent;
-						return (
-							<Link
-								key={r.id}
-								to={`/backtest/runs/${r.id}`}
-								className="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0 hover:bg-surface-2"
-							>
-								<span className="flex min-w-0 flex-1 flex-col gap-0.5">
-									<strong className="truncate text-sm">{r.name}</strong>
-									<span className="num text-xs text-text-2">
-										{formatDate(r.from)}〜{formatDate(r.to - 1)} ·{" "}
-										{formatDateTime(r.startedAt)} 実行
-									</span>
-								</span>
-								{r.status === "done" && pct !== undefined ? (
-									<span
-										className={`num text-sm font-semibold ${pct >= 0 ? "text-profit" : "text-loss"}`}
-									>
-										{formatSignedPercent(pct)}
-									</span>
-								) : (
-									<span className="text-xs text-text-2">
-										{
-											{
-												running: "実行中",
-												failed: "失敗",
-												canceled: "中止",
-												done: "",
-											}[r.status]
-										}
-									</span>
-								)}
-							</Link>
-						);
-					})}
+					{data.entries.map((e) =>
+						e.kind === "run" ? (
+							<RunRow key={`r${e.run.id}`} run={e.run} />
+						) : (
+							<DatasetRunRow key={`d${e.datasetRun.id}`} run={e.datasetRun} />
+						),
+					)}
 				</div>
 			)}
 			{data && error && (
@@ -154,12 +130,76 @@ export function RunHistory() {
 					読み込めなかった: {error}
 				</p>
 			)}
-			{data && data.total > data.runs.length && (
+			{data && data.total > data.entries.length && (
 				<Button onClick={() => setLimit((n) => n + RUNS_PAGE)}>
-					さらに表示（あと {data.total - data.runs.length} 件）
+					さらに表示（あと {data.total - data.entries.length} 件）
 				</Button>
 			)}
 		</section>
+	);
+}
+
+const STATUS_TEXT = {
+	running: "実行中",
+	failed: "失敗",
+	canceled: "中止",
+	done: "",
+};
+
+const ROW =
+	"flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0 hover:bg-surface-2";
+
+function Pnl({ value }: { value: number }) {
+	return (
+		<span
+			className={`num text-sm font-semibold ${value >= 0 ? "text-profit" : "text-loss"}`}
+		>
+			{formatSignedPercent(value)}
+		</span>
+	);
+}
+
+function RunRow({ run: r }: { run: BacktestRun }) {
+	const pct = r.summary?.pnlPercent;
+	return (
+		<Link to={`/backtest/runs/${r.id}`} className={ROW}>
+			<span className="flex min-w-0 flex-1 flex-col gap-0.5">
+				<strong className="truncate text-sm">{r.name}</strong>
+				<span className="num text-xs text-text-2">
+					{formatDate(r.from)}〜{formatDate(r.to - 1)} ·{" "}
+					{formatDateTime(r.startedAt)} 実行
+				</span>
+			</span>
+			{r.status === "done" && pct !== undefined ? (
+				<Pnl value={pct} />
+			) : (
+				<span className="text-xs text-text-2">{STATUS_TEXT[r.status]}</span>
+			)}
+		</Link>
+	);
+}
+
+/** まとめた実行は1行にし、損益は相場データごとの損益率の平均を出す */
+function DatasetRunRow({ run: r }: { run: DatasetRun }) {
+	const avg = r.summary?.averagePnlPercent;
+	return (
+		<Link to={`/backtest/dataset-runs/${r.id}`} className={ROW}>
+			<span className="flex min-w-0 flex-1 flex-col gap-0.5">
+				<strong className="truncate text-sm">{r.name}</strong>
+				<span className="num text-xs text-text-2">
+					データセット {r.datasetName}（{r.segmentIds.length} 件） ·{" "}
+					{formatDateTime(r.startedAt)} 実行
+				</span>
+			</span>
+			{r.status === "done" && avg !== undefined ? (
+				<span className="flex flex-col items-end">
+					<span className="text-[10px] text-text-2">平均</span>
+					<Pnl value={avg} />
+				</span>
+			) : (
+				<span className="text-xs text-text-2">{STATUS_TEXT[r.status]}</span>
+			)}
+		</Link>
 	);
 }
 

@@ -1,4 +1,4 @@
-// データセットに付ける相場のラベル。閾値は GMO の BTC/JPY 日足（2021-10〜2026-10）の2か月の窓で、
+// 相場データに付ける相場のラベル。閾値は GMO の BTC/JPY 日足（2021-10〜2026-10）の2か月の窓で、
 // 乱高下が1割弱・残りがおよそ3等分になるように決めた（docs/adr/0024）
 
 export type MarketRegime = "up" | "down" | "range" | "volatile";
@@ -64,10 +64,10 @@ export function classifyMarket(
 	return { regime, returnPpm, volatilityPpm };
 }
 
-/** データセットの期間の長さ（月） */
-export const DATASET_MONTHS = 2;
-/** 期間の分のうち、1分足がこの割合以上そろっていればデータセットを作る（ppm） */
-export const DATASET_MIN_COVERAGE_PPM = 950_000;
+/** 相場データの期間の長さ（月） */
+export const SEGMENT_MONTHS = 2;
+/** 期間の分のうち、1分足がこの割合以上そろっていれば相場データを作る（ppm） */
+export const SEGMENT_MIN_COVERAGE_PPM = 950_000;
 
 const JST_MS = 9 * 3_600_000;
 
@@ -78,10 +78,10 @@ export function jstMonthStart(time: number, months = 0): number {
 }
 
 /**
- * データセットにする期間の候補。first を含む月から始まり、終わりが now の月の初め以前のものを、
+ * 相場データにする期間の候補。first を含む月から始まり、終わりが now の月の初め以前のものを、
  * 1か月ずつずらして古い順に返す
  */
-export function datasetPeriods(
+export function segmentPeriods(
 	first: number,
 	now: number,
 ): { from: number; to: number }[] {
@@ -89,34 +89,34 @@ export function datasetPeriods(
 	const limit = jstMonthStart(now);
 	for (let i = 0; ; i++) {
 		const from = jstMonthStart(first, i);
-		const to = jstMonthStart(first, i + DATASET_MONTHS);
+		const to = jstMonthStart(first, i + SEGMENT_MONTHS);
 		if (to > limit) return out;
 		out.push({ from, to });
 	}
 }
 
 /**
- * 古いデータを消すときに、残すデータセットの期間の開始より前にも残す長さ。
+ * 古いデータを消すときに、残す相場データの期間の開始より前にも残す長さ。
  * 市場評価は公開から長期の半減期の4倍まで遡って記事を使い、指標は期間より前の足で計算し始めるため
  */
-export const DATASET_LEAD_MS = 31 * 86_400_000;
+export const SEGMENT_LEAD_MS = 31 * 86_400_000;
 
 /**
- * 市場評価の記録の始まり。古いニュースを消した後は、消した境目から DATASET_LEAD_MS たつまでは
+ * 市場評価の記録の始まり。古いニュースを消した後は、消した境目から SEGMENT_LEAD_MS たつまでは
  * 遡って使う記事が欠けているので記録が無いものとする。
- * データセットで選んだ期間は、そのデータセットのために開始の DATASET_LEAD_MS 前からニュースを残しているので、開始から
+ * 相場データで選んだ期間は、その相場データのために開始の SEGMENT_LEAD_MS 前からニュースを残しているので、開始から
  */
 export function judgmentRecordStart(
 	firstScoredAt: number | null,
 	newsDeletedBefore: number | null,
-	datasetFrom: number | null = null,
+	segmentFrom: number | null = null,
 ): number | null {
 	if (firstScoredAt === null || newsDeletedBefore === null) {
 		return firstScoredAt;
 	}
-	const complete = newsDeletedBefore + DATASET_LEAD_MS;
+	const complete = newsDeletedBefore + SEGMENT_LEAD_MS;
 	const kept =
-		datasetFrom !== null && datasetFrom < complete ? datasetFrom : complete;
+		segmentFrom !== null && segmentFrom < complete ? segmentFrom : complete;
 	return Math.max(firstScoredAt, kept);
 }
 

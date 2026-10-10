@@ -68,7 +68,7 @@ export function createRetentionService({
 			at,
 			decisions: 0,
 			backtests: 0,
-			datasets: 0,
+			segments: 0,
 			candles: 0,
 			news: 0,
 			error: null,
@@ -107,8 +107,8 @@ export function createRetentionService({
 				const before = yearsBefore(at, s.marketDataYears);
 				// 消している途中や失敗で止まったときも、消した期間を記録の始まりより前として扱うため、先に覚える
 				repo.markNewsDeletedBefore(before);
-				// 先にデータセットを減らす。残ったデータセットの期間の足とニュースは消さない
-				result.datasets = repo.pruneDatasets(before);
+				// 先に相場データを減らす。残った相場データの期間の足とニュースは消さない
+				result.segments = repo.pruneSegments(before);
 				for (const r of rangesOutside(before, repo.keptRanges())) {
 					result.candles += await drain(
 						(n) => marketData.deleteFineCandles(r.from, r.to, n),

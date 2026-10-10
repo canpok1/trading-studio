@@ -10,7 +10,7 @@ import type { NewsService, ScoringService } from "./news/types";
 import type { RetentionService } from "./retention/types";
 import { adviceRoutes } from "./routes/advice";
 import { backtestRoutes } from "./routes/backtests";
-import { datasetRoutes } from "./routes/datasets";
+import { datasetRoutes, datasetRunRoutes } from "./routes/datasets";
 import { exportRoutes } from "./routes/export";
 import { judgmentRoutes } from "./routes/judgments";
 import { marketRoutes } from "./routes/market";
@@ -18,9 +18,11 @@ import { marketDataRoutes } from "./routes/market-data";
 import { newsRoutes } from "./routes/news";
 import { retentionRoutes } from "./routes/retention";
 import { scoringRoutes } from "./routes/scoring";
+import { segmentRoutes } from "./routes/segments";
 import { strategyRoutes } from "./routes/strategies";
 import { tradingRoutes } from "./routes/trading";
 import type { AccuracyService } from "./scoring-analysis/types";
+import type { SegmentService } from "./segments/types";
 import type { StrategyService } from "./strategies/types";
 import type { TradingService } from "./trading/types";
 
@@ -40,6 +42,7 @@ export type AppDeps = {
 	analysisExport: AnalysisExportService;
 	retention: RetentionService;
 	accuracy: AccuracyService;
+	segments: SegmentService;
 	datasets: DatasetService;
 };
 
@@ -59,6 +62,7 @@ export function createApp({
 	analysisExport,
 	retention,
 	accuracy,
+	segments,
 	datasets,
 }: AppDeps) {
 	const api = new Hono()
@@ -75,8 +79,10 @@ export function createApp({
 			"/strategies",
 			strategyRoutes(strategies, (id) => trading.strategyLock(id)),
 		)
-		.route("/backtests", backtestRoutes(backtests))
-		.route("/datasets", datasetRoutes(datasets, judgments))
+		.route("/backtests", backtestRoutes(backtests, datasets))
+		.route("/datasets", datasetRoutes(datasets))
+		.route("/dataset-runs", datasetRunRoutes(datasets))
+		.route("/segments", segmentRoutes(segments, judgments))
 		.route("/advice", adviceRoutes(advice))
 		.route("/news", newsRoutes(news))
 		.route("/scoring", scoringRoutes(scoring, accuracy))

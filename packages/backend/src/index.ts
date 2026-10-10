@@ -14,7 +14,14 @@ export type {
 	RunSort,
 } from "./backtests/types";
 export type { CollectorStatus } from "./collector/types";
-export type { Dataset, ListedDataset } from "./datasets/types";
+export type {
+	Dataset,
+	DatasetBlocker,
+	DatasetRun,
+	DatasetRunDetail,
+	HistoryEntry,
+	HistoryResult,
+} from "./datasets/types";
 export type { CurrentJudgment, JudgmentSeries } from "./judgments/types";
 export type { ChartRangeId, LatestMarket } from "./market/types";
 export type { ImportJob, TimeframeCoverage } from "./market-data/types";
@@ -51,6 +58,7 @@ export type {
 	RiskBands,
 	SentimentBands,
 } from "./scoring-analysis/types";
+export type { ListedSegment, Segment } from "./segments/types";
 export type { StoredStrategy } from "./strategies/types";
 export type {
 	AutoTradingStatus,

@@ -43,7 +43,7 @@ const ITEMS: {
 	{
 		key: "marketDataYears",
 		label: "足・ニュース・採点",
-		note: "1分・5分・15分足と、公開から期間を過ぎたニュースとその採点を削除する。1時間足より粗い足は残す。期間を過ぎたデータセットは相場ごとに最新の1件だけ残し、その期間の足とニュース（開始の1か月前から）も残す。消した期間は市場評価の記録が無いものとして扱う",
+		note: "1分・5分・15分足と、公開から期間を過ぎたニュースとその採点を削除する。1時間足より粗い足は残す。期間を過ぎた相場データは相場ごとに最新の1件だけ残し、その期間の足とニュース（開始の1か月前から）も残す。消した期間は市場評価の記録が無いものとして扱う",
 		options: YEAR_OPTIONS,
 		unit: "年",
 	},
@@ -174,7 +174,7 @@ function RetentionInfo({ status }: { status: RetentionStatus }) {
 					? "まだ削除していない"
 					: last.error !== null
 						? `${formatDateTime(last.at)} 失敗（${last.error}）`
-						: `${formatDateTime(last.at)} 判断の記録 ${last.decisions.toLocaleString()} 件・バックテスト ${last.backtests.toLocaleString()} 件${last.candles === undefined ? "" : `・足 ${last.candles.toLocaleString()} 本・ニュース ${(last.news ?? 0).toLocaleString()} 件・データセット ${(last.datasets ?? 0).toLocaleString()} 件`}`}
+						: `${formatDateTime(last.at)} 判断の記録 ${last.decisions.toLocaleString()} 件・バックテスト ${last.backtests.toLocaleString()} 件${last.candles === undefined ? "" : `・足 ${last.candles.toLocaleString()} 本・ニュース ${(last.news ?? 0).toLocaleString()} 件・相場データ ${(last.segments ?? 0).toLocaleString()} 件`}`}
 			</p>
 			<p>
 				DB の大きさ: {formatBytes(status.dbBytes)}（うち削除で空いた{" "}

@@ -604,11 +604,34 @@ test("採点の版を選ぶと、足りない記事をその版で採点し直�
 	);
 });
 
-test("データセットがまだ無いうちにデータセットで期間を選ぶと、理由が出て実行できない", async ({
+test("相場データがまだ無いうちに相場データで期間を選ぶと、理由が出て実行できない", async ({
 	page,
 	request,
 }, info) => {
 	// 過去データが無いと実行の画面が出ないので取り込んでおく
+	await prepare(request, `BT 相場データ ${info.project.name}`);
+	await page.goto("/backtest");
+	await page
+		.getByRole("group", { name: "期間の決め方" })
+		.getByText("相場データ", { exact: true })
+		.click();
+	await expect(page.getByText("相場データがまだ無い。")).toBeVisible();
+	await expect(page.getByLabel("開始")).toBeHidden();
+	await expect(
+		page.getByRole("button", { name: "入力を直すと実行できる" }),
+	).toBeDisabled();
+	// 期間の指定へ戻すと日付の欄が戻る
+	await page
+		.getByRole("group", { name: "期間の決め方" })
+		.getByText("期間を指定", { exact: true })
+		.click();
+	await expect(page.getByLabel("開始")).toBeVisible();
+});
+
+test("相場データがまだ無いうちはデータセットを作れず、理由が出て実行できない", async ({
+	page,
+	request,
+}, info) => {
 	await prepare(request, `BT データセット ${info.project.name}`);
 	await page.goto("/backtest");
 	await page
@@ -620,10 +643,10 @@ test("データセットがまだ無いうちにデータセットで期間を�
 	await expect(
 		page.getByRole("button", { name: "入力を直すと実行できる" }),
 	).toBeDisabled();
-	// 期間の指定へ戻すと日付の欄が戻る
-	await page
-		.getByRole("group", { name: "期間の決め方" })
-		.getByText("期間を指定", { exact: true })
-		.click();
-	await expect(page.getByLabel("開始")).toBeVisible();
+	await page.getByRole("button", { name: "新しく作る" }).click();
+	const dialog = page.getByRole("dialog", { name: "データセットを作る" });
+	await expect(dialog.getByText("相場データがまだ無い。")).toBeVisible();
+	await expect(dialog.getByRole("button", { name: "保存" })).toBeDisabled();
+	await dialog.getByRole("button", { name: "やめる" }).click();
+	await expect(dialog).toBeHidden();
 });

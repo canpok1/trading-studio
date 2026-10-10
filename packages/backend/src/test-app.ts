@@ -34,6 +34,8 @@ import { RetentionRepository } from "./retention/repository";
 import { createRetentionService } from "./retention/service";
 import { ScoringAnalysisRepository } from "./scoring-analysis/repository";
 import { createScoringAnalysis } from "./scoring-analysis/service";
+import { SegmentRepository } from "./segments/repository";
+import { createSegmentService } from "./segments/service";
 import { createStrategyService } from "./strategies/service";
 import { TradingRepository } from "./trading/repository";
 import { createTradingService } from "./trading/service";
@@ -110,9 +112,9 @@ export function createTestApp(
 		newsDelayMs: () => newsDelayMs(newsRepo),
 		now: () => clock.now,
 	});
-	// 定期の作成は動かさず、テストから datasets.build() を呼ぶ
-	const datasets = createDatasetService({
-		repo: new DatasetRepository(db),
+	// 定期の作成は動かさず、テストから segments.build() を呼ぶ
+	const segments = createSegmentService({
+		repo: new SegmentRepository(db),
 		marketData: marketDataRepo,
 		newsDeletedBefore: () => scoreRepo.newsDeletedBefore(),
 		now: () => clock.now,
@@ -125,7 +127,14 @@ export function createTestApp(
 		runner,
 		judgments,
 		scoring,
-		datasets,
+		segments,
+		now: () => 3_000,
+	});
+	const datasets = createDatasetService({
+		repo: new DatasetRepository(db, backtestRepo),
+		backtestRepo,
+		backtests,
+		segments,
 		now: () => 3_000,
 	});
 	const adviceRepo = new AdviceRepository(db);
@@ -189,6 +198,7 @@ export function createTestApp(
 		analysisExport,
 		retention,
 		accuracy: scoringAnalysis,
+		segments,
 		datasets,
 		...over,
 	});
@@ -200,6 +210,7 @@ export function createTestApp(
 		strategies,
 		backtests,
 		backtestRepo,
+		segments,
 		datasets,
 		advice,
 		adviceRepo,
