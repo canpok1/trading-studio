@@ -24,7 +24,7 @@ import { RunHeader } from "./BacktestResultPage";
 import type { BacktestDraft } from "./BacktestRunPage";
 
 const BACK = { to: "/backtest?tab=history", label: "履歴" };
-const TITLE = "データセットの結果";
+const TITLE = "バックテスト結果";
 
 /** データセットでまとめて実行した結果。合算した成績と、相場データごとの成績 */
 export function DatasetRunPage() {
