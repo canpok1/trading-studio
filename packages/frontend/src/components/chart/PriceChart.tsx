@@ -288,7 +288,7 @@ export function PriceChart({
 	// 出来高を持たない足（バックテストの結果に残した足）は棒を描かない
 	const [showVolume, setShowVolume] = useShowVolume();
 	const hasEntry = entryProp !== undefined;
-	// 隠すと線も軸の値も消え、縦の範囲にも含めない
+	// 隠すと線も軸の値も消える
 	const entryPrices = (showEntry && entryProp) || NO_PERIODS;
 	const [showTriggers, setShowTriggers] = useShowTriggers();
 	const hasTriggers = triggerProp !== undefined;
@@ -579,6 +579,8 @@ export function PriceChart({
 				priceLineVisible: false,
 				lastValueVisible: false,
 				crosshairMarkerVisible: false,
+				// 縦の範囲は値動きだけで決める（離れた線まで含めると拡大しても値動きが潰れる）
+				autoscaleInfoProvider: () => null,
 			});
 			s.setData(
 				slots.map((slot) => {
@@ -612,6 +614,7 @@ export function PriceChart({
 				priceLineVisible: false,
 				lastValueVisible: false,
 				crosshairMarkerVisible: false,
+				autoscaleInfoProvider: () => null,
 			});
 			s.setData(
 				slots.map((slot) => {
@@ -812,7 +815,7 @@ export function PriceChart({
 		};
 	}, [triggers, marksTick, themeTick]);
 
-	// 価格の軸の「現」「買」の値。買値は足から離れていても縦の範囲に含めて画面に入れる
+	// 価格の軸の「現」「買」の値。縦の範囲には含めない（離れた買値まで含めると拡大しても値動きが潰れる）
 	// biome-ignore lint/correctness/useExhaustiveDependencies: themeTick で色の変化を拾う
 	useEffect(() => {
 		const c = chartRef.current;
@@ -828,7 +831,6 @@ export function PriceChart({
 							label: "現",
 							color: cssVar("--color-text-2"),
 							textColor: cssVar("--color-surface"),
-							keepInView: false,
 						},
 					]),
 			...entryPrices.map((price) => ({
@@ -836,16 +838,13 @@ export function PriceChart({
 				label: "買",
 				color: buy,
 				textColor: buyInk,
-				keepInView: true,
 			})),
-			// 次の行動は実績より薄く見せる（薄い地に地の文の色の字）。
-			// 縦の範囲には一番近いものだけ含める（離れた価格まで含めると値動きが潰れる）
+			// 次の行動は実績より薄く見せる（薄い地に地の文の色の字）
 			...triggers.map((t) => ({
 				price: t.price,
 				label: TRIGGER_STYLE[t.kind].label,
 				color: cssVar(TRIGGER_STYLE[t.kind].tag),
 				textColor: cssVar("--color-text"),
-				keepInView: t.near,
 			})),
 		]);
 	}, [currentPrice, entryPrices, triggers, themeTick]);
