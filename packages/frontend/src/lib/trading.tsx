@@ -208,11 +208,16 @@ export function useTradingPerformance(runId: number, active: boolean) {
 }
 
 /** 運用する戦略を今の価格で試算した見張りを読み、5秒ごとに読み直す。読めなければ前の値を残す */
-export function useStrategyWatch(runId: number, active: boolean) {
+export function useStrategyWatch(
+	runId: number,
+	strategyId: number | null,
+	active: boolean,
+) {
 	const api = useApi();
-	// どのタブの見張りかを持ち、切り替え直後に別のタブの見張りを出さない
+	// どのタブ・どの戦略の見張りかを持ち、切り替え直後に前の見張りを出さない
 	const [loaded, setLoaded] = useState<{
 		runId: number;
+		strategyId: number | null;
 		watch: StrategyWatch | null;
 	} | null>(null);
 	const seq = useRef(0);
@@ -222,14 +227,16 @@ export function useStrategyWatch(runId: number, active: boolean) {
 			const r = await api.api.trading.runs[":id"].watch
 				.$get({ param: { id: String(runId) } })
 				.then((res) => readJson<{ watch: StrategyWatch | null }>(res));
-			if (my === seq.current) setLoaded({ runId, watch: r.watch });
+			if (my === seq.current) setLoaded({ runId, strategyId, watch: r.watch });
 		} catch {
 			// 見張りは補助の表示なので、読めなければ前の値のまま残す
 		}
-	}, [api, runId]);
+	}, [api, runId, strategyId]);
 	useEffect(() => {
 		if (active) load();
 	}, [active, load]);
 	useInterval(load, STATUS_MS, active);
-	return loaded?.runId === runId ? loaded.watch : null;
+	return loaded?.runId === runId && loaded.strategyId === strategyId
+		? loaded.watch
+		: null;
 }

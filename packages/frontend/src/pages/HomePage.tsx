@@ -210,7 +210,11 @@ function HomeBody({
 		visible && hasAccount,
 	);
 	const perf = useTradingPerformance(runId, visible && hasAccount);
-	const watch = useStrategyWatch(runId, visible && hasAccount);
+	const watch = useStrategyWatch(
+		runId,
+		run?.strategy?.id ?? null,
+		visible && hasAccount,
+	);
 	// 見張りは定期的に取り直すので、発動価格が変わったときだけ線を引き直す
 	const triggerKey = JSON.stringify(chartTriggers(watch));
 	// biome-ignore lint/correctness/useExhaustiveDependencies: 発動価格が変わったとき（triggerKey）だけ作り直す
