@@ -867,3 +867,32 @@ describe("複数のタブ", () => {
 		).toBe(409);
 	});
 });
+
+describe("見張り", () => {
+	test("今の価格で試算し、保有の利確・損切りの発動価格を返す。注文も state も変えない", async () => {
+		const t = setup();
+		await t.call("POST", "/start");
+		t.at(T0 + M);
+		t.fill(P);
+		const before = t.orders().length;
+		const res = await t.call("GET", "/runs/1/watch");
+		expect(res.status).toBe(200);
+		const w = res.body.watch as {
+			actions: { kind: string; price: number | null }[];
+		};
+		expect(w.actions.map((a) => [a.kind, a.price])).toEqual([
+			["stopLoss", P * 0.99],
+			["takeProfit", P * 1.01],
+		]);
+		expect(t.orders().length).toBe(before);
+		expect((await t.call("GET", "/runs/9/watch")).status).toBe(404);
+	});
+
+	test("戦略を選んでいなければ null", async () => {
+		const t = setup();
+		t.trading.update(1, { strategyId: null });
+		expect((await t.call("GET", "/runs/1/watch")).body).toEqual({
+			watch: null,
+		});
+	});
+});

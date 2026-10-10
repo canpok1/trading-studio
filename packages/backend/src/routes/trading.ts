@@ -107,6 +107,12 @@ export function tradingRoutes(service: TradingService) {
 			(c) =>
 				respond(c, service.reset(runId(c), c.req.valid("json").initialCash)),
 		)
+		.get("/runs/:id/watch", (c) => {
+			const r = service.watch(runId(c));
+			return r
+				? c.json(r, 200)
+				: c.json({ message: "運用が見つからない" }, 404);
+		})
 		.get("/runs/:id/performance", (c) => {
 			const performance = service.performance(runId(c));
 			return performance

@@ -27,6 +27,7 @@ import {
 	TRADING_RUN_LIMITS,
 	tradeFillPrice,
 	validateConditionSet,
+	watchConditionSet,
 } from "@trading-studio/core";
 import type { LiveMarket } from "../collector/types";
 import type { JudgmentService } from "../judgments/types";
@@ -143,6 +144,27 @@ export function createTradingService({
 		};
 	};
 
+	/** 今の評価ルールでの判定器ごとの判定。採点の記録が始まる前は空（データなし） */
+	const judgmentValues = (): Record<string, string> => {
+		const current = judgments.current();
+		const values: Record<string, string> = {};
+		if (
+			current.firstScoredAt !== null &&
+			current.time >= current.firstScoredAt
+		) {
+			for (const j of JUDGES) values[j] = current.results[j].value;
+		}
+		return values;
+	};
+
+	const judgmentInput = (values: Record<string, string>, t: number) =>
+		Object.fromEntries(
+			Object.entries(values).map(([judge, label]) => [
+				judge,
+				[{ judge, time: t, label }],
+			]),
+		);
+
 	const evaluate = (row: TradingRunRow, t: number) => {
 		if (!row.enabled || row.nextEvalAt === null) return;
 		if (t < row.nextEvalAt && !row.reevaluate) return;
@@ -162,15 +184,7 @@ export function createTradingService({
 			return;
 		}
 		// 戦略が使わない判定も、注文の詳細で「そのときの判定」として見せるため記録する
-		// 採点の記録が始まる前は判定を渡さない（データなし）
-		const current = judgments.current();
-		const values: Record<string, string> = {};
-		if (
-			current.firstScoredAt !== null &&
-			current.time >= current.firstScoredAt
-		) {
-			for (const j of JUDGES) values[j] = current.results[j].value;
-		}
+		const values = judgmentValues();
 		const expired = expireOrders(row.account, t);
 		saveChanges(row, expired.changed, { decisionId: null, strategy: null });
 		const out = decide({
@@ -179,12 +193,7 @@ export function createTradingService({
 			now: t,
 			price: (live.latestTrade as MarketTrade).price,
 			...candlesAt(s, t, live),
-			judgments: Object.fromEntries(
-				Object.entries(values).map(([judge, label]) => [
-					judge,
-					[{ judge, time: t, label }],
-				]),
-			),
+			judgments: judgmentInput(values, t),
 			account: expired.account,
 			state: row.state,
 			fees,
@@ -378,6 +387,31 @@ export function createTradingService({
 		run(id) {
 			const row = repo.run(id);
 			return row ? statusOf(row, now(), market()) : null;
+		},
+
+		watch(id) {
+			const row = repo.run(id);
+			if (!row) return null;
+			const s = row.strategyId === null ? null : strategies.get(row.strategyId);
+			const live = market();
+			const price = currentPrice(live);
+			if (!s || price === null) return { watch: null };
+			const t = now();
+			const a = row.account;
+			return {
+				watch: watchConditionSet({
+					now: t,
+					price,
+					...candlesAt(s, t, live),
+					judgments: judgmentInput(judgmentValues(), t),
+					lots: publicLots(a.lots),
+					cash: a.cash,
+					openOrders: a.openOrders.map((x) => ({ ...x.order })),
+					params: s.params,
+					state: row.state,
+					buyBlocked: dailyLossBlock(a, t, s.params.dailyLossLimit),
+				}),
+			};
 		},
 
 		create(input) {
