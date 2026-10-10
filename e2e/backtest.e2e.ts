@@ -168,6 +168,15 @@ test("ひな形から名前を付けて実行すると結果が出て、注文�
 	await expect(sheet).toContainText("買い · 約定");
 	await sheet.getByRole("button", { name: "閉じる" }).click();
 
+	// 条件は先頭だけ出し、広げると残りと保存のボタンが出る
+	const conditions = page.getByRole("list", { name: "実行条件" });
+	await expect(conditions.getByRole("listitem")).toHaveCount(5);
+	await expect(
+		page.getByRole("button", { name: "新しい戦略として保存" }),
+	).toHaveCount(0);
+	await conditions.getByRole("button", { name: /^他 \d+ 件/ }).click();
+	await expect(conditions).toContainText("手数料");
+
 	// 新しい戦略として保存する
 	await page.getByRole("button", { name: "新しい戦略として保存" }).click();
 	const save = page.getByRole("dialog", { name: "新しい戦略として保存する" });
@@ -615,6 +624,7 @@ test("採点の版を選ぶと、足りない記事をその版で採点し直�
 	});
 	await page.getByRole("button", { name: "バックテストを実行" }).click();
 	await expect(page).toHaveURL(/\/backtest\/runs\/\d+$/);
+	await page.getByRole("button", { name: /^他 \d+ 件/ }).click();
 	await expect(page.getByRole("list", { name: "実行条件" })).toContainText(
 		`採点の版 v${version}`,
 	);

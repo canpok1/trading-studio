@@ -205,6 +205,9 @@ function RerunButton({ run }: { run: BacktestRun }) {
 	);
 }
 
+/** 条件のバッジを閉じているときに出す件数。画面幅で見える件数が変わらないよう行数ではなく件数で切る */
+const COLLAPSED_CHIPS = 4;
+
 const pct = (ppm: number) => `${ppmToPercent(ppm)}%`;
 
 /** 実行の条件。subtitle を渡すと、期間・初期資金の行の代わりに出す（データセットのまとめた実行） */
@@ -217,6 +220,7 @@ export function RunHeader({
 }) {
 	const [saving, setSaving] = useState(false);
 	const [savedAs, setSavedAs] = useState<string | null>(null);
+	const [open, setOpen] = useState(false);
 	const p = run.params;
 	const chips = [
 		frequencyText(p),
@@ -257,6 +261,7 @@ export function RunHeader({
 			? [`ニュースの版 ${formatDateTime(run.newsDataVersion)}`]
 			: []),
 	];
+	const collapsible = chips.length > COLLAPSED_CHIPS;
 	return (
 		<section
 			aria-label="実行の条件"
@@ -275,17 +280,32 @@ export function RunHeader({
 				</span>
 			)}
 			<ul aria-label="実行条件" className="flex flex-wrap gap-1.5">
-				{chips.map((c) => (
-					<li
-						key={c}
-						className="num inline-flex min-h-6 items-center rounded-md bg-surface-2 px-2 py-0.5 text-[11px]"
-					>
-						{c}
+				{(collapsible && !open ? chips.slice(0, COLLAPSED_CHIPS) : chips).map(
+					(c) => (
+						<li
+							key={c}
+							className="num inline-flex min-h-6 items-center rounded-md bg-surface-2 px-2 py-0.5 text-[11px]"
+						>
+							{c}
+						</li>
+					),
+				)}
+				{collapsible && (
+					<li className="inline-flex">
+						<button
+							type="button"
+							aria-expanded={open}
+							onClick={() => setOpen((v) => !v)}
+							className="num inline-flex min-h-6 items-center rounded-md border border-line px-2 py-0.5 text-[11px] text-text-2"
+						>
+							{open ? "閉じる ▲" : `他 ${chips.length - COLLAPSED_CHIPS} 件 ▼`}
+						</button>
 					</li>
-				))}
+				)}
 			</ul>
 			{run.stepLimited && <Note>{stepLimitedText(run.stepTimeframe)}</Note>}
-			{run.status === "done" && (
+			{/* あまり使わないので、条件を広げたときだけ出す */}
+			{run.status === "done" && (open || !collapsible) && (
 				<div className="mt-1">
 					{savedAs ? (
 						<span role="status" className="text-xs text-text-2">
