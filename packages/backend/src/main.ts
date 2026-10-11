@@ -6,6 +6,14 @@ import { demoAdviceModel } from "./advice/fake-model";
 import { DEFAULT_INSTRUCTIONS } from "./advice/prompt";
 import { AdviceRepository } from "./advice/repository";
 import { createAdviceService } from "./advice/service";
+import {
+	CompatibleRepository,
+	compatibleModel,
+	isCompatibleModel,
+	routedModel,
+} from "./ai/compatible";
+import { demoCompatibleModels } from "./ai/fake-models";
+import { createCompatibleService } from "./ai/service";
 import { AnalysisExportRepository } from "./analysis-export/repository";
 import { createAnalysisExportService } from "./analysis-export/service";
 import { createApp } from "./app";
@@ -31,7 +39,7 @@ import {
 } from "./news/collector";
 import { demoFetchFeed } from "./news/fake-feed";
 import { demoScoreModel } from "./news/fake-model";
-import { geminiModel } from "./news/gemini";
+import { DEFAULT_SCORING_MODEL, geminiModel } from "./news/gemini";
 import { DEFAULT_CRITERIA } from "./news/prompt";
 import { NewsRepository } from "./news/repository";
 import { ScoreRepository } from "./news/score-repository";
@@ -119,6 +127,13 @@ newsCollector.tick();
 
 const scoreRepo = new ScoreRepository(db);
 scoreRepo.seedCriteria(DEFAULT_CRITERIA, Date.now());
+const compatibleRepo = new CompatibleRepository(db);
+/** 選んだモデルの接続先（Gemini 直結か OpenAI 互換か）で問い合わせる */
+const aiModel = (timeoutMs: number) =>
+	routedModel(
+		geminiModel(() => scoreRepo.apiKey(), { timeoutMs }),
+		compatibleModel(() => compatibleRepo.connection(), { timeoutMs }),
+	);
 // E2E で採点の失敗を再現するためのファイル。あれば偽物の AI が失敗する
 const scoringDownFile = join(dirname(dbPath), "scoring-down");
 const scorer = createScorer({
@@ -127,7 +142,7 @@ const scorer = createScorer({
 	model:
 		process.env.SCORING_MODEL === "demo"
 			? demoScoreModel({ isDown: () => existsSync(scoringDownFile) })
-			: geminiModel(() => scoreRepo.apiKey()),
+			: aiModel(60_000),
 	rule: () => scoreRepo.aggregationRule(),
 	appBuiltAt,
 	// E2E では再試行を待ちきれないので短くする
@@ -176,6 +191,19 @@ const scoring = createScoringService({
 	newsRepo,
 	scorer,
 });
+const compatible = createCompatibleService({
+	repo: compatibleRepo,
+	onSaved: () => {
+		// 採点が OpenAI 互換を使っていれば、前の接続先で失敗したものを新しい接続先でやり直す
+		if (!isCompatibleModel(scoreRepo.model(DEFAULT_SCORING_MODEL))) return;
+		scoreRepo.retryAllFailed(Date.now());
+		scorer.clearFailure();
+	},
+	// E2E では接続先へつながず、決まった一覧を返す
+	...(process.env.SCORING_MODEL === "demo"
+		? { listModels: demoCompatibleModels }
+		: {}),
+});
 const backtests = createBacktestService({
 	repo: backtestRepo,
 	marketData: marketDataRepo,
@@ -207,7 +235,7 @@ const advice = createAdviceService({
 		process.env.SCORING_MODEL === "demo"
 			? demoAdviceModel({ isDown: () => existsSync(adviceDownFile) })
 			: // アドバイスは応答が長く、Pro のモデルでは時間がかかるので長めに待つ
-				geminiModel(() => scoreRepo.apiKey(), { timeoutMs: 180_000 }),
+				aiModel(180_000),
 	appBuiltAt,
 });
 const scoringAnalysis = createScoringAnalysis({
@@ -264,6 +292,7 @@ const server = new Hono()
 			accuracy: scoringAnalysis,
 			segments,
 			datasets,
+			compatible,
 		}),
 	);
 serveFrontend(server, distDir);

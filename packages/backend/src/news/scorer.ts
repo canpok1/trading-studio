@@ -157,7 +157,7 @@ export function createScorer({
 	return {
 		tick() {
 			if (running) return;
-			if (model.unavailable()) {
+			if (model.unavailable(repo.model(DEFAULT_SCORING_MODEL))) {
 				noKeySince ??= now();
 				return;
 			}
@@ -180,7 +180,7 @@ export function createScorer({
 		},
 		rescoring: () => rescoring,
 		problem() {
-			const reason = model.unavailable();
+			const reason = model.unavailable(repo.model(DEFAULT_SCORING_MODEL));
 			if (reason) return { error: reason, since: noKeySince ?? now() };
 			return failing
 				? {
@@ -190,7 +190,7 @@ export function createScorer({
 				: null;
 		},
 		async trial(news, criteria) {
-			const reason = model.unavailable();
+			const reason = model.unavailable(repo.model(DEFAULT_SCORING_MODEL));
 			if (reason) return { ok: false, error: reason };
 			// 問い合わせる時刻を先に取っておく。待っている間に常駐の採点が割り込まないため
 			const at = Math.max(now(), lastAskedAt + minIntervalMs);
