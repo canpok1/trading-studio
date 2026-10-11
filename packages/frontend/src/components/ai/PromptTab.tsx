@@ -15,6 +15,7 @@ import { errorMessage, readJson, useAsync } from "../../lib/useAsync";
 import { Help } from "../Help";
 import { DurationChip, ScoreChip } from "../judgment/JudgmentBadge";
 import { Modal } from "../Modal";
+import { ModelPicker } from "../ModelPicker";
 import { ErrorState, LoadingCard, Skeleton } from "../States";
 import { Button, Card } from "../ui";
 
@@ -130,23 +131,16 @@ function ModelSetting() {
 				</p>
 			) : (
 				<div className="flex items-center gap-2">
-					<select
+					<ModelPicker
 						id="scoring-model"
-						value={value ?? ""}
+						fixed={state.kind === "ok" ? state.data.models : []}
+						value={value}
 						disabled={state.kind !== "ok"}
-						onChange={(e) => {
-							setValue(e.target.value);
+						onChange={(id) => {
+							setValue(id);
 							setMessage(null);
 						}}
-						className="h-11 min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 text-[15px]"
-					>
-						{state.kind === "ok" &&
-							state.data.models.map((m) => (
-								<option key={m.id} value={m.id}>
-									{m.label}
-								</option>
-							))}
-					</select>
+					/>
 					<Button
 						size="sm"
 						disabled={busy || value === null || value === current}

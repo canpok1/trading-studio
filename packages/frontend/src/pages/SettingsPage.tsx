@@ -12,6 +12,7 @@ import { PromptTab } from "../components/ai/PromptTab";
 import { RuleTab } from "../components/ai/RuleTab";
 import { SourcesTab } from "../components/ai/SourcesTab";
 import { AdviceSettings } from "../components/backtest/AdviceSettings";
+import { CompatibleSetting } from "../components/CompatibleSetting";
 import { Help } from "../components/Help";
 import { Page } from "../components/Page";
 import { RetentionSetting } from "../components/RetentionSetting";
@@ -72,6 +73,7 @@ export function SettingsPage() {
 				<div role="tabpanel" className="flex flex-col gap-3">
 					<ThemeSetting />
 					<ApiKeySetting />
+					<CompatibleSetting />
 					<RetentionSetting />
 				</div>
 			)}

@@ -7,7 +7,7 @@ import { Help } from "./Help";
 import { Modal } from "./Modal";
 import { Button, Card } from "./ui";
 
-/** Gemini の API キー。ニュースの採点とバックテストのアドバイスで使うので、設定画面の「全般」に置く */
+/** Gemini の API キー。ニュースの採点とバックテストで Gemini のモデルを選んだときに使うので、設定画面の「全般」に置く */
 export function ApiKeySetting() {
 	const api = useApi();
 	const load = useCallback(
@@ -49,7 +49,7 @@ export function ApiKeySetting() {
 	const remove = () =>
 		act(
 			() => api.api.scoring["api-key"].$delete().then((r) => readJson(r)),
-			"API キーを削除した。採点とアドバイスは止まる",
+			"API キーを削除した。Gemini のモデルを選んでいる採点・アドバイスは止まる",
 		);
 
 	return (
@@ -125,7 +125,8 @@ export function ApiKeySetting() {
 			{deleting && (
 				<Modal title="API キーを削除する" onClose={() => setDeleting(false)}>
 					<p className="text-sm">
-						削除すると、キーを保存し直すまでニュースの採点とバックテストのアドバイスが止まる。
+						削除すると、キーを保存し直すまで、Gemini
+						のモデルを選んでいるニュースの採点とバックテストのアドバイスが止まる。
 					</p>
 					<div className="grid grid-cols-2 gap-3">
 						<Button onClick={() => setDeleting(false)}>やめる</Button>
