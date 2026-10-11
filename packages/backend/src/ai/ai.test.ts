@@ -115,6 +115,10 @@ describe("OpenAI 互換のモデル", () => {
 		await expect(m.generate("m", "p", {})).rejects.toThrow("length");
 		reply = () => json({ choices: [{ message: { content: "not json" } }] });
 		await expect(m.generate("m", "p", {})).rejects.toThrow("JSON でない");
+		// 構造化出力を無視して囲みを付けるモデルでも読む
+		reply = () =>
+			json({ choices: [{ message: { content: '```json\n{"a":1}\n```' } }] });
+		expect(await m.generate("m", "p", {})).toEqual({ a: 1 });
 	});
 
 	test("接続先が無ければ使えない", async () => {
@@ -197,14 +201,20 @@ describe("OpenAI 互換の接続先の API", () => {
 			baseUrl: "http://bifrost:8080/v1",
 			keyConfigured: true,
 		});
-		// キーを渡さなければ保存済みのキーを残す
+		// キーを渡さなければ保存済みのキーを残す。URL を変えたら前の接続先のキーは消す
 		const kept = await app.request(
+			"/api/ai/compatible",
+			put({ baseUrl: "http://bifrost:8080/v1" }),
+		);
+		expect(await kept.json()).toMatchObject({ keyConfigured: true });
+		const moved = await app.request(
 			"/api/ai/compatible",
 			put({ baseUrl: "http://other/v1" }),
 		);
-		expect(await kept.json()).toMatchObject({
+		expect(await moved.json()).toEqual({
 			baseUrl: "http://other/v1",
-			keyConfigured: true,
+			keyConfigured: false,
+			keySavedAt: null,
 		});
 
 		const models = await (

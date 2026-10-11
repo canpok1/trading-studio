@@ -24,7 +24,7 @@ export function createCompatibleService({
 	now = Date.now,
 }: {
 	repo: CompatibleRepository;
-	/** 接続先を変えたとき。前の接続先で失敗した採点をやり直すのに使う */
+	/** 接続先を保存したとき。前の接続先で失敗した採点をやり直すのに使う */
 	onSaved?: () => void;
 	listModels?: typeof fetchCompatibleModels;
 	now?: () => number;
@@ -52,7 +52,6 @@ export function createCompatibleService({
 				if (k.length > API_KEY_MAX)
 					return { ok: false, message: `キーは ${API_KEY_MAX} 文字以内にする` };
 			}
-			// 空のキーは「キーなしで使う」。保存済みのキーを残すときは undefined
 			repo.save(url, k, now());
 			onSaved();
 			return { ok: true };
@@ -60,7 +59,6 @@ export function createCompatibleService({
 
 		clear() {
 			repo.clear();
-			onSaved();
 		},
 
 		async models() {

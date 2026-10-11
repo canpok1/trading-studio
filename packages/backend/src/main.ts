@@ -194,7 +194,7 @@ const scoring = createScoringService({
 const compatible = createCompatibleService({
 	repo: compatibleRepo,
 	onSaved: () => {
-		// 採点が OpenAI 互換を使っていれば、前の接続先で失敗したものを新しい接続先でやり直す
+		// 採点が OpenAI 互換を使っていれば、前の設定で失敗したものを新しい設定でやり直す
 		if (!isCompatibleModel(scoreRepo.model(DEFAULT_SCORING_MODEL))) return;
 		scoreRepo.retryAllFailed(Date.now());
 		scorer.clearFailure();

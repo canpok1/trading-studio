@@ -13,7 +13,7 @@ export type CompatibleModelsResult =
 
 export type CompatibleService = {
 	status(): CompatibleConnectionStatus;
-	/** apiKey が undefined なら保存済みのキーを残す */
+	/** apiKey が undefined なら保存済みのキーを残す。URL を変えたときは消す */
 	save(input: {
 		baseUrl: string;
 		apiKey?: string;

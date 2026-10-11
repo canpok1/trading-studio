@@ -48,7 +48,7 @@ export function CompatibleSetting() {
 		act(async () => {
 			await api.api.ai.compatible
 				.$put({
-					// 空なら保存済みのキーを残す
+					// 空なら保存済みのキーを残す（URL を変えたときは backend が消す）
 					json: { baseUrl: url, apiKey: key.trim() ? key : undefined },
 				})
 				.then((r) => readJson(r));
@@ -88,7 +88,8 @@ export function CompatibleSetting() {
 				<Help label="OpenAI 互換の接続先">
 					<p>
 						Bifrost などの集約サービスを OpenAI 互換 API
-						で使う。ここで設定すると、採点とアドバイスのモデルの選択欄に接続先のモデルが並ぶ。キーは保存しても画面に出さない。
+						で使う。ここで設定すると、採点とアドバイスのモデルの選択欄に接続先のモデルが並ぶ。キーは保存しても画面に出さない。URL
+						を変えると保存済みのキーは消えるので、要るなら入れ直す。
 					</p>
 				</Help>
 			</div>

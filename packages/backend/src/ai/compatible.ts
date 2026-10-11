@@ -72,12 +72,19 @@ export class CompatibleRepository {
 		return v === null ? null : Number(v);
 	}
 
+	/** apiKey が undefined なら保存済みのキーを残す。ただし URL が変わったら消す（前の接続先のキーを別の宛先へ送らないため） */
 	save(baseUrl: string, apiKey: string | undefined, now: number) {
 		this.sql.transaction(() => {
+			const urlChanged = this.setting(BASE_URL_KEY) !== baseUrl;
 			this.setSetting(BASE_URL_KEY, baseUrl);
 			if (apiKey !== undefined) {
 				this.setSetting(API_KEY_KEY, apiKey);
 				this.setSetting(API_KEY_SAVED_AT_KEY, String(now));
+			} else if (urlChanged) {
+				this.sql.run("delete from settings where key in (?, ?)", [
+					API_KEY_KEY,
+					API_KEY_SAVED_AT_KEY,
+				]);
 			}
 		})();
 	}
@@ -137,6 +144,21 @@ export function toJsonSchema(schema: unknown): unknown {
 	return out;
 }
 
+/**
+ * 応答の文から JSON を読む。strict なしでは、構造化出力を無視して ```json の囲みや前置きを付けるモデルがあるので、
+ * 最初の { から最後の } までを読む
+ */
+export function parseJsonText(text: string): unknown {
+	const from = text.indexOf("{");
+	const to = text.lastIndexOf("}");
+	try {
+		if (from < 0 || to < from) throw new Error();
+		return JSON.parse(text.slice(from, to + 1));
+	} catch {
+		throw new Error("OpenAI 互換 API の応答が JSON でない");
+	}
+}
+
 /** OpenAI 互換の接続先へ問い合わせるモデル。model には印を外した名前を渡す */
 export function compatibleModel(
 	connection: () => CompatibleConnection | null,
@@ -179,11 +201,7 @@ export function compatibleModel(
 					`OpenAI 互換 API の応答が空（${choice?.finish_reason ?? "理由不明"}）`,
 				);
 			}
-			try {
-				return JSON.parse(text);
-			} catch {
-				throw new Error("OpenAI 互換 API の応答が JSON でない");
-			}
+			return parseJsonText(text);
 		},
 	};
 }

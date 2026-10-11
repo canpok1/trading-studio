@@ -133,7 +133,7 @@ export function ModelPicker({
 					}
 					if (e.key === "ArrowDown") {
 						e.preventDefault();
-						setActive((a) => Math.min(a + 1, flat.length - 1));
+						setActive((a) => Math.max(0, Math.min(a + 1, flat.length - 1)));
 					} else if (e.key === "ArrowUp") {
 						e.preventDefault();
 						setActive((a) => Math.max(a - 1, 0));

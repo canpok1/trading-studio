@@ -190,7 +190,9 @@ export function createScorer({
 				: null;
 		},
 		async trial(news, criteria) {
-			const reason = model.unavailable(repo.model(DEFAULT_SCORING_MODEL));
+			// 確かめたモデルで問い合わせる。待っている間に選び直されても接続先がずれないように
+			const modelId = repo.model(DEFAULT_SCORING_MODEL);
+			const reason = model.unavailable(modelId);
 			if (reason) return { ok: false, error: reason };
 			// 問い合わせる時刻を先に取っておく。待っている間に常駐の採点が割り込まないため
 			const at = Math.max(now(), lastAskedAt + minIntervalMs);
@@ -199,7 +201,7 @@ export function createScorer({
 			try {
 				return {
 					ok: true,
-					result: await ask(news, criteria, repo.model(DEFAULT_SCORING_MODEL)),
+					result: await ask(news, criteria, modelId),
 				};
 			} catch (e) {
 				return { ok: false, error: e instanceof Error ? e.message : String(e) };
