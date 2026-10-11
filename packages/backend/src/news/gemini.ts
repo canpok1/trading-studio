@@ -5,8 +5,8 @@ export type ResponseSchema = Record<string, unknown>;
 
 /** モデルへ1回問い合わせ、応答の JSON を返す。テストと E2E では偽物に差し替える */
 export type GeminiModel = {
-	/** 使えない理由（API キーが無いなど）。使えれば null */
-	unavailable(): string | null;
+	/** そのモデルを使えない理由（API キーが無いなど）。使えれば null */
+	unavailable(model: string): string | null;
 	generate(
 		model: string,
 		prompt: string,

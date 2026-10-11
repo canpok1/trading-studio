@@ -5,6 +5,10 @@ export type {
 	ImprovedStrategy,
 	InstructionsVersion,
 } from "./advice/types";
+export type {
+	CompatibleConnectionStatus,
+	CompatibleModelsResult,
+} from "./ai/types";
 export type { AppType } from "./app";
 export type {
 	BacktestChart,

@@ -1,4 +1,5 @@
 import { conditionStrategy } from "@trading-studio/core";
+import { isSelectableModel } from "../ai/compatible";
 import type { BacktestRepository } from "../backtests/repository";
 import type { BacktestService } from "../backtests/types";
 import type { GeminiModel } from "../news/gemini";
@@ -42,7 +43,7 @@ export function createAdviceService({
 	appBuiltAt: number | null;
 	now?: () => number;
 }): AdviceService & { running(runId: number): Promise<void> | null } {
-	const isModel = (id: string) => ADVICE_MODELS.some((m) => m.id === id);
+	const isModel = (id: string) => isSelectableModel(ADVICE_MODELS, id);
 	const jobs = new Map<number, Promise<void>>();
 
 	/** AI に渡す資料。結果が無ければ null */
@@ -117,14 +118,15 @@ export function createAdviceService({
 		start(runId) {
 			const blocked = notReady(runId);
 			if (blocked) return { ok: false, ...blocked };
-			const unavailable = model.unavailable();
+			const modelId = repo.model(DEFAULT_ADVICE_MODEL);
+			const unavailable = model.unavailable(modelId);
 			if (unavailable) return { ok: false, status: 503, message: unavailable };
 			const instructions = activeInstructions();
 			if (!instructions) {
 				return { ok: false, status: 409, message: "使用中の指示が無い" };
 			}
 			const g: AdviceGeneration = {
-				model: repo.model(DEFAULT_ADVICE_MODEL),
+				model: modelId,
 				instructionsVersion: instructions.version,
 				appBuiltAt,
 			};

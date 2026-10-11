@@ -407,9 +407,10 @@ test("設定の「バックテスト」でアドバイスのモデルと指示�
 	page,
 }, info) => {
 	await page.goto("/settings?section=backtest");
+	await page.getByLabel("アドバイスに使うモデル", { exact: true }).click();
 	await page
-		.getByLabel("アドバイスに使うモデル", { exact: true })
-		.selectOption("gemini-3.1-pro-preview");
+		.getByRole("option", { name: "Gemini 3.1 Pro（プレビュー）" })
+		.click();
 	await page.getByRole("button", { name: "保存" }).first().click();
 	await expect(page.getByText("モデルを保存した")).toBeVisible();
 
@@ -431,7 +432,7 @@ test("設定の「バックテスト」でアドバイスのモデルと指示�
 	await page.reload();
 	await expect(
 		page.getByLabel("アドバイスに使うモデル", { exact: true }),
-	).toHaveValue("gemini-3.1-pro-preview");
+	).toHaveValue("Gemini 3.1 Pro（プレビュー）");
 	await page.request.put("/api/advice/model", {
 		data: { model: "gemini-3.8-flash" },
 	});

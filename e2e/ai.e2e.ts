@@ -492,11 +492,12 @@ test("取得元・取得間隔・採点のモデルの変更が保存される",
 	// 採点に使うモデルはプロンプトのタブ（先頭のカード）にある
 	await page.goto("/settings?section=news&tab=prompt");
 	const model = page.getByLabel("採点に使うモデル", { exact: true });
-	await model.selectOption("gemini-3.8-flash");
+	await model.click();
+	await page.getByRole("option", { name: "Gemini 3.8 Flash" }).click();
 	await page.getByRole("button", { name: "保存", exact: true }).first().click();
 	await expect(page.getByText("モデルを保存した")).toBeVisible();
 	await page.reload();
-	await expect(model).toHaveValue("gemini-3.8-flash");
+	await expect(model).toHaveValue("Gemini 3.8 Flash");
 	await page.request.put("/api/scoring/model", {
 		data: { model: "gemini-3.5-flash-lite" },
 	});
@@ -535,6 +536,56 @@ test("API キーは保存・上書き・削除でき、保存したキーは画�
 		.click();
 	await expect(state).toHaveText("未設定");
 	await expect(page.getByRole("button", { name: "キーを削除" })).toBeHidden();
+});
+
+test("OpenAI 互換の接続先を設定すると、採点のモデルに接続先のモデルが並び、入力で絞り込んで選べる", async ({
+	page,
+}) => {
+	await page.goto("/settings?section=news&tab=prompt");
+	const model = page.getByLabel("採点に使うモデル", { exact: true });
+	await model.click();
+	await expect(page.getByTestId("compatible-models-note")).toContainText(
+		"接続先が設定されていない",
+	);
+	await model.press("Escape");
+
+	await page.goto("/settings");
+	const state = page.getByTestId("compatible-state");
+	await expect(state).toHaveText("未設定");
+	await page.getByLabel("URL", { exact: true }).fill("http://bifrost:8080/v1/");
+	await page.getByLabel("API キー", { exact: true }).fill("e2e-virtual-key");
+	await page.getByRole("button", { name: "保存", exact: true }).nth(1).click();
+	await expect(page.getByText("接続先を保存した")).toBeVisible();
+	await expect(state).toContainText("設定済み（キー保存");
+	await expect(page.getByLabel("URL", { exact: true })).toHaveValue(
+		"http://bifrost:8080/v1",
+	);
+	await expect(page.locator("body")).not.toContainText("e2e-virtual-key");
+	await page.getByRole("button", { name: "接続を確かめる" }).click();
+	await expect(page.getByText("つながった（モデル 4 件）")).toBeVisible();
+
+	await page.goto("/settings?section=news&tab=prompt");
+	await model.click();
+	await expect(page.getByRole("option")).toHaveCount(7);
+	await model.fill("gpt mini");
+	await expect(page.getByRole("option")).toHaveCount(1);
+	await model.press("Enter");
+	await expect(model).toHaveValue("openai/gpt-demo-mini（OpenAI 互換）");
+	await page.getByRole("button", { name: "保存", exact: true }).first().click();
+	await expect(page.getByText("モデルを保存した")).toBeVisible();
+	await page.reload();
+	await expect(model).toHaveValue("openai/gpt-demo-mini（OpenAI 互換）");
+
+	await page.request.put("/api/scoring/model", {
+		data: { model: "gemini-3.5-flash-lite" },
+	});
+	await page.goto("/settings");
+	await page.getByRole("button", { name: "接続先を削除" }).click();
+	await page
+		.getByRole("dialog")
+		.getByRole("button", { name: "削除する" })
+		.click();
+	await expect(state).toHaveText("未設定");
 });
 
 test("採点に失敗したニュースを再試行できる", async ({ page }, info) => {

@@ -7,6 +7,7 @@ import { useApi } from "../../api";
 import { formatDateTime } from "../../format";
 import { errorMessage, readJson, useAsync } from "../../lib/useAsync";
 import { Help } from "../Help";
+import { ModelPicker } from "../ModelPicker";
 import { ErrorState, LoadingCard } from "../States";
 import { Button, Card } from "../ui";
 
@@ -81,7 +82,10 @@ function AdviceModelSetting() {
 					<label htmlFor="advice-model">アドバイスに使うモデル</label>
 				</h2>
 				<Help label="アドバイスに使うモデル">
-					<p>API キーはニュースの採点と共用（設定の「全般」）。</p>
+					<p>
+						Gemini の API キーと OpenAI
+						互換の接続先はニュースの採点と共用（設定の「全般」）。
+					</p>
 				</Help>
 			</div>
 			{state.kind === "error" ? (
@@ -90,23 +94,16 @@ function AdviceModelSetting() {
 				</p>
 			) : (
 				<div className="flex items-center gap-2">
-					<select
+					<ModelPicker
 						id="advice-model"
-						value={value ?? ""}
+						fixed={state.kind === "ok" ? state.data.models : []}
+						value={value}
 						disabled={state.kind !== "ok"}
-						onChange={(e) => {
-							setValue(e.target.value);
+						onChange={(id) => {
+							setValue(id);
 							setMessage(null);
 						}}
-						className="h-11 min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 text-[15px]"
-					>
-						{state.kind === "ok" &&
-							state.data.models.map((m) => (
-								<option key={m.id} value={m.id}>
-									{m.label}
-								</option>
-							))}
-					</select>
+					/>
 					<Button
 						size="sm"
 						disabled={busy || value === null || value === current}

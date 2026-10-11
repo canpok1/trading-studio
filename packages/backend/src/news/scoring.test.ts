@@ -452,10 +452,10 @@ describe("API キー", () => {
 	test("Gemini のモデルは保存されたキーを問い合わせのたびに読む", async () => {
 		let key: string | null = null;
 		const model = geminiModel(() => key);
-		expect(model.unavailable()).toBe(NO_API_KEY);
+		expect(model.unavailable("m")).toBe(NO_API_KEY);
 		await expect(model.generate("m", "p", {})).rejects.toThrow(NO_API_KEY);
 		key = "k";
-		expect(model.unavailable()).toBeNull();
+		expect(model.unavailable("m")).toBeNull();
 	});
 
 	test("API は保存・上書き・削除でき、キーを返さない", async () => {

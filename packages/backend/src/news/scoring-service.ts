@@ -1,4 +1,5 @@
 import { maxWindowMs } from "@trading-studio/core";
+import { isSelectableModel } from "../ai/compatible";
 import { newsDelayMs } from "./collector";
 import { DEFAULT_SCORING_MODEL, SCORING_MODELS } from "./gemini";
 import { PROMPT_TEMPLATE } from "./prompt";
@@ -28,7 +29,7 @@ export function createScoringService({
 	scorer: Pick<Scorer, "problem" | "trial" | "clearFailure">;
 	now?: () => number;
 }): ScoringService {
-	const isModel = (id: string) => SCORING_MODELS.some((m) => m.id === id);
+	const isModel = (id: string) => isSelectableModel(SCORING_MODELS, id);
 	const checkRescore = (
 		from: number,
 		to: number,

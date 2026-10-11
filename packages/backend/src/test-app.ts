@@ -3,6 +3,9 @@ import { demoAdviceModel } from "./advice/fake-model";
 import { DEFAULT_INSTRUCTIONS } from "./advice/prompt";
 import { AdviceRepository } from "./advice/repository";
 import { createAdviceService } from "./advice/service";
+import { CompatibleRepository } from "./ai/compatible";
+import { demoCompatibleModels } from "./ai/fake-models";
+import { createCompatibleService } from "./ai/service";
 import { AnalysisExportRepository } from "./analysis-export/repository";
 import { createAnalysisExportService } from "./analysis-export/service";
 import type { AppDeps } from "./app";
@@ -146,7 +149,7 @@ export function createTestApp(
 		backtests,
 		backtestRepo,
 		model: {
-			unavailable: () => adviceAi.model.unavailable(),
+			unavailable: (id) => adviceAi.model.unavailable(id),
 			generate: (...a) => adviceAi.model.generate(...a),
 		},
 		appBuiltAt: null,
@@ -183,6 +186,11 @@ export function createTestApp(
 		activeCriteriaVersion: () => scoreRepo.activeCriteriaVersion(),
 		now: () => clock.now,
 	});
+	const compatible = createCompatibleService({
+		repo: new CompatibleRepository(db),
+		listModels: demoCompatibleModels,
+		now: () => clock.now,
+	});
 	const app = createApp({
 		isDbReachable: () => true,
 		appBuiltAt: null,
@@ -200,6 +208,7 @@ export function createTestApp(
 		accuracy: scoringAnalysis,
 		segments,
 		datasets,
+		compatible,
 		...over,
 	});
 	return {

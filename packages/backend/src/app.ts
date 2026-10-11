@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { AdviceService } from "./advice/types";
+import type { CompatibleService } from "./ai/types";
 import type { AnalysisExportService } from "./analysis-export/types";
 import type { BacktestService } from "./backtests/types";
 import type { DatasetService } from "./datasets/types";
@@ -9,6 +10,7 @@ import type { MarketDataService } from "./market-data/types";
 import type { NewsService, ScoringService } from "./news/types";
 import type { RetentionService } from "./retention/types";
 import { adviceRoutes } from "./routes/advice";
+import { aiRoutes } from "./routes/ai";
 import { backtestRoutes } from "./routes/backtests";
 import { datasetRoutes, datasetRunRoutes } from "./routes/datasets";
 import { exportRoutes } from "./routes/export";
@@ -44,6 +46,7 @@ export type AppDeps = {
 	accuracy: AccuracyService;
 	segments: SegmentService;
 	datasets: DatasetService;
+	compatible: CompatibleService;
 };
 
 // frontend は Hono RPC でこの型を使う。Bun 固有の API はここに持ち込まない（frontend の型チェックに Bun の型を入れないため）
@@ -64,6 +67,7 @@ export function createApp({
 	accuracy,
 	segments,
 	datasets,
+	compatible,
 }: AppDeps) {
 	const api = new Hono()
 		.get("/health", (c) =>
@@ -84,6 +88,7 @@ export function createApp({
 		.route("/dataset-runs", datasetRunRoutes(datasets))
 		.route("/segments", segmentRoutes(segments, judgments))
 		.route("/advice", adviceRoutes(advice))
+		.route("/ai", aiRoutes(compatible))
 		.route("/news", newsRoutes(news))
 		.route("/scoring", scoringRoutes(scoring, accuracy))
 		.route("/judgments", judgmentRoutes(judgments))
