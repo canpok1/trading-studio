@@ -109,13 +109,14 @@ async function clearEachInput(page: Page, heading: string) {
 	page.on("pageerror", (e) => errors.push(e.message));
 	const title = page.getByRole("heading", { name: heading, exact: true });
 	const inputs = page.locator('main input[type="text"]');
-	const n = await inputs.count();
-	expect(n).toBeGreaterThan(20);
-	for (let i = 0; i < n; i++) {
+	expect(await inputs.count()).toBeGreaterThan(20);
+	// 空欄にすると欄が増減することがあるので、毎回数え直す
+	for (let i = 0; i < (await inputs.count()); i++) {
 		const input = inputs.nth(i);
 		const label = (await input.getAttribute("aria-label")) ?? `${i} 番目`;
 		if (await input.isEditable()) await input.fill("");
 		await expect(title, `「${label}」を空欄にしたとき`).toBeVisible();
+		await expect(page.getByText("この画面を表示できなかった")).toHaveCount(0);
 		expect(errors, `「${label}」を空欄にしたとき`).toEqual([]);
 	}
 }

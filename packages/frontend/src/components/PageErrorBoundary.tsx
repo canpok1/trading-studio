@@ -1,12 +1,16 @@
 // 画面の描画中の例外で、画面全体が背景だけにならないようにする。
 // ブラウザに保存した下書きや設定が原因だと開き直しても同じく落ちるので、消して開き直せるようにする
 
-import type { ReactNode } from "react";
+import type { ErrorInfo, ReactNode } from "react";
 import { Component } from "react";
 import { ErrorState } from "./States";
 import { Button, Card } from "./ui";
 
-type Props = { children: ReactNode };
+type Props = {
+	children: ReactNode;
+	/** 変わったら落ちた状態を捨てて描き直す（画面を移ったとき） */
+	resetKey: string;
+};
 type State = { error: Error | null };
 
 export class PageErrorBoundary extends Component<Props, State> {
@@ -16,6 +20,16 @@ export class PageErrorBoundary extends Component<Props, State> {
 		return {
 			error: error instanceof Error ? error : new Error(String(error)),
 		};
+	}
+
+	override componentDidCatch(error: unknown, info: ErrorInfo) {
+		console.error("画面の描画に失敗", error, info.componentStack);
+	}
+
+	override componentDidUpdate(prev: Props) {
+		if (prev.resetKey !== this.props.resetKey && this.state.error) {
+			this.setState({ error: null });
+		}
 	}
 
 	override render() {

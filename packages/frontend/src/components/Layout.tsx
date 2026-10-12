@@ -171,9 +171,8 @@ export function Layout({ badges = {} }: { badges?: Record<string, boolean> }) {
 				)}
 			</nav>
 			<main className="min-w-0 flex-1 pb-[calc(88px+env(safe-area-inset-bottom))] lg:pb-8">
-				<TradingBand />
-				{/* 画面を移ったら落ちた状態を捨てる */}
-				<PageErrorBoundary key={pathname}>
+				<PageErrorBoundary resetKey={pathname}>
+					<TradingBand />
 					<Outlet />
 				</PageErrorBoundary>
 			</main>
