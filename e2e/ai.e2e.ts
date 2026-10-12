@@ -235,7 +235,7 @@ test("評価詳細の分析は、見せ方を切り替えて棒を押すと内�
 	).toHaveText(["0%", "0%", "67%", "0%", "33%"]);
 });
 
-test("評価詳細の分析は、プロンプトとサーバーの版で絞り込み、URL に持つ", async ({
+test("評価詳細の分析は、プロンプト・サーバーの版とモデルで絞り込み、URL に持つ", async ({
 	page,
 }) => {
 	const built = Date.parse("2026-10-07T12:05:00Z");
@@ -245,6 +245,7 @@ test("評価詳細の分析は、プロンプトとサーバーの版で絞り�
 		asked.push(q);
 		const cv = q.get("criteriaVersion");
 		const app = q.get("appBuiltAt");
+		const model = q.get("model");
 		const empty = {
 			count: 0,
 			average: null,
@@ -259,6 +260,7 @@ test("評価詳細の分析は、プロンプトとサーバーの版で絞り�
 				filter: {
 					criteriaVersion: cv ? Number(cv) : null,
 					appBuiltAt: app === "none" ? "none" : app ? Number(app) : null,
+					model: model || null,
 				},
 				options: {
 					criteriaVersions: [
@@ -269,7 +271,13 @@ test("評価詳細の分析は、プロンプトとサーバーの版で絞り�
 						{ builtAt: built, count: 30 },
 						{ builtAt: null, count: 22 },
 					],
+					models: [
+						{ model: "openai:claude-sonnet", count: 20 },
+						{ model: "gemini-3.5-flash-lite", count: 18 },
+						{ model: null, count: 14 },
+					],
 					activeCriteriaVersion: 3,
+					activeModel: "openai:claude-sonnet",
 				},
 				results: { sentiment: empty, risk: empty },
 			},
@@ -278,6 +286,7 @@ test("評価詳細の分析は、プロンプトとサーバーの版で絞り�
 	await page.goto("/news?tab=evaluation");
 	const prompt = page.getByRole("combobox", { name: "プロンプト" });
 	const server = page.getByRole("combobox", { name: "サーバー" });
+	const model = page.getByRole("combobox", { name: "モデル" });
 	await expect(prompt.getByRole("option")).toHaveText([
 		"すべて",
 		"v3（12件）使用中",
@@ -288,13 +297,23 @@ test("評価詳細の分析は、プロンプトとサーバーの版で絞り�
 		"Ver 10-07 21:05（30件）",
 		"Ver 記録なし（22件）",
 	]);
+	// Gemini 直結を先、OpenAI 互換は印を外した名前で後、記録なしは最後
+	await expect(model.getByRole("option")).toHaveText([
+		"すべて",
+		"gemini-3.5-flash-lite（18件）",
+		"claude-sonnet（20件）使用中",
+		"記録なし（14件）",
+	]);
 	await prompt.selectOption({ label: "v2（40件）" });
 	await server.selectOption({ label: "Ver 10-07 21:05（30件）" });
 	await expect(page).toHaveURL(/prompt=2/);
 	await expect(page).toHaveURL(new RegExp(`server=${built}`));
+	await model.selectOption({ label: "claude-sonnet（20件）使用中" });
+	await expect(page).toHaveURL(/model=openai%3Aclaude-sonnet/);
 	await expect(page.getByTestId("accuracy-summary-setting")).toHaveText(
-		"直近30日・24h・v2・Ver 10-07 21:05",
+		"直近30日・24h・v2・Ver 10-07 21:05・claude-sonnet",
 	);
+	expect(asked.at(-1)?.get("model")).toBe("openai:claude-sonnet");
 	expect(asked.at(-1)?.get("criteriaVersion")).toBe("2");
 	expect(asked.at(-1)?.get("appBuiltAt")).toBe(String(built));
 	// 絞り込みは URL に持つので、開き直しても、一覧の絞り込みを変えても残る
@@ -305,6 +324,8 @@ test("評価詳細の分析は、プロンプトとサーバーの版で絞り�
 	await expect(page).toHaveURL(/impact=/);
 	await page.getByRole("tab", { name: "評価詳細" }).click();
 	await expect(prompt).toHaveValue("2");
+	await expect(model).toHaveValue("openai:claude-sonnet");
+	await model.selectOption({ label: "すべて" });
 	await prompt.selectOption({ label: "すべて" });
 	await expect(page).not.toHaveURL(/prompt=/);
 	await expect(page.getByTestId("accuracy-summary-setting")).toHaveText(
