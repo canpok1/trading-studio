@@ -280,17 +280,20 @@ test("PC 幅では要点が横一列（自動取引は右端）、その下に�
 	});
 	const total = await box("通算損益");
 	const unrealized = await box("含み損益");
-	const risk = await page.getByTestId("home-judge-risk").boundingBox();
+	const market = await page
+		.getByRole("link", { name: "市場評価（ニュースへ）" })
+		.boundingBox();
 	const auto = await box("自動取引設定");
 	const chart = await box("価格チャート");
 	const perf = await box("成績");
 	const account = await box("口座情報");
 	const orders = await box("注文・約定");
-	if (!risk) throw new Error("リスクの位置を取れなかった");
-	// 要点は同じ段に左から通算損益・含み損益・…・自動取引
-	for (const b of [unrealized, risk, auto]) expect(b.y).toBe(total.y);
+	if (!market) throw new Error("市場評価の位置を取れなかった");
+	// 要点は同じ段に左から通算損益・含み損益・市場評価・自動取引
+	for (const b of [unrealized, market, auto]) expect(b.y).toBe(total.y);
 	expect(unrealized.x).toBeGreaterThan(total.x);
-	expect(auto.x).toBeGreaterThan(risk.x);
+	expect(market.x).toBeGreaterThan(unrealized.x);
+	expect(auto.x).toBeGreaterThan(market.x);
 	// チャートは要点の下で、両方の列にまたがる
 	expect(chart.y).toBeGreaterThan(total.y + total.height - 1);
 	expect(chart.x).toBeLessThanOrEqual(total.x);
