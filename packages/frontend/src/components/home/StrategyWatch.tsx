@@ -10,7 +10,7 @@ import type {
 	WatchGroup,
 	WatchLot,
 } from "@trading-studio/core";
-import { formatBtc } from "@trading-studio/core";
+import { formatBtc, nextMoves } from "@trading-studio/core";
 import { useCallback, useState } from "react";
 import { conditionText } from "../../lib/condition-text";
 import { formatInt } from "../../lib/number";
@@ -20,7 +20,6 @@ import {
 	distanceText,
 	metCount,
 	moveText,
-	nextMoves,
 } from "../../lib/strategy-watch";
 import { Help } from "../Help";
 import { PANEL } from "./Panel";

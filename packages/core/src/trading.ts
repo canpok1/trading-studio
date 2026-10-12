@@ -741,3 +741,6 @@ export function tradeFillPrice(
 	if (order.side === "buy") return trade.price <= price ? price : null;
 	return trade.price >= price ? price : null;
 }
+
+/** リアル取引を動かせるか。フェーズ5で有効にするまでは、ホームで選べず口座・成績・注文を出さない（MCP も同じ） */
+export const LIVE_AVAILABLE = false;

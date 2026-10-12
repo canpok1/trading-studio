@@ -5,14 +5,14 @@ import type {
 	AutoTradingStatus,
 	StoredStrategy,
 } from "@trading-studio/backend";
-import { validateConditionSet } from "@trading-studio/core";
+import { LIVE_AVAILABLE, validateConditionSet } from "@trading-studio/core";
 import { useId, useState } from "react";
 import { useApi } from "../../api";
 import { formatClock } from "../../format";
 import { useTradingStatus } from "../../lib/trading";
 import { errorMessage, readJson } from "../../lib/useAsync";
 import { Modal } from "../Modal";
-import { LIVE_AVAILABLE, MODE_LABELS } from "../trading/TradeViews";
+import { MODE_LABELS } from "../trading/TradeViews";
 import { Button } from "../ui";
 import { DeleteRunDialog, RenameRunDialog } from "./RunDialogs";
 import { TILE } from "./SummaryTiles";

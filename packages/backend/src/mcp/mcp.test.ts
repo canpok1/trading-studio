@@ -434,6 +434,7 @@ describe("MCP", () => {
 		expect(watch.isError).toBe(false);
 		expect(watch.json).toMatchObject({
 			price: P + 50_000,
+			nextMoves: { up: { kind: "takeProfit", distancePercent: 0.5 } },
 			buys: [{ lots: [{ entryPrice: P }] }],
 		});
 		expect(watch.text).toContain("買値から 1% 下がった");

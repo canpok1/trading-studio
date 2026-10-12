@@ -11,8 +11,10 @@ import type {
 	JudgeResult,
 	JudgmentValue,
 	MarketRegime,
+	Position,
 	StrategyWatch,
 	Timeframe,
+	WatchAction,
 	WatchGroup,
 } from "@trading-studio/core";
 import {
@@ -28,8 +30,10 @@ import {
 	JUDGES,
 	JUDGMENT_VALUE_LABELS,
 	JUDGMENT_VALUES,
+	LIVE_AVAILABLE,
 	MARKET_REGIME_LABELS,
 	MARKET_REGIMES,
+	nextMoves,
 	parseAggregationRule,
 	parseConditionSet,
 	TIMEFRAME_MS,
@@ -92,7 +96,13 @@ export type McpDeps = {
 	/** ホームのタブ（運用）。読むだけで、オンオフや戦略の切替は道具にしない */
 	trading: Pick<
 		TradingService,
-		"runs" | "performance" | "watch" | "orders" | "orderSummary" | "order"
+		| "runs"
+		| "run"
+		| "performance"
+		| "watch"
+		| "orders"
+		| "orderSummary"
+		| "order"
 	>;
 	market: Pick<MarketService, "latest" | "bars">;
 	advice: Pick<AdviceService, "get">;
@@ -434,10 +444,18 @@ const BARS_MAX = 2_000;
 
 const MODE_LABELS = { paper: "デモ", live: "リアル" } as const;
 
+/** 口座・成績・注文・戦略の見張りを出さないタブ。画面と同じく、動かせないリアル */
+const hidden = (r: AutoTradingStatus) => r.mode === "live" && !LIVE_AVAILABLE;
+
+function positionView(p: Position) {
+	return { ...p, openedAt: p.openedAt === null ? null : jst(p.openedAt) };
+}
+
 function tradingPerformanceView(p: TradingPerformance) {
 	return {
 		...p,
 		resetAt: jst(p.resetAt),
+		position: positionView(p.position),
 		maxDrawdownFrom: p.maxDrawdownFrom === null ? null : jst(p.maxDrawdownFrom),
 		maxDrawdownTo: p.maxDrawdownTo === null ? null : jst(p.maxDrawdownTo),
 		averageHoldingHours:
@@ -478,11 +496,7 @@ function paperView(
 			initialCash: a.initialCash,
 			cash: a.cash,
 			equity: a.equity,
-			position: {
-				...a.position,
-				openedAt:
-					a.position.openedAt === null ? null : jst(a.position.openedAt),
-			},
+			position: positionView(a.position),
 			lots: a.lots.map((l) => ({
 				...l,
 				openedAt: jst(l.openedAt),
@@ -523,6 +537,17 @@ function tradingOrderView(o: StoredOrder) {
 	};
 }
 
+/** 発注したときの市場評価。判断の記録が無ければ null、採点の記録の前は空 */
+function judgmentsView(j: Record<string, string> | undefined) {
+	if (!j) return null;
+	return Object.fromEntries(
+		JUDGES.filter((k) => j[k] !== undefined).map((k) => [
+			k,
+			level(j[k] as JudgmentValue<typeof k>),
+		]),
+	);
+}
+
 /** 条件は画面の文言にする */
 function watchGroupView(g: WatchGroup) {
 	return {
@@ -539,15 +564,22 @@ function watchGroupView(g: WatchGroup) {
 }
 
 function watchView(w: StrategyWatch) {
+	const action = (a: WatchAction) => ({
+		...a,
+		distancePercent:
+			a.price === null
+				? null
+				: Math.round((a.price / w.price - 1) * 10_000) / 100,
+	});
+	const next = nextMoves(w);
 	return {
 		price: w.price,
-		actions: w.actions.map((a) => ({
-			...a,
-			distancePercent:
-				a.price === null
-					? null
-					: Math.round((a.price / w.price - 1) * 10_000) / 100,
-		})),
+		nextMoves: {
+			now: next.now.map(action),
+			up: next.up && action(next.up),
+			down: next.down && action(next.down),
+		},
+		actions: w.actions.map(action),
 		buys: w.buys.map((b) => ({
 			...b,
 			buy: watchGroupView(b.buy),
@@ -1038,9 +1070,7 @@ function createServer({
 			return text(
 				trading.runs().map((r) => ({
 					...tradingRunView(r),
-					...(r.mode === "live"
-						? {}
-						: paperView(r, price, trading.performance(r.id))),
+					...(hidden(r) ? {} : paperView(r, price, trading.performance(r.id))),
 				})),
 			);
 		},
@@ -1050,18 +1080,16 @@ function createServer({
 		"get_strategy_watch",
 		{
 			description:
-				"ホームの「次の動き」「戦略の見張り」。タブで運用する戦略を今の価格で試算した、買いとロットごとの条件の成立・今の値・発動価格（価格がいくらになれば成立するか）。actions は起きうる売買で、price が null なら今の価格のまま次の判定で起きる。distancePercent は今の価格からの幅（「次の動き」は上側・下側それぞれ最も近いもの）。注文はしない。リアルのタブは画面と同じく出さない",
+				"ホームの「次の動き」「戦略の見張り」。タブで運用する戦略を今の価格で試算した、買いとロットごとの条件の成立・今の値・発動価格（価格がいくらになれば成立するか）。actions は起きうる売買で、price が null なら今の価格のまま次の判定で起きる。nextMoves は画面の「次の動き」（次の判定で起きるものと、上側・下側それぞれ最も近い発動価格）。distancePercent は今の価格からの幅。注文はしない。リアルのタブは画面と同じく出さない",
 			inputSchema: {
 				runId: z.number().int().describe("タブ（list_trading_runs）"),
 			},
 			annotations: readOnly,
 		},
 		({ runId }) => {
-			const run = trading.runs().find((r) => r.id === runId);
+			const run = trading.run(runId);
 			if (!run) return fail("タブが見つからない");
-			if (run.mode === "live") {
-				return fail("リアルのタブは戦略の見張りを出さない");
-			}
+			if (hidden(run)) return fail("リアルのタブは戦略の見張りを出さない");
 			const w = trading.watch(runId)?.watch ?? null;
 			return w
 				? text(watchView(w))
@@ -1086,11 +1114,9 @@ function createServer({
 			annotations: readOnly,
 		},
 		({ runId, status, side, limit }) => {
-			const run = trading.runs().find((r) => r.id === runId);
+			const run = trading.run(runId);
 			if (!run) return fail("タブが見つからない");
-			if (run.mode === "live") {
-				return fail("リアルのタブは注文・約定を出さない");
-			}
+			if (hidden(run)) return fail("リアルのタブは注文・約定を出さない");
 			const filter = { runId, status, side };
 			const summary = trading.orderSummary(filter);
 			return text({
@@ -1098,7 +1124,9 @@ function createServer({
 				realizedPnl: summary.realizedPnl,
 				orders: trading.orders(filter, limit).map((o) => ({
 					...tradingOrderView(o),
-					judgments: trading.order(runId, o.id)?.decision?.judgments ?? null,
+					judgments: judgmentsView(
+						trading.order(runId, o.id)?.decision?.judgments,
+					),
 				})),
 			});
 		},

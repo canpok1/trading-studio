@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import type { BuyRule, ConditionSet } from "./condition-strategy";
 import { DEFAULT_BUY_ORDER, DEFAULT_PARTIAL_SELL } from "./condition-strategy";
 import { rsi } from "./indicators";
-import type { WatchInput } from "./strategy-watch";
-import { watchConditionSet } from "./strategy-watch";
+import type { StrategyWatch, WatchAction, WatchInput } from "./strategy-watch";
+import { nextMoves, watchConditionSet } from "./strategy-watch";
 import { TIMEFRAME_MS } from "./timeframe";
 import type { Candle, Lot, Order } from "./types";
 
@@ -380,5 +380,40 @@ describe("watchConditionSet", () => {
 		expect(watchConditionSet(input(p, { lots: [lot(price)] }))).toEqual(
 			watchConditionSet(input(p, { lots: [lot(price)] })),
 		);
+	});
+});
+
+const act = (
+	kind: WatchAction["kind"],
+	price: number | null,
+	lotId: string | null = null,
+): WatchAction => ({ kind, price, buyId: "b1", buyName: "買い1", lotId });
+
+const watchOf = (actions: WatchAction[]): StrategyWatch => ({
+	price: 1_000,
+	buys: [],
+	actions,
+});
+
+describe("nextMoves", () => {
+	test("上側・下側で一番近い発動価格を1つずつと、次の判定で起きるものを返す", () => {
+		const w = watchOf([
+			act("takeProfit", 1_100, "o1"),
+			act("entry", 1_050),
+			act("stopLoss", 900, "o1"),
+			act("partialTakeProfit", 950, "o1"),
+			act("stopLoss", null, "o2"),
+		]);
+		const m = nextMoves(w);
+		expect(m.up).toEqual(act("entry", 1_050));
+		expect(m.down).toEqual(act("partialTakeProfit", 950, "o1"));
+		expect(m.now).toEqual([act("stopLoss", null, "o2")]);
+	});
+
+	test("同じ価格なら損切りを先に選ぶ", () => {
+		const m = nextMoves(
+			watchOf([act("entry", 900), act("stopLoss", 900, "o1")]),
+		);
+		expect(m.down?.kind).toBe("stopLoss");
 	});
 });

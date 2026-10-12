@@ -16,9 +16,6 @@ export const MODE_LABELS: Record<TradingMode, string> = {
 	live: "リアル",
 };
 
-/** リアル取引を動かせるか。フェーズ5で有効にするまでは、ホームで選べず取引画面は空の表示にする */
-export const LIVE_AVAILABLE = false;
-
 /** モードの印。リアルを見分けられるように色を変える */
 export function ModeTag({ mode }: { mode: TradingMode }) {
 	return (
