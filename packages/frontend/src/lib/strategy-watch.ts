@@ -8,6 +8,7 @@ import type {
 	WatchGroup,
 } from "@trading-studio/core";
 import { TIMEFRAME_LABELS } from "@trading-studio/core";
+import { formatInt } from "./number";
 
 /** チャートに引く発動価格 */
 export type ChartTrigger = {
@@ -26,6 +27,18 @@ export const ACTION_LABELS: Record<WatchActionKind, string> = {
 export function distanceText(price: number, from: number): string {
 	const p = (price / from - 1) * 100;
 	return `${p >= 0 ? "+" : "−"}${Math.abs(p).toFixed(2)}%`;
+}
+
+/** 今の価格から発動価格までの幅。向きは呼び出し側が言葉で添えるので、% は符号なし・円の差は符号付き */
+export function moveText(
+	price: number,
+	from: number,
+): { percent: string; yen: string } {
+	const d = price - from;
+	return {
+		percent: `${Math.abs((price / from - 1) * 100).toFixed(2)}%`,
+		yen: `${d >= 0 ? "+" : "−"}${formatInt(Math.abs(d))} 円`,
+	};
 }
 
 /**

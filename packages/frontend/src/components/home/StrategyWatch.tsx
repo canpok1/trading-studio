@@ -19,6 +19,7 @@ import {
 	buyStatusText,
 	distanceText,
 	metCount,
+	moveText,
 	nextMoves,
 } from "../../lib/strategy-watch";
 import { Help } from "../Help";
@@ -53,7 +54,7 @@ export function NextMovesCard({ watch }: { watch: StrategyWatch }) {
 				<h2 className="text-[15px] font-bold">次の動き</h2>
 				<Help label="次の動き">
 					<p>
-						運用する戦略を今の価格で試算し、価格がいくらになれば何をするかを出す。上側・下側で一番近いものだけ。
+						運用する戦略を今の価格で試算し、今の価格からどれだけ動けば何をするかを出す。上側・下側で一番近いものだけ。発動する価格そのものはチャートの札と「戦略の見張り」で見る。
 					</p>
 					<p>
 						実際に注文するのは次の判定のとき。価格以外の条件（市場評価など）が変われば動きも変わる。全部の条件はチャートの下の「戦略の見張り」で見る。
@@ -78,13 +79,12 @@ export function NextMovesCard({ watch }: { watch: StrategyWatch }) {
 						<span aria-hidden className="w-3.5 font-bold text-profit">
 							↑
 						</span>
-						<span className="num">
-							<b>{formatInt(up.price as number)} 円</b> 以上で
-						</span>
+						<MoveText
+							price={up.price as number}
+							from={watch.price}
+							verb="上がると"
+						/>
 						<KindBadge action={up} multi={multi} />
-						<span className="num text-xs text-text-2">
-							{distanceText(up.price as number, watch.price)}
-						</span>
 					</li>
 				)}
 				{down && (
@@ -92,13 +92,12 @@ export function NextMovesCard({ watch }: { watch: StrategyWatch }) {
 						<span aria-hidden className="w-3.5 font-bold text-loss">
 							↓
 						</span>
-						<span className="num">
-							<b>{formatInt(down.price as number)} 円</b> 以下で
-						</span>
+						<MoveText
+							price={down.price as number}
+							from={watch.price}
+							verb="下がると"
+						/>
 						<KindBadge action={down} multi={multi} />
-						<span className="num text-xs text-text-2">
-							{distanceText(down.price as number, watch.price)}
-						</span>
 					</li>
 				)}
 				{now.length === 0 && !up && !down && (
@@ -108,6 +107,25 @@ export function NextMovesCard({ watch }: { watch: StrategyWatch }) {
 				)}
 			</ul>
 		</section>
+	);
+}
+
+/** 「0.88% 上がると（+113,254 円）」。発動価格そのものはチャートの札と「戦略の見張り」で見る */
+function MoveText({
+	price,
+	from,
+	verb,
+}: {
+	price: number;
+	from: number;
+	verb: string;
+}) {
+	const m = moveText(price, from);
+	return (
+		<span className="num">
+			<b>{m.percent}</b> {verb}
+			<span className="text-xs text-text-2">（{m.yen}）</span>
+		</span>
 	);
 }
 
