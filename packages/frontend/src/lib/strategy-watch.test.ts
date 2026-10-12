@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { StrategyWatch, WatchAction } from "@trading-studio/core";
-import { chartTriggers, distanceText, nextMoves } from "./strategy-watch";
+import {
+	chartTriggers,
+	distanceText,
+	moveText,
+	nextMoves,
+} from "./strategy-watch";
 
 const act = (
 	kind: WatchAction["kind"],
@@ -59,4 +64,15 @@ describe("chartTriggers", () => {
 test("distanceText は今の価格からの % を符号付き小数2桁で返す", () => {
 	expect(distanceText(1_008.8, 1_000)).toBe("+0.88%");
 	expect(distanceText(956.1, 1_000)).toBe("−4.39%");
+});
+
+test("moveText は今の価格からの幅を符号なしの % と符号付きの円の差で返す", () => {
+	expect(moveText(13_113_254, 13_000_000)).toEqual({
+		percent: "0.87%",
+		yen: "+113,254 円",
+	});
+	expect(moveText(12_429_300, 13_000_000)).toEqual({
+		percent: "4.39%",
+		yen: "−570,700 円",
+	});
 });
