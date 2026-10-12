@@ -243,6 +243,7 @@ const scoringAnalysis = createScoringAnalysis({
 	marketData,
 	judgments,
 	activeCriteriaVersion: () => scoreRepo.activeCriteriaVersion(),
+	activeModel: () => scoreRepo.model(DEFAULT_SCORING_MODEL),
 });
 const news = createNewsService({
 	repo: newsRepo,

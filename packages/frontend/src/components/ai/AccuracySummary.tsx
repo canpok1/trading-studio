@@ -18,6 +18,7 @@ import {
 	useAnalysisUnit,
 	useAnalysisView,
 } from "../../lib/eval-analysis-view";
+import { compatibleName, isCompatibleId } from "../../lib/model-picker";
 import { errorMessage, readJson, useInterval } from "../../lib/useAsync";
 import { Help } from "../Help";
 import {
@@ -48,17 +49,26 @@ export const periodOf = (k: PeriodKey): AccuracyPeriod =>
 const periodText = (p: AccuracyPeriod) =>
 	p === null ? "すべての期間" : `直近${p}日`;
 
-/** 版の絞り込み。URL（?prompt=&server=）に持つ。ブラウザに保存すると、次に開いたとき絞り込み中だと気づかず読み違えるため */
+/** 版・モデルの絞り込み。URL（?prompt=&server=&model=）に持つ。ブラウザに保存すると、次に開いたとき絞り込み中だと気づかず読み違えるため */
 const PROMPT_PARAM = "prompt";
 const SERVER_PARAM = "server";
-export const ANALYSIS_FILTER_PARAMS = [PROMPT_PARAM, SERVER_PARAM] as const;
-/** サーバーの「記録なし」（記録前・開発版の採点）の値 */
+const MODEL_PARAM = "model";
+export const ANALYSIS_FILTER_PARAMS = [
+	PROMPT_PARAM,
+	SERVER_PARAM,
+	MODEL_PARAM,
+] as const;
+/** サーバー・モデルの「記録なし」の値 */
 const SERVER_NONE = "none";
+const MODEL_NONE = "none";
+const modelText = (m: string) =>
+	m === MODEL_NONE ? "記録なし" : compatibleName(m);
 
 function useVersionFilter() {
 	const [params, setParams] = useSearchParams();
 	const prompt = params.get(PROMPT_PARAM) ?? "";
 	const server = params.get(SERVER_PARAM) ?? "";
+	const model = params.get(MODEL_PARAM) ?? "";
 	const set = (key: string, v: string) => {
 		const next = new URLSearchParams(params);
 		if (v === "") next.delete(key);
@@ -68,8 +78,10 @@ function useVersionFilter() {
 	return {
 		prompt: /^\d+$/.test(prompt) ? prompt : "",
 		server: server === SERVER_NONE || /^\d+$/.test(server) ? server : "",
+		model,
 		setPrompt: (v: string) => set(PROMPT_PARAM, v),
 		setServer: (v: string) => set(SERVER_PARAM, v),
+		setModel: (v: string) => set(MODEL_PARAM, v),
 	};
 }
 
@@ -86,7 +98,8 @@ export function AccuracySummarySection({
 	const [error, setError] = useState<string | null>(null);
 	const [view, setView] = useAnalysisView();
 	const [unit, setUnit] = useAnalysisUnit();
-	const { prompt, server, setPrompt, setServer } = useVersionFilter();
+	const { prompt, server, model, setPrompt, setServer, setModel } =
+		useVersionFilter();
 	// 時点を変えた直後と定期の問い合わせが重なっても、最後に出したものだけ使う
 	const seq = useRef(0);
 	const load = useCallback(async () => {
@@ -99,6 +112,7 @@ export function AccuracySummarySection({
 						at: at === null ? "" : String(at),
 						criteriaVersion: prompt,
 						appBuiltAt: server,
+						model,
 					},
 				})
 				.then((res) => readJson<AccuracySummary>(res));
@@ -108,7 +122,7 @@ export function AccuracySummarySection({
 		} catch (e) {
 			if (id === seq.current) setError(errorMessage(e));
 		}
-	}, [api, at, prompt, server]);
+	}, [api, at, prompt, server, model]);
 	useEffect(() => {
 		if (active) load();
 	}, [active, load]);
@@ -128,6 +142,8 @@ export function AccuracySummarySection({
 							`・v${data.filter.criteriaVersion}`}
 						{data.filter.appBuiltAt !== null &&
 							`・${formatVersion(data.filter.appBuiltAt === "none" ? null : data.filter.appBuiltAt, "記録なし", { year: false })}`}
+						{data.filter.model !== null &&
+							`・${data.filter.model === MODEL_NONE ? "モデル記録なし" : modelText(data.filter.model)}`}
 					</span>
 				)}
 				<Help label="市場評価の分析">
@@ -145,7 +161,10 @@ export function AccuracySummarySection({
 						最高）。枠より左上は記事の段階が値動きより上（強気・警戒に寄りすぎ）、右下は下（弱気・平常に寄りすぎ）。割合にすると行ごとの割合を出す。
 					</p>
 					<p>
-						プロンプト・サーバーを選ぶと、その版のプロンプト・そのバージョンのアプリで採点した記事だけ数える（採点し直した記事は置き換えた後の版）。選択肢は期間内に数える記事がある版で、（）は絞る前の件数。
+						プロンプト・サーバー・モデルを選ぶと、その版のプロンプト・そのバージョンのアプリ・そのモデルで採点した記事だけ数える（採点し直した記事は置き換えた後の版・モデル）。選択肢は期間内に数える記事がある版・モデルで、（）は絞る前の件数。
+					</p>
+					<p>
+						モデルごとに採点した時期が違うので、モデルの差には時期（相場・記事の中身）の差も混ざる。
 					</p>
 					<p>
 						測る長さがまだたっていない記事（測定中）・値動きが分からない記事・持続が「なし」の記事は数えない。
@@ -156,8 +175,10 @@ export function AccuracySummarySection({
 				data={data}
 				prompt={prompt}
 				server={server}
+				model={model}
 				onPrompt={setPrompt}
 				onServer={setServer}
+				onModel={setModel}
 			/>
 			<div className="flex gap-2">
 				<div className="flex-1">
@@ -206,21 +227,26 @@ export function AccuracySummarySection({
 }
 
 /**
- * プロンプトの版とサーバーのバージョンの絞り込み。選んでいる版が選択肢に無くても（期間外など）0件として出す。
- * 読み込む前は件数が分からないので添えない。サーバーはスマホの幅に収めるため年を省く
+ * プロンプトの版・サーバーのバージョン・モデルの絞り込み。選んでいるものが選択肢に無くても（期間外など）0件として出す。
+ * 読み込む前は件数が分からないので添えない。サーバーはスマホの幅に収めるため年を省く。
+ * モデルは名前が長く3つ並べると切れるので、2行目に全幅で置く
  */
 function VersionSelects({
 	data,
 	prompt,
 	server,
+	model,
 	onPrompt,
 	onServer,
+	onModel,
 }: {
 	data: AccuracySummary | null;
 	prompt: string;
 	server: string;
+	model: string;
 	onPrompt: (v: string) => void;
 	onServer: (v: string) => void;
+	onModel: (v: string) => void;
 }) {
 	const o = data?.options;
 	const prompts = (o?.criteriaVersions ?? []).map((x) => ({
@@ -244,10 +270,41 @@ function VersionSelects({
 			value: server,
 			label: `${formatVersion(server === SERVER_NONE ? null : Number(server), "記録なし", { year: false })}${o ? "（0件）" : ""}`,
 		});
+	const models = (o?.models ?? []).map((x) => {
+		const value = x.model ?? MODEL_NONE;
+		return {
+			value,
+			label: `${modelText(value)}（${x.count}件）${x.model === o?.activeModel ? "使用中" : ""}`,
+		};
+	});
+	if (model && !models.some((x) => x.value === model))
+		models.unshift({
+			value: model,
+			label: `${modelText(model)}${o ? "（0件）" : ""}`,
+		});
+	// Gemini 直結と OpenAI 互換は同じ名前のモデルがありうるので見出しで分ける
+	const modelGroups = [
+		{
+			label: "Gemini",
+			items: models.filter(
+				(x) => x.value !== MODEL_NONE && !isCompatibleId(x.value),
+			),
+		},
+		{
+			label: "OpenAI 互換",
+			items: models.filter((x) => isCompatibleId(x.value)),
+		},
+	].filter((g) => g.items.length > 0);
+	const modelNone = models.filter((x) => x.value === MODEL_NONE);
+	const option = (x: { value: string; label: string }) => (
+		<option key={x.value} value={x.value}>
+			{x.label}
+		</option>
+	);
 	const select = (
 		label: string,
 		value: string,
-		items: { value: string; label: string }[],
+		options: React.ReactNode,
 		onChange: (v: string) => void,
 	) => (
 		<label className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -259,18 +316,31 @@ function VersionSelects({
 				className="h-9 w-full min-w-0 rounded-[10px] border border-line bg-surface px-2 text-sm"
 			>
 				<option value="">すべて</option>
-				{items.map((x) => (
-					<option key={x.value} value={x.value}>
-						{x.label}
-					</option>
-				))}
+				{options}
 			</select>
 		</label>
 	);
 	return (
-		<div className="flex gap-2">
-			{select("プロンプト", prompt, prompts, onPrompt)}
-			{select("サーバー", server, servers, onServer)}
+		<div className="flex flex-col gap-1.5">
+			<div className="flex gap-2">
+				{select("プロンプト", prompt, prompts.map(option), onPrompt)}
+				{select("サーバー", server, servers.map(option), onServer)}
+			</div>
+			<div className="flex">
+				{select(
+					"モデル",
+					model,
+					<>
+						{modelGroups.map((g) => (
+							<optgroup key={g.label} label={g.label}>
+								{g.items.map(option)}
+							</optgroup>
+						))}
+						{modelNone.map(option)}
+					</>,
+					onModel,
+				)}
+			</div>
 		</div>
 	);
 }
