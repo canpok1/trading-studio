@@ -111,12 +111,15 @@ export function createScoringAnalysis({
 	marketData,
 	judgments,
 	activeCriteriaVersion,
+	activeModel,
 	now = Date.now,
 }: {
 	repo: ScoringAnalysisRepository;
 	marketData: Pick<MarketDataService, "exportCandles">;
 	judgments: Pick<JudgmentService, "rule">;
 	activeCriteriaVersion: () => number | null;
+	/** 今の採点に使うモデル */
+	activeModel: () => string;
 	now?: () => number;
 }) {
 	/** [from, to) の時刻から24時間後までの値動き */
@@ -229,6 +232,7 @@ export function createScoringAnalysis({
 			);
 			const criteriaCounts = new Map<number, number>();
 			const builtCounts = new Map<number | null, number>();
+			const modelCounts = new Map<string | null, number>();
 			for (const x of measured) {
 				const r = byId.get(x.id) as AnalysisNewsRow;
 				if (r.criteriaVersion !== null)
@@ -237,14 +241,17 @@ export function createScoringAnalysis({
 						(criteriaCounts.get(r.criteriaVersion) ?? 0) + 1,
 					);
 				builtCounts.set(r.appBuiltAt, (builtCounts.get(r.appBuiltAt) ?? 0) + 1);
+				modelCounts.set(r.model, (modelCounts.get(r.model) ?? 0) + 1);
 			}
 			const builtWant = filter.appBuiltAt === "none" ? null : filter.appBuiltAt;
+			const modelWant = filter.model === "none" ? null : filter.model;
 			const ok = measured.filter((x) => {
 				const r = byId.get(x.id) as AnalysisNewsRow;
 				return (
 					(filter.criteriaVersion === undefined ||
 						r.criteriaVersion === filter.criteriaVersion) &&
-					(builtWant === undefined || r.appBuiltAt === builtWant)
+					(builtWant === undefined || r.appBuiltAt === builtWant) &&
+					(modelWant === undefined || r.model === modelWant)
 				);
 			});
 			const summarize = <J extends Judge>(j: J): AccuracySummaryResult<J> => {
@@ -289,6 +296,7 @@ export function createScoringAnalysis({
 				filter: {
 					criteriaVersion: filter.criteriaVersion ?? null,
 					appBuiltAt: filter.appBuiltAt ?? null,
+					model: filter.model ?? null,
 				},
 				options: {
 					criteriaVersions: [...criteriaCounts]
@@ -297,7 +305,18 @@ export function createScoringAnalysis({
 					appBuiltAts: [...builtCounts]
 						.sort(([a], [b]) => (a === null ? 1 : b === null ? -1 : b - a))
 						.map(([builtAt, count]) => ({ builtAt, count })),
+					// 件数の多い順。同じなら名前順。記録なしは最後
+					models: [...modelCounts]
+						.sort(([a, x], [b, y]) =>
+							a === null
+								? 1
+								: b === null
+									? -1
+									: y - x || (a < b ? -1 : a > b ? 1 : 0),
+						)
+						.map(([model, count]) => ({ model, count })),
 					activeCriteriaVersion: activeCriteriaVersion(),
+					activeModel: activeModel(),
 				},
 				results,
 			};

@@ -27,6 +27,7 @@ import { createMarketDataService } from "./market-data/service";
 import { newsDelayMs } from "./news/collector";
 import { demoScoreModel } from "./news/fake-model";
 import type { GeminiModel } from "./news/gemini";
+import { DEFAULT_SCORING_MODEL } from "./news/gemini";
 import { DEFAULT_CRITERIA } from "./news/prompt";
 import { NewsRepository } from "./news/repository";
 import { ScoreRepository } from "./news/score-repository";
@@ -184,6 +185,7 @@ export function createTestApp(
 		marketData,
 		judgments,
 		activeCriteriaVersion: () => scoreRepo.activeCriteriaVersion(),
+		activeModel: () => scoreRepo.model(DEFAULT_SCORING_MODEL),
 		now: () => clock.now,
 	});
 	const compatible = createCompatibleService({

@@ -63,7 +63,10 @@ export function scoringRoutes(
 							400,
 						);
 					}
-					return { at, criteriaVersion, appBuiltAt };
+					// モデルは記録した ID そのもの。"none" はモデルの記録が無い採点
+					const model =
+						typeof v.model === "string" && v.model !== "" ? v.model : null;
+					return { at, criteriaVersion, appBuiltAt, model };
 				}),
 				(c) => {
 					const q = c.req.valid("query");
@@ -71,6 +74,7 @@ export function scoringRoutes(
 						accuracy.accuracySummary(q.at ?? undefined, {
 							criteriaVersion: q.criteriaVersion ?? undefined,
 							appBuiltAt: q.appBuiltAt ?? undefined,
+							model: q.model ?? undefined,
 						}),
 					);
 				},

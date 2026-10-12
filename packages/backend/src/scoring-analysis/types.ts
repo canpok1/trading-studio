@@ -94,10 +94,14 @@ export type AccuracySummaryResult<J extends Judge = Judge> = {
 	matrix: { value: JudgmentValue<J>; moves: number[] }[];
 };
 
-/** 集計を絞る版。undefined はすべて。appBuiltAt の "none" は記録前・開発版の採点（記録なし） */
+/**
+ * 集計を絞る版とモデル。undefined はすべて。appBuiltAt の "none" は記録前・開発版の採点（記録なし）。
+ * model は採点に記録したモデルの ID（OpenAI 互換は openai: の印付き）で、"none" はモデルの記録が無い採点
+ */
 export type AccuracyFilter = {
 	criteriaVersion?: number;
 	appBuiltAt?: number | "none";
+	model?: string;
 };
 
 export type AccuracySummary = {
@@ -109,15 +113,18 @@ export type AccuracySummary = {
 	filter: {
 		criteriaVersion: number | null;
 		appBuiltAt: number | "none" | null;
+		model: string | null;
 	};
 	/**
 	 * 絞り込みの選択肢。期間内で数える記事がある版を新しい順に、絞り込む前の件数とともに。
-	 * appBuiltAt の null（記録なし）は最後
+	 * appBuiltAt の null（記録なし）は最後。models は件数の多い順で、null（記録なし）は最後
 	 */
 	options: {
 		criteriaVersions: { version: number; count: number }[];
 		appBuiltAts: { builtAt: number | null; count: number }[];
+		models: { model: string | null; count: number }[];
 		activeCriteriaVersion: number | null;
+		activeModel: string;
 	};
 	results: { [J in Judge]: AccuracySummaryResult<J> };
 };

@@ -503,18 +503,19 @@ describe("MCP", () => {
 			).toEqual(expect.arrayContaining([expect.stringContaining("上昇")]));
 		});
 
-		test("市場評価の分析をプロンプトの版とアプリのバージョンで絞れる", async () => {
+		test("市場評価の分析をプロンプトの版とアプリのバージョンとモデルで絞れる", async () => {
 			const { t, call } = await scored();
 			const built = Date.parse("2026-10-07T12:05:00Z");
 			t.db.$client
 				.query(
-					"update news_scores set criteria_version = 2, app_built_at = ? where news_id = (select min(news_id) from news_scores)",
+					"update news_scores set criteria_version = 2, app_built_at = ?, model = 'openai:a' where news_id = (select min(news_id) from news_scores)",
 				)
 				.run(built);
 			const all = (await call("get_market_evaluation_analysis")).json as {
 				options: {
 					criteriaVersions: { version: number; count: number }[];
 					appVersions: { version: string; count: number }[];
+					models: { model: string; count: number; active: boolean }[];
 				};
 			};
 			expect(all.options.criteriaVersions).toMatchObject([
@@ -525,6 +526,10 @@ describe("MCP", () => {
 				{ version: "2026-10-07T21:05:00+09:00", count: 1 },
 				{ version: "none", count: 2 },
 			]);
+			expect(all.options.models).toEqual([
+				{ model: expect.any(String), count: 2, active: true },
+				{ model: "openai:a", count: 1, active: false },
+			]);
 			const count = async (a: Record<string, unknown>) =>
 				(
 					(await call("get_market_evaluation_analysis", a)).json as {
@@ -534,6 +539,8 @@ describe("MCP", () => {
 			expect(await count({ criteriaVersion: 1 })).toBe(2);
 			expect(await count({ appVersion: "2026-10-07T21:05:00+09:00" })).toBe(1);
 			expect(await count({ appVersion: "none", criteriaVersion: 2 })).toBe(0);
+			expect(await count({ model: "openai:a" })).toBe(1);
+			expect(await count({ model: "none" })).toBe(0);
 			expect(
 				(await call("get_market_evaluation_analysis", { appVersion: "x" }))
 					.isError,
