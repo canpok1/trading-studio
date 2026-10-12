@@ -810,6 +810,20 @@ describe("判定に使う足の粒度", () => {
 			chooseStepTimeframe({ ...p, buyOrder: MARKET_BUY_ORDER }, "1m"),
 		).toEqual({ timeframe: "1h", limited: false });
 	});
+
+	test("入力途中の判定頻度（空欄・小数）でも終わり、データの足で判定する", () => {
+		const p = withFreq("1h", "1h", "1h");
+		for (const value of [Number.NaN, 1e-9, Number.POSITIVE_INFINITY]) {
+			const q = {
+				...p,
+				frequency: { ...p.frequency, flat: { value, unit: "h" as const } },
+			};
+			expect(chooseStepTimeframe(q, "1m")).toEqual({
+				timeframe: "1m",
+				limited: true,
+			});
+		}
+	});
 });
 
 describe("市場評価の条件", () => {

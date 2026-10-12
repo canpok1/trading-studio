@@ -760,7 +760,17 @@ export function frequencyMs(f: Frequency): number {
 	return f.value * FREQUENCY_UNIT_MS[f.unit];
 }
 
-const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+/**
+ * 最大公約数。入力途中の判定頻度（NaN・小数）も渡されるので、整数でなければ NaN を返す。
+ * NaN を再帰で割り続けると終わらず、画面ごと落ちるため
+ */
+function gcd(a: number, b: number): number {
+	if (!Number.isSafeInteger(a) || !Number.isSafeInteger(b)) return Number.NaN;
+	let x = Math.abs(a);
+	let y = Math.abs(b);
+	while (y !== 0) [x, y] = [y, x % y];
+	return x;
+}
 
 /** 条件が足のデータを使う粒度（細かい順、重複なし） */
 export function candleTimeframes(params: ConditionSet): Timeframe[] {
