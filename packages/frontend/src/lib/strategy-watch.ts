@@ -2,7 +2,6 @@
 
 import type {
 	StrategyWatch,
-	WatchAction,
 	WatchActionKind,
 	WatchBuyStatus,
 	WatchGroup,
@@ -38,44 +37,6 @@ export function moveText(
 	return {
 		percent: distanceText(price, from),
 		yen: `${d >= 0 ? "+" : "−"}${formatInt(Math.abs(d))} 円`,
-	};
-}
-
-/**
- * 「次の動き」に出す売買。次の判定で起きるもの（価格なし）と、今の価格に一番近い上側・下側の発動価格を1つずつ。
- * 同じ価格なら損切り > 利確 > 一部利確 > 買い の順（判定で同時に成り立ったときの売りの優先と合わせる）
- */
-export function nextMoves(w: StrategyWatch): {
-	now: WatchAction[];
-	up: WatchAction | null;
-	down: WatchAction | null;
-} {
-	const rank: Record<WatchActionKind, number> = {
-		stopLoss: 0,
-		takeProfit: 1,
-		partialTakeProfit: 2,
-		entry: 3,
-	};
-	const now = w.actions.filter((a) => a.price === null);
-	const priced = w.actions.filter(
-		(a): a is WatchAction & { price: number } => a.price !== null,
-	);
-	const pick = (list: (WatchAction & { price: number })[], up: boolean) =>
-		[...list].sort(
-			(a, b) =>
-				(up ? a.price - b.price : b.price - a.price) ||
-				rank[a.kind] - rank[b.kind],
-		)[0] ?? null;
-	return {
-		now,
-		up: pick(
-			priced.filter((a) => a.price > w.price),
-			true,
-		),
-		down: pick(
-			priced.filter((a) => a.price <= w.price),
-			false,
-		),
 	};
 }
 

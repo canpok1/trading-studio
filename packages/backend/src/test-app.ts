@@ -218,6 +218,7 @@ export function createTestApp(
 		db,
 		marketData,
 		marketDataRepo,
+		market,
 		strategies,
 		backtests,
 		backtestRepo,

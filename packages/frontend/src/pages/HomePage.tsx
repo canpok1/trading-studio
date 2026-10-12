@@ -9,6 +9,7 @@ import type {
 } from "@trading-studio/backend";
 import type { Timeframe } from "@trading-studio/core";
 import {
+	LIVE_AVAILABLE,
 	TIMEFRAME_LABELS,
 	TIMEFRAME_MS,
 	TIMEFRAMES,
@@ -38,11 +39,7 @@ import {
 	UnrealizedPnlTile,
 } from "../components/home/SummaryTiles";
 import { EmptyState, ErrorState, Skeleton } from "../components/States";
-import {
-	LIVE_AVAILABLE,
-	ModeTag,
-	TradeOrderSheet,
-} from "../components/trading/TradeViews";
+import { ModeTag, TradeOrderSheet } from "../components/trading/TradeViews";
 import { Button } from "../components/ui";
 import { useChartBg } from "../lib/chart-bg";
 import { useChartIndicators } from "../lib/chart-indicators";

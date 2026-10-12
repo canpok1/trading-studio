@@ -1,11 +1,14 @@
 // 注文の一覧の行と詳細
 
-import type { BacktestOrder, ExitKind } from "@trading-studio/core";
+import type {
+	BacktestOrder,
+	ExitKind,
+	GradeBadgeValue,
+} from "@trading-studio/core";
 import { formatBtc, sellReasonPart } from "@trading-studio/core";
 import type { ReactNode } from "react";
 import { Fragment } from "react";
 import { formatDateTime } from "../../format";
-import type { GradeBadgeValue } from "../../lib/grade";
 import { formatInt, formatSignedInt } from "../../lib/number";
 import { GradeBadge } from "../Grade";
 import { Modal } from "../Modal";

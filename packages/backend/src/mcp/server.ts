@@ -1,31 +1,49 @@
 // ローカルの Claude Code から戦略とニュースの採点を相談するための MCP（Streamable HTTP）。docs/mcp.md
-// 自動取引のオンオフ・運用する戦略の切替と変更・削除・設定は道具にしない（画面から人が行う）。
+// 自動取引のオンオフ・運用する戦略の切替と変更・削除・設定は道具にしない（画面から人が行う）。運用の結果は読める。
 // 例外は採点の基準の版の保存と切替（docs/adr/0013）
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type {
 	ConditionSet,
+	GradeBadgeValue,
 	Judge,
 	JudgeResult,
 	JudgmentValue,
 	MarketRegime,
+	Position,
+	StrategyWatch,
+	Timeframe,
+	WatchAction,
+	WatchGroup,
 } from "@trading-studio/core";
 import {
+	conditionScreenText,
 	conditionSetScreenText,
 	DEFAULT_FEE_RATES,
 	DURATIONS,
+	fewTradesNote,
+	gradeMaxDrawdown,
+	gradePnl,
+	gradeProfitFactor,
+	gradeWinRate,
 	JUDGES,
 	JUDGMENT_VALUE_LABELS,
 	JUDGMENT_VALUES,
+	LIVE_AVAILABLE,
 	MARKET_REGIME_LABELS,
 	MARKET_REGIMES,
+	nextMoves,
 	parseAggregationRule,
 	parseConditionSet,
+	TIMEFRAME_MS,
+	TIMEFRAMES,
+	unrealizedPnl,
 	validateAggregationRule,
 } from "@trading-studio/core";
 import { Hono } from "hono";
 import * as z from "zod";
+import type { AdviceService } from "../advice/types";
 import type {
 	BacktestRun,
 	BacktestService,
@@ -39,6 +57,7 @@ import type {
 	StartDatasetFailure,
 } from "../datasets/types";
 import type { JudgmentService } from "../judgments/types";
+import type { MarketService } from "../market/types";
 import type { MarketDataService } from "../market-data/types";
 import type { NewsItem, NewsService, ScoringService } from "../news/types";
 import {
@@ -55,6 +74,12 @@ import type {
 } from "../scoring-analysis/types";
 import type { SegmentService } from "../segments/types";
 import type { StoredStrategy, StrategyService } from "../strategies/types";
+import type {
+	AutoTradingStatus,
+	StoredOrder,
+	TradingPerformance,
+	TradingService,
+} from "../trading/types";
 import { conditionSetGuide } from "./guide";
 
 export type McpDeps = {
@@ -66,8 +91,21 @@ export type McpDeps = {
 	datasets: DatasetService;
 	scoring: ScoringService;
 	news: Pick<NewsService, "searchNews">;
-	judgments: Pick<JudgmentService, "rule" | "current">;
+	judgments: Pick<JudgmentService, "rule" | "current" | "series">;
 	accuracy: AccuracyService;
+	/** ホームのタブ（運用）。読むだけで、オンオフや戦略の切替は道具にしない */
+	trading: Pick<
+		TradingService,
+		| "runs"
+		| "run"
+		| "performance"
+		| "watch"
+		| "orders"
+		| "orderSummary"
+		| "order"
+	>;
+	market: Pick<MarketService, "latest" | "bars">;
+	advice: Pick<AdviceService, "get">;
 	/** ホームのタブのどれかが運用する戦略に選んでいるか。選ばれている戦略は条件を変えさせない */
 	inUse: (strategyId: number) => boolean;
 	/** run_backtest が終わりを待つ時間。過ぎたら実行中のまま返し、get_backtest で続きを見てもらう */
@@ -124,6 +162,27 @@ function strategyView(s: StoredStrategy, inUse: (id: number) => boolean) {
 	};
 }
 
+const gradeLabel = (g: GradeBadgeValue | null) => g?.label ?? null;
+
+/** 画面の成績の横に出す5段階の評価と、取引が少ないときの注意。損益はガチホと比べるので、ガチホが分からなければ null */
+function grades(s: {
+	pnlPercent: number | null;
+	buyHoldPercent: number | null;
+	idle: boolean;
+	winRate: number | null;
+	profitFactor: number | null;
+	trades: number;
+	maxDrawdownPercent: number;
+}) {
+	return {
+		pnl: gradeLabel(gradePnl(s.pnlPercent, s.buyHoldPercent, s.idle)),
+		winRate: gradeLabel(gradeWinRate(s.winRate)),
+		profitFactor: gradeLabel(gradeProfitFactor(s.profitFactor, s.trades)),
+		maxDrawdown: gradeMaxDrawdown(s.maxDrawdownPercent).label,
+		note: fewTradesNote(s.trades),
+	};
+}
+
 function runView(r: BacktestRun) {
 	const s = r.summary;
 	return {
@@ -160,6 +219,12 @@ function runView(r: BacktestRun) {
 				s.averageHoldingMs === null
 					? null
 					: Math.round((s.averageHoldingMs / 3_600_000) * 10) / 10,
+			// ガチホを持たない古い実行は損益の評価が null（画面はチャートの足から求める）
+			grades: grades({
+				...s,
+				buyHoldPercent: s.buyHoldPercent ?? null,
+				idle: s.trades === 0 && s.openPositionQuantity === 0,
+			}),
 		},
 		orderCount: r.orderCount,
 		filledCount: r.filledCount,
@@ -237,6 +302,12 @@ function datasetRunView(r: DatasetRun | DatasetRunDetail) {
 				...x,
 				regime: MARKET_REGIME_LABELS[x.regime],
 			})),
+			// 損益の評価は損益率の平均をガチホの平均と比べる（画面の「損益の平均」）
+			grades: grades({
+				...r.summary,
+				pnlPercent: r.summary.averagePnlPercent,
+				buyHoldPercent: r.summary.averageBuyHoldPercent,
+			}),
 		},
 		error: r.error,
 		runs: "runs" in r ? r.runs.map(runView) : undefined,
@@ -368,6 +439,165 @@ function analysisView<J extends Judge>(j: J, r: AccuracySummaryResult<J>) {
 	};
 }
 
+/** get_price_bars で一度に返す足の上限 */
+const BARS_MAX = 2_000;
+
+const MODE_LABELS = { paper: "デモ", live: "リアル" } as const;
+
+/** 口座・成績・注文・戦略の見張りを出さないタブ。画面と同じく、動かせないリアル */
+const hidden = (r: AutoTradingStatus) => r.mode === "live" && !LIVE_AVAILABLE;
+
+function positionView(p: Position) {
+	return { ...p, openedAt: p.openedAt === null ? null : jst(p.openedAt) };
+}
+
+function tradingPerformanceView(p: TradingPerformance) {
+	return {
+		...p,
+		resetAt: jst(p.resetAt),
+		position: positionView(p.position),
+		maxDrawdownFrom: p.maxDrawdownFrom === null ? null : jst(p.maxDrawdownFrom),
+		maxDrawdownTo: p.maxDrawdownTo === null ? null : jst(p.maxDrawdownTo),
+		averageHoldingHours:
+			p.averageHoldingMs === null
+				? null
+				: Math.round((p.averageHoldingMs / 3_600_000) * 10) / 10,
+		grades: grades({
+			...p,
+			idle: p.trades === 0 && p.position.quantity === 0,
+		}),
+	};
+}
+
+function tradingRunView(r: AutoTradingStatus) {
+	return {
+		id: r.id,
+		name: r.name,
+		mode: r.mode,
+		modeLabel: MODE_LABELS[r.mode],
+		enabled: r.enabled,
+		strategy: r.strategy,
+		nextEvalAt: r.nextEvalAt === null ? null : jst(r.nextEvalAt),
+		startedAt: r.startedAt === null ? null : jst(r.startedAt),
+		waitingForMarket: r.waitingForMarket,
+		dailyLoss: r.dailyLoss,
+	};
+}
+
+/** デモのタブの口座・含み損益・成績。リアルは画面と同じく出さない */
+function paperView(
+	r: AutoTradingStatus,
+	price: number | null,
+	performance: TradingPerformance | null,
+) {
+	const a = r.account;
+	return {
+		account: {
+			initialCash: a.initialCash,
+			cash: a.cash,
+			equity: a.equity,
+			position: positionView(a.position),
+			lots: a.lots.map((l) => ({
+				...l,
+				openedAt: jst(l.openedAt),
+				unrealizedPnl: unrealizedPnl(l.quantity, l.entryPrice, price),
+			})),
+			openOrderCount: a.openOrderCount,
+			resetAt: jst(a.resetAt),
+		},
+		unrealizedPnl: unrealizedPnl(
+			a.position.quantity,
+			a.position.entryPrice,
+			price,
+		),
+		performance: performance && tradingPerformanceView(performance),
+	};
+}
+
+function tradingOrderView(o: StoredOrder) {
+	return {
+		id: o.id,
+		side: o.side,
+		type: o.type,
+		price: o.price,
+		quantity: o.quantity,
+		status: o.status,
+		placedAt: jst(o.placedAt),
+		filledAt: o.filledAt === null ? null : jst(o.filledAt),
+		fillPrice: o.fillPrice,
+		fee: o.fee,
+		canceledAt: o.canceledAt === null ? null : jst(o.canceledAt),
+		cancelReason: o.cancelReason,
+		reason: o.reason,
+		pnl: o.pnl,
+		lotPrice: o.lotPrice,
+		exitKind: o.exitKind,
+		buyName: o.buyName ?? null,
+		strategyName: o.strategyName,
+	};
+}
+
+/** 発注したときの市場評価。判断の記録が無ければ null、採点の記録の前は空 */
+function judgmentsView(j: Record<string, string> | undefined) {
+	if (!j) return null;
+	return Object.fromEntries(
+		JUDGES.filter((k) => j[k] !== undefined).map((k) => [
+			k,
+			level(j[k] as JudgmentValue<typeof k>),
+		]),
+	);
+}
+
+/** 条件は画面の文言にする */
+function watchGroupView(g: WatchGroup) {
+	return {
+		match: g.match,
+		met: g.met,
+		triggers: g.triggers,
+		conditions: g.conditions.map((c) => ({
+			text: conditionScreenText(c.condition),
+			met: c.met,
+			detail: c.detail,
+			edge: c.edge,
+		})),
+	};
+}
+
+function watchView(w: StrategyWatch) {
+	const action = (a: WatchAction) => ({
+		...a,
+		distancePercent:
+			a.price === null
+				? null
+				: Math.round((a.price / w.price - 1) * 10_000) / 100,
+	});
+	const next = nextMoves(w);
+	return {
+		price: w.price,
+		nextMoves: {
+			now: next.now.map(action),
+			up: next.up && action(next.up),
+			down: next.down && action(next.down),
+		},
+		actions: w.actions.map(action),
+		buys: w.buys.map((b) => ({
+			...b,
+			buy: watchGroupView(b.buy),
+			lots: b.lots.map((l) => ({
+				...l,
+				groups:
+					l.groups &&
+					Object.fromEntries(
+						Object.entries(l.groups).map(([k, g]) => [
+							k,
+							g && watchGroupView(g),
+						]),
+					),
+			})),
+		})),
+	};
+}
+
 function createServer({
 	strategies,
 	backtests,
@@ -378,6 +608,9 @@ function createServer({
 	news,
 	judgments,
 	accuracy,
+	trading,
+	market,
+	advice,
 	inUse,
 	backtestWaitMs = BACKTEST_WAIT_MS,
 	sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
@@ -386,7 +619,7 @@ function createServer({
 		{ name: "trading-studio", version: "1.0.0" },
 		{
 			instructions:
-				"BTC/JPY の自動売買アプリ trading-studio。戦略の条件と、ニュースの AI 採点の基準を相談して改良するための道具。戦略: まず get_guide で条件セットの書き方を読む。戦略の新規作成・運用中でない戦略の条件変更・バックテストの実行ができる。自動取引のオンオフや運用する戦略の切替・変更はできない（画面で人が行う）。採点: get_scoring_setup で仕組みと今の基準を読み、get_market_evaluation で市場評価とその内訳を、get_market_evaluation_analysis で採点がその後の値動きと合っていたか（精度）の集計を、list_news_scores で記事ごとの採点と精度を見て、trial_scoring で基準の案を過去のニュースに試し、add_scoring_criteria で版として保存し、rescore_news と run_backtest の criteriaVersion でその版の成績を確かめ、set_active_scoring_criteria で使い始める。切り替えると次に採点するニュースから効き、自動取引の判定にも効くので、切り替える前に利用者に確認を取る。",
+				"BTC/JPY の自動売買アプリ trading-studio。戦略の条件と、ニュースの AI 採点の基準を相談して改良するための道具。戦略: まず get_guide で条件セットの書き方を読む。戦略の新規作成・運用中でない戦略の条件変更・バックテストの実行ができる。自動取引のオンオフや運用する戦略の切替・変更はできない（画面で人が行う）。運用の結果は list_trading_runs・list_trading_orders・get_strategy_watch、価格は get_market_price・get_price_bars で読める。採点: get_scoring_setup で仕組みと今の基準を読み、get_market_evaluation で市場評価とその内訳を、get_market_evaluation_analysis で採点がその後の値動きと合っていたか（精度）の集計を、list_news_scores で記事ごとの採点と精度を見て、trial_scoring で基準の案を過去のニュースに試し、add_scoring_criteria で版として保存し、rescore_news と run_backtest の criteriaVersion でその版の成績を確かめ、set_active_scoring_criteria で使い始める。切り替えると次に採点するニュースから効き、自動取引の判定にも効くので、切り替える前に利用者に確認を取る。",
 		},
 	);
 	const readOnly = { readOnlyHint: true, openWorldHint: false };
@@ -524,13 +757,59 @@ function createServer({
 	server.registerTool(
 		"list_backtests",
 		{
-			description: "バックテストの実行の一覧（新しい順）と成績",
+			description:
+				"バックテストの履歴（画面の履歴のタブと同じ）。単独の実行（kind: run）と、データセットでまとめた実行（kind: dataset。中身は get_dataset_run）を1行ずつ並べる。まとめた実行に含まれる実行は出さない。total は絞り込みに合う件数",
 			inputSchema: {
 				limit: z.number().int().min(1).max(100).default(20),
+				q: z
+					.string()
+					.default("")
+					.describe("名前のキーワード。空白で区切った語をすべて含むもの"),
+				hideFailed: z.boolean().default(false).describe("失敗・中止を除く"),
+				sort: z
+					.enum(["new", "pnl"])
+					.default("new")
+					.describe(
+						"new=実行の新しい順、pnl=損益率の高い順（まとめた実行は損益率の平均。成績の無いものは最後）",
+					),
 			},
 			annotations: readOnly,
 		},
-		({ limit }) => text(backtests.list({ limit }).runs.map((r) => runView(r))),
+		({ limit, q, hideFailed, sort }) => {
+			const r = datasets.history({ limit, q, hideFailed, sort });
+			return text({
+				total: r.total,
+				entries: r.entries.map((e) =>
+					e.kind === "run"
+						? { kind: e.kind, ...runView(e.run) }
+						: { kind: e.kind, ...datasetRunView(e.datasetRun) },
+				),
+			});
+		},
+	);
+
+	server.registerTool(
+		"get_backtest_advice",
+		{
+			description:
+				"バックテストの結果画面の AI アドバイス（結果の分析・うまくいった点・悪かった点・改善案・改善案を反映した条件セット）と、作った時刻・モデル・指示の版。作るのは画面から（API の料金がかかるため道具にしない）。まだ無ければ null",
+			inputSchema: { id: z.number().int().describe("バックテストの id") },
+			annotations: readOnly,
+		},
+		({ id }) => {
+			const a = advice.get(id);
+			if (!a) return text(null);
+			return text({
+				status: a.status,
+				content: a.content,
+				model: a.model,
+				instructionsVersion: a.instructionsVersion,
+				appVersion: a.appBuiltAt === null ? null : jst(a.appBuiltAt),
+				startedAt: jst(a.startedAt),
+				finishedAt: a.finishedAt === null ? null : jst(a.finishedAt),
+				error: a.error,
+			});
+		},
 	);
 
 	server.registerTool(
@@ -775,6 +1054,156 @@ function createServer({
 				...datasetRunView(r),
 				screenText: conditionSetScreenText(r.params).join("\n"),
 				params: r.params,
+			});
+		},
+	);
+
+	server.registerTool(
+		"list_trading_runs",
+		{
+			description:
+				"ホームのタブ（運用）の一覧（作った順）。モード（paper=デモ・live=リアル）・稼働中か・運用する戦略・次の判定時刻・今日の確定損失と1日の損失上限。デモは口座（現金・保有・ロットごとの含み損益）・含み損益・口座のリセット以降の成績（通算損益・ガチホ・勝率など。画面と同じ5段階の評価付き）も返す。リアルは画面と同じく口座と成績を出さない。オンオフ・戦略の切替は画面から人が行う",
+			annotations: readOnly,
+		},
+		() => {
+			const price = market.latest().price;
+			return text(
+				trading.runs().map((r) => ({
+					...tradingRunView(r),
+					...(hidden(r) ? {} : paperView(r, price, trading.performance(r.id))),
+				})),
+			);
+		},
+	);
+
+	server.registerTool(
+		"get_strategy_watch",
+		{
+			description:
+				"ホームの「次の動き」「戦略の見張り」。タブで運用する戦略を今の価格で試算した、買いとロットごとの条件の成立・今の値・発動価格（価格がいくらになれば成立するか）。actions は起きうる売買で、price が null なら今の価格のまま次の判定で起きる。nextMoves は画面の「次の動き」（次の判定で起きるものと、上側・下側それぞれ最も近い発動価格）。distancePercent は今の価格からの幅。注文はしない。リアルのタブは画面と同じく出さない",
+			inputSchema: {
+				runId: z.number().int().describe("タブ（list_trading_runs）"),
+			},
+			annotations: readOnly,
+		},
+		({ runId }) => {
+			const run = trading.run(runId);
+			if (!run) return fail("タブが見つからない");
+			if (hidden(run)) return fail("リアルのタブは戦略の見張りを出さない");
+			const w = trading.watch(runId)?.watch ?? null;
+			return w
+				? text(watchView(w))
+				: fail("運用する戦略を選んでいないか、価格がまだ無い");
+		},
+	);
+
+	server.registerTool(
+		"list_trading_orders",
+		{
+			description:
+				"タブ（運用）の注文・約定（新しい順）。発注の理由・約定・往復の損益（売りの pnl、手数料込み）・売りのロットの買値と利確/損切りの別（exitKind）・発注したときの市場評価（judgments）を含む。total と realizedPnl は件数で切らずに数えた件数と損益の合計。リアルのタブは画面と同じく出さない",
+			inputSchema: {
+				runId: z.number().int().describe("タブ（list_trading_runs）"),
+				status: z
+					.enum(["open", "filled", "canceled"])
+					.optional()
+					.describe("open=未約定・filled=約定・canceled=取消。省けばすべて"),
+				side: z.enum(["buy", "sell"]).optional(),
+				limit: z.number().int().min(1).max(500).default(100),
+			},
+			annotations: readOnly,
+		},
+		({ runId, status, side, limit }) => {
+			const run = trading.run(runId);
+			if (!run) return fail("タブが見つからない");
+			if (hidden(run)) return fail("リアルのタブは注文・約定を出さない");
+			const filter = { runId, status, side };
+			const summary = trading.orderSummary(filter);
+			return text({
+				total: summary.count,
+				realizedPnl: summary.realizedPnl,
+				orders: trading.orders(filter, limit).map((o) => ({
+					...tradingOrderView(o),
+					judgments: judgmentsView(
+						trading.order(runId, o.id)?.decision?.judgments,
+					),
+				})),
+			});
+		},
+	);
+
+	server.registerTool(
+		"get_market_price",
+		{
+			description:
+				"BTC/JPY の現在値（直近の約定の価格）・その時刻・24時間前の価格と変化率（%）、価格の収集の状態（止まっていれば理由と再接続の予定）。ホームのチャートの上端の値と同じ",
+			annotations: readOnly,
+		},
+		() => {
+			const m = market.latest();
+			const c = m.collector;
+			return text({
+				price: m.price,
+				priceTime: m.priceTime === null ? null : jst(m.priceTime),
+				price24hAgo: m.price24hAgo,
+				changePercent24h:
+					m.price === null || m.price24hAgo === null || m.price24hAgo === 0
+						? null
+						: Math.round((m.price / m.price24hAgo - 1) * 10_000) / 100,
+				collector: {
+					state: c.state,
+					error: c.error,
+					stoppedSince: c.stoppedSince === null ? null : jst(c.stoppedSince),
+					retryAt: c.retryAt === null ? null : jst(c.retryAt),
+				},
+			});
+		},
+	);
+
+	server.registerTool(
+		"get_price_bars",
+		{
+			description:
+				"ホームのチャートの足（始値・高値・安値・終値・出来高）と、足ごとの市場評価（チャートの背景。採点の記録の前は null）。期間の中の新しいほうから limit 本を古い順で返す。volume は satoshi。最新の価格は get_market_price",
+			inputSchema: {
+				timeframe: z.enum(TIMEFRAMES as unknown as [Timeframe, ...Timeframe[]]),
+				range: z
+					.enum(["1d", "1w", "1m", "all"])
+					.default("1w")
+					.describe("1d=1日・1w=1週間・1m=30日・all=全期間"),
+				limit: z.number().int().min(1).max(BARS_MAX).default(200),
+			},
+			annotations: readOnly,
+		},
+		({ timeframe, range, limit }) => {
+			const r = market.bars(timeframe, range, 0);
+			if (!r.ok) {
+				return fail(
+					`足が多すぎる（${r.count}本。上限 ${r.max}本）。期間を短くするか粗い粒度にする`,
+				);
+			}
+			const bars = r.bars.slice(-limit);
+			const first = bars[0];
+			const last = bars.at(-1);
+			if (!first || !last) return text({ total: 0, bars: [] });
+			const step = TIMEFRAME_MS[timeframe];
+			const series = judgments.series(first.time, last.time + step, step);
+			const at = (j: Judge, time: number) => {
+				const v = series.values[j][Math.floor((time - series.from) / step)];
+				return v == null ? null : level(v);
+			};
+			return text({
+				total: r.bars.length,
+				firstScoredAt:
+					series.firstScoredAt === null ? null : jst(series.firstScoredAt),
+				bars: bars.map((b) => ({
+					...b,
+					time: jst(b.time),
+					marketEvaluation: {
+						sentiment: at("sentiment", b.time),
+						risk: at("risk", b.time),
+					},
+				})),
 			});
 		},
 	);

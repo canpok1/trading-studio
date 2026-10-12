@@ -78,6 +78,9 @@ async function setup() {
 			news: t.news,
 			judgments: t.judgments,
 			accuracy: t.scoringAnalysis,
+			trading: t.trading,
+			market: t.market,
+			advice: t.advice,
 			inUse: (id) => t.trading.inUse(id),
 			sleep: async () => {},
 		}),
@@ -123,19 +126,25 @@ describe("MCP", () => {
 			"add_scoring_criteria",
 			"create_strategy",
 			"get_backtest",
+			"get_backtest_advice",
 			"get_backtest_orders",
 			"get_data_coverage",
 			"get_dataset_run",
 			"get_guide",
 			"get_market_evaluation",
 			"get_market_evaluation_analysis",
+			"get_market_price",
+			"get_price_bars",
 			"get_scoring_setup",
 			"get_strategy",
+			"get_strategy_watch",
 			"list_backtests",
 			"list_datasets",
 			"list_news_scores",
 			"list_segments",
 			"list_strategies",
+			"list_trading_orders",
+			"list_trading_runs",
 			"preview_aggregation_rule",
 			"rescore_news",
 			"run_backtest",
@@ -262,8 +271,23 @@ describe("MCP", () => {
 		expect((orders.json as { total: number }).total).toBeGreaterThan(0);
 		const detail = await call("get_backtest", { id: r.id });
 		expect(detail.json).toMatchObject({ id: r.id, params: singleBuy(PARAMS) });
+		expect(detail.json).toMatchObject({
+			summary: { grades: { maxDrawdown: expect.any(String) } },
+		});
 		const list = await call("list_backtests");
-		expect(list.json).toMatchObject([{ id: r.id }]);
+		expect(list.json).toMatchObject({
+			total: 1,
+			entries: [{ kind: "run", id: r.id }],
+		});
+		expect(await call("list_backtests", { q: "別の名前" })).toMatchObject({
+			json: { total: 0, entries: [] },
+		});
+		expect(await call("get_backtest_advice", { id: r.id })).toMatchObject({
+			json: null,
+		});
+		await t.advice.start(r.id);
+		const advice = await call("get_backtest_advice", { id: r.id });
+		expect(advice.json).toMatchObject({ status: expect.any(String) });
 
 		// 相場データで期間を選ぶ
 		t.db.$client.run(
@@ -318,6 +342,136 @@ describe("MCP", () => {
 		expect(grouped.runs.map((x) => x.segment.id)).toEqual([3]);
 		expect(await call("get_dataset_run", { id: grouped.id })).toMatchObject({
 			json: { id: grouped.id, status: "done" },
+		});
+		// 履歴ではまとめた実行を1行にし、含む実行は出さない
+		const history = (await call("list_backtests", { limit: 100 })).json as {
+			entries: { kind: string; id: number }[];
+		};
+		expect(history.entries.filter((e) => e.kind === "dataset")).toEqual([
+			expect.objectContaining({ id: grouped.id }),
+		]);
+		const memberId = (all.json as { runs: { id: number }[] }).runs[0]?.id;
+		expect(
+			history.entries.filter((e) => e.kind === "run").map((e) => e.id),
+		).not.toContain(memberId);
+	});
+
+	test("ホームのタブの口座・成績・注文・戦略の見張り、価格とチャートの足を読める", async () => {
+		const { t, call } = await setup();
+		const M = TIMEFRAME_MS["1m"];
+		const T0 = 1_800_000_000_000;
+		const P = 10_000_000;
+		t.clock.now = T0 + 30_000;
+		t.marketDataRepo.upsertCollected(
+			Array.from({ length: 5 }, (_, i) => ({
+				time: T0 - (5 - i) * M,
+				open: P,
+				high: P + 1_000,
+				low: P - 1_000,
+				close: P,
+				volume: 2_000_000,
+			})),
+		);
+		const trade = (id: number, price: number) => ({
+			id,
+			time: t.clock.now,
+			price,
+			quantity: 1,
+		});
+		t.live.current = { ...t.live.current, latestTrade: trade(1, P) };
+		const created = await call("create_strategy", {
+			name: "毎分買う",
+			params: {
+				...PARAMS,
+				frequency: {
+					flat: { value: 1, unit: "m" },
+					holding: { value: 1, unit: "m" },
+				},
+				buy: {
+					match: "all",
+					conditions: [
+						{ type: "judgment", judge: "sentiment", values: ["none"] },
+					],
+				},
+				buyOrder: { type: "market" },
+			},
+		});
+		const strategyId = (created.json as { id: number }).id;
+		t.trading.update(1, { strategyId });
+		expect(t.trading.start(1).ok).toBe(true);
+		t.clock.now = T0 + M;
+		t.trading.tick();
+		t.live.current = { ...t.live.current, latestTrade: trade(2, P) };
+		t.trading.onTrades([trade(2, P)]);
+		t.live.current = { ...t.live.current, latestTrade: trade(3, P + 50_000) };
+
+		const runs = (await call("list_trading_runs")).json as {
+			id: number;
+			mode: string;
+			enabled: boolean;
+			unrealizedPnl: number;
+			account: { lots: { unrealizedPnl: number }[] };
+			performance: { grades: { maxDrawdown: string } };
+		}[];
+		expect(runs[0]).toMatchObject({
+			id: 1,
+			mode: "paper",
+			modeLabel: "デモ",
+			enabled: true,
+			strategy: { id: strategyId, name: "毎分買う" },
+		});
+		// 0.01 BTC を 1,000万円で買い、今 1,005万円
+		expect(runs[0]?.unrealizedPnl).toBe(500);
+		expect(runs[0]?.account.lots[0]?.unrealizedPnl).toBe(500);
+		expect(runs[0]?.performance.grades.maxDrawdown).toBe("優秀");
+
+		const orders = await call("list_trading_orders", { runId: 1 });
+		expect(orders.json).toMatchObject({
+			total: 1,
+			orders: [{ side: "buy", status: "filled", fillPrice: P, judgments: {} }],
+		});
+		const watch = await call("get_strategy_watch", { runId: 1 });
+		expect(watch.isError).toBe(false);
+		expect(watch.json).toMatchObject({
+			price: P + 50_000,
+			nextMoves: { up: { kind: "takeProfit", distancePercent: 0.5 } },
+			buys: [{ lots: [{ entryPrice: P }] }],
+		});
+		expect(watch.text).toContain("買値から 1% 下がった");
+		expect((await call("list_trading_orders", { runId: 99 })).isError).toBe(
+			true,
+		);
+
+		const live = t.trading.create({ name: "リアル", mode: "live", strategyId });
+		if (!live.ok) throw new Error();
+		const liveRow = (
+			(await call("list_trading_runs")).json as Record<string, unknown>[]
+		).find((r) => r.id === live.status.id);
+		expect(liveRow).not.toHaveProperty("account");
+		expect(
+			(await call("get_strategy_watch", { runId: live.status.id })).isError,
+		).toBe(true);
+
+		expect(await call("get_market_price")).toMatchObject({
+			json: {
+				price: P + 50_000,
+				price24hAgo: null,
+				collector: { state: "running" },
+			},
+		});
+		const bars = await call("get_price_bars", {
+			timeframe: "1m",
+			range: "1d",
+			limit: 3,
+		});
+		expect(bars.json).toMatchObject({
+			total: 5,
+			firstScoredAt: null,
+			bars: [
+				{ close: P, volume: 2_000_000, marketEvaluation: { sentiment: null } },
+				{},
+				{ time: jst(T0 - M) },
+			],
 		});
 	});
 

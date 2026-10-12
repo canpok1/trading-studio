@@ -5,8 +5,13 @@ import type {
 	Timeframe,
 } from "@trading-studio/core";
 import {
+	buyHoldPercentOf,
 	conditionSetChanges,
 	formatBtc,
+	gradeMaxDrawdown,
+	gradePnl,
+	gradeProfitFactor,
+	gradeWinRate,
 	ppmToPercent,
 	TIMEFRAME_LABELS,
 	TIMEFRAMES,
@@ -46,13 +51,6 @@ import {
 	ruleText,
 	stepLimitedText,
 } from "../lib/condition-text";
-import {
-	buyHoldPercentOf,
-	gradeMaxDrawdown,
-	gradePnl,
-	gradeProfitFactor,
-	gradeWinRate,
-} from "../lib/grade";
 import {
 	formatInt,
 	formatSignedInt,

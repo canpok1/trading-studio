@@ -1,12 +1,12 @@
 // ホームの成績。口座のリセット以降の確定損益・勝率などの数字。通算損益は要点のカードに出す
 
 import type { TradingPerformance } from "@trading-studio/backend";
-import { formatDate, formatDateTime } from "../../format";
 import {
 	gradeMaxDrawdown,
 	gradeProfitFactor,
 	gradeWinRate,
-} from "../../lib/grade";
+} from "@trading-studio/core";
+import { formatDate, formatDateTime } from "../../format";
 import { formatSignedInt, holdingText } from "../../lib/number";
 import { Stat } from "../backtest/OrderViews";
 import { FewTradesNote, GradeHelp } from "../Grade";

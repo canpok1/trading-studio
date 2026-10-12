@@ -251,6 +251,7 @@ const news = createNewsService({
 	rule: () => scoreRepo.aggregationRule(),
 	rescoring: () => scorer.rescoring(),
 });
+const market = createMarketService({ collector, repo: marketDataRepo });
 const server = new Hono()
 	.use("/api/*", slowRequestLog())
 	// 画面の配信（GET *）より前に置く
@@ -266,6 +267,9 @@ const server = new Hono()
 			news,
 			judgments,
 			accuracy: scoringAnalysis,
+			trading: tradingEngine,
+			market,
+			advice,
 			inUse: (id) => tradingEngine.inUse(id),
 		}),
 	)
@@ -275,7 +279,7 @@ const server = new Hono()
 			isDbReachable: () => isDbReachable(db),
 			appBuiltAt,
 			marketData,
-			market: createMarketService({ collector, repo: marketDataRepo }),
+			market,
 			strategies,
 			backtests,
 			advice,

@@ -1,8 +1,8 @@
 // 成績の数値の横に出す評価のバッジと、その基準の説明
 
+import type { Grade, GradeBadgeValue } from "@trading-studio/core";
+import { fewTradesNote } from "@trading-studio/core";
 import type { ReactNode } from "react";
-import type { Grade, GradeBadgeValue } from "../lib/grade";
-import { fewTradesNote } from "../lib/grade";
 import { Help } from "./Help";
 
 const TONE: Record<Grade, string> = {
