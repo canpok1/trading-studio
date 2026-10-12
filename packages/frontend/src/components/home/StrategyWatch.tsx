@@ -108,13 +108,13 @@ export function NextMovesCard({
 	);
 }
 
-/** 「+0.88%で（+113,254 円）」。向きは行頭の矢印と符号で分かるので言葉にしない。発動価格そのものはチャートの札と「戦略の見張り」で見る */
+/** 「+0.88%（+113,254 円）で」。向きは行頭の矢印と符号で分かるので言葉にしない。発動価格そのものはチャートの札と「戦略の見張り」で見る */
 function MoveText({ price, from }: { price: number; from: number }) {
 	const m = moveText(price, from);
 	return (
 		<span className="num">
-			<b>{m.percent}</b>で
-			<span className="text-xs text-text-2">（{m.yen}）</span>
+			<b>{m.percent}</b>
+			<span className="text-xs text-text-2">（{m.yen}）</span>で
 		</span>
 	);
 }
