@@ -85,11 +85,7 @@ export function NextMovesCard({
 						<span aria-hidden className="w-3.5 font-bold text-profit">
 							↑
 						</span>
-						<MoveText
-							price={up.price as number}
-							from={watch.price}
-							verb="上がると"
-						/>
+						<MoveText price={up.price as number} from={watch.price} />
 						<KindBadge action={up} multi={multi} />
 					</li>
 				)}
@@ -98,11 +94,7 @@ export function NextMovesCard({
 						<span aria-hidden className="w-3.5 font-bold text-loss">
 							↓
 						</span>
-						<MoveText
-							price={down.price as number}
-							from={watch.price}
-							verb="下がると"
-						/>
+						<MoveText price={down.price as number} from={watch.price} />
 						<KindBadge action={down} multi={multi} />
 					</li>
 				)}
@@ -116,20 +108,12 @@ export function NextMovesCard({
 	);
 }
 
-/** 「0.88% 上がると（+113,254 円）」。発動価格そのものはチャートの札と「戦略の見張り」で見る */
-function MoveText({
-	price,
-	from,
-	verb,
-}: {
-	price: number;
-	from: number;
-	verb: string;
-}) {
+/** 「+0.88%で（+113,254 円）」。向きは行頭の矢印と符号で分かるので言葉にしない。発動価格そのものはチャートの札と「戦略の見張り」で見る */
+function MoveText({ price, from }: { price: number; from: number }) {
 	const m = moveText(price, from);
 	return (
 		<span className="num">
-			<b>{m.percent}</b> {verb}
+			<b>{m.percent}</b>で
 			<span className="text-xs text-text-2">（{m.yen}）</span>
 		</span>
 	);

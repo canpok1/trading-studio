@@ -29,14 +29,14 @@ export function distanceText(price: number, from: number): string {
 	return `${p >= 0 ? "+" : "−"}${Math.abs(p).toFixed(2)}%`;
 }
 
-/** 今の価格から発動価格までの幅。向きは呼び出し側が言葉で添えるので、% は符号なし・円の差は符号付き */
+/** 今の価格から発動価格までの幅。% も円の差も符号付き */
 export function moveText(
 	price: number,
 	from: number,
 ): { percent: string; yen: string } {
 	const d = price - from;
 	return {
-		percent: `${Math.abs((price / from - 1) * 100).toFixed(2)}%`,
+		percent: distanceText(price, from),
 		yen: `${d >= 0 ? "+" : "−"}${formatInt(Math.abs(d))} 円`,
 	};
 }
