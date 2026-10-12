@@ -122,12 +122,24 @@ export function toJsonSchema(schema: unknown): unknown {
 		properties,
 		items,
 		enum: values,
+		minimum,
+		maximum,
 		...rest
 	} = schema as Record<string, unknown>;
 	const out: Record<string, unknown> = { ...rest };
 	if (typeof type === "string") {
 		const t = type.toLowerCase();
 		out.type = nullable ? [t, "null"] : t;
+		// 追加の項目を禁じる。Claude はオブジェクトに false の明示を求める（無いと 400）
+		if (t === "object") out.additionalProperties = false;
+	}
+	// 数の範囲は Claude が受け付けないので説明文へ移す。範囲は受け取った後の検証で確かめる
+	if (minimum !== undefined || maximum !== undefined) {
+		const range = `${minimum ?? ""}〜${maximum ?? ""}`;
+		out.description =
+			typeof out.description === "string"
+				? `${out.description}（${range}）`
+				: `${range} の範囲`;
 	}
 	if (Array.isArray(values)) out.enum = nullable ? [...values, null] : values;
 	// Gemini では enum に format: "enum" を添えるが、JSON Schema の format とは意味が違う
@@ -164,41 +176,73 @@ export function compatibleModel(
 	connection: () => CompatibleConnection | null,
 	{ timeoutMs = TIMEOUT_MS }: { timeoutMs?: number } = {},
 ): GeminiModel {
+	/** 構造化出力を 400 で断ったモデル（接続先の URL と組で持つ）。次からは最初から形を文章で渡す */
+	const schemaRejected = new Set<string>();
+
+	const post = async (
+		c: CompatibleConnection,
+		body: Record<string, unknown>,
+	) => {
+		const res = await fetch(`${c.baseUrl}/chat/completions`, {
+			method: "POST",
+			signal: AbortSignal.timeout(timeoutMs),
+			headers: headers(c),
+			body: JSON.stringify(body),
+		});
+		const json = (await res.json().catch(() => null)) as {
+			choices?: {
+				finish_reason?: string;
+				message?: { content?: string | null };
+			}[];
+		} | null;
+		return {
+			status: res.status,
+			error: res.ok
+				? null
+				: `OpenAI 互換 API ${res.status}: ${errorMessage(json, res)}`,
+			choice: json?.choices?.[0],
+		};
+	};
+
 	return {
 		unavailable: () => (connection() ? null : NO_CONNECTION),
 		async generate(model, prompt, schema: ResponseSchema) {
 			const c = connection();
 			if (!c) throw new Error(NO_CONNECTION);
-			const res = await fetch(`${c.baseUrl}/chat/completions`, {
-				method: "POST",
-				signal: AbortSignal.timeout(timeoutMs),
-				headers: headers(c),
-				body: JSON.stringify({
+			const jsonSchema = toJsonSchema(schema);
+			const key = `${c.baseUrl} ${model}`;
+			let r = schemaRejected.has(key)
+				? null
+				: await post(c, {
+						model,
+						messages: [{ role: "user", content: prompt }],
+						// strict は使わない。任意の項目が多い形は「全項目必須」の制約に合わない。形のずれは呼び出し側の検証で弾く
+						response_format: {
+							type: "json_schema",
+							json_schema: { name: "response", schema: jsonSchema },
+						},
+					});
+			// 接続先によっては形の書き方や複雑さに制限があり、400 で断られる（Claude は任意の項目が 24 個まで等）。
+			// 形を文章で渡して問い合わせ直し、受け取った後の検証に任せる
+			const retried = r !== null && r.status === 400;
+			if (r === null || retried) {
+				r = await post(c, {
 					model,
-					messages: [{ role: "user", content: prompt }],
-					// strict は使わない。任意の項目が多い形は「全項目必須」の制約に合わない。形のずれは呼び出し側の検証で弾く
-					response_format: {
-						type: "json_schema",
-						json_schema: { name: "response", schema: toJsonSchema(schema) },
-					},
-				}),
-			});
-			const body = (await res.json().catch(() => null)) as {
-				choices?: {
-					finish_reason?: string;
-					message?: { content?: string | null };
-				}[];
-			} | null;
-			if (!res.ok) {
-				throw new Error(
-					`OpenAI 互換 API ${res.status}: ${errorMessage(body, res)}`,
-				);
+					messages: [
+						{
+							role: "user",
+							content: `${prompt}\n\n# 出力の形\n次の JSON Schema に従う JSON だけを返す。使わない項目は null にする。\n${JSON.stringify(jsonSchema)}`,
+						},
+					],
+				});
 			}
-			const choice = body?.choices?.[0];
-			const text = choice?.message?.content ?? "";
+			if (r.error) throw new Error(r.error);
+			// 文章で渡して通ったときだけ覚える。モデル名の誤りなど形と関係ない 400 なら、ここまでで失敗している
+			if (retried) schemaRejected.add(key);
+			const text = r.choice?.message?.content ?? "";
 			if (!text) {
 				throw new Error(
-					`OpenAI 互換 API の応答が空（${choice?.finish_reason ?? "理由不明"}）`,
+					`OpenAI 互換 API の応答が空（${r.choice?.finish_reason ?? "理由不明"}）`,
 				);
 			}
 			return parseJsonText(text);

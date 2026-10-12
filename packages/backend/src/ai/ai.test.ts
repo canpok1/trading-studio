@@ -49,21 +49,39 @@ describe("JSON Schema への変換", () => {
 			type: "object",
 			properties: {
 				a: { type: "string", enum: ["x", "y"] },
-				b: { type: ["integer", "null"], minimum: 0, description: "d" },
+				b: { type: ["integer", "null"], description: "d（0〜）" },
 				c: { type: ["string", "null"], enum: ["x", null] },
 				d: { type: "array", items: { type: "number" } },
 			},
 			required: ["a"],
+			additionalProperties: false,
 		});
 	});
 
-	test("採点とアドバイスの形に大文字の型・Gemini だけの項目が残らない", () => {
+	test("採点とアドバイスの形に大文字の型・Gemini だけの項目・Claude が受け付けない項目が残らない", () => {
+		const objects = (v: unknown): Record<string, unknown>[] =>
+			typeof v !== "object" || v === null
+				? []
+				: [
+						...((v as { type?: unknown }).type === "object"
+							? [v as Record<string, unknown>]
+							: []),
+						...Object.values(v).flatMap(objects),
+					];
 		for (const s of [RESPONSE_SCHEMA, ADVICE_RESPONSE_SCHEMA]) {
-			const out = JSON.stringify(toJsonSchema(s));
+			const converted = toJsonSchema(s);
+			const out = JSON.stringify(converted);
 			expect(out).not.toMatch(/"(OBJECT|STRING|INTEGER|NUMBER|ARRAY|BOOLEAN)"/);
 			expect(out).not.toContain("propertyOrdering");
 			expect(out).not.toContain("nullable");
+			expect(out).not.toMatch(/"(minimum|maximum)"/);
+			const objs = objects(converted);
+			expect(objs.length).toBeGreaterThan(0);
+			for (const o of objs) expect(o.additionalProperties).toBe(false);
 		}
+		expect(JSON.stringify(toJsonSchema(RESPONSE_SCHEMA))).toContain(
+			"-100〜100",
+		);
 	});
 });
 
@@ -84,11 +102,63 @@ describe("OpenAI 互換のモデル", () => {
 					messages: [{ role: "user", content: "p" }],
 					response_format: {
 						type: "json_schema",
-						json_schema: { name: "response", schema: { type: "object" } },
+						json_schema: {
+							name: "response",
+							schema: { type: "object", additionalProperties: false },
+						},
 					},
 				},
 			},
 		]);
+	});
+
+	test("構造化出力を 400 で断られたら形を文章で渡して問い合わせ直し、次からは最初からそうする", async () => {
+		received.length = 0;
+		let calls = 0;
+		reply = () =>
+			++calls === 1
+				? json(
+						{
+							error: {
+								message:
+									"output_config.format.schema: For 'object' type, 'additionalProperties' must be explicitly set to false",
+							},
+						},
+						400,
+					)
+				: json({ choices: [{ message: { content: '{"ok":1}' } }] });
+		const m = compatibleModel(() => ({ baseUrl, apiKey: null }));
+		expect(await m.generate("claude", "p", { type: "OBJECT" })).toEqual({
+			ok: 1,
+		});
+		await m.generate("claude", "p", { type: "OBJECT" });
+		const bodies = received.map((r) => r.body as Record<string, unknown>);
+		expect(bodies.map((b) => "response_format" in b)).toEqual([
+			true,
+			false,
+			false,
+		]);
+		const content = (
+			bodies[1]?.messages as { content: string }[] | undefined
+		)?.[0]?.content;
+		expect(content).toStartWith("p\n\n# 出力の形");
+		expect(content).toContain('{"type":"object","additionalProperties":false}');
+		// 断られたのはそのモデルだけ
+		await m.generate("other", "p", {});
+		expect(received[3]?.body).toHaveProperty("response_format");
+	});
+
+	test("問い合わせ直しても失敗なら理由を投げ、次も構造化出力から試す", async () => {
+		received.length = 0;
+		reply = () => json({ error: { message: "bad model" } }, 400);
+		const m = compatibleModel(() => ({ baseUrl, apiKey: null }));
+		await expect(m.generate("x", "p", {})).rejects.toThrow(
+			"OpenAI 互換 API 400: bad model",
+		);
+		await expect(m.generate("x", "p", {})).rejects.toThrow("bad model");
+		expect(
+			received.map((r) => "response_format" in (r.body as object)),
+		).toEqual([true, false, true, false]);
 	});
 
 	test("キーが無ければ Authorization を付けない", async () => {
