@@ -35,7 +35,7 @@ import type { ChartIndicators } from "../../lib/chart-indicators";
 import { formatInt } from "../../lib/number";
 import type { ChartTrigger } from "../../lib/strategy-watch";
 import { Help } from "../Help";
-import { iconEdge, ShapeIcon } from "../judgment/JudgmentBadge";
+import { JudgmentBadge, SHORT_JUDGE_LABELS } from "../judgment/JudgmentBadge";
 import { valueStyle } from "../judgment/judgment-style";
 import type { ChartBar, ChartMarker } from "./chart-data";
 import {
@@ -1095,19 +1095,14 @@ export function PriceChart({
 								JUDGES.map((j) => {
 									const v = judgments[j][shown as number] ?? null;
 									if (v === null) return null;
-									const st = valueStyle(j, v);
 									return (
 										<span
 											key={j}
 											data-testid={`chart-judgment-${j}`}
 											className="flex items-center gap-1"
 										>
-											<ShapeIcon
-												shape={st.shape}
-												color={`var(${st.solid})`}
-												edge={iconEdge(st)}
-											/>
-											{JUDGE_LABELS[j]} {st.label}
+											{SHORT_JUDGE_LABELS[j]}
+											<JudgmentBadge judge={j} value={v} small />
 										</span>
 									);
 								})}

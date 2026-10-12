@@ -5,14 +5,14 @@ import type {
 	CurrentJudgment,
 	TradingPerformance,
 } from "@trading-studio/backend";
-import { JUDGE_LABELS, JUDGES } from "@trading-studio/core";
+import { JUDGES } from "@trading-studio/core";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { gradePnl } from "../../lib/grade";
 import { unrealizedPnl } from "../../lib/home";
 import { formatSignedInt, formatSignedPercent } from "../../lib/number";
 import { GradeBadge } from "../Grade";
-import { JudgmentBadge } from "../judgment/JudgmentBadge";
+import { JudgmentBadge, SHORT_JUDGE_LABELS } from "../judgment/JudgmentBadge";
 import { Skeleton } from "../States";
 
 /** 要点のカードの枠。自動取引のカードも同じ枠で並べる */
@@ -156,12 +156,15 @@ export function MarketEvalTile({
 								<Skeleton className="h-11" />
 							) : (
 								<>
-									<span className="flex">
-										<JudgmentBadge judge={j} value={r.value} />
+									<span className="text-xs text-text-2">
+										{SHORT_JUDGE_LABELS[j]}
 									</span>
-									<span className="num text-xs text-text-2">
-										{JUDGE_LABELS[j]}{" "}
-										{r.average === null ? "—" : `${r.average}点`}
+									<span className="flex">
+										<JudgmentBadge
+											judge={j}
+											value={r.value}
+											score={r.average}
+										/>
 									</span>
 								</>
 							)}
