@@ -176,7 +176,7 @@ export function compatibleModel(
 	connection: () => CompatibleConnection | null,
 	{ timeoutMs = TIMEOUT_MS }: { timeoutMs?: number } = {},
 ): GeminiModel {
-	/** 構造化出力を 400 で断ったモデル。次からは最初から形を文章で渡す */
+	/** 構造化出力を 400 で断ったモデル（接続先の URL と組で持つ）。次からは最初から形を文章で渡す */
 	const schemaRejected = new Set<string>();
 
 	const post = async (
@@ -210,7 +210,8 @@ export function compatibleModel(
 			const c = connection();
 			if (!c) throw new Error(NO_CONNECTION);
 			const jsonSchema = toJsonSchema(schema);
-			let r = schemaRejected.has(model)
+			const key = `${c.baseUrl} ${model}`;
+			let r = schemaRejected.has(key)
 				? null
 				: await post(c, {
 						model,
@@ -223,8 +224,8 @@ export function compatibleModel(
 					});
 			// 接続先によっては形の書き方や複雑さに制限があり、400 で断られる（Claude は任意の項目が 24 個まで等）。
 			// 形を文章で渡して問い合わせ直し、受け取った後の検証に任せる
-			if (r === null || r.status === 400) {
-				if (r) schemaRejected.add(model);
+			const retried = r !== null && r.status === 400;
+			if (r === null || retried) {
 				r = await post(c, {
 					model,
 					messages: [
@@ -236,6 +237,8 @@ export function compatibleModel(
 				});
 			}
 			if (r.error) throw new Error(r.error);
+			// 文章で渡して通ったときだけ覚える。モデル名の誤りなど形と関係ない 400 なら、ここまでで失敗している
+			if (retried) schemaRejected.add(key);
 			const text = r.choice?.message?.content ?? "";
 			if (!text) {
 				throw new Error(

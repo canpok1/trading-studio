@@ -148,11 +148,17 @@ describe("OpenAI 互換のモデル", () => {
 		expect(received[3]?.body).toHaveProperty("response_format");
 	});
 
-	test("問い合わせ直しても失敗なら、その理由を投げる", async () => {
+	test("問い合わせ直しても失敗なら理由を投げ、次も構造化出力から試す", async () => {
+		received.length = 0;
 		reply = () => json({ error: { message: "bad model" } }, 400);
-		await expect(
-			compatibleModel(() => ({ baseUrl, apiKey: null })).generate("x", "p", {}),
-		).rejects.toThrow("OpenAI 互換 API 400: bad model");
+		const m = compatibleModel(() => ({ baseUrl, apiKey: null }));
+		await expect(m.generate("x", "p", {})).rejects.toThrow(
+			"OpenAI 互換 API 400: bad model",
+		);
+		await expect(m.generate("x", "p", {})).rejects.toThrow("bad model");
+		expect(
+			received.map((r) => "response_format" in (r.body as object)),
+		).toEqual([true, false, true, false]);
 	});
 
 	test("キーが無ければ Authorization を付けない", async () => {
