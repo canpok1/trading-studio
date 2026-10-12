@@ -5,11 +5,9 @@ import type {
 	CurrentJudgment,
 	TradingPerformance,
 } from "@trading-studio/backend";
-import { JUDGES } from "@trading-studio/core";
+import { gradePnl, JUDGES, unrealizedPnl } from "@trading-studio/core";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
-import { gradePnl } from "../../lib/grade";
-import { unrealizedPnl } from "../../lib/home";
 import { formatSignedInt, formatSignedPercent } from "../../lib/number";
 import { GradeBadge } from "../Grade";
 import { JudgmentBadge, SHORT_JUDGE_LABELS } from "../judgment/JudgmentBadge";

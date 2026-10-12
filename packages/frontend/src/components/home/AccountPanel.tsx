@@ -4,11 +4,10 @@ import type {
 	AutoTradingStatus,
 	TradingPerformance,
 } from "@trading-studio/backend";
-import { formatBtc } from "@trading-studio/core";
+import { formatBtc, unrealizedPnl } from "@trading-studio/core";
 import { useId, useState } from "react";
 import { useApi } from "../../api";
 import { formatDateTime } from "../../format";
-import { unrealizedPnl } from "../../lib/home";
 import { formatInt, formatSignedInt } from "../../lib/number";
 import { useTradingStatus } from "../../lib/trading";
 import { errorMessage, readJson } from "../../lib/useAsync";

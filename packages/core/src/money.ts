@@ -112,3 +112,17 @@ export function satoshiToBtcString(satoshi: number, minDigits = 0): string {
 	}
 	return `${sign}${int}${frac ? `.${frac}` : ""}`;
 }
+
+/**
+ * 保有の含み損益（円）。手数料を含めず、今の価格で評価する。
+ * 保有が無いか、買値か今の価格が分からなければ null
+ */
+export function unrealizedPnl(
+	quantity: number,
+	entryPrice: number | null,
+	price: number | null,
+): number | null {
+	return quantity > 0 && entryPrice !== null && price !== null
+		? Math.round(((price - entryPrice) * quantity) / SATOSHI_PER_BTC)
+		: null;
+}

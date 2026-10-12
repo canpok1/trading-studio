@@ -7,6 +7,7 @@ import {
 	percentToPpm,
 	roundYen,
 	satoshiToBtcString,
+	unrealizedPnl,
 } from "./money";
 
 describe("notionalYen", () => {
@@ -96,5 +97,15 @@ describe("satoshiToBtcString", () => {
 	});
 	test("最小桁数を指定できる", () => {
 		expect(satoshiToBtcString(2_000_000, 3)).toBe("0.020");
+	});
+});
+
+describe("含み損益", () => {
+	test("含み損益は保有を今の価格で評価し、保有か価格が無ければ出さない", () => {
+		// 0.01 BTC を 1,000万円で買い、今 1,050万円
+		expect(unrealizedPnl(1_000_000, 10_000_000, 10_500_000)).toBe(5_000);
+		expect(unrealizedPnl(1_000_000, 10_000_000, 9_900_000)).toBe(-1_000);
+		expect(unrealizedPnl(0, null, 10_500_000)).toBeNull();
+		expect(unrealizedPnl(1_000_000, 10_000_000, null)).toBeNull();
 	});
 });

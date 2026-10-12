@@ -1,6 +1,12 @@
 import type { DatasetRunDetail } from "@trading-studio/backend";
 import type { DatasetSummary } from "@trading-studio/core";
-import { MARKET_REGIME_LABELS } from "@trading-studio/core";
+import {
+	gradeMaxDrawdown,
+	gradePnl,
+	gradeProfitFactor,
+	gradeWinRate,
+	MARKET_REGIME_LABELS,
+} from "@trading-studio/core";
 import { useCallback, useEffect, useRef } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { useApi } from "../api";
@@ -11,12 +17,6 @@ import { ErrorState, LoadingCard } from "../components/States";
 import { Button, Card, ProgressBar } from "../components/ui";
 import { formatDateTime } from "../format";
 import { useBacktestJob } from "../lib/backtest-job";
-import {
-	gradeMaxDrawdown,
-	gradePnl,
-	gradeProfitFactor,
-	gradeWinRate,
-} from "../lib/grade";
 import { formatInt, formatSignedPercent } from "../lib/number";
 import { segmentName } from "../lib/segment";
 import { readJson, useAsync } from "../lib/useAsync";
