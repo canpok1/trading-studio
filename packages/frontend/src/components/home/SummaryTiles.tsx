@@ -1,4 +1,4 @@
-// ホームの最上段に並べる要点。通算損益・含み損益・市場評価2つを小さなカードで出す
+// ホームの最上段に並べる要点。通算損益・含み損益・市場評価を小さなカードで出す
 
 import type {
 	AutoTradingStatus,
@@ -123,36 +123,52 @@ export function UnrealizedPnlTile({
 	);
 }
 
-/** 今の市場評価。観点ごとに1枚。押すとニュース画面へ */
-export function JudgmentTiles({
+/** 今の市場評価。観点を左右に並べた1枚（stackAtLg なら PC 幅で上下）。押すとニュース画面へ */
+export function MarketEvalTile({
 	current,
+	stackAtLg,
+	className = "",
 }: {
 	current: CurrentJudgment | null;
+	/** PC 幅で1枠に収めるとき、左右では入らないので上下に積む */
+	stackAtLg: boolean;
+	className?: string;
 }) {
-	return JUDGES.map((j) => {
-		const r = current?.results[j];
-		return (
-			<Link
-				key={j}
-				to="/news"
-				aria-label={`${JUDGE_LABELS[j]}（ニュースへ）`}
-				data-testid={`home-judge-${j}`}
-				className={`${TILE} hover:bg-surface-2`}
+	return (
+		<Link
+			to="/news"
+			aria-label="市場評価（ニュースへ）"
+			className={`${TILE} hover:bg-surface-2 ${className}`}
+		>
+			<span className="text-xs text-text-2">市場評価 ›</span>
+			<span
+				className={`grid grid-cols-2 gap-2 ${stackAtLg ? "lg:grid-cols-1" : ""}`}
 			>
-				<span className="text-xs text-text-2">{JUDGE_LABELS[j]}</span>
-				{r === undefined ? (
-					<Skeleton className="h-11" />
-				) : (
-					<>
-						<span className="flex">
-							<JudgmentBadge judge={j} value={r.value} />
+				{JUDGES.map((j) => {
+					const r = current?.results[j];
+					return (
+						<span
+							key={j}
+							data-testid={`home-judge-${j}`}
+							className="flex min-w-0 flex-col gap-1"
+						>
+							{r === undefined ? (
+								<Skeleton className="h-11" />
+							) : (
+								<>
+									<span className="flex">
+										<JudgmentBadge judge={j} value={r.value} />
+									</span>
+									<span className="num text-xs text-text-2">
+										{JUDGE_LABELS[j]}{" "}
+										{r.average === null ? "—" : `${r.average}点`}
+									</span>
+								</>
+							)}
 						</span>
-						<span className="num text-xs text-text-2">
-							{r.average === null ? "—" : `${r.average}点`} ›
-						</span>
-					</>
-				)}
-			</Link>
-		);
-	});
+					);
+				})}
+			</span>
+		</Link>
+	);
 }

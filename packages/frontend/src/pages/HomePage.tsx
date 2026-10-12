@@ -33,7 +33,7 @@ import {
 	StrategyWatchPanel,
 } from "../components/home/StrategyWatch";
 import {
-	JudgmentTiles,
+	MarketEvalTile,
 	TotalPnlTile,
 	UnrealizedPnlTile,
 } from "../components/home/SummaryTiles";
@@ -215,6 +215,7 @@ function HomeBody({
 		run?.strategy?.id ?? null,
 		visible && hasAccount,
 	);
+	const showMoves = hasAccount && watch !== null;
 	// 見張りは定期的に取り直すので、発動価格が変わったときだけ線を引き直す
 	const triggerKey = JSON.stringify(chartTriggers(watch));
 	// biome-ignore lint/correctness/useExhaustiveDependencies: 発動価格が変わったとき（triggerKey）だけ作り直す
@@ -374,9 +375,15 @@ function HomeBody({
 					</Button>
 				</div>
 			)}
-			{/* 要点: スマホは自動取引を1行で置いて下に 2×2、PC は横一列で自動取引を右端に */}
+			{/* 要点: スマホは自動取引を1行で置いて下に通算損益｜含み損益、市場評価、次の動き。PC は横一列で自動取引を右端に */}
 			<div
-				className={`grid grid-cols-2 gap-2.5 lg:col-span-2 ${hasAccount ? "sm:grid-cols-4 xl:grid-cols-[repeat(4,minmax(0,1fr))_minmax(0,1.3fr)]" : "xl:grid-cols-[repeat(2,minmax(0,1fr))_minmax(0,1.3fr)]"}`}
+				className={`grid grid-cols-2 gap-2.5 lg:col-span-2 ${
+					!hasAccount
+						? "xl:grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)]"
+						: showMoves
+							? "sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-[repeat(3,minmax(0,1fr))_minmax(0,2fr)_minmax(0,1.5fr)]"
+							: "sm:grid-cols-4 xl:grid-cols-[repeat(2,minmax(0,1fr))_minmax(0,2fr)_minmax(0,1.5fr)]"
+				}`}
 			>
 				{run ? (
 					<AutoTradingCard
@@ -400,9 +407,20 @@ function HomeBody({
 						<UnrealizedPnlTile status={run} price={latest?.price ?? null} />
 					</>
 				)}
-				<JudgmentTiles current={current} />
+				<MarketEvalTile
+					current={current}
+					stackAtLg={showMoves}
+					className={
+						showMoves ? "col-span-2 lg:col-span-1" : "col-span-2 xl:col-span-1"
+					}
+				/>
+				{showMoves && (
+					<NextMovesCard
+						watch={watch}
+						className="col-span-full lg:col-span-2 xl:col-span-1"
+					/>
+				)}
 			</div>
-			{hasAccount && watch && <NextMovesCard watch={watch} />}
 			{barsError && !bars ? (
 				<section aria-label="価格チャート" className={`${PANEL} lg:col-span-2`}>
 					<PanelHeader title="チャート" />

@@ -45,11 +45,17 @@ function KindBadge({ action, multi }: { action: WatchAction; multi: boolean }) {
 }
 
 /** チャートの上に置く要約。次の判定で起きる売買と、上側・下側で一番近い発動価格 */
-export function NextMovesCard({ watch }: { watch: StrategyWatch }) {
+export function NextMovesCard({
+	watch,
+	className = "",
+}: {
+	watch: StrategyWatch;
+	className?: string;
+}) {
 	const { now, up, down } = nextMoves(watch);
 	const multi = watch.buys.length >= 2;
 	return (
-		<section aria-label="次の動き" className={`${PANEL} gap-2 lg:col-span-2`}>
+		<section aria-label="次の動き" className={`${PANEL} gap-2 ${className}`}>
 			<div className="flex min-h-6 items-center gap-1.5">
 				<h2 className="text-[15px] font-bold">次の動き</h2>
 				<Help label="次の動き">

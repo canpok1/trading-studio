@@ -132,7 +132,7 @@ export function AutoTradingCard({
 				<div className="flex min-w-0 flex-1 flex-col">
 					<h2 className="text-[13px] font-bold">
 						自動取引{" "}
-						<span data-testid="auto-state">
+						<span data-testid="auto-state" className="whitespace-nowrap">
 							{unavailable
 								? "リアル取引はまだ使えない"
 								: on
