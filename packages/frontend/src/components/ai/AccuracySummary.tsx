@@ -18,6 +18,7 @@ import {
 	useAnalysisUnit,
 	useAnalysisView,
 } from "../../lib/eval-analysis-view";
+import { compatibleName, isCompatibleId } from "../../lib/model-picker";
 import { errorMessage, readJson, useInterval } from "../../lib/useAsync";
 import { Help } from "../Help";
 import {
@@ -60,14 +61,8 @@ export const ANALYSIS_FILTER_PARAMS = [
 /** サーバー・モデルの「記録なし」の値 */
 const SERVER_NONE = "none";
 const MODEL_NONE = "none";
-/** OpenAI 互換のモデルの印。backend の COMPATIBLE_PREFIX と同じ */
-const COMPATIBLE_PREFIX = "openai:";
 const modelText = (m: string) =>
-	m === MODEL_NONE
-		? "記録なし"
-		: m.startsWith(COMPATIBLE_PREFIX)
-			? m.slice(COMPATIBLE_PREFIX.length)
-			: m;
+	m === MODEL_NONE ? "記録なし" : compatibleName(m);
 
 function useVersionFilter() {
 	const [params, setParams] = useSearchParams();
@@ -292,12 +287,12 @@ function VersionSelects({
 		{
 			label: "Gemini",
 			items: models.filter(
-				(x) => x.value !== MODEL_NONE && !x.value.startsWith(COMPATIBLE_PREFIX),
+				(x) => x.value !== MODEL_NONE && !isCompatibleId(x.value),
 			),
 		},
 		{
 			label: "OpenAI 互換",
-			items: models.filter((x) => x.value.startsWith(COMPATIBLE_PREFIX)),
+			items: models.filter((x) => isCompatibleId(x.value)),
 		},
 	].filter((g) => g.items.length > 0);
 	const modelNone = models.filter((x) => x.value === MODEL_NONE);
@@ -309,7 +304,7 @@ function VersionSelects({
 	const select = (
 		label: string,
 		value: string,
-		items: { value: string; label: string }[] | null,
+		options: React.ReactNode,
 		onChange: (v: string) => void,
 	) => (
 		<label className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -321,9 +316,20 @@ function VersionSelects({
 				className="h-9 w-full min-w-0 rounded-[10px] border border-line bg-surface px-2 text-sm"
 			>
 				<option value="">すべて</option>
-				{items ? (
-					items.map(option)
-				) : (
+				{options}
+			</select>
+		</label>
+	);
+	return (
+		<div className="flex flex-col gap-1.5">
+			<div className="flex gap-2">
+				{select("プロンプト", prompt, prompts.map(option), onPrompt)}
+				{select("サーバー", server, servers.map(option), onServer)}
+			</div>
+			<div className="flex">
+				{select(
+					"モデル",
+					model,
 					<>
 						{modelGroups.map((g) => (
 							<optgroup key={g.label} label={g.label}>
@@ -331,18 +337,10 @@ function VersionSelects({
 							</optgroup>
 						))}
 						{modelNone.map(option)}
-					</>
+					</>,
+					onModel,
 				)}
-			</select>
-		</label>
-	);
-	return (
-		<div className="flex flex-col gap-1.5">
-			<div className="flex gap-2">
-				{select("プロンプト", prompt, prompts, onPrompt)}
-				{select("サーバー", server, servers, onServer)}
 			</div>
-			<div className="flex">{select("モデル", model, null, onModel)}</div>
 		</div>
 	);
 }

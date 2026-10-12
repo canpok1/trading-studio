@@ -9,6 +9,10 @@ const COMPATIBLE_PREFIX = "openai:";
 
 export const isCompatibleId = (id: string) => id.startsWith(COMPATIBLE_PREFIX);
 
+/** 印を外したモデルの名前。Gemini 直結はそのまま */
+export const compatibleName = (id: string) =>
+	isCompatibleId(id) ? id.slice(COMPATIBLE_PREFIX.length) : id;
+
 /** 選択中のモデルの表示名。一覧を取れないときも ID から出す */
 export function modelLabel(groups: ModelGroup[], id: string): string {
 	for (const g of groups) {

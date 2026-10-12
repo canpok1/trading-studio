@@ -148,11 +148,13 @@ test("評価詳細の分析は、見せ方を切り替えて棒を押すと内�
 				horizon: "24h",
 				periodDays: 30,
 				time: Date.now(),
-				filter: { criteriaVersion: null, appBuiltAt: null },
+				filter: { criteriaVersion: null, appBuiltAt: null, model: null },
 				options: {
 					criteriaVersions: [],
 					appBuiltAts: [],
+					models: [],
 					activeCriteriaVersion: 1,
+					activeModel: "gemini-3.5-flash-lite",
 				},
 				results: {
 					sentiment: {

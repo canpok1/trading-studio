@@ -908,6 +908,7 @@ function createServer({
 					),
 				model: z
 					.string()
+					.min(1)
 					.optional()
 					.describe(
 						'このモデルで採点した記事だけ数える。options.models の model（OpenAI 互換は openai: の印付き）か、モデルの記録が無い採点は "none"。省けばすべて',
