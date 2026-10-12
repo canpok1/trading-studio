@@ -23,12 +23,10 @@ DB は SQLite で、既定は `data/trading-studio.db`（環境変数 `DB_PATH` 
 
 main へ push すると、CI がコンテナイメージを GHCR（`ghcr.io/canpok1/trading-studio`）へ `latest` とコミット ID のタグで push する。自宅サーバー（mini-pc）では Watchtower が5分間隔で `latest` を確認し、新しいイメージに入れ替える。mini-pc 側の配置は [canpok1/mini-pc-setup](https://github.com/canpok1/mini-pc-setup) が行う。
 
-手で起動する場合は、`docker-compose.yml` を置いたディレクトリで次を実行する。DB とバックアップは同じディレクトリの `data/` に残り、コンテナを入れ替えても消えない。コンテナは UID/GID `1000:1000` で動くため、`data/` は先に作っておく（無いと Docker が root 所有で作り、DB を書けずに起動に失敗する）。
+compose の定義は mini-pc-setup の `templates/services/compose.yml.j2` にあり、mini-pc 上では `~/services/compose.yml` の1サービスとして動く。DB とバックアップは `~/services/trading-studio/data/` に残り、コンテナを入れ替えても消えない。コンテナを動かすのに必要なものは次のとおりで、変えるときは mini-pc-setup も合わせて直す。
 
-```sh
-mkdir -p data && sudo chown 1000:1000 data
-docker compose up -d
-```
+- `/app/data` を永続化する。コンテナは UID/GID `1000:1000` で動くため、マウント元はその所有者にする（root 所有だと DB を書けずに起動に失敗する）
+- ポート `3000` で待ち受ける
 
 コンテナはホストの `127.0.0.1:3000` にだけ公開し、Tailscale Serve で tailnet 内へ HTTPS で中継する（ADR 0003・0004）。Tailscale に接続した端末から `https://<mini-pc のマシン名>.<tailnet 名>.ts.net/` で開く。自宅 LAN 内でも、Tailscale に接続していない端末からは開けない。Tailscale の導入と Serve の設定は mini-pc-setup が行う。
 
@@ -36,4 +34,4 @@ docker compose up -d
 
 ## 画面が遅いときの調べ方
 
-backend は応答に0.2秒以上かかった API（`slow api: GET /api/... 512ms 200`）と、処理が詰まってどの要求にも応えられなかった時間（`event loop blocked: 800ms`）をログに出す。`docker compose logs trading-studio | grep -E "slow api|event loop"` で見る。前者は API 自体が重い、後者は別の処理（定期処理など）に塞がれている。
+backend は応答に0.2秒以上かかった API（`slow api: GET /api/... 512ms 200`）と、処理が詰まってどの要求にも応えられなかった時間（`event loop blocked: 800ms`）をログに出す。mini-pc の `~/services` で `docker compose logs trading-studio | grep -E "slow api|event loop"` で見る。前者は API 自体が重い、後者は別の処理（定期処理など）に塞がれている。
