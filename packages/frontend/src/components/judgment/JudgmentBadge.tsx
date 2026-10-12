@@ -10,96 +10,54 @@ import {
 	JUDGE_LABELS,
 	SCORE_RANGES,
 } from "@trading-studio/core";
-import type { Shape, ValueStyle } from "./judgment-style";
+import type { ValueStyle } from "./judgment-style";
 import { valueStyle } from "./judgment-style";
-
-const SHAPES: Record<Shape, (fill: string) => React.ReactNode> = {
-	up: (f) => <polygon points="6,1 11,10 1,10" style={{ fill: f }} />,
-	down: (f) => <polygon points="1,2 11,2 6,11" style={{ fill: f }} />,
-	bar: (f) => <rect x="1" y="5" width="10" height="2.5" style={{ fill: f }} />,
-	circle: (f) => <circle cx="6" cy="6" r="5" style={{ fill: f }} />,
-	tri: (f) => <polygon points="6,0.5 11.5,11 0.5,11" style={{ fill: f }} />,
-	oct: (f) => (
-		<polygon
-			points="3.5,.5 8.5,.5 11.5,3.5 11.5,8.5 8.5,11.5 3.5,11.5 .5,8.5 .5,3.5"
-			style={{ fill: f }}
-		/>
-	),
-	sq: (f) => (
-		<rect x="1" y="1" width="10" height="10" rx="2" style={{ fill: f }} />
-	),
-};
-
-/** 判定の記号。色だけに頼らず形でも見分けられるようにする */
-export function ShapeIcon({
-	shape,
-	color,
-	size = 10,
-	edge,
-}: {
-	shape: Shape;
-	color: string;
-	size?: number;
-	/** 背景に沈む色のときの縁取りの色 */
-	edge?: string;
-}) {
-	return (
-		<svg
-			width={size}
-			height={size}
-			viewBox="0 0 12 12"
-			aria-hidden="true"
-			style={edge ? { stroke: edge, strokeWidth: 1 } : undefined}
-		>
-			{SHAPES[shape](color)}
-		</svg>
-	);
-}
 
 /** 塗りが背景に沈む色（ダークの危機）だけ縁取る。-edge が無い色は縁なし */
 function edgeShadow(s: ValueStyle): string {
 	return `inset 0 0 0 1px var(${s.solid}-edge, transparent)`;
 }
 
-/** 記号の縁。カードの地に近い色（ライトの中立・平常、ダークの危機）でも形が見えるようにする */
-export function iconEdge(s: ValueStyle): string {
+/** 色見本の縁。カードの地に近い色（ライトの中立・平常、ダークの危機）でも見えるようにする */
+export function swatchEdge(s: ValueStyle): string {
 	return `var(${s.solid}-edge, var(--color-line))`;
 }
 
-/** 判定の値のバッジ。値の名前（強気・警戒など）で観点が分かるので観点名は付けない */
+/** 判定の値のバッジ。段階の色で塗る。値の名前（強気・警戒など）で観点が分かるので観点名は付けない */
 export function JudgmentBadge<J extends Judge>({
 	judge,
 	value,
+	score,
+	small = false,
 }: {
 	judge: J;
 	value: JudgmentValue<J>;
+	/** 添える平均点。null なら付けない */
+	score?: number | null;
+	/** 文字の行に並べるときの小さい形 */
+	small?: boolean;
 }) {
 	const s = valueStyle(judge, value);
-	const crisis = judge === "risk" && value === "crisis";
 	return (
 		<span
 			data-testid={`badge-${judge}`}
-			className={`inline-flex h-[26px] items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold whitespace-nowrap ${crisis ? "text-white" : "bg-surface-2 text-text"}`}
-			style={
-				crisis
-					? { background: `var(${s.solid})`, boxShadow: edgeShadow(s) }
-					: judge === "risk" && value !== "calm"
-						? { background: `var(${s.bg})` }
-						: undefined
-			}
+			className={`inline-flex items-center rounded-full font-semibold whitespace-nowrap ${small ? "h-5 px-2 text-[11px]" : "h-[26px] px-2.5 text-xs"}`}
+			style={{
+				background: `var(${s.solid})`,
+				color: `var(${s.solid}-ink)`,
+				boxShadow: edgeShadow(s),
+			}}
 		>
-			<ShapeIcon
-				shape={s.shape}
-				color={crisis ? "#fff" : `var(${s.solid})`}
-				edge={crisis ? undefined : iconEdge(s)}
-			/>
 			{s.label}
+			{score !== undefined && score !== null && (
+				<span className="num font-normal">（{score}点）</span>
+			)}
 		</span>
 	);
 }
 
-/** チップは横に並べるので、観点の名前を短くする */
-const CHIP_LABELS: Record<Judge, string> = {
+/** 横に並べる場所では観点の名前を短くする */
+export const SHORT_JUDGE_LABELS: Record<Judge, string> = {
 	sentiment: "センチ",
 	risk: "リスク",
 };
@@ -128,7 +86,7 @@ export function ScoreChip({
 				boxShadow: edgeShadow(s),
 			}}
 		>
-			{CHIP_LABELS[judge]} <b className="num">{score}</b>
+			{SHORT_JUDGE_LABELS[judge]} <b className="num">{score}</b>
 		</span>
 	);
 }
@@ -223,11 +181,13 @@ export function JudgmentLegend({ judge }: { judge: Judge }) {
 						key={v}
 						className="inline-flex items-center gap-1 whitespace-nowrap"
 					>
-						<ShapeIcon
-							shape={st.shape}
-							color={`var(${st.solid})`}
-							size={8}
-							edge={iconEdge(st)}
+						<i
+							aria-hidden="true"
+							className="inline-block h-2 w-2 rounded-[2px]"
+							style={{
+								background: `var(${st.solid})`,
+								boxShadow: `0 0 0 1px ${swatchEdge(st)}`,
+							}}
 						/>
 						{st.label}
 					</li>
@@ -245,6 +205,6 @@ export function levelFill(
 	const st = valueStyle(judge, value);
 	return {
 		background: `var(${st.solid})`,
-		boxShadow: `inset 0 0 0 1px ${iconEdge(st)}`,
+		boxShadow: `inset 0 0 0 1px ${swatchEdge(st)}`,
 	};
 }

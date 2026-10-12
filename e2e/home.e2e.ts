@@ -311,7 +311,9 @@ test("チャートに市場評価の背景と帯が出て、帯をタップす�
 	// 足は1分ごとに閉じるので、採点が付いた後の足ができるまで待つことがある
 	test.setTimeout(180_000);
 	await page.goto("/home");
-	await expect(page.getByTestId("home-judge-sentiment")).toContainText(/点|—/, {
+	await expect(
+		page.getByTestId("home-judge-sentiment").getByTestId("badge-sentiment"),
+	).toBeVisible({
 		timeout: 20_000,
 	});
 	// 偽物の採点が付いた後に閉じた足ができるまで待つ
@@ -321,10 +323,13 @@ test("チャートに市場評価の背景と帯が出て、帯をタップす�
 			timeout: 3_000,
 		});
 	}).toPass({ timeout: 120_000 });
-	// 上の値の表示の判定は観点名付き
+	// 上の値の表示の判定は短い観点名と、評価の色付きのバッジ
 	await expect(page.getByTestId("chart-judgment-sentiment")).toContainText(
-		"センチメント",
+		"センチ",
 	);
+	await expect(
+		page.getByTestId("chart-judgment-sentiment").getByTestId("badge-sentiment"),
+	).toBeVisible();
 	await expect(page.getByTestId("chart-judgment-risk")).toContainText("リスク");
 	// スマホでは −/＋/最新へ を値の表示の下（チャートのすぐ上）に置く。PC では右
 	const close = await page.getByTestId("chart-close").boundingBox();
