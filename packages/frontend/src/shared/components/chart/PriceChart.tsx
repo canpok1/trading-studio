@@ -1,0 +1,1449 @@
+// 価格チャート。バックテスト結果とホーム（のちにデモ・リアルも）で使う
+
+import type { WatchActionKind } from "@trading-studio/core";
+import {
+	bollinger,
+	ema,
+	formatBtc,
+	formatRsi,
+	JUDGE_LABELS,
+	JUDGES,
+	JUDGMENT_VALUES,
+	rsi,
+} from "@trading-studio/core";
+import type {
+	IChartApi,
+	IPriceLine,
+	ISeriesApi,
+	ISeriesMarkersPluginApi,
+	Time,
+	UTCTimestamp,
+} from "lightweight-charts";
+import {
+	CandlestickSeries,
+	createChart,
+	createSeriesMarkers,
+	HistogramSeries,
+	LineSeries,
+	LineStyle,
+	TickMarkType,
+} from "lightweight-charts";
+import type { ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ChartIndicators } from "../../lib/chart-indicators";
+import { formatDateTime } from "../../lib/format";
+import { formatInt } from "../../lib/number";
+import type { ChartTrigger } from "../../lib/strategy-watch";
+import { Help } from "../Help";
+import { JudgmentBadge, SHORT_JUDGE_LABELS } from "../judgment/JudgmentBadge";
+import { valueStyle } from "../judgment/judgment-style";
+import type { ChartBar, ChartMarker } from "./chart-data";
+import {
+	barStep,
+	fromChartTime,
+	hasOhlc,
+	initialRange,
+	markerColorVar,
+	markerShape,
+	RIGHT_OFFSET,
+	showsLatest,
+	snapToBar,
+	toChartTime,
+	toSlots,
+	zoomRange,
+} from "./chart-data";
+import {
+	useChartStyle,
+	useShowEntry,
+	useShowTriggers,
+	useShowVolume,
+} from "./chart-style";
+import {
+	BbSettingsModal,
+	EmaSettingsModal,
+	RsiSettingsModal,
+} from "./IndicatorSettings";
+import { JudgeLayer, stripArea } from "./judge-layer";
+import type { BarJudgments, ChartBg } from "./judgment-data";
+import { slotAligned } from "./judgment-data";
+import { PriceTags } from "./price-tags";
+
+type Props = {
+	bars: readonly ChartBar[];
+	markers?: readonly ChartMarker[];
+	/** EMA・RSI の本数と表示の有無 */
+	indicators: ChartIndicators;
+	/** EMA・RSI を描かない（ホームで粒度を切り替え、足が届く前） */
+	hideIndicators?: boolean;
+	selectedId?: string | null;
+	onMarker?: (m: ChartMarker) => void;
+	/** 最初に見せる長さ（最新から遡るミリ秒）。null なら全体を収める */
+	initialSpanMs?: number | null;
+	/**
+	 * 今のレート。渡すと今のレートの線と、価格の軸に値を出す（ホーム）。
+	 * 省略すると最後の足の終値を出す（過去のデータを見るバックテスト結果）
+	 */
+	currentPrice?: number | null;
+	/** 保有中のロットの買値。ロットごとに線を引く。渡すと「表示」に買値の切り替えを出す（ホーム） */
+	entryPrices?: readonly number[];
+	/** 発動価格（戦略の次の行動）。破線と、価格の軸の薄い札で出す。渡すと「表示」に発動価格の切り替えを出す（ホーム） */
+	triggers?: readonly ChartTrigger[];
+	/** 表示の切り替えの先頭に置く操作（ホームの粒度の切り替えなど） */
+	toolbar?: ReactNode;
+	/**
+	 * 表示の切り替えを1行にまとめる（ホーム）。背景はプルダウン、線の表示は「表示」のメニューに入れる。
+	 * 包む要素をパネルにし、PC 幅では高く描く
+	 */
+	compact?: boolean;
+	/** 最新の足を表示しているときだけ、上端の終値の右に出す（ホームの24時間の変化率） */
+	latestNote?: ReactNode;
+	/**
+	 * 表示範囲を合わせ直すきっかけ。指定すると、足が更新されても値が変わるまで利用者の拡大・移動を保つ
+	 * （数秒ごとに最新の価格を足すホームで、そのたびに表示範囲が戻らないように）
+	 */
+	viewKey?: string;
+	/** 足ごとの AI 判定（足の並びと同じ長さ）。無ければ背景と帯を出さない */
+	judgments?: BarJudgments | null;
+	/** 背景に塗る判定。残りは下の帯に並べる。none は背景に塗らず、すべて帯に並べる */
+	bg?: ChartBg;
+	onBgChange?: (j: ChartBg) => void;
+};
+
+const EMA_VARS = ["--color-ema1", "--color-ema2"] as const;
+const emaVar = (j: number) => EMA_VARS[j % 2] as string;
+const RSI_VARS = ["--color-rsi1", "--color-rsi2"] as const;
+const INDICATOR_LABELS = { ema: "EMA", bb: "BB", rsi: "RSI" } as const;
+const rsiVar = (j: number) => RSI_VARS[j % 2] as string;
+
+type RsiLine = { period: number; thresholds: readonly number[] };
+
+/** 発動価格の線の色・軸の札の色・札の字。買い系は寒色、売り系は暖色（一部利確は利確と同じ色で、字で分ける） */
+const TRIGGER_STYLE: Record<
+	WatchActionKind,
+	{ line: string; tag: string; label: string }
+> = {
+	entry: { line: "--color-buy", tag: "--color-entry-tag", label: "入" },
+	partialTakeProfit: {
+		line: "--color-take-profit-line",
+		tag: "--color-take-profit-tag",
+		label: "部",
+	},
+	takeProfit: {
+		line: "--color-take-profit-line",
+		tag: "--color-take-profit-tag",
+		label: "利",
+	},
+	stopLoss: {
+		line: "--color-stop-loss-line",
+		tag: "--color-stop-loss-tag",
+		label: "損",
+	},
+};
+
+/** 出来高の棒が使う、価格の区画の下からの高さの割合 */
+const VOLUME_SHARE = 0.2;
+
+/** #rrggbb に透明度を付ける */
+function withAlpha(hex: string, alpha: number): string {
+	if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex;
+	return `${hex}${Math.round(alpha * 255)
+		.toString(16)
+		.padStart(2, "0")}`;
+}
+
+/** 出来高の棒の色。上げ下げは塗り分けない（向きはローソク足で分かる） */
+const volumeColor = () => withAlpha(cssVar("--color-text-2"), 0.35);
+
+/** RSI の小窓の高さの割合。価格 : RSI = 3 : 1 */
+const PRICE_STRETCH = 3;
+const RSI_STRETCH = 1;
+
+// Tailwind のクラスはキャンバスに効かないので、テーマの CSS 変数を読んで渡す
+function cssVar(name: string): string {
+	return getComputedStyle(document.documentElement)
+		.getPropertyValue(name)
+		.trim();
+}
+
+const p2 = (n: number) => String(n).padStart(2, "0");
+
+/** 目盛りの文字。時刻は JST へずらしてあるので UTC として読む */
+function tickLabel(t: Time, type: TickMarkType): string {
+	const d = new Date((t as number) * 1000);
+	switch (type) {
+		case TickMarkType.Year:
+			return String(d.getUTCFullYear());
+		// 月の変わり目も他の日付と同じ形にする。「2026/8」は左端で切れると「6/8」と読めてしまう
+		case TickMarkType.Month:
+		case TickMarkType.DayOfMonth:
+			return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+		default:
+			return `${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}`;
+	}
+}
+
+/** ローソク足の色。上昇=緑・下落=赤 */
+function candleColors() {
+	const up = cssVar("--color-up");
+	const down = cssVar("--color-down");
+	return {
+		upColor: up,
+		downColor: down,
+		borderUpColor: up,
+		borderDownColor: down,
+		wickUpColor: up,
+		wickDownColor: down,
+	};
+}
+
+function chartColors() {
+	return {
+		layout: {
+			background: { color: cssVar("--color-surface") },
+			textColor: cssVar("--color-text-2"),
+		},
+		grid: { horzLines: { color: cssVar("--color-grid") } },
+		rightPriceScale: { borderColor: cssVar("--color-line") },
+		timeScale: { borderColor: cssVar("--color-line") },
+	};
+}
+
+const CHIP =
+	"h-8 rounded-full border border-line px-3 text-xs font-semibold text-text-2 disabled:opacity-40 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-white dark:aria-pressed:text-accent-ink";
+
+/** 1行にまとめた切り替えのプルダウン */
+const DROP =
+	"h-8 min-w-0 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold";
+
+const ICON_BTN =
+	"grid size-8 place-items-center rounded-full border border-line text-base font-semibold text-text-2";
+
+const NO_MARKERS: readonly ChartMarker[] = [];
+const NO_PERIODS: readonly number[] = [];
+const NO_TRIGGERS: readonly ChartTrigger[] = [];
+
+/** チャートの高さの最小値（px）。下の className の h-[260px] と揃える */
+const MIN_CHART_PX = 260;
+
+/** アイコンを押したとみなす距離（px）。指で押すため広めにとる */
+const HIT_PX = 18;
+
+export function PriceChart({
+	bars,
+	markers = NO_MARKERS,
+	indicators,
+	hideIndicators = false,
+	selectedId = null,
+	onMarker,
+	initialSpanMs = null,
+	currentPrice,
+	entryPrices: entryProp,
+	triggers: triggerProp,
+	toolbar,
+	compact = false,
+	latestNote,
+	viewKey,
+	judgments = null,
+	bg = "sentiment",
+	onBgChange,
+}: Props) {
+	const box = useRef<HTMLDivElement>(null);
+	const chartRef = useRef<{
+		chart: IChartApi;
+		line: ISeriesApi<"Line">;
+		candle: ISeriesApi<"Candlestick">;
+		/** いま見せている価格の系列。注文のアイコンと AI 判定の描画はこちらに付ける */
+		price: ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
+		marks: ISeriesMarkersPluginApi<Time>;
+		emas: ISeriesApi<"Line">[];
+		/** ボリンジャーバンドの上限・中央・下限 */
+		bbs: ISeriesApi<"Line">[];
+		rsis: ISeriesApi<"Line">[];
+		volume: ISeriesApi<"Histogram">;
+		layer: JudgeLayer;
+		/** 価格の軸の「現」「買」の値 */
+		tags: PriceTags;
+		/** 今のレートの線と、それを付けた系列 */
+		now: {
+			series: ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
+			line: IPriceLine;
+		} | null;
+		/** 買値の線と、それを付けた系列 */
+		entries: {
+			series: ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
+			lines: IPriceLine[];
+		} | null;
+		/** 発動価格の線と、それを付けた系列 */
+		triggers: {
+			series: ISeriesApi<"Line"> | ISeriesApi<"Candlestick">;
+			lines: IPriceLine[];
+		} | null;
+	} | null>(null);
+	// 最新の足が画面に入っているか。入っていれば「最新へ」のボタンを押せなくする
+	const [atLatest, setAtLatest] = useState(true);
+	const [editing, setEditing] = useState<"ema" | "bb" | "rsi" | null>(null);
+	const [menuOpen, setMenuOpen] = useState(false);
+	const [style, setStyle] = useChartStyle();
+	const [showEntry, setShowEntry] = useShowEntry();
+	// 出来高を持たない足（バックテストの結果に残した足）は棒を描かない
+	const [showVolume, setShowVolume] = useShowVolume();
+	const hasEntry = entryProp !== undefined;
+	// 隠すと線も軸の値も消える
+	const entryPrices = (showEntry && entryProp) || NO_PERIODS;
+	const [showTriggers, setShowTriggers] = useShowTriggers();
+	const hasTriggers = triggerProp !== undefined;
+	const triggers = (showTriggers && triggerProp) || NO_TRIGGERS;
+	const [cursor, setCursor] = useState<number | null>(null);
+	// 価格の区画の高さ（px）。出来高の棒を帯のすぐ上に置くのに使う
+	const [paneH, setPaneH] = useState(MIN_CHART_PX - 28);
+	const [themeTick, setThemeTick] = useState(0);
+	// 価格の系列を付け替えたら、注文のアイコンを置き直す
+	const [marksTick, setMarksTick] = useState(0);
+
+	const barTimes = useMemo(() => bars.map((b) => b.time), [bars]);
+	const slots = useMemo(() => toSlots(barTimes), [barTimes]);
+	const showEma = indicators.ema.on && !hideIndicators;
+	const showRsi = indicators.rsi.on && !hideIndicators;
+	const showBb = indicators.bb.on && !hideIndicators;
+	const bb = indicators.bb.value;
+	const bbKey = showBb ? `${bb.period}:${bb.sigma}` : "";
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 本数と σ の組は bbKey で見る
+	const bbValues = useMemo(() => {
+		if (!showBb) return null;
+		return bollinger(
+			bars.map((b) => b.close),
+			bb.period,
+			bb.sigma,
+		);
+	}, [bars, bbKey]);
+	const emaPeriods = showEma ? indicators.ema.value : NO_PERIODS;
+	const rs = indicators.rsi.value;
+	// 呼び出し側が毎回新しい値を渡しても、本数が同じなら計算し直さない
+	const emaKey = emaPeriods.join(",");
+	// biome-ignore lint/correctness/useExhaustiveDependencies: emaPeriods の中身は emaKey で見る
+	const emaValues = useMemo(() => {
+		const closes = bars.map((b) => b.close);
+		return emaPeriods.map((n) => ema(closes, n));
+	}, [bars, emaKey]);
+	const rsiKey = showRsi ? `${rs.period}:${rs.lower}/${rs.upper}` : "";
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 本数としきい値の組は rsiKey で見る
+	const rsiLines = useMemo<readonly RsiLine[]>(
+		() =>
+			showRsi ? [{ period: rs.period, thresholds: [rs.lower, rs.upper] }] : [],
+		[rsiKey],
+	);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: rsiLines の中身は rsiKey で見る
+	const rsiValues = useMemo(() => {
+		const closes = bars.map((b) => b.close);
+		return rsiLines.map((l) => rsi(closes, l.period));
+	}, [bars, rsiKey]);
+	// 4本値を保存する前のバックテスト結果は終値しか無いので、線でしか描けない
+	const canCandle = useMemo(() => hasOhlc(bars), [bars]);
+	const candle = style === "candle" && canCandle;
+
+	// マーカーの押下判定は描画ライブラリのイベントから呼ぶので、最新の値を ref で渡す
+	const latest = useRef({ markers, onMarker, barTimes, slots, onBgChange });
+	latest.current = { markers, onMarker, barTimes, slots, onBgChange };
+
+	// チャートを作る（1回だけ）
+	useEffect(() => {
+		const el = box.current;
+		if (!el) return;
+		const chart = createChart(el, {
+			autoSize: true,
+			layout: {
+				fontFamily: cssVar("--font-mono"),
+				fontSize: 11,
+			},
+			grid: { vertLines: { visible: false } },
+			timeScale: {
+				timeVisible: true,
+				secondsVisible: false,
+				rightOffset: RIGHT_OFFSET,
+				minBarSpacing: 0.001,
+				tickMarkFormatter: tickLabel,
+			},
+			localization: {
+				locale: "ja-JP",
+				priceFormatter: (p: number) => formatInt(p),
+				timeFormatter: (t: Time) => formatDateTime(fromChartTime(t as number)),
+			},
+			crosshair: { mode: 0 },
+			handleScale: {
+				pinch: true,
+				mouseWheel: true,
+				axisPressedMouseMove: true,
+			},
+			handleScroll: {
+				mouseWheel: true,
+				pressedMouseMove: true,
+				horzTouchDrag: true,
+				vertTouchDrag: false,
+			},
+		});
+		chart.applyOptions(chartColors());
+		const line = chart.addSeries(LineSeries, {
+			color: cssVar("--color-price"),
+			lineWidth: 2,
+			crosshairMarkerRadius: 4,
+		});
+		const candle = chart.addSeries(CandlestickSeries, {
+			...candleColors(),
+			visible: false,
+		});
+		// 出来高は価格の区画の下に、価格とは別の目盛り（表示しない）で重ねる
+		const volume = chart.addSeries(HistogramSeries, {
+			priceScaleId: "volume",
+			priceLineVisible: false,
+			lastValueVisible: false,
+			priceFormat: { type: "volume" },
+			color: volumeColor(),
+			visible: false,
+		});
+		const marks = createSeriesMarkers(line, []);
+		const layer = new JudgeLayer(cssVar);
+		line.attachPrimitive(layer);
+		const tags = new PriceTags();
+		line.attachPrimitive(tags);
+		chartRef.current = {
+			chart,
+			line,
+			candle,
+			price: line,
+			marks,
+			emas: [],
+			bbs: [],
+			rsis: [],
+			volume,
+			layer,
+			tags,
+			now: null,
+			entries: null,
+			triggers: null,
+		};
+
+		chart.subscribeCrosshairMove((p) => {
+			// 価格の系列は全部の枠を持つので、論理位置がそのまま枠の番号になる
+			const n = latest.current.slots.length;
+			if (p.logical === undefined || n === 0) {
+				setCursor(null);
+				return;
+			}
+			setCursor(Math.min(n - 1, Math.max(0, Math.round(p.logical))));
+		});
+		chart.timeScale().subscribeVisibleLogicalRangeChange((r) => {
+			if (r) setAtLatest(showsLatest(r, latest.current.slots.length));
+		});
+		chart.subscribeClick((p) => {
+			const { markers: ms, onMarker: cb, barTimes: times } = latest.current;
+			if (!p.point) return;
+			const strip = layer.stripAt(p.point.y);
+			if (strip) {
+				latest.current.onBgChange?.(strip);
+				return;
+			}
+			if (!cb) return;
+			let hit = ms.find((m) => m.id === p.hoveredObjectId) ?? null;
+			if (!hit) {
+				// アイコンは小さいので、近くを押したものも拾う
+				let best = HIT_PX;
+				for (const m of ms) {
+					const at = snapToBar(times, m.time);
+					if (at === null) continue;
+					const x = chart
+						.timeScale()
+						.timeToCoordinate(toChartTime(at) as UTCTimestamp);
+					if (x === null) continue;
+					const y = (chartRef.current?.price ?? line).priceToCoordinate(
+						m.price,
+					);
+					// アイコンは線の上下に離れて描かれるので、縦方向は余裕を持たせる
+					const dy = y === null ? 0 : Math.max(0, Math.abs(y - p.point.y) - 24);
+					const d = Math.hypot(x - p.point.x, dy);
+					if (d < best) {
+						best = d;
+						hit = m;
+					}
+				}
+			}
+			if (hit) cb(hit);
+		});
+
+		const onTheme = () => setThemeTick((n) => n + 1);
+		window.addEventListener("themechange", onTheme);
+		return () => {
+			window.removeEventListener("themechange", onTheme);
+			chart.remove();
+			chartRef.current = null;
+		};
+	}, []);
+
+	// 価格の区画の高さを測る。画面幅と RSI の小窓の有無で変わる
+	// biome-ignore lint/correctness/useExhaustiveDependencies: RSI の小窓を出し入れしたら測り直す
+	useEffect(() => {
+		const el = box.current;
+		if (!el) return;
+		let frame = 0;
+		const measure = () => {
+			cancelAnimationFrame(frame);
+			// 描画ライブラリが大きさを合わせ終えてから読む
+			frame = requestAnimationFrame(() => {
+				const h = chartRef.current?.chart.paneSize(0).height;
+				if (h) setPaneH(h);
+			});
+		};
+		const ro = new ResizeObserver(measure);
+		ro.observe(el);
+		measure();
+		return () => {
+			ro.disconnect();
+			cancelAnimationFrame(frame);
+		};
+	}, [showRsi]);
+
+	// 価格。線とローソク足の両方に入れておき、見せる方だけを表示する
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		c.line.setData(
+			slots.map((s) => {
+				const time = toChartTime(s.time) as UTCTimestamp;
+				// 足の無い枠は値を持たせず、線を途切れさせる
+				return s.bar === null
+					? { time }
+					: { time, value: (bars[s.bar] as ChartBar).close };
+			}),
+		);
+		c.candle.setData(
+			slots.map((s) => {
+				const time = toChartTime(s.time) as UTCTimestamp;
+				const b = s.bar === null ? null : (bars[s.bar] as ChartBar);
+				if (
+					!b ||
+					b.open === undefined ||
+					b.high === undefined ||
+					b.low === undefined
+				) {
+					return { time };
+				}
+				return { time, open: b.open, high: b.high, low: b.low, close: b.close };
+			}),
+		);
+	}, [bars, slots]);
+
+	// 出来高の棒。価格の区画の下に灰色で塗る
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		c.volume.applyOptions({ visible: showVolume });
+		c.volume.setData(
+			showVolume
+				? slots.map((s) => {
+						const time = toChartTime(s.time) as UTCTimestamp;
+						const v = s.bar === null ? undefined : bars[s.bar]?.volume;
+						return v === undefined ? { time } : { time, value: v };
+					})
+				: [],
+		);
+	}, [bars, slots, showVolume]);
+
+	// 線とローソク足の切り替え。注文のアイコンと AI 判定の描画を見せる方へ付け替える
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		const next = candle ? c.candle : c.line;
+		if (next === c.price) return;
+		c.price.detachPrimitive(c.layer);
+		c.price.detachPrimitive(c.tags);
+		c.marks.detach();
+		c.line.applyOptions({ visible: !candle });
+		c.candle.applyOptions({ visible: candle });
+		next.attachPrimitive(c.layer);
+		next.attachPrimitive(c.tags);
+		c.marks = createSeriesMarkers(next, []);
+		c.price = next;
+		setMarksTick((n) => n + 1);
+	}, [candle]);
+
+	// EMA の線
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		for (const s of c.emas) c.chart.removeSeries(s);
+		c.emas = [];
+		if (!showEma) return;
+		emaValues.forEach((values, j) => {
+			const s = c.chart.addSeries(LineSeries, {
+				color: cssVar(emaVar(j)),
+				lineWidth: 1,
+				priceLineVisible: false,
+				lastValueVisible: false,
+				crosshairMarkerVisible: false,
+				// 縦の範囲は値動きだけで決める（離れた線まで含めると拡大しても値動きが潰れる）
+				autoscaleInfoProvider: () => null,
+			});
+			s.setData(
+				slots.map((slot) => {
+					const time = toChartTime(slot.time) as UTCTimestamp;
+					const v =
+						slot.bar === null ? Number.NaN : (values[slot.bar] as number);
+					// 本数が足りない先頭と足の無い枠は空けて描く
+					return Number.isNaN(v) ? { time } : { time, value: v };
+				}),
+			);
+			c.emas.push(s);
+		});
+	}, [slots, emaValues, showEma]);
+
+	// ボリンジャーバンド。上限・下限は実線、中央は点線
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		for (const s of c.bbs) c.chart.removeSeries(s);
+		c.bbs = [];
+		if (!bbValues) return;
+		for (const [values, dashed] of [
+			[bbValues.upper, false],
+			[bbValues.middle, true],
+			[bbValues.lower, false],
+		] as const) {
+			const s = c.chart.addSeries(LineSeries, {
+				color: cssVar("--color-bb"),
+				lineWidth: 1,
+				lineStyle: dashed ? LineStyle.Dashed : LineStyle.Solid,
+				priceLineVisible: false,
+				lastValueVisible: false,
+				crosshairMarkerVisible: false,
+				autoscaleInfoProvider: () => null,
+			});
+			s.setData(
+				slots.map((slot) => {
+					const time = toChartTime(slot.time) as UTCTimestamp;
+					const v =
+						slot.bar === null ? Number.NaN : (values[slot.bar] as number);
+					return Number.isNaN(v) ? { time } : { time, value: v };
+				}),
+			);
+			c.bbs.push(s);
+		}
+	}, [slots, bbValues]);
+
+	// RSI の小窓。価格の下の別の区画に 0〜100 で描き、条件のしきい値を点線で引く
+	// biome-ignore lint/correctness/useExhaustiveDependencies: rsiLines の中身は rsiKey で見る
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		for (const s of c.rsis) c.chart.removeSeries(s);
+		c.rsis = [];
+		if (!showRsi) return;
+		const thresholds = [...new Set(rsiLines.flatMap((l) => l.thresholds))];
+		rsiValues.forEach((values, j) => {
+			const s = c.chart.addSeries(
+				LineSeries,
+				{
+					color: cssVar(rsiVar(j)),
+					lineWidth: 1,
+					priceLineVisible: false,
+					lastValueVisible: false,
+					crosshairMarkerVisible: false,
+					autoscaleInfoProvider: () => ({
+						priceRange: { minValue: 0, maxValue: 100 },
+					}),
+				},
+				1,
+			);
+			s.setData(
+				slots.map((slot) => {
+					const time = toChartTime(slot.time) as UTCTimestamp;
+					const v =
+						slot.bar === null ? Number.NaN : (values[slot.bar] as number);
+					return Number.isNaN(v) ? { time } : { time, value: v };
+				}),
+			);
+			c.rsis.push(s);
+		});
+		const first = c.rsis[0];
+		if (first) {
+			// 0〜100 の外に目盛りが出ないよう、余白を小さくする
+			first
+				.priceScale()
+				.applyOptions({ scaleMargins: { top: 0.05, bottom: 0.05 } });
+			for (const t of thresholds) {
+				first.createPriceLine({
+					price: t,
+					color: cssVar("--color-text-2"),
+					lineWidth: 1,
+					lineStyle: LineStyle.Dashed,
+					axisLabelVisible: true,
+				});
+			}
+		}
+		const panes = c.chart.panes();
+		panes[0]?.setStretchFactor(PRICE_STRETCH);
+		panes[1]?.setStretchFactor(RSI_STRETCH);
+	}, [slots, rsiValues, showRsi, rsiKey, themeTick]);
+
+	// 注文のアイコン。themeTick は色を読み直すため
+	// biome-ignore lint/correctness/useExhaustiveDependencies: themeTick の変化で色を読み直し、marksTick の変化で置き直す
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		const list = markers.flatMap((m) => {
+			const at = snapToBar(barTimes, m.time);
+			if (at === null) return [];
+			const sel = m.id === selectedId;
+			return [
+				{
+					id: m.id,
+					time: toChartTime(at) as UTCTimestamp,
+					position:
+						m.side === "buy" ? ("belowBar" as const) : ("aboveBar" as const),
+					shape: markerShape(m),
+					color: cssVar(markerColorVar(m)),
+					size: sel ? 2 : 1,
+					text: sel ? "選択中" : "",
+				},
+			];
+		});
+		list.sort((a, b) => a.time - b.time);
+		c.marks.setMarkers(list);
+	}, [markers, barTimes, selectedId, themeTick, marksTick]);
+
+	// AI 判定の背景と帯。帯の分だけ価格の線を上へ寄せる
+	const hasJudgments = judgments !== null;
+	// 描画拡張は論理位置（枠の番号）で塗るので、判定を枠の並びに置き直す。足の無い枠は塗らない
+	const slotJudgments = useMemo(
+		() => (judgments ? slotAligned(judgments, slots) : null),
+		[judgments, slots],
+	);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: themeTick の変化で色を読み直す
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		c.layer.setData(slotJudgments, bg);
+		// 帯の高さは px で決まるが余白は割合で渡すので、チャートが最も低いとき（スマホ幅）に合わせる
+		const area = stripArea(hasJudgments, bg);
+		// 出来高を出すときは、その分だけ価格の線を上へ寄せる
+		const bottom =
+			(hasJudgments ? (area + 14) / (MIN_CHART_PX - 28) : 0.1) +
+			(showVolume ? VOLUME_SHARE : 0);
+		c.price.priceScale().applyOptions({ scaleMargins: { top: 0.1, bottom } });
+		// 出来高は帯のすぐ上に置く。帯の高さは px なので、測った区画の高さで割合にする
+		const strip = Math.min(0.5, area / paneH);
+		c.volume.priceScale().applyOptions({
+			scaleMargins: { top: 1 - strip - VOLUME_SHARE, bottom: strip },
+		});
+	}, [slotJudgments, bg, hasJudgments, showVolume, paneH, themeTick]);
+
+	// 今のレート。組み込みの最後の値の表示を消し、今のレートの線に置き換える。
+	// 組み込みの線の名前は描画領域の右端に出て最新の足に重なるので、軸の値（「現」付き）は PriceTags で出す
+	// 系列を付け替えたら（themeTick は色を読み直すため）線を引き直す
+	const showNow = currentPrice !== undefined;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: marksTick で系列の付け替えを、themeTick で色の変化を拾う
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		if (c.now) {
+			c.now.series.removePriceLine(c.now.line);
+			c.now = null;
+		}
+		for (const s of [c.line, c.candle]) {
+			s.applyOptions({
+				priceLineVisible: !showNow,
+				lastValueVisible: !showNow,
+			});
+		}
+		if (currentPrice === undefined || currentPrice === null) return;
+		c.now = {
+			series: c.price,
+			line: c.price.createPriceLine({
+				price: currentPrice,
+				color: cssVar("--color-text-2"),
+				lineWidth: 2,
+				lineStyle: LineStyle.Dashed,
+				axisLabelVisible: false,
+			}),
+		};
+	}, [currentPrice, showNow, marksTick, themeTick]);
+
+	// 保有中のロットの買値の線。買いの矢印と同じ色。価格の系列を付け替えたら引き直す
+	// biome-ignore lint/correctness/useExhaustiveDependencies: marksTick で系列の付け替えを、themeTick で色の変化を拾う
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		if (c.entries) {
+			for (const l of c.entries.lines) c.entries.series.removePriceLine(l);
+			c.entries = null;
+		}
+		if (entryPrices.length === 0) return;
+		const color = cssVar("--color-buy");
+		c.entries = {
+			series: c.price,
+			lines: entryPrices.map((price) =>
+				c.price.createPriceLine({
+					price,
+					color,
+					lineWidth: 2,
+					lineStyle: LineStyle.Solid,
+					axisLabelVisible: false,
+				}),
+			),
+		};
+	}, [entryPrices, marksTick, themeTick]);
+
+	// 発動価格の線。予定なので実績（買値の実線）と分けて破線にする
+	// biome-ignore lint/correctness/useExhaustiveDependencies: marksTick で系列の付け替えを、themeTick で色の変化を拾う
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		if (c.triggers) {
+			for (const l of c.triggers.lines) c.triggers.series.removePriceLine(l);
+			c.triggers = null;
+		}
+		if (triggers.length === 0) return;
+		c.triggers = {
+			series: c.price,
+			lines: triggers.map((t) =>
+				c.price.createPriceLine({
+					price: t.price,
+					color: cssVar(TRIGGER_STYLE[t.kind].line),
+					lineWidth: 2,
+					lineStyle: LineStyle.Dashed,
+					axisLabelVisible: false,
+				}),
+			),
+		};
+	}, [triggers, marksTick, themeTick]);
+
+	// 価格の軸の「現」「買」の値。縦の範囲には含めない（離れた買値まで含めると拡大しても値動きが潰れる）
+	// biome-ignore lint/correctness/useExhaustiveDependencies: themeTick で色の変化を拾う
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		const buy = cssVar("--color-buy");
+		const buyInk = cssVar("--color-accent-ink");
+		c.tags.setTags([
+			...(currentPrice === undefined || currentPrice === null
+				? []
+				: [
+						{
+							price: currentPrice,
+							label: "現",
+							color: cssVar("--color-text-2"),
+							textColor: cssVar("--color-surface"),
+						},
+					]),
+			...entryPrices.map((price) => ({
+				price,
+				label: "買",
+				color: buy,
+				textColor: buyInk,
+			})),
+			// 次の行動は実績より薄く見せる（薄い地に地の文の色の字）
+			...triggers.map((t) => ({
+				price: t.price,
+				label: TRIGGER_STYLE[t.kind].label,
+				color: cssVar(TRIGGER_STYLE[t.kind].tag),
+				textColor: cssVar("--color-text"),
+			})),
+		]);
+	}, [currentPrice, entryPrices, triggers, themeTick]);
+
+	// 表示範囲。viewKey があれば、足が届き始めたときと viewKey が変わったときだけ合わせ直す
+	const hasBars = barTimes.length > 0;
+	const zoomKey = viewKey ?? barTimes;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 合わせ直すきっかけは zoomKey と hasBars で決める
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		const step = barStep(barTimes) ?? 3_600_000;
+		const r = initialRange(initialSpanMs, slots.length, step);
+		if (r) c.chart.timeScale().setVisibleLogicalRange(r);
+		else c.chart.timeScale().fitContent();
+	}, [initialSpanMs, zoomKey, hasBars]);
+
+	// +/- のボタン。factor が 1 未満で拡大
+	const zoom = (factor: number) => {
+		const ts = chartRef.current?.chart.timeScale();
+		const r = ts?.getVisibleLogicalRange();
+		if (!ts || !r) return;
+		ts.setVisibleLogicalRange(zoomRange(r, factor, slots.length));
+	};
+	// 最新の足へ戻る。拡大の度合いは保つ
+	const toLatest = () => chartRef.current?.chart.timeScale().scrollToRealTime();
+
+	// テーマの切り替えに追従する
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c || themeTick === 0) return;
+		c.chart.applyOptions(chartColors());
+		c.line.applyOptions({ color: cssVar("--color-price") });
+		c.candle.applyOptions(candleColors());
+		c.emas.forEach((s, j) => {
+			s.applyOptions({ color: cssVar(emaVar(j)) });
+		});
+		for (const s of c.bbs) s.applyOptions({ color: cssVar("--color-bb") });
+		c.volume.applyOptions({ color: volumeColor() });
+	}, [themeTick]);
+
+	const slot = slots[cursor ?? slots.length - 1] ?? null;
+	const shown = slot?.bar ?? null;
+	const bar = shown === null ? null : bars[shown];
+	const atLastSlot = cursor === null || cursor === slots.length - 1;
+
+	const bgButtons = judgments && (
+		<fieldset className="flex flex-wrap items-center gap-2">
+			<legend className="sr-only">背景に使う判定</legend>
+			<span aria-hidden="true" className="text-xs text-text-2">
+				背景
+			</span>
+			{[...JUDGES, "none" as const].map((j) => (
+				<button
+					key={j}
+					type="button"
+					aria-pressed={j === bg}
+					onClick={() => onBgChange?.(j)}
+					className={CHIP}
+				>
+					{j === "none" ? "なし" : JUDGE_LABELS[j]}
+				</button>
+			))}
+		</fieldset>
+	);
+	const bgSelect = judgments && (
+		<select
+			aria-label="背景に使う判定"
+			value={bg}
+			onChange={(e) => onBgChange?.(e.target.value as ChartBg)}
+			className={DROP}
+		>
+			{JUDGES.map((j) => (
+				<option key={j} value={j}>
+					背景 {JUDGE_LABELS[j]}
+				</option>
+			))}
+			<option value="none">背景 なし</option>
+		</select>
+	);
+	const displayButtons = (
+		<>
+			<button
+				type="button"
+				aria-pressed={candle}
+				disabled={!canCandle}
+				title={
+					canCandle
+						? undefined
+						: "この結果は終値だけを保存しているため、ローソク足で描けない"
+				}
+				onClick={() => setStyle(candle ? "line" : "candle")}
+				className={CHIP}
+			>
+				ローソク足
+			</button>
+			<button
+				type="button"
+				aria-pressed={showVolume}
+				onClick={() => setShowVolume(!showVolume)}
+				className={CHIP}
+			>
+				出来高
+			</button>
+			{hasEntry && (
+				<button
+					type="button"
+					aria-pressed={showEntry}
+					onClick={() => setShowEntry(!showEntry)}
+					className={CHIP}
+				>
+					買値
+				</button>
+			)}
+			{hasTriggers && (
+				<button
+					type="button"
+					aria-pressed={showTriggers}
+					onClick={() => setShowTriggers(!showTriggers)}
+					className={CHIP}
+				>
+					発動価格
+				</button>
+			)}
+			{(["ema", "bb", "rsi"] as const).map((k) => {
+				const label = INDICATOR_LABELS[k];
+				const c = indicators[k];
+				return (
+					<span key={k} className="flex items-center gap-1">
+						<button
+							type="button"
+							aria-pressed={c.on}
+							onClick={() => c.setOn(!c.on)}
+							className={CHIP}
+						>
+							{label}
+						</button>
+						<button
+							type="button"
+							aria-label={`${label} の本数を変える`}
+							title={`${label} の本数を変える`}
+							onClick={() => {
+								setMenuOpen(false);
+								setEditing(k);
+							}}
+							className={ICON_BTN}
+						>
+							⚙
+						</button>
+					</span>
+				);
+			})}
+		</>
+	);
+	const shownLabels = [
+		...(candle ? ["ローソク足"] : []),
+		...(showVolume ? ["出来高"] : []),
+		...(hasEntry && showEntry ? ["買値"] : []),
+		...(hasTriggers && showTriggers ? ["発動価格"] : []),
+		...(["ema", "bb", "rsi"] as const)
+			.filter((k) => indicators[k].on)
+			.map((k) => INDICATOR_LABELS[k]),
+	];
+	const controls = (
+		<>
+			<div className="flex min-h-6 items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">チャート</h2>
+				<Help label="チャート">
+					{onMarker && <p>アイコンをタップで詳細。</p>}
+					{judgments && <p>下の帯をタップでその判定を背景に塗る。</p>}
+					<p>ピンチ / ホイール / ＋−で拡大・縮小。</p>
+				</Help>
+			</div>
+			{compact ? (
+				<div className="flex flex-wrap items-center gap-2">
+					{toolbar}
+					{bgSelect}
+					<DisplayMenu
+						open={menuOpen}
+						onOpenChange={setMenuOpen}
+						summary={shownLabels.length === 0 ? "なし" : shownLabels.join("・")}
+					>
+						{displayButtons}
+					</DisplayMenu>
+				</div>
+			) : (
+				<>
+					{toolbar}
+					{bgButtons}
+					<div className="flex flex-wrap items-center gap-2">
+						<span className="text-xs text-text-2">表示</span>
+						{displayButtons}
+					</div>
+				</>
+			)}
+			{editing === "ema" && (
+				<EmaSettingsModal
+					control={indicators.ema}
+					onClose={() => setEditing(null)}
+				/>
+			)}
+			{editing === "bb" && (
+				<BbSettingsModal
+					control={indicators.bb}
+					onClose={() => setEditing(null)}
+				/>
+			)}
+			{editing === "rsi" && (
+				<RsiSettingsModal
+					control={indicators.rsi}
+					onClose={() => setEditing(null)}
+				/>
+			)}
+		</>
+	);
+	const chart = (
+		<>
+			<div className="flex flex-col gap-2 lg:flex-row lg:items-start">
+				<div
+					aria-live="off"
+					className="num flex min-h-8 min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs"
+				>
+					{slot && !bar && (
+						<>
+							<span className="text-text-2">{formatDateTime(slot.time)}</span>
+							<span className="font-semibold text-text-2">データなし</span>
+						</>
+					)}
+					{bar && (
+						<>
+							<span className="text-text-2">{formatDateTime(bar.time)}</span>
+							{candle && bar.open !== undefined && (
+								<span className="text-text-2">
+									始 {formatInt(bar.open)} 高 {formatInt(bar.high ?? 0)} 安{" "}
+									{formatInt(bar.low ?? 0)}
+								</span>
+							)}
+							<span data-testid="chart-close" className="font-semibold">
+								{formatInt(bar.close)}円
+							</span>
+							{atLastSlot && latestNote}
+							{showVolume && bar.volume !== undefined && (
+								<span data-testid="chart-volume" className="text-text-2">
+									出来高 {formatBtc(bar.volume)} BTC
+								</span>
+							)}
+							{judgments &&
+								JUDGES.map((j) => {
+									const v = judgments[j][shown as number] ?? null;
+									if (v === null) return null;
+									return (
+										<span
+											key={j}
+											data-testid={`chart-judgment-${j}`}
+											className="flex items-center gap-1"
+										>
+											{SHORT_JUDGE_LABELS[j]}
+											<JudgmentBadge judge={j} value={v} small />
+										</span>
+									);
+								})}
+							{showEma &&
+								emaPeriods.map((n, j) => {
+									const v = emaValues[j]?.[shown as number];
+									return (
+										<span
+											key={n}
+											data-testid={`chart-ema-${n}`}
+											className="flex items-center gap-1"
+										>
+											<i
+												className="inline-block h-[3px] w-2.5"
+												style={{ background: `var(${emaVar(j)})` }}
+											/>
+											EMA{n}{" "}
+											{v === undefined || Number.isNaN(v) ? "—" : formatInt(v)}
+										</span>
+									);
+								})}
+							{bbValues && (
+								<span
+									data-testid="chart-bb"
+									className="flex items-center gap-1"
+								>
+									<i
+										className="inline-block h-[3px] w-2.5"
+										style={{ background: "var(--color-bb)" }}
+									/>
+									BB{bb.period}{" "}
+									{[bbValues.upper, bbValues.middle, bbValues.lower]
+										.map((vs) => {
+											const v = vs[shown as number];
+											return v === undefined || Number.isNaN(v)
+												? "—"
+												: formatInt(v);
+										})
+										.join("/")}
+								</span>
+							)}
+							{showRsi &&
+								rsiLines.map((l, j) => {
+									const v = rsiValues[j]?.[shown as number];
+									return (
+										<span
+											key={l.period}
+											data-testid={`chart-rsi-${l.period}`}
+											className="flex items-center gap-1"
+										>
+											<i
+												className="inline-block h-[3px] w-2.5"
+												style={{ background: `var(${rsiVar(j)})` }}
+											/>
+											RSI{l.period}{" "}
+											{v === undefined || Number.isNaN(v) ? "—" : formatRsi(v)}
+										</span>
+									);
+								})}
+						</>
+					)}
+				</div>
+				<div className="flex shrink-0 items-center justify-end gap-1.5">
+					<button
+						type="button"
+						aria-label="縮小"
+						title="縮小"
+						onClick={() => zoom(2)}
+						className={ICON_BTN}
+					>
+						−
+					</button>
+					<button
+						type="button"
+						aria-label="拡大"
+						title="拡大"
+						onClick={() => zoom(0.5)}
+						className={ICON_BTN}
+					>
+						＋
+					</button>
+					<button
+						type="button"
+						disabled={atLatest}
+						title="最新の足へ移動"
+						onClick={toLatest}
+						className={CHIP}
+					>
+						最新へ
+					</button>
+				</div>
+			</div>
+			<div
+				ref={box}
+				role="img"
+				aria-label="価格チャート"
+				className={`w-full ${
+					showRsi
+						? `h-[347px] ${compact ? "lg:h-[640px]" : "lg:h-[480px]"}`
+						: `h-[260px] ${compact ? "lg:h-[480px]" : "lg:h-[360px]"}`
+				}`}
+			/>
+			{(onMarker || showEma || showBb || showRsi || judgments) && (
+				<details className="min-w-0 rounded-[10px] border border-line px-3 py-2 text-xs">
+					<summary className="cursor-pointer font-semibold">凡例</summary>
+					<div className="mt-2 flex flex-col gap-2">
+						{onMarker && (
+							<LegendRow title="注文">
+								<LegendItem
+									shape="up"
+									colorVar="--color-buy"
+									label="買い約定"
+								/>
+								<LegendItem
+									shape="down"
+									colorVar="--color-sell"
+									label="売り約定"
+								/>
+								<LegendItem
+									shape="circle"
+									colorVar="--color-buy"
+									label="注文中"
+								/>
+								<LegendItem
+									shape="square"
+									colorVar="--color-cancel"
+									label="取消"
+								/>
+							</LegendRow>
+						)}
+						{showEma && (
+							<LegendRow
+								title="EMA"
+								note={
+									indicators.ema.custom
+										? "指数移動平均。本数は歯車で変えた値"
+										: indicators.ema.fromStrategy
+											? "指数移動平均。本数は戦略の条件の値"
+											: "指数移動平均。本数は既定の値（歯車で変えられる）"
+								}
+							>
+								{emaPeriods.map((n, j) => (
+									<span key={n} className="flex items-center gap-1">
+										<i
+											className="inline-block h-[3px] w-3"
+											style={{ background: `var(${emaVar(j)})` }}
+										/>
+										EMA {n}
+									</span>
+								))}
+							</LegendRow>
+						)}
+						{showBb && (
+							<LegendRow
+								title="ボリンジャーバンド"
+								note={
+									indicators.bb.custom
+										? "上限・中央（点線）・下限。本数と σ は歯車で変えた値"
+										: indicators.bb.fromStrategy
+											? "上限・中央（点線）・下限。本数と σ は戦略の条件の値"
+											: "上限・中央（点線）・下限。本数と σ は既定の値（歯車で変えられる）"
+								}
+							>
+								<span className="flex items-center gap-1">
+									<i
+										className="inline-block h-[3px] w-3"
+										style={{ background: "var(--color-bb)" }}
+									/>
+									{bb.period} 本・{bb.sigma}σ
+								</span>
+							</LegendRow>
+						)}
+						{showRsi && (
+							<LegendRow
+								title="RSI"
+								note="下の小窓に 0〜100 で描き、点線はしきい値。本数・しきい値は歯車で変えられる"
+							>
+								{rsiLines.map((l, j) => (
+									<span key={l.period} className="flex items-center gap-1">
+										<i
+											className="inline-block h-[3px] w-3"
+											style={{ background: `var(${rsiVar(j)})` }}
+										/>
+										RSI {l.period}
+									</span>
+								))}
+							</LegendRow>
+						)}
+						{judgments &&
+							JUDGES.map((j) => (
+								<LegendRow
+									key={j}
+									title={JUDGE_LABELS[j]}
+									note={j === bg ? "背景" : "下の帯"}
+								>
+									{JUDGMENT_VALUES[j].map((v) => {
+										const st = valueStyle(j, v);
+										return (
+											<span key={v} className="flex items-center gap-1">
+												<i
+													className="inline-block h-2.5 w-3 rounded-sm"
+													style={
+														j === bg
+															? {
+																	background: `var(${st.bg})`,
+																	outline: `1px solid var(${st.solid})`,
+																}
+															: { background: `var(${st.solid})` }
+													}
+												/>
+												{st.label}
+											</span>
+										);
+									})}
+								</LegendRow>
+							))}
+					</div>
+				</details>
+			)}
+		</>
+	);
+
+	if (compact) {
+		return (
+			<section
+				aria-label="価格チャート"
+				className="flex min-w-0 flex-col gap-2.5 rounded-xl border border-line bg-surface p-3.5 lg:col-span-2"
+			>
+				{controls}
+				{chart}
+			</section>
+		);
+	}
+	return (
+		<div className="flex flex-col gap-2">
+			{controls}
+			{chart}
+		</div>
+	);
+}
+
+/** 「表示」のボタンと、押すと開く線の表示の切り替え。外を押すか Esc で閉じる */
+function DisplayMenu({
+	open,
+	onOpenChange,
+	summary,
+	children,
+}: {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+	summary: string;
+	children: ReactNode;
+}) {
+	const root = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (!open) return;
+		const onDown = (e: PointerEvent) => {
+			if (!root.current?.contains(e.target as Node)) onOpenChange(false);
+		};
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape") onOpenChange(false);
+		};
+		document.addEventListener("pointerdown", onDown);
+		document.addEventListener("keydown", onKey);
+		return () => {
+			document.removeEventListener("pointerdown", onDown);
+			document.removeEventListener("keydown", onKey);
+		};
+	}, [open, onOpenChange]);
+	return (
+		<div ref={root} className="relative min-w-0">
+			<button
+				type="button"
+				aria-expanded={open}
+				onClick={() => onOpenChange(!open)}
+				className={`${DROP} flex max-w-full items-center gap-1`}
+			>
+				表示
+				<span className="truncate font-normal text-text-2">{summary}</span>
+				<span aria-hidden="true" className="text-text-2">
+					▾
+				</span>
+			</button>
+			{open && (
+				<fieldset className="absolute top-full right-0 z-20 mt-1 flex w-max max-w-[calc(100vw-48px)] flex-col items-start gap-2 rounded-xl border border-line bg-surface p-3 shadow-lg">
+					<legend className="sr-only">表示する線</legend>
+					{children}
+				</fieldset>
+			)}
+		</div>
+	);
+}
+
+function LegendRow({
+	title,
+	note,
+	children,
+}: {
+	title: string;
+	note?: string;
+	children: ReactNode;
+}) {
+	return (
+		<div className="flex flex-col gap-1">
+			<div className="flex gap-2">
+				<b>{title}</b>
+				{note && <span className="text-text-2">{note}</span>}
+			</div>
+			<div className="flex flex-wrap gap-x-3 gap-y-1">{children}</div>
+		</div>
+	);
+}
+
+const SHAPES = {
+	up: <polygon points="2,14 14,14 8,2" />,
+	down: <polygon points="2,2 14,2 8,14" />,
+	circle: <circle cx="8" cy="8" r="6" />,
+	square: <rect x="2.5" y="2.5" width="11" height="11" rx="1" />,
+};
+
+function LegendItem({
+	shape,
+	colorVar,
+	label,
+}: {
+	shape: keyof typeof SHAPES;
+	colorVar: string;
+	label: string;
+}) {
+	return (
+		<span className="flex items-center gap-1">
+			<svg
+				width="10"
+				height="10"
+				viewBox="0 0 16 16"
+				aria-hidden="true"
+				style={{ fill: `var(${colorVar})` }}
+			>
+				{SHAPES[shape]}
+			</svg>
+			{label}
+		</span>
+	);
+}
