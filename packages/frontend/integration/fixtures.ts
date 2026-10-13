@@ -11,9 +11,15 @@ import type {
 	NewsScore,
 	NewsSource,
 	ScorerStatus,
+	StoredStrategy,
 	TimeframeCoverage,
 } from "@trading-studio/backend";
-import type { AggregationRule, Judge, ScoredNews } from "@trading-studio/core";
+import type {
+	AggregationRule,
+	Judge,
+	ScoredNews,
+	Timeframe,
+} from "@trading-studio/core";
 import {
 	DEFAULT_AGGREGATION_RULE,
 	DEFAULT_FEE_RATES,
@@ -21,6 +27,7 @@ import {
 	judgeAt,
 	judgmentBreakdown,
 	strategyTemplate,
+	TIMEFRAME_MS,
 } from "@trading-studio/core";
 import type { InferResponseType } from "hono/client";
 import type { ApiClient } from "../src/shared/lib/api";
@@ -307,6 +314,37 @@ export function backtestRun(
 		segment: null,
 		datasetRunId: null,
 		dailyLossLimitApplied: true,
+		...over,
+	};
+}
+
+export function timeframeCoverage(
+	timeframe: Timeframe,
+	from: number,
+	to: number,
+	over: Partial<TimeframeCoverage> = {},
+): TimeframeCoverage {
+	const step = TIMEFRAME_MS[timeframe];
+	const count = Math.floor((to - from) / step);
+	return {
+		timeframe,
+		count,
+		importedCount: count,
+		firstTime: from,
+		lastTime: from + (count - 1) * step,
+		gaps: [],
+		gapCount: 0,
+		...over,
+	};
+}
+
+export function storedStrategy(
+	over: Partial<StoredStrategy> & Pick<StoredStrategy, "id" | "name">,
+): StoredStrategy {
+	return {
+		params: strategyTemplate("blank").params,
+		createdAt: 0,
+		updatedAt: 0,
 		...over,
 	};
 }
