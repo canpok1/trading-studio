@@ -12,7 +12,7 @@ import type {
 	BacktestStatus,
 	RunFilter,
 	StartBacktestFailure,
-} from "../backtests/types";
+} from "../backtests/types-domain";
 import type { Segment } from "../segments/types-domain";
 
 export type Dataset = {

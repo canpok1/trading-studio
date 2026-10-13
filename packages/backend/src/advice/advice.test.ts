@@ -12,7 +12,7 @@ import {
 	singleBuy,
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
-import type { BacktestRun } from "../backtests/types";
+import type { BacktestRun } from "../backtests/types-domain";
 import { createTestDb } from "../db/test-db";
 import { createTestApp } from "../test-app";
 import { DEMO_IMPROVED_STRATEGY } from "./fake-model";

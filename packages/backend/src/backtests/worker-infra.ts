@@ -1,7 +1,7 @@
 // バックテストを計算する Worker。API の応答を止めないよう、別スレッドで動かす
 
-import { execute } from "./execute";
-import type { RunnerJob } from "./runner";
+import { execute } from "./execute-infra";
+import type { RunnerJob } from "./runner-domain";
 
 declare const self: Worker;
 

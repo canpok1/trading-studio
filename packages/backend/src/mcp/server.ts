@@ -48,7 +48,7 @@ import type {
 	BacktestRun,
 	BacktestService,
 	StartBacktestFailure,
-} from "../backtests/types";
+} from "../backtests/types-domain";
 import type {
 	Dataset,
 	DatasetRun,

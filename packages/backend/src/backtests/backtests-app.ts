@@ -1,19 +1,12 @@
-import { isTimeframe, parseConditionSet } from "@trading-studio/core";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import { validator } from "hono/validator";
-import type {
-	BacktestInput,
-	BacktestService,
-	OrderFilter,
-	RunFilter,
-} from "../backtests/types";
 import type { DatasetService } from "../datasets/types";
+import { parseBacktestInput, parseChartTimeframe } from "./backtests-domain";
+import type { BacktestService, OrderFilter, RunFilter } from "./types-domain";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
 	typeof v === "object" && v !== null;
-
-const num = (v: unknown) => (typeof v === "number" ? v : Number.NaN);
 
 const NOT_FOUND = { message: "バックテストの実行が見つからない" };
 
@@ -57,30 +50,8 @@ export function backtestRoutes(
 			.post(
 				"/",
 				validator("json", (v, c) => {
-					const params = parseConditionSet(isObj(v) ? v.params : null);
-					if (!isObj(v) || !params || !isObj(v.fees)) {
-						return c.json({ message: "実行条件の形が違う" }, 400);
-					}
-					const input: BacktestInput = {
-						name: typeof v.name === "string" ? v.name : "",
-						params,
-						from: num(v.from),
-						to: num(v.to),
-						initialCash: num(v.initialCash),
-						fees: {
-							limitPpm: num(v.fees.limitPpm),
-							marketPpm: num(v.fees.marketPpm),
-						},
-						skipGaps: v.skipGaps === true,
-						criteriaVersion:
-							v.criteriaVersion === undefined || v.criteriaVersion === null
-								? null
-								: num(v.criteriaVersion),
-						segmentId:
-							v.segmentId === undefined || v.segmentId === null
-								? null
-								: num(v.segmentId),
-					};
+					const input = parseBacktestInput(v);
+					if (!input) return c.json({ message: "実行条件の形が違う" }, 400);
 					return input;
 				}),
 				(c) => {
@@ -161,10 +132,9 @@ export function backtestRoutes(
 				"/:id/chart",
 				compress(),
 				validator("query", (q, c) => {
-					if (!isTimeframe(q.timeframe)) {
-						return c.json({ message: "足の粒度を選ぶ" }, 400);
-					}
-					return { timeframe: q.timeframe };
+					const timeframe = parseChartTimeframe(q.timeframe);
+					if (!timeframe) return c.json({ message: "足の粒度を選ぶ" }, 400);
+					return { timeframe };
 				}),
 				(c) => {
 					const r = service.chart(

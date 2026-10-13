@@ -7,7 +7,7 @@ import type {
 	Trade,
 } from "@trading-studio/core";
 import { strategyTemplate } from "@trading-studio/core";
-import type { BacktestRun } from "../backtests/types";
+import type { BacktestRun } from "../backtests/types-domain";
 import { createTestApp } from "../test-app";
 import { crc32 } from "./zip";
 

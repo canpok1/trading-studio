@@ -8,7 +8,9 @@ import {
 	checkDataResolution,
 	chooseStepTimeframe,
 	conditionStrategy,
+	isTimeframe,
 	maxWindowMs,
+	parseConditionSet,
 	TIMEFRAME_MS,
 	validateConditionSet,
 	withSellDetails,
@@ -20,21 +22,57 @@ import type { ScoringService } from "../news/types";
 import type { Segment, SegmentService } from "../segments/types-domain";
 import { checkName } from "../strategies/strategies-domain";
 import type { StrategyService } from "../strategies/types-domain";
-import type { BacktestRepository } from "./repository";
-import type { BacktestRunner, RunningJob } from "./runner";
+import type { BacktestRepository } from "./repository-domain";
+import type { BacktestRunner, RunningJob } from "./runner-domain";
 import type {
 	BacktestInput,
 	BacktestRun,
 	BacktestService,
 	StartBacktestFailure,
 	StartBacktestResult,
-} from "./types";
+} from "./types-domain";
 
 /** 画面に返す欠損の上限 */
 const MAX_GAPS = 50;
 const MAX_CASH = 1_000_000_000_000;
 /** 手数料率の上限（10%） */
 const MAX_FEE_PPM = 100_000;
+
+const isObj = (v: unknown): v is Record<string, unknown> =>
+	typeof v === "object" && v !== null;
+
+const num = (v: unknown) => (typeof v === "number" ? v : Number.NaN);
+
+/** 実行条件の入力の形を確かめる。形が違えば null（値の範囲は start で確かめる） */
+export function parseBacktestInput(v: unknown): BacktestInput | null {
+	const params = parseConditionSet(isObj(v) ? v.params : null);
+	if (!isObj(v) || !params || !isObj(v.fees)) return null;
+	const input: BacktestInput = {
+		name: typeof v.name === "string" ? v.name : "",
+		params,
+		from: num(v.from),
+		to: num(v.to),
+		initialCash: num(v.initialCash),
+		fees: {
+			limitPpm: num(v.fees.limitPpm),
+			marketPpm: num(v.fees.marketPpm),
+		},
+		skipGaps: v.skipGaps === true,
+		criteriaVersion:
+			v.criteriaVersion === undefined || v.criteriaVersion === null
+				? null
+				: num(v.criteriaVersion),
+		segmentId:
+			v.segmentId === undefined || v.segmentId === null
+				? null
+				: num(v.segmentId),
+	};
+	return input;
+}
+
+/** 結果のチャートの足の粒度の入力。粒度でなければ null */
+export const parseChartTimeframe = (v: unknown): Timeframe | null =>
+	isTimeframe(v) ? v : null;
 
 export type BacktestServiceDeps = {
 	repo: BacktestRepository;

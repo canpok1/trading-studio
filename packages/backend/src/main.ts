@@ -18,9 +18,9 @@ import { isCompatibleModel } from "./ai/model-domain";
 import { AnalysisExportRepository } from "./analysis-export/repository";
 import { createAnalysisExportService } from "./analysis-export/service";
 import { createApp } from "./app";
-import { BacktestRepository } from "./backtests/repository";
-import { createBacktestService } from "./backtests/service";
-import { workerRunner } from "./backtests/worker-runner";
+import { createBacktestService } from "./backtests/backtests-domain";
+import { SqliteBacktestRepository } from "./backtests/repository-infra";
+import { workerRunner } from "./backtests/worker-runner-infra";
 import { coincheckFeed } from "./collector/coincheck";
 import { createCollector } from "./collector/collector";
 import { demoFeed } from "./collector/fake-feed";
@@ -92,7 +92,7 @@ try {
 
 const marketDataRepo = new SqliteMarketDataRepository(db);
 marketDataRepo.failInterrupted(Date.now());
-const backtestRepo = new BacktestRepository(db);
+const backtestRepo = new SqliteBacktestRepository(db);
 backtestRepo.failInterrupted(Date.now());
 const strategies = createStrategyService(new SqliteStrategyRepository(db));
 

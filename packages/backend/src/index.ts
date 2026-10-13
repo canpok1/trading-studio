@@ -16,7 +16,7 @@ export type {
 	BacktestRun,
 	RunListResult,
 	RunSort,
-} from "./backtests/types";
+} from "./backtests/types-domain";
 export type { CollectorStatus } from "./collector/types";
 export type {
 	Dataset,

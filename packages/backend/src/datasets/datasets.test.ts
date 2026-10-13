@@ -6,8 +6,8 @@ import {
 	singleBuy,
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
-import { inlineRunner } from "../backtests/inline-runner";
-import type { BacktestRun } from "../backtests/types";
+import { inlineRunner } from "../backtests/inline-runner-infra";
+import type { BacktestRun } from "../backtests/types-domain";
 import { createTestApp } from "../test-app";
 import type { Dataset, DatasetRunDetail, HistoryResult } from "./types";
 

@@ -1,3 +1,4 @@
+import type { BacktestRepository } from "./repository-domain";
 // バックテストの実行と結果の読み書き
 
 import { gunzipSync } from "node:zlib";
@@ -12,14 +13,14 @@ import type {
 } from "@trading-studio/core";
 import { parseAggregationRule, parseConditionSet } from "@trading-studio/core";
 import type { Db } from "../db/open";
-import type { RunnerOutput } from "./runner";
+import type { RunnerOutput } from "./runner-domain";
 import type {
 	BacktestChart,
 	BacktestRun,
 	BacktestStatus,
 	RunFilter,
 	RunListResult,
-} from "./types";
+} from "./types-domain";
 
 type RunRow = {
 	id: number;
@@ -94,7 +95,7 @@ const SELECT_RUN = "select r.* from backtest_runs r";
 const unpack = <T>(b: Uint8Array): T =>
 	JSON.parse(new TextDecoder().decode(gunzipSync(b))) as T;
 
-export class BacktestRepository {
+export class SqliteBacktestRepository implements BacktestRepository {
 	constructor(private readonly db: Db) {}
 
 	private get sql() {

@@ -6,12 +6,12 @@ import {
 	summarizeDataset,
 	validateConditionSet,
 } from "@trading-studio/core";
-import type { BacktestRepository } from "../backtests/repository";
+import type { BacktestRepository } from "../backtests/repository-domain";
 import type {
 	BacktestRun,
 	BacktestService,
 	StartBacktestFailure,
-} from "../backtests/types";
+} from "../backtests/types-domain";
 import type { Segment, SegmentService } from "../segments/types-domain";
 import { checkName } from "../strategies/strategies-domain";
 import type { DatasetRepository, StoredDataset } from "./repository";

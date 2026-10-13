@@ -7,7 +7,7 @@ import {
 	conditionStrategy,
 	runBacktest,
 } from "@trading-studio/core";
-import type { RunnerJob, RunnerOutcome } from "./runner";
+import type { RunnerJob, RunnerOutcome } from "./runner-domain";
 
 const pack = (v: unknown) => gzipSync(JSON.stringify(v));
 

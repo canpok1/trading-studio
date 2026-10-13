@@ -15,7 +15,6 @@ const ROOT_FILES = new Set(["main.ts", "app.ts", "index.ts"]);
 export const NOT_MIGRATED = [
 	"advice/",
 	"analysis-export/",
-	"backtests/",
 	"collector/",
 	"datasets/",
 	"db/",

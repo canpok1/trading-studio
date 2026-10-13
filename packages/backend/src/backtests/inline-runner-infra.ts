@@ -1,7 +1,7 @@
 // テスト用に同じスレッドで計算する。gate を渡すと、それが解決するまで計算を始めない（実行中の状態を試すため）
 
-import { execute } from "./execute";
-import type { BacktestRunner } from "./runner";
+import { execute } from "./execute-infra";
+import type { BacktestRunner } from "./runner-domain";
 
 export function inlineRunner(gate?: () => Promise<void>): BacktestRunner {
 	return (job) => {

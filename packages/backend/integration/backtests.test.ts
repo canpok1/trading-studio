@@ -11,10 +11,10 @@ import {
 	singleBuy,
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
-import { createTestApp } from "../test-app";
-import { inlineRunner } from "./inline-runner";
-import type { BacktestRun } from "./types";
-import { workerRunner } from "./worker-runner";
+import { inlineRunner } from "../src/backtests/inline-runner-infra";
+import type { BacktestRun } from "../src/backtests/types-domain";
+import { workerRunner } from "../src/backtests/worker-runner-infra";
+import { createTestApp } from "../src/test-app";
 
 const H = TIMEFRAME_MS["1h"];
 // JST 2026-08-01 00:00

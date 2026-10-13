@@ -1,6 +1,6 @@
 // 分析用エクスポートの API が使う型。app.ts から参照されるため、Bun 固有の型を持ち込まない
 
-import type { BacktestRun } from "../backtests/types";
+import type { BacktestRun } from "../backtests/types-domain";
 
 export type AnalysisExportInput = {
 	/** 期間 [from, to) */

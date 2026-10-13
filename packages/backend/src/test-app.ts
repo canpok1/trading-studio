@@ -11,10 +11,10 @@ import { AnalysisExportRepository } from "./analysis-export/repository";
 import { createAnalysisExportService } from "./analysis-export/service";
 import type { AppDeps } from "./app";
 import { createApp } from "./app";
-import { inlineRunner } from "./backtests/inline-runner";
-import { BacktestRepository } from "./backtests/repository";
-import type { BacktestRunner } from "./backtests/runner";
-import { createBacktestService } from "./backtests/service";
+import { createBacktestService } from "./backtests/backtests-domain";
+import { inlineRunner } from "./backtests/inline-runner-infra";
+import { SqliteBacktestRepository } from "./backtests/repository-infra";
+import type { BacktestRunner } from "./backtests/runner-domain";
 import type { Collector } from "./collector/collector";
 import type { LiveMarket } from "./collector/types";
 import { DatasetRepository } from "./datasets/repository";
@@ -127,7 +127,7 @@ export function createTestApp(
 		newsDeletedBefore: () => scoreRepo.newsDeletedBefore(),
 		now: () => clock.now,
 	});
-	const backtestRepo = new BacktestRepository(db);
+	const backtestRepo = new SqliteBacktestRepository(db);
 	const backtests = createBacktestService({
 		repo: backtestRepo,
 		marketData: marketDataRepo,

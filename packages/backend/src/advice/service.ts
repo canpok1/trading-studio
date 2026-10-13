@@ -1,8 +1,8 @@
 import { conditionStrategy } from "@trading-studio/core";
 import type { GeminiModel } from "../ai/model-domain";
 import { isSelectableModel } from "../ai/model-domain";
-import type { BacktestRepository } from "../backtests/repository";
-import type { BacktestService } from "../backtests/types";
+import type { BacktestRepository } from "../backtests/repository-domain";
+import type { BacktestService } from "../backtests/types-domain";
 import { SCORING_MODELS } from "../news/gemini";
 import { readImprovedStrategy } from "./improved";
 import { buildAdviceSource } from "./input";
