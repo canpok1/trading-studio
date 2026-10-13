@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { TIMEFRAME_MS } from "@trading-studio/core";
 import type { LatestMarket } from "../src/market/types-domain";
-import { createTestApp } from "../src/test-app";
+import { createTestApp } from "./test-app";
 
 const M = TIMEFRAME_MS["1m"];
 const DAY = TIMEFRAME_MS["1d"];

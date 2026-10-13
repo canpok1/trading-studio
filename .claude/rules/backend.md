@@ -9,7 +9,7 @@ paths:
 
 ## 層の構成（docs/adr/0028-test-scope-and-layers.md）
 
-`src/` の下を機能ごとのフォルダに分け、ファイル名の末尾で層を表す（`<名前>-<層>.ts`）。移し終えていない機能は `scripts/check-backend-layers.ts` の `NOT_MIGRATED` にあり、検査から外れている。
+`src/` の下を機能ごとのフォルダに分け、ファイル名の末尾で層を表す（`<名前>-<層>.ts`）。
 
 | 末尾 | 層 | 置くもの |
 |---|---|---|
@@ -18,6 +18,8 @@ paths:
 | `-infra` | インフラ層 | リポジトリの実装、DB、外部 API への接続、外部接続の偽物 |
 
 - `src/` 直下は起動まわり（`main.ts`・`app.ts`・`index.ts`）だけ。アプリケーション層に属する
+- そのほかの起動まわり（遅い API のログ・画面の配信・ビルド日時の読み取り）は `server/` に置く
+- MCP の道具は機能ごとに `<機能>/mcp-app.ts` で登録し、`mcp/mcp-app.ts` がまとめてサーバーにする。道具が共通で使う依存と応答の形は `mcp/tool-app.ts`、core を使う値の形（画面と同じ表記・成績の段階）は `mcp/views-domain.ts`、取引の決まり（選べる値・既定値）から作る入力の形は `mcp/schemas-domain.ts`
 - テストは対象の後ろに `.test.ts`（`market-domain.test.ts`）。層をまたぐテストは `packages/backend/integration/` に置く
 - ドメインは他の機能のインフラを型でも参照しない。他の機能のリポジトリを使うときは、その機能の `repository-domain.ts` の型を `Pick` で受ける（型が無い機能なら、使うものだけを自分の `repository-domain.ts` に書く）。実装は `main.ts` で渡す
 - リポジトリだけが使う行の型は `repository-domain.ts` に置き、`types-domain.ts` には API と画面が使う型だけを置く

@@ -13,8 +13,8 @@ import {
 import { DEMO_IMPROVED_STRATEGY } from "../src/advice/fake-model-infra";
 import type { BacktestAdvice } from "../src/advice/types-domain";
 import type { BacktestRun } from "../src/backtests/types-domain";
-import { createTestDb } from "../src/db/test-db";
-import { createTestApp } from "../src/test-app";
+import { createTestDb } from "../src/db/test-db-infra";
+import { createTestApp } from "./test-app";
 
 const H = TIMEFRAME_MS["1h"];
 // JST 2026-08-01 00:00

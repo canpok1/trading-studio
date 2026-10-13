@@ -1,7 +1,7 @@
 // 最新価格とホームのチャートの API が使う型。app.ts から参照されるため、Bun 固有の型を持ち込まない
 
 import type { Candle, Timeframe } from "@trading-studio/core";
-import type { CollectorStatus } from "../collector/types";
+import type { CollectorStatus } from "../collector/types-domain";
 
 export type ChartRangeId = "1d" | "1w" | "1m" | "all";
 

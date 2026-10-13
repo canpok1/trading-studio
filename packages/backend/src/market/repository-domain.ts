@@ -1,7 +1,7 @@
 // 最新価格とチャートの足が読む、保存済みの足と収集中の価格。実装は相場データのリポジトリと価格の収集
 
 import type { Candle, Timeframe } from "@trading-studio/core";
-import type { LiveMarket } from "../collector/types";
+import type { LiveMarket } from "../collector/collector-domain";
 
 export interface MarketRepository {
 	/** 最後の足。無ければ null */

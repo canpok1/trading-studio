@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { TIMEFRAME_MS } from "@trading-studio/core";
 import { SqliteMarketDataRepository } from "../src/market-data/repository-infra";
 import type { ImportJob } from "../src/market-data/types-domain";
-import { createTestApp } from "../src/test-app";
+import { createTestApp } from "./test-app";
 
 const M = TIMEFRAME_MS["1m"];
 // JST 2026-09-26 00:00

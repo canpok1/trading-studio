@@ -18,7 +18,7 @@
 - PC に何も入れずにつながり、サーバーの自動デプロイで道具も更新される
 - backend に `@modelcontextprotocol/sdk` と `zod` の依存が増える
 - 自宅 LAN につながる端末からは、画面と同じく戦略を作り変えられる。運用する戦略と口座には触れない
-- 条件の種類を足したら、`packages/backend/src/mcp/guide.ts` の説明も足す（型で漏れに気づける）
+- 条件の種類を足したら、`packages/backend/src/strategies/guide-domain.ts` の説明も足す（型で漏れに気づける）
 
 ## 検討した代替案
 

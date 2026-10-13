@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DEMO_COMPATIBLE_MODELS } from "../src/ai/fake-models-infra";
 import { NO_CONNECTION } from "../src/ai/model-domain";
-import { createTestApp } from "../src/test-app";
+import { createTestApp } from "./test-app";
 
 describe("OpenAI 互換の接続先の API", () => {
 	const put = (body: unknown) => ({

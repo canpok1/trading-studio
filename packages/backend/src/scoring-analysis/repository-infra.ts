@@ -1,6 +1,6 @@
 // 精度を測るニュースと採点。読むだけで書き換えない。書くのは精度の設定だけ
 
-import type { Db } from "../db/open";
+import type { Db } from "../db/open-infra";
 import { NEWS_TIME_SQL } from "../news/score-repository-infra";
 import type {
 	AnalysisNewsRow,

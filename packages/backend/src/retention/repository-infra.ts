@@ -1,7 +1,7 @@
 // 古いデータの削除。保持期間の設定と前回の結果は settings に持つ
 
 import { SEGMENT_LEAD_MS } from "@trading-studio/core";
-import type { Db } from "../db/open";
+import type { Db } from "../db/open-infra";
 import { NEWS_DELETED_BEFORE_KEY } from "../news/score-repository-infra";
 import type { RetentionRepository } from "./repository-domain";
 import type {

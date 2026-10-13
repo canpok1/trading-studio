@@ -17,7 +17,7 @@ export type {
 	RunListResult,
 	RunSort,
 } from "./backtests/types-domain";
-export type { CollectorStatus } from "./collector/types";
+export type { CollectorStatus } from "./collector/types-domain";
 export type {
 	Dataset,
 	DatasetBlocker,
@@ -72,4 +72,4 @@ export type {
 	StrategyLock,
 	TradingMode,
 	TradingPerformance,
-} from "./trading/types";
+} from "./trading/types-domain";

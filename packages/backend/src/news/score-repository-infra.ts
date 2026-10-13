@@ -8,7 +8,7 @@ import {
 	parseAggregationRule,
 	validateAggregationRule,
 } from "@trading-studio/core";
-import type { Db } from "../db/open";
+import type { Db } from "../db/open-infra";
 import type { ScoreResponse } from "./prompt-domain";
 import type {
 	NextToRescore,

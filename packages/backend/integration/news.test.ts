@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_AGGREGATION_RULE } from "@trading-studio/core";
-import { createTestDb } from "../src/db/test-db";
+import { createTestDb } from "../src/db/test-db-infra";
 import { createNewsCollector } from "../src/news/collector-domain";
 import { createNewsService } from "../src/news/news-domain";
 import { SqliteNewsRepository } from "../src/news/repository-infra";
 import { rssFeed } from "../src/news/rss-infra";
-import { createTestApp } from "../src/test-app";
+import { createTestApp } from "./test-app";
 
 const MIN = 60_000;
 const T0 = Date.UTC(2026, 8, 26, 3);

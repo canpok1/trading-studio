@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { validator } from "hono/validator";
-import type { StrategyLock } from "../trading/types";
+import type { StrategyLock } from "../trading/types-domain";
 import { parseCreateInput, parseParamsInput } from "./strategies-domain";
 import type { StrategyResult, StrategyService } from "./types-domain";
 

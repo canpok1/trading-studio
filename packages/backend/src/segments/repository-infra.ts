@@ -1,5 +1,5 @@
 import type { MarketRegime } from "@trading-studio/core";
-import type { Db } from "../db/open";
+import type { Db } from "../db/open-infra";
 import type { SegmentRepository } from "./repository-domain";
 import type { Segment } from "./types-domain";
 

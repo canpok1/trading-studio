@@ -15,24 +15,26 @@ import {
 } from "./ai/compatible-infra";
 import { demoCompatibleModels } from "./ai/fake-models-infra";
 import { DEFAULT_SCORING_MODEL, isCompatibleModel } from "./ai/model-domain";
-import { AnalysisExportRepository } from "./analysis-export/repository";
-import { createAnalysisExportService } from "./analysis-export/service";
+import { createAnalysisExportService } from "./analysis-export/analysis-export-domain";
+import { SqliteAnalysisExportRepository } from "./analysis-export/repository-infra";
+import { createZip } from "./analysis-export/zip-infra";
 import { createApp } from "./app";
 import { createBacktestService } from "./backtests/backtests-domain";
 import { SqliteBacktestRepository } from "./backtests/repository-infra";
 import { workerRunner } from "./backtests/worker-runner-infra";
-import { coincheckFeed } from "./collector/coincheck";
-import { createCollector } from "./collector/collector";
-import { demoFeed } from "./collector/fake-feed";
+import { coincheckFeed } from "./collector/coincheck-infra";
+import { createCollector } from "./collector/collector-domain";
+import { demoFeed } from "./collector/fake-feed-infra";
 import { createDatasetService } from "./datasets/datasets-domain";
 import { SqliteDatasetRepository } from "./datasets/repository-infra";
-import { migrateDb } from "./db/migrate";
-import { isDbReachable, openDb } from "./db/open";
+import { migrateDb } from "./db/migrate-infra";
+import { isDbReachable, openDb } from "./db/open-infra";
 import { createJudgmentService } from "./judgments/judgments-domain";
 import { createMarketService } from "./market/market-domain";
 import { createMarketDataService } from "./market-data/market-data-domain";
 import { SqliteMarketDataRepository } from "./market-data/repository-infra";
-import { BACKTEST_WAIT_MS, mcpRoutes } from "./mcp/server";
+import { mcpRoutes } from "./mcp/mcp-app";
+import { BACKTEST_WAIT_MS } from "./mcp/tool-app";
 import { createNewsCollector, newsDelayMs } from "./news/collector-domain";
 import { demoFetchFeed } from "./news/fake-feed-infra";
 import { demoScoreModel } from "./news/fake-model-infra";
@@ -50,14 +52,14 @@ import { SqliteScoringAnalysisRepository } from "./scoring-analysis/repository-i
 import { createScoringAnalysis } from "./scoring-analysis/scoring-analysis-domain";
 import { SqliteSegmentRepository } from "./segments/repository-infra";
 import { createSegmentService } from "./segments/segments-domain";
-import { slowRequestLog, watchEventLoopLag } from "./slow-log";
-import { serveFrontend } from "./static";
+import { slowRequestLog, watchEventLoopLag } from "./server/slow-log-app";
+import { serveFrontend } from "./server/static-app";
+import { readAppBuiltAt } from "./server/version-infra";
 import { SqliteStrategyRepository } from "./strategies/repository-infra";
 import { createStrategyService } from "./strategies/strategies-domain";
-import { TradingRepository } from "./trading/repository";
-import type { TradingEngine } from "./trading/service";
-import { createTradingService } from "./trading/service";
-import { readAppBuiltAt } from "./version";
+import { SqliteTradingRepository } from "./trading/repository-infra";
+import type { TradingEngine } from "./trading/trading-domain";
+import { createTradingService } from "./trading/trading-domain";
 
 const hostname = process.env.HOST ?? "127.0.0.1";
 const port = Number(process.env.PORT ?? 3000);
@@ -157,7 +159,7 @@ const judgments = createJudgmentService({
 });
 
 const tradingEngine = createTradingService({
-	repo: new TradingRepository(db),
+	repo: new SqliteTradingRepository(db),
 	strategies,
 	judgments,
 	marketData: marketDataRepo,
@@ -288,7 +290,8 @@ const server = new Hono()
 			judgments,
 			trading: tradingEngine,
 			analysisExport: createAnalysisExportService({
-				repo: new AnalysisExportRepository(db),
+				repo: new SqliteAnalysisExportRepository(db),
+				zip: createZip,
 				scoreRepo,
 				backtestRepo,
 				marketData,

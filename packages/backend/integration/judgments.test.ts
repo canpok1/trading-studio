@@ -4,7 +4,7 @@ import type {
 	CurrentJudgment,
 	JudgmentSeries,
 } from "../src/judgments/types-domain";
-import { createTestApp } from "../src/test-app";
+import { createTestApp } from "./test-app";
 
 const H = 3_600_000;
 

@@ -1,6 +1,6 @@
 // OpenAI 互換 API（Chat Completions）へ問い合わせる。Bifrost などの集約サービス経由で Gemini 以外の AI も使うため（ADR 0027）
 
-import type { Db } from "../db/open";
+import type { Db } from "../db/open-infra";
 import type {
 	CompatibleConnection,
 	GeminiModel,

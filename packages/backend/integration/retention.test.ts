@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { RetentionStatus } from "../src/retention/types-domain";
-import { createTestApp } from "../src/test-app";
+import { createTestApp } from "./test-app";
 
 const DAY = 86_400_000;
 // JST 2026-09-28 04:00

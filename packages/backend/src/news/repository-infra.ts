@@ -1,6 +1,6 @@
 import type { AggregationRule } from "@trading-studio/core";
 import { LASTING_DURATIONS, windowMs } from "@trading-studio/core";
-import type { Db } from "../db/open";
+import type { Db } from "../db/open-infra";
 import type { FeedItem, NewsRepository } from "./repository-domain";
 import { toNewsScore } from "./score-repository-infra";
 import type {
