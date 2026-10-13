@@ -8,7 +8,6 @@ test("機能フォルダの中は -app・-domain・-infra で終わるファイ�
 				"trading/trading-app.ts",
 				"trading/trading-domain.ts",
 				"trading/trading-domain.test.ts",
-				"trading/repository-infra.medium.test.ts",
 				"trading/repository-infra.ts",
 				"trading/service.ts",
 				"trading/trading.test.ts",

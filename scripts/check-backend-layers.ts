@@ -33,14 +33,13 @@ export const NOT_MIGRATED = [
 	"slow-log.ts",
 	"slow-log.test.ts",
 	"static.ts",
-	"static.medium.test.ts",
+	"static.test.ts",
 	"test-app.ts",
 	"version.ts",
-	"version.medium.test.ts",
+	"version.test.ts",
 ];
 
-// .medium は今のテストサイズの印（docs/testing.md）
-const LAYERED = /-(app|domain|infra)((\.medium)?\.test)?\.ts$/;
+const LAYERED = /-(app|domain|infra)(\.test)?\.ts$/;
 
 /** 構成に沿わないファイルの、src/ からの相対パス */
 export function layerViolations(

@@ -58,6 +58,41 @@ module.exports = {
 			to: { path: "^packages/core/", dependencyTypesNot: ["type-only"] },
 		},
 		{
+			name: "frontend-in-layers",
+			comment:
+				"frontend の src は app・features・shared のどれかに置く（docs/adr/0028）",
+			severity: "error",
+			from: {
+				path: "^packages/frontend/src/",
+				pathNot: "^packages/frontend/src/(app|features|shared)/",
+			},
+			to: {},
+		},
+		{
+			name: "frontend-shared-not-to-features-or-app",
+			comment: "frontend の依存は shared → features → app の一方向",
+			severity: "error",
+			from: { path: "^packages/frontend/src/shared/" },
+			to: { path: "^packages/frontend/src/(features|app)/" },
+		},
+		{
+			name: "frontend-features-not-to-app",
+			comment: "frontend の依存は shared → features → app の一方向",
+			severity: "error",
+			from: { path: "^packages/frontend/src/features/" },
+			to: { path: "^packages/frontend/src/app/" },
+		},
+		{
+			name: "frontend-features-not-to-other-features",
+			comment: "機能どうしは参照しない。複数の機能で使うものは shared へ移す",
+			severity: "error",
+			from: { path: "^packages/frontend/src/features/([^/]+)/" },
+			to: {
+				path: "^packages/frontend/src/features/",
+				pathNot: "^packages/frontend/src/features/$1/",
+			},
+		},
+		{
 			name: "no-circular",
 			comment: "変更の影響範囲を追えなくなるため",
 			severity: "error",

@@ -1,0 +1,337 @@
+import type {
+	AccuracyHorizon,
+	ArticleAccuracy,
+	NewsItem,
+} from "@trading-studio/backend";
+import type { AggregationRule } from "@trading-studio/core";
+import { HALF_LIVES_IN_WINDOW, JUDGES } from "@trading-studio/core";
+import { useId, useState } from "react";
+import { ChevronIcon } from "../../../shared/components/icons";
+import {
+	DurationChip,
+	ScoreChip,
+} from "../../../shared/components/judgment/JudgmentBadge";
+import type { ArticlePrecisions } from "../../../shared/components/market-eval/Precision";
+import { ArticlePrecision } from "../../../shared/components/market-eval/Precision";
+import { EmptyState, Skeleton } from "../../../shared/components/States";
+import { Button } from "../../../shared/components/ui";
+import { useApi } from "../../../shared/lib/api";
+import {
+	formatDateTime,
+	formatDateWeekday,
+	formatDateWeekdayTime,
+	formatVersion,
+} from "../../../shared/lib/format";
+import { errorMessage, readJson } from "../../../shared/lib/useAsync";
+import type { AiData } from "../utils/ai";
+import { newsState } from "../utils/ai";
+import { groupByDay } from "../utils/news-filter";
+
+export function NewsTab({
+	data,
+	grouped,
+	filtered,
+	precisions,
+	onClearFilter,
+	onChanged,
+}: {
+	data: AiData;
+	/** 日付ごとに区切る（新しい順のとき） */
+	grouped: boolean;
+	/** 条件で絞っている */
+	filtered: boolean;
+	/** 記事ごとの精度。読めていなければ null */
+	precisions: ArticlePrecisions | null;
+	onClearFilter: () => void;
+	onChanged: () => void;
+}) {
+	const { news, current, scorer } = data;
+	if (news.length === 0) {
+		return (
+			<div className="rounded-xl border border-line bg-surface">
+				{filtered ? (
+					<EmptyState
+						title="条件に当てはまるニュースが無い"
+						description="期間を広げるか、条件を減らす"
+						action={
+							<Button size="sm" onClick={onClearFilter}>
+								条件をクリア
+							</Button>
+						}
+					/>
+				) : (
+					<EmptyState
+						title="ニュースがまだ無い"
+						description="取得すると、ここに採点と一緒に並ぶ"
+					/>
+				)}
+			</div>
+		);
+	}
+	const card = (n: NewsItem) => (
+		<NewsCard
+			key={n.id}
+			news={n}
+			weight={current.weights[n.id] ?? null}
+			rule={current.rule}
+			precision={precisions?.byId.get(n.id) ?? null}
+			horizon={precisions?.horizon ?? null}
+			scorerStopped={scorer.state === "stopped"}
+			activeVersion={scorer.activeCriteriaVersion}
+			onChanged={onChanged}
+		/>
+	);
+	const groups = grouped
+		? groupByDay(news)
+		: [{ day: null as string | null, items: news }];
+	return (
+		<div className="flex flex-col gap-2">
+			{groups.map((g) => (
+				<section
+					key={g.day ?? "all"}
+					aria-label={g.day ?? undefined}
+					className="flex flex-col gap-1.5"
+				>
+					{g.day !== null && (
+						<h3 className="num px-1 text-xs font-bold text-text-2">
+							{formatDateWeekday(g.items[0]?.publishedAt ?? 0)}
+						</h3>
+					)}
+					<div className="overflow-hidden rounded-xl border border-line bg-surface">
+						{g.items.map(card)}
+					</div>
+				</section>
+			))}
+		</div>
+	);
+}
+
+function NewsCard({
+	news: n,
+	weight,
+	rule,
+	precision,
+	horizon,
+	scorerStopped,
+	activeVersion,
+	onChanged,
+}: {
+	news: NewsItem;
+	weight: number | null;
+	rule: AggregationRule;
+	precision: ArticleAccuracy | null;
+	horizon: AccuracyHorizon | null;
+	scorerStopped: boolean;
+	/** 使用中の採点の基準の版。採点し直すときに使う */
+	activeVersion: number | null;
+	onChanged: () => void;
+}) {
+	const api = useApi();
+	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState<{ what: string; message: string } | null>(
+		null,
+	);
+	const [open, setOpen] = useState(false);
+	const detailId = useId();
+	const state = newsState(n, scorerStopped);
+	const duration = n.score?.duration ?? "short";
+
+	const send = async (
+		what: string,
+		post: () => Promise<Parameters<typeof readJson>[0]>,
+	) => {
+		setBusy(true);
+		setError(null);
+		try {
+			await post().then((r) => readJson(r));
+			onChanged();
+		} catch (e) {
+			setError({ what, message: errorMessage(e) });
+		} finally {
+			setBusy(false);
+		}
+	};
+	const param = { param: { id: String(n.id) } };
+	const retry = () =>
+		send("再試行できなかった", () =>
+			api.api.scoring.news[":id"].retry.$post(param),
+		);
+	const rescore = () =>
+		send("採点し直せなかった", () =>
+			api.api.scoring.news[":id"].rescore.$post(param),
+		);
+	// 使用中の版と違う版で採点したものだけ採点し直せる。待っている間は出さない
+	const canRescore =
+		state.kind === "done" &&
+		activeVersion !== null &&
+		n.score?.criteriaVersion !== activeVersion &&
+		(n.rescore === null || n.rescore.status === "failed");
+
+	return (
+		<article
+			data-testid="news-card"
+			className={`flex flex-col gap-2 border-b border-line p-3.5 last:border-b-0 ${state.kind === "done" && weight === null ? "opacity-60" : ""}`}
+		>
+			{/* スマホ幅では取得元を2行目へ回し、日時と重みを省略させない */}
+			<div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-text-2">
+				<span className="num whitespace-nowrap">
+					{formatDateWeekdayTime(n.publishedAt)}
+				</span>
+				<span className="num order-last min-w-0 basis-full truncate sm:order-none sm:flex-1 sm:basis-auto">
+					<span className="hidden sm:inline">· </span>
+					{n.sourceName}
+				</span>
+				{state.kind === "done" && (
+					<span className="ml-auto shrink-0 whitespace-nowrap">
+						重み <b className="num">{Math.round((weight ?? 0) * 100)}%</b>
+					</span>
+				)}
+			</div>
+			<a
+				href={n.url}
+				target="_blank"
+				rel="noreferrer"
+				className="text-[15px] leading-normal font-bold [overflow-wrap:anywhere]"
+			>
+				{n.title}
+			</a>
+			{state.kind === "done" && n.score && (
+				<>
+					<div className="flex flex-wrap gap-1.5">
+						{JUDGES.map((j) => (
+							<ScoreChip
+								key={j}
+								judge={j}
+								score={n.score?.scores?.[j] ?? 0}
+								rule={rule}
+							/>
+						))}
+						<DurationChip duration={duration} />
+					</div>
+					{precision && horizon && (
+						<ArticlePrecision value={precision} horizon={horizon} />
+					)}
+					<button
+						type="button"
+						aria-expanded={open}
+						aria-controls={detailId}
+						onClick={() => setOpen(!open)}
+						className="flex items-start gap-1.5 text-left"
+					>
+						<span
+							className={`min-w-0 flex-1 text-xs leading-relaxed ${open ? "" : "line-clamp-1"}`}
+						>
+							{n.score.comment}
+						</span>
+						<span className="flex shrink-0 items-center text-xs text-text-2">
+							{open ? "閉じる" : "詳しく"}
+							<ChevronIcon open={open} size={14} />
+						</span>
+					</button>
+					{open && (
+						<div id={detailId} className="flex flex-col gap-0.5">
+							<span className="num text-xs text-text-2">
+								採点 {formatDateTime(n.score.scoredAt ?? 0)}
+								{n.score.rescoredAt !== null &&
+									` · 採点し直し ${formatDateTime(n.score.rescoredAt)}`}{" "}
+								· プロンプト v{n.score.criteriaVersion} · {n.score.model} ·{" "}
+								{formatVersion(n.score.appBuiltAt, "記録なし")}
+							</span>
+							{weight === null && (
+								<span className="num text-xs text-text-2">
+									{duration === "none"
+										? "集計の対象外（相場に関係ない）"
+										: `集計の対象外（持続の半減期の${HALF_LIVES_IN_WINDOW}倍、${rule.halfLifeHours[duration] * HALF_LIVES_IN_WINDOW}時間より前）`}
+								</span>
+							)}
+							{canRescore && (
+								<Button
+									size="sm"
+									className="self-start"
+									onClick={rescore}
+									disabled={busy}
+								>
+									v{activeVersion} で採点し直す
+								</Button>
+							)}
+						</div>
+					)}
+					{n.rescore?.status === "running" && (
+						<div className="flex items-center gap-2 text-xs text-text-2">
+							<Skeleton className="h-4 w-16" />v{n.rescore.version}{" "}
+							で採点し直し中
+						</div>
+					)}
+					{n.rescore?.status === "waiting" && (
+						<span className="num text-xs text-text-2">
+							v{n.rescore.version} での採点し直し待ち
+							{scorerStopped
+								? "（採点が止まっている）"
+								: n.rescore.ahead
+									? `（前に ${n.rescore.ahead} 件）`
+									: "（次に採点し直す）"}
+						</span>
+					)}
+					{n.rescore?.status === "retry" && (
+						<span className="text-xs">
+							<span className="font-semibold text-loss">
+								v{n.rescore.version} での採点し直しに失敗
+							</span>
+							（{n.rescore.error}）。
+							{n.rescore.nextAttemptAt !== null &&
+								`${formatDateTime(n.rescore.nextAttemptAt)} に自動で再試行する`}
+						</span>
+					)}
+					{n.rescore?.status === "failed" && (
+						<span className="text-xs">
+							<span className="font-semibold text-loss">
+								v{n.rescore.version} での採点し直しに失敗
+							</span>
+							（{n.rescore.error}）。今の採点のまま
+						</span>
+					)}
+				</>
+			)}
+			{state.kind === "waiting" &&
+				(state.stopped ? (
+					<span className="text-xs text-text-2">
+						未採点（採点が止まっている）
+					</span>
+				) : (
+					<div className="flex items-center gap-2 text-xs text-text-2">
+						<Skeleton className="h-6 w-3/5" />
+						採点中
+					</div>
+				))}
+			{state.kind === "retry" && (
+				<span className="text-xs">
+					<span className="font-semibold text-loss">採点に失敗</span>（
+					{state.error}）。
+					{state.nextAttemptAt !== null &&
+						`${formatDateTime(state.nextAttemptAt)} に自動で再試行する`}
+				</span>
+			)}
+			{state.kind === "failed" && (
+				<div className="flex items-center justify-between gap-2">
+					<span className="text-xs">
+						<span className="font-semibold text-loss">採点に失敗</span>（
+						{state.error}）。集計には入れていない
+					</span>
+					<Button size="sm" onClick={retry} disabled={busy}>
+						再試行
+					</Button>
+				</div>
+			)}
+			{state.kind === "skipped" && (
+				<span className="text-xs text-text-2">
+					集計の対象外（取得した時点で古かったため採点していない）
+				</span>
+			)}
+			{error && (
+				<p role="alert" className="text-xs font-semibold text-loss">
+					{error.what}: {error.message}
+				</p>
+			)}
+		</article>
+	);
+}
