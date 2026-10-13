@@ -5,14 +5,12 @@ import { parseConditionSet } from "@trading-studio/core";
 import type { BacktestRepository } from "../backtests/repository-domain";
 import type { BacktestStatus, RunFilter } from "../backtests/types-domain";
 import type { Db } from "../db/open";
-import type { DatasetRepository } from "./repository-domain";
 import type {
-	DatasetRun,
-	HistoryEntry,
-	HistoryResult,
+	DatasetRepository,
 	StoredDataset,
 	StoredDatasetInput,
-} from "./types-domain";
+} from "./repository-domain";
+import type { DatasetRun, HistoryEntry, HistoryResult } from "./types-domain";
 
 type DatasetRow = {
 	id: number;

@@ -15,13 +15,15 @@ import {
 import type { JudgmentService } from "../judgments/types-domain";
 import type { MarketDataService } from "../market-data/types-domain";
 import { actualLevels, articlePrecision } from "./accuracy-domain";
-import type { ScoringAnalysisRepository } from "./repository-domain";
+import type {
+	AnalysisNewsRow,
+	ScoringAnalysisRepository,
+} from "./repository-domain";
 import type {
 	AccuracyFilter,
 	AccuracySettings,
 	AccuracySummary,
 	AccuracySummaryResult,
-	AnalysisNewsRow,
 	ArticleAccuracy,
 	ArticleAccuracyReport,
 	SetAccuracySettingsResult,

@@ -98,10 +98,3 @@ export interface AdviceService {
 	models(): { models: AdviceModelOption[]; current: string };
 	setModel(id: string): boolean;
 }
-
-/** アドバイスを作ったときの条件。結果と一緒に残す */
-export type AdviceGeneration = {
-	model: string;
-	instructionsVersion: number;
-	appBuiltAt: number | null;
-};

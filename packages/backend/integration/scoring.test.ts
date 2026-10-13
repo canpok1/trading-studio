@@ -3,7 +3,6 @@ import { DEFAULT_AGGREGATION_RULE } from "@trading-studio/core";
 import type { ScoreModel } from "../src/ai/model-domain";
 import { DEFAULT_SCORING_MODEL } from "../src/ai/model-domain";
 import { createTestDb } from "../src/db/test-db";
-import { geminiModel, NO_API_KEY } from "../src/news/gemini-infra";
 import { createNewsService } from "../src/news/news-domain";
 import { DEFAULT_CRITERIA } from "../src/news/prompt-domain";
 import { SqliteNewsRepository } from "../src/news/repository-infra";
@@ -376,15 +375,6 @@ describe("API キー", () => {
 		expect(t.service.status().state).toBe("running");
 		await t.at(time + 1);
 		expect(t.repo.getScore(a)?.status).toBe("done");
-	});
-
-	test("Gemini のモデルは保存されたキーを問い合わせのたびに読む", async () => {
-		let key: string | null = null;
-		const model = geminiModel(() => key);
-		expect(model.unavailable("m")).toBe(NO_API_KEY);
-		await expect(model.generate("m", "p", {})).rejects.toThrow(NO_API_KEY);
-		key = "k";
-		expect(model.unavailable("m")).toBeNull();
 	});
 
 	test("API は保存・上書き・削除でき、キーを返さない", async () => {

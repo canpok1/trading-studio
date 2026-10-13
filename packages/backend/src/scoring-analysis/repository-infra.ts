@@ -2,8 +2,11 @@
 
 import type { Db } from "../db/open";
 import { NEWS_TIME_SQL } from "../news/score-repository-infra";
-import type { ScoringAnalysisRepository } from "./repository-domain";
-import type { AccuracySettings, AnalysisNewsRow } from "./types-domain";
+import type {
+	AnalysisNewsRow,
+	ScoringAnalysisRepository,
+} from "./repository-domain";
+import type { AccuracySettings } from "./types-domain";
 import {
 	ACCURACY_HORIZONS,
 	ACCURACY_PERIODS,

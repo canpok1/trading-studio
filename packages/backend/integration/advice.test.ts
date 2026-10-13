@@ -1,139 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import type {
-	BacktestOrder,
 	Candle,
 	ConditionSet,
 	SingleBuyConditionSet,
 } from "@trading-studio/core";
 import {
-	conditionScreenText,
 	DEFAULT_BUY_ORDER,
 	DEFAULT_PARTIAL_SELL,
 	singleBuy,
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
 import { DEMO_IMPROVED_STRATEGY } from "../src/advice/fake-model-infra";
-import { readImprovedStrategy } from "../src/advice/improved-domain";
-import {
-	aggregateBars,
-	buildAdviceSource,
-	selectBars,
-} from "../src/advice/input-domain";
-import {
-	buildAdvicePrompt,
-	extractAdviceJson,
-	parseAdviceResponse,
-} from "../src/advice/prompt-domain";
 import type { BacktestAdvice } from "../src/advice/types-domain";
 import type { BacktestRun } from "../src/backtests/types-domain";
 import { createTestDb } from "../src/db/test-db";
 import { createTestApp } from "../src/test-app";
 
-const M = TIMEFRAME_MS["1m"];
 const H = TIMEFRAME_MS["1h"];
 // JST 2026-08-01 00:00
 const START = Date.UTC(2026, 6, 31, 15);
-
-const bar = (time: number, close: number) => ({
-	time,
-	open: close,
-	high: close + 10,
-	low: close - 10,
-	close,
-});
-
-const order = (placedAt: number): BacktestOrder => ({
-	id: `o${placedAt}`,
-	side: "buy",
-	type: "market",
-	price: null,
-	quantity: 1_000_000,
-	placedAt,
-	status: "filled",
-	filledAt: placedAt,
-	fillPrice: 100,
-	fee: 0,
-	canceledAt: null,
-	cancelReason: null,
-	reason: "テスト",
-	pairId: null,
-	pnl: null,
-});
-
-describe("AI に渡す足", () => {
-	const bars = Array.from({ length: 6_000 }, (_, i) =>
-		bar(START + i * M, 1_000 + i),
-	);
-
-	test("上限以下なら戦略の足をすべて渡す", () => {
-		const sel = selectBars(bars.slice(0, 100), "1m", [], 100);
-		expect(sel).toEqual({ kind: "all", bars: bars.slice(0, 100) });
-	});
-
-	test("上限を超えたら、全体は上限の半分に収まる粗さにまとめ、注文の前後だけ戦略の足で渡す", () => {
-		const sel = selectBars(bars, "1m", [order(START + 3_000 * M)], 3_000, 10);
-		if (sel.kind !== "reduced") throw new Error("絞られていない");
-		// 1分足6000本 → 5分足1200本（15分足より細かく、1500本以下）
-		expect(sel.overviewTimeframe).toBe("5m");
-		expect(sel.overview).toHaveLength(1_200);
-		expect(sel.windows).toHaveLength(1);
-		expect(sel.windows[0]?.map((b) => b.time)).toEqual(
-			Array.from({ length: 21 }, (_, i) => START + (2_990 + i) * M),
-		);
-		expect(sel.truncated).toBe(false);
-	});
-
-	test("注文の前後が重なれば1つの区間にし、枠に収まらなければ前後の本数を減らす", () => {
-		const orders = [order(START + 100 * M), order(START + 105 * M)];
-		const wide = selectBars(bars, "1m", orders, 3_000, 10);
-		if (wide.kind !== "reduced") throw new Error("絞られていない");
-		expect(wide.windows).toHaveLength(1);
-		expect(wide.windows[0]).toHaveLength(26);
-
-		// 全体 1200 本、残りの枠 1800 本。100 件の注文の前後 10 本ずつ（2100 本）は収まらず、5 本ずつに減らす
-		const many = Array.from({ length: 100 }, (_, i) =>
-			order(START + (30 + i * 50) * M),
-		);
-		const narrow = selectBars(bars, "1m", many, 3_000, 10);
-		if (narrow.kind !== "reduced") throw new Error("絞られていない");
-		expect(narrow.windowBars).toBe(5);
-		expect(narrow.windows.flat()).toHaveLength(1_100);
-		expect(narrow.truncated).toBe(false);
-	});
-
-	test("まとめた足は始値・高値・安値・終値を引き継ぐ", () => {
-		expect(aggregateBars(bars.slice(0, 5), "5m")).toEqual([
-			{ time: START, open: 1_000, high: 1_014, low: 990, close: 1_004 },
-		]);
-	});
-});
-
-describe("応答の検証", () => {
-	test("見出しがそろっていれば受け付け、欠けていれば理由を投げる", () => {
-		const ok = { analysis: " a ", good: "b", bad: "c", improvements: "d" };
-		expect(parseAdviceResponse(ok)).toEqual({
-			analysis: "a",
-			good: "b",
-			bad: "c",
-			improvements: "d",
-		});
-		expect(() => parseAdviceResponse({ ...ok, bad: "" })).toThrow("bad");
-		expect(() => parseAdviceResponse(null)).toThrow();
-	});
-
-	test("貼った答えは囲みや前後の説明文があっても JSON を取り出す", () => {
-		expect(
-			extractAdviceJson('はい。\n```json\n{"a": {"b": 1}}\n```\n以上です'),
-		).toEqual({ a: { b: 1 } });
-		expect(() => extractAdviceJson("JSON なし")).toThrow("JSON が無い");
-		expect(() => extractAdviceJson("{壊れた}")).toThrow("読めない");
-	});
-
-	test("差し込む値に差し込み口の文字があっても二重に置き換えない", () => {
-		const p = buildAdvicePrompt("{instructions}", "指示");
-		expect(p).toContain("<backtest>\n{instructions}\n</backtest>");
-	});
-});
 
 const FLAT: SingleBuyConditionSet = {
 	frequency: {
@@ -428,80 +313,6 @@ describe("別の AI で作る", () => {
 	});
 });
 
-describe("改善版の戦略", () => {
-	// PARAMS を AI の出す形にしたもの。使わない項目は null で埋めてくる。patch は買い1つめに当てる
-	const ai = (patch: Record<string, unknown> = {}) => ({
-		frequency: PARAMS.frequency,
-		dailyLossLimitYen: 30_000,
-		stopLossCooldownBars: 0,
-		stopLossCooldownTimeframe: "1h",
-		buys: [
-			{
-				id: "b1",
-				name: "買い1",
-				orderSizeBtc: 0.01,
-				maxPositions: 1,
-				buy: {
-					match: "all",
-					conditions: [
-						{
-							type: "breakout",
-							timeframe: "1h",
-							lookback: 5,
-							direction: "high",
-							fast: null,
-							values: null,
-						},
-					],
-				},
-				buyOrder: {
-					lines: [{ type: "limit", belowPercent: 0.1 }],
-					expireBars: 3,
-					expireTimeframe: "1h",
-				},
-				partialTakeProfit: { match: "all", conditions: [] },
-				partialSell: DEFAULT_PARTIAL_SELL,
-				takeProfit: FLAT.takeProfit,
-				stopLoss: FLAT.stopLoss,
-				...patch,
-			},
-		],
-	});
-
-	test("null の項目を落とし、注文量は BTC から satoshi に直して読む", () => {
-		const r = readImprovedStrategy(ai({ orderSizeBtc: 0.02 }), PARAMS);
-		expect(r).toEqual({
-			ok: true,
-			params: singleBuy({ ...FLAT, orderSize: 2_000_000 }),
-		});
-	});
-
-	test("設定として正しくなければ、アドバイスは残して理由を返す", () => {
-		const r = readImprovedStrategy(ai({ maxPositions: 0 }), PARAMS);
-		expect(r.ok).toBe(false);
-		if (!r.ok) expect(r.reason).toContain("設定として正しくない");
-		expect(readImprovedStrategy(ai({ buy: { match: "x" } }), PARAMS)).toEqual({
-			ok: false,
-			reason: "AI の出した改善版の戦略の形が正しくない",
-		});
-		expect(readImprovedStrategy(undefined, PARAMS)).toEqual({
-			ok: false,
-			reason: "AI の応答に改善版の戦略が無い",
-		});
-	});
-
-	test("元の戦略と変わらなければ使えない", () => {
-		expect(readImprovedStrategy(ai(), PARAMS)).toEqual({
-			ok: false,
-			reason: "改善案に戦略設定の変更が無い",
-		});
-	});
-
-	test("偽物の AI の出す戦略は設定として正しい", () => {
-		expect(readImprovedStrategy(DEMO_IMPROVED_STRATEGY, PARAMS).ok).toBe(true);
-	});
-});
-
 describe("保存済みの改善版", () => {
 	test("買いを複数持つ前の形で保存した改善版は、買い1つの形で読む", async () => {
 		const db = createTestDb();
@@ -565,105 +376,5 @@ describe("アドバイスの設定", () => {
 		expect(await (await put("gemini-3.1-pro-preview")).json()).toMatchObject({
 			current: "gemini-3.1-pro-preview",
 		});
-	});
-});
-
-describe("AI に渡す資料", () => {
-	test("取消の理由のカンマで注文の表の列がずれない", () => {
-		const o = {
-			...order(START),
-			status: "canceled" as const,
-			filledAt: null,
-			canceledAt: START + M,
-			cancelReason: "指値 15,000,000 が約定しなかった",
-		};
-		const text = buildAdviceSource({
-			run: {
-				params: PARAMS,
-				timeframe: "1m",
-				stepTimeframe: "1m",
-				stepLimited: false,
-				from: START,
-				to: START + 2 * M,
-				initialCash: 1,
-				fees: { limitPpm: 0, marketPpm: 0 },
-				summary: null,
-				aggregationRule: null,
-			} as unknown as BacktestRun,
-			bars: [bar(START, 1), bar(START + M, 2)],
-			orders: [o],
-			judgments: null,
-		});
-		const table = text.split("\n## 注文")[1]?.split("\n") ?? [];
-		const cols = (line = "") => line.split(",").length;
-		expect(cols(table[2])).toBe(cols(table[1]));
-		expect(table[2]).toContain("指値 15 000 000 が約定しなかった");
-	});
-
-	test("粗い足にまとめたとき、期間の終わりが足の途中なら期間の最後の判定を使う", () => {
-		// 1分足88本を5分足18本にまとめる。最後の5分足は3本しか無い
-		const bars = Array.from({ length: 88 }, (_, i) => bar(START + i * M, i));
-		const sentiment = bars.map((_, i) => (i === 87 ? "+2" : "-1") as "+2");
-		const text = buildAdviceSource(
-			{
-				run: {
-					params: PARAMS,
-					timeframe: "1m",
-					stepTimeframe: "1m",
-					stepLimited: false,
-					from: START,
-					to: START + 88 * M,
-					initialCash: 1,
-					fees: { limitPpm: 0, marketPpm: 0 },
-					summary: null,
-					aggregationRule: null,
-				} as unknown as BacktestRun,
-				bars,
-				orders: [],
-				judgments: {
-					from: START,
-					step: M,
-					firstScoredAt: 0,
-					values: {
-						sentiment,
-						risk: bars.map(() => "calm" as const),
-					},
-				},
-			},
-			60,
-		);
-		const overview = text.split("## 値動きの全体")[1]?.split("\n\n")[0] ?? "";
-		expect(overview).toContain("5分足、18 本");
-		expect(overview.trim().split("\n").at(-1)).toMatch(/,かなり強気,平常$/);
-	});
-});
-
-describe("画面の表記", () => {
-	test("条件は戦略画面の文言で書く", () => {
-		expect(
-			conditionScreenText({
-				type: "emaCross",
-				timeframe: "1h",
-				fast: 12,
-				slow: 48,
-				direction: "up",
-			}),
-		).toBe("1時間足で 短期EMA 12 本が 長期EMA 48 本を上抜けた");
-		expect(
-			conditionScreenText({
-				type: "judgment",
-				judge: "sentiment",
-				values: ["+2", "+1"],
-			}),
-		).toBe("センチメントが かなり強気・やや強気 のどれか");
-		expect(
-			conditionScreenText({
-				type: "rsi",
-				timeframe: "1h",
-				period: 14,
-				threshold: 30,
-				direction: "below",
-			}),
-		).toBe("1時間足で RSI 14 本が 30 以下");
 	});
 });

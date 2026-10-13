@@ -1,4 +1,5 @@
-import type { AccuracySettings, AnalysisNewsRow } from "./types-domain";
+import type { Duration } from "@trading-studio/core";
+import type { AccuracySettings } from "./types-domain";
 
 export interface ScoringAnalysisRepository {
 	accuracySettings(): AccuracySettings;
@@ -11,3 +12,25 @@ export interface ScoringAnalysisRepository {
 	/** ID で引く。無い ID は飛ばす。並びは ids の順 */
 	byIds(ids: readonly number[]): AnalysisNewsRow[];
 }
+
+/** ニュースと採点。採点の行が無ければ status は null */
+export type AnalysisNewsRow = {
+	id: number;
+	sourceName: string;
+	language: string;
+	url: string;
+	title: string;
+	summary: string | null;
+	publishedAt: number;
+	fetchedAt: number;
+	status: string | null;
+	risk: number | null;
+	sentiment: number | null;
+	duration: Duration | null;
+	comment: string | null;
+	scoredAt: number | null;
+	criteriaVersion: number | null;
+	model: string | null;
+	appBuiltAt: number | null;
+	error: string | null;
+};

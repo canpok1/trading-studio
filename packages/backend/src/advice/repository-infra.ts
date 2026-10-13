@@ -1,9 +1,8 @@
 import { parseConditionSet } from "@trading-studio/core";
 import type { Db } from "../db/open";
-import type { AdviceRepository } from "./repository-domain";
+import type { AdviceGeneration, AdviceRepository } from "./repository-domain";
 import type {
 	AdviceContent,
-	AdviceGeneration,
 	BacktestAdvice,
 	InstructionsVersion,
 } from "./types-domain";

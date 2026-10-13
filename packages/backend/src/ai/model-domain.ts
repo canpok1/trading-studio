@@ -1,4 +1,4 @@
-// AI のモデルへの問い合わせの型と、モデルの選び方。実装は Gemini 直結（news/gemini.ts）と OpenAI 互換（compatible-infra.ts）
+// AI のモデルへの問い合わせの型と、モデルの選び方。実装は Gemini 直結（news/gemini-infra.ts）と OpenAI 互換（compatible-infra.ts）
 
 /** Gemini の構造化出力の形（responseSchema の書き方） */
 export type ResponseSchema = Record<string, unknown>;

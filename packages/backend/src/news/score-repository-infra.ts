@@ -10,12 +10,14 @@ import {
 } from "@trading-studio/core";
 import type { Db } from "../db/open";
 import type { ScoreResponse } from "./prompt-domain";
-import type { ScoreRepository } from "./score-repository-domain";
+import type {
+	NextToRescore,
+	NextToScore,
+	ScoreRepository,
+} from "./score-repository-domain";
 import type {
 	CriteriaVersion,
 	NewsScore,
-	NextToRescore,
-	NextToScore,
 	RescoreCoverage,
 } from "./types-domain";
 

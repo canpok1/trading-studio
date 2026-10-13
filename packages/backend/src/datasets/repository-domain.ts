@@ -1,11 +1,10 @@
-import type { DatasetSummary } from "@trading-studio/core";
-import type { RunFilter } from "../backtests/types-domain";
 import type {
-	DatasetRun,
-	HistoryResult,
-	StoredDataset,
-	StoredDatasetInput,
-} from "./types-domain";
+	ConditionSet,
+	DatasetSummary,
+	FeeRates,
+} from "@trading-studio/core";
+import type { RunFilter } from "../backtests/types-domain";
+import type { DatasetRun, HistoryResult } from "./types-domain";
 
 export interface DatasetRepository {
 	list(): StoredDataset[];
@@ -37,3 +36,19 @@ export interface DatasetRepository {
 	/** 単独の実行とまとめた実行を合わせて並べる。並びと絞り込みは RunFilter の意味に合わせる */
 	history({ limit, q, hideFailed, sort }?: Partial<RunFilter>): HistoryResult;
 }
+
+export type StoredDataset = {
+	id: number;
+	name: string;
+	segmentIds: number[];
+	createdAt: number;
+	updatedAt: number;
+};
+
+export type StoredDatasetInput = {
+	params: ConditionSet;
+	initialCash: number;
+	fees: FeeRates;
+	skipGaps: boolean;
+	criteriaVersion: number | null;
+};

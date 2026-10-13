@@ -13,10 +13,9 @@ import {
 	extractAdviceJson,
 	parseAdviceResponse,
 } from "./prompt-domain";
-import type { AdviceRepository } from "./repository-domain";
+import type { AdviceGeneration, AdviceRepository } from "./repository-domain";
 import type {
 	AdviceContent,
-	AdviceGeneration,
 	AdviceService,
 	BacktestAdvice,
 } from "./types-domain";

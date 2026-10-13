@@ -273,15 +273,3 @@ export type FeedItem = {
 	/** 公開時刻。無いか読めなければ null */
 	publishedAt: number | null;
 };
-
-export type NextToScore = {
-	id: number;
-	sourceName: string;
-	title: string;
-	summary: string | null;
-	publishedAt: number;
-	fetchedAt: number;
-	attempts: number;
-};
-
-export type NextToRescore = NextToScore & { criteriaVersion: number };

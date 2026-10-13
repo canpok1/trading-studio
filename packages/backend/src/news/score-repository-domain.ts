@@ -3,8 +3,6 @@ import type { ScoreResponse } from "./prompt-domain";
 import type {
 	CriteriaVersion,
 	NewsScore,
-	NextToRescore,
-	NextToScore,
 	RescoreCoverage,
 } from "./types-domain";
 
@@ -135,3 +133,15 @@ export interface ScoreRepository {
 	/** 最初に採点した時刻。古いニュースを消した後の記録の始まりは judgmentRecordStart で求める */
 	firstScoredAt(): number | null;
 }
+
+export type NextToScore = {
+	id: number;
+	sourceName: string;
+	title: string;
+	summary: string | null;
+	publishedAt: number;
+	fetchedAt: number;
+	attempts: number;
+};
+
+export type NextToRescore = NextToScore & { criteriaVersion: number };

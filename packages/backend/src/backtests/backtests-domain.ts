@@ -41,38 +41,55 @@ const MAX_FEE_PPM = 100_000;
 const isObj = (v: unknown): v is Record<string, unknown> =>
 	typeof v === "object" && v !== null;
 
-const num = (v: unknown) => (typeof v === "number" ? v : Number.NaN);
+export const num = (v: unknown) => (typeof v === "number" ? v : Number.NaN);
 
-/** 実行条件の入力の形を確かめる。形が違えば null（値の範囲は start で確かめる） */
-export function parseBacktestInput(v: unknown): BacktestInput | null {
+/** 単体の実行とまとめた実行で共通の実行条件の入力の形を確かめる。形が違えば null（値の範囲は start で確かめる） */
+export function parseRunConditions(v: unknown) {
 	const params = parseConditionSet(isObj(v) ? v.params : null);
 	if (!isObj(v) || !params || !isObj(v.fees)) return null;
-	const input: BacktestInput = {
-		name: typeof v.name === "string" ? v.name : "",
-		params,
+	return {
+		v,
+		conditions: {
+			name: typeof v.name === "string" ? v.name : "",
+			params,
+			initialCash: num(v.initialCash),
+			fees: {
+				limitPpm: num(v.fees.limitPpm),
+				marketPpm: num(v.fees.marketPpm),
+			},
+			skipGaps: v.skipGaps === true,
+			criteriaVersion:
+				v.criteriaVersion === undefined || v.criteriaVersion === null
+					? null
+					: num(v.criteriaVersion),
+		},
+	};
+}
+
+/** 実行条件の入力の形を確かめる。形が違えば null */
+export function parseBacktestInput(input: unknown): BacktestInput | null {
+	const r = parseRunConditions(input);
+	if (!r) return null;
+	const { v, conditions } = r;
+	return {
+		...conditions,
 		from: num(v.from),
 		to: num(v.to),
-		initialCash: num(v.initialCash),
-		fees: {
-			limitPpm: num(v.fees.limitPpm),
-			marketPpm: num(v.fees.marketPpm),
-		},
-		skipGaps: v.skipGaps === true,
-		criteriaVersion:
-			v.criteriaVersion === undefined || v.criteriaVersion === null
-				? null
-				: num(v.criteriaVersion),
 		segmentId:
 			v.segmentId === undefined || v.segmentId === null
 				? null
 				: num(v.segmentId),
 	};
-	return input;
 }
 
-/** 結果のチャートの足の粒度の入力。粒度でなければ null */
-export const parseChartTimeframe = (v: unknown): Timeframe | null =>
-	isTimeframe(v) ? v : null;
+/** 結果のチャートの足の粒度の入力を確かめる */
+export function parseChartQuery(
+	q: Record<string, unknown>,
+): { ok: true; timeframe: Timeframe } | { ok: false; message: string } {
+	return isTimeframe(q.timeframe)
+		? { ok: true, timeframe: q.timeframe }
+		: { ok: false, message: "足の粒度を選ぶ" };
+}
 
 export type BacktestServiceDeps = {
 	repo: BacktestRepository;

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { compress } from "hono/compress";
 import { validator } from "hono/validator";
 import type { DatasetService } from "../datasets/types-domain";
-import { parseBacktestInput, parseChartTimeframe } from "./backtests-domain";
+import { parseBacktestInput, parseChartQuery } from "./backtests-domain";
 import type { BacktestService, OrderFilter, RunFilter } from "./types-domain";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -132,9 +132,9 @@ export function backtestRoutes(
 				"/:id/chart",
 				compress(),
 				validator("query", (q, c) => {
-					const timeframe = parseChartTimeframe(q.timeframe);
-					if (!timeframe) return c.json({ message: "足の粒度を選ぶ" }, 400);
-					return { timeframe };
+					const r = parseChartQuery(q);
+					if (!r.ok) return c.json({ message: r.message }, 400);
+					return { timeframe: r.timeframe };
 				}),
 				(c) => {
 					const r = service.chart(

@@ -3,10 +3,10 @@
 import type { DatasetMember } from "@trading-studio/core";
 import {
 	MAX_DATASET_SEGMENTS,
-	parseConditionSet,
 	summarizeDataset,
 	validateConditionSet,
 } from "@trading-studio/core";
+import { num, parseRunConditions } from "../backtests/backtests-domain";
 import type { BacktestRepository } from "../backtests/repository-domain";
 import type {
 	BacktestRun,
@@ -15,7 +15,7 @@ import type {
 } from "../backtests/types-domain";
 import type { Segment, SegmentService } from "../segments/types-domain";
 import { checkName } from "../strategies/strategies-domain";
-import type { DatasetRepository } from "./repository-domain";
+import type { DatasetRepository, StoredDataset } from "./repository-domain";
 import type {
 	Dataset,
 	DatasetBlocker,
@@ -26,7 +26,6 @@ import type {
 	SaveDatasetResult,
 	StartDatasetFailure,
 	StartDatasetResult,
-	StoredDataset,
 } from "./types-domain";
 
 export type DatasetServiceDeps = {
@@ -58,30 +57,10 @@ function commonError(e: StartBacktestFailure): StartDatasetFailure | null {
 	}
 }
 
-const isObj = (v: unknown): v is Record<string, unknown> =>
-	typeof v === "object" && v !== null;
-const num = (v: unknown) => (typeof v === "number" ? v : Number.NaN);
-
 /** まとめた実行の条件の入力の形を確かめる。形が違えば null（値の範囲は start で確かめる） */
-export function parseDatasetRunInput(v: unknown): DatasetRunInput | null {
-	const params = parseConditionSet(isObj(v) ? v.params : null);
-	if (!isObj(v) || !params || !isObj(v.fees)) return null;
-	const input: DatasetRunInput = {
-		datasetId: num(v.datasetId),
-		name: typeof v.name === "string" ? v.name : "",
-		params,
-		initialCash: num(v.initialCash),
-		fees: {
-			limitPpm: num(v.fees.limitPpm),
-			marketPpm: num(v.fees.marketPpm),
-		},
-		skipGaps: v.skipGaps === true,
-		criteriaVersion:
-			v.criteriaVersion === undefined || v.criteriaVersion === null
-				? null
-				: num(v.criteriaVersion),
-	};
-	return input;
+export function parseDatasetRunInput(input: unknown): DatasetRunInput | null {
+	const r = parseRunConditions(input);
+	return r ? { datasetId: num(r.v.datasetId), ...r.conditions } : null;
 }
 
 export function createDatasetService({

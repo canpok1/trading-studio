@@ -1,6 +1,5 @@
 import type {
 	AdviceContent,
-	AdviceGeneration,
 	BacktestAdvice,
 	InstructionsVersion,
 } from "./types-domain";
@@ -39,3 +38,10 @@ export interface AdviceRepository {
 	/** サーバーが止まって生成中のまま残ったものを失敗にする */
 	failInterrupted(): number;
 }
+
+/** アドバイスを作ったときの条件。結果と一緒に残す */
+export type AdviceGeneration = {
+	model: string;
+	instructionsVersion: number;
+	appBuiltAt: number | null;
+};
