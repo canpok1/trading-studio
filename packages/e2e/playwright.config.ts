@@ -4,7 +4,7 @@ import { defineConfig, devices } from "@playwright/test";
 const port = Number(process.env.E2E_PORT ?? 3100);
 
 export default defineConfig({
-	testDir: "e2e",
+	testDir: "src",
 	// bun test に拾われないよう *.e2e.ts にする
 	testMatch: "**/*.e2e.ts",
 	fullyParallel: false,
@@ -40,7 +40,7 @@ export default defineConfig({
 		},
 	],
 	webServer: {
-		command: "bun e2e/server.ts",
+		command: "bun src/server.ts",
 		url: `http://127.0.0.1:${port}/api/health`,
 		reuseExistingServer: false,
 		env: { PORT: String(port) },

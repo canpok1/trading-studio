@@ -6,7 +6,6 @@
       "name": "trading-studio",
       "devDependencies": {
         "@biomejs/biome": "^2.5.14",
-        "@playwright/test": "^1.63.0",
         "@swc/core": "^1.16.2",
         "@types/bun": "^1.4.2",
         "dependency-cruiser": "^18.4.0",
@@ -28,6 +27,12 @@
     },
     "packages/core": {
       "name": "@trading-studio/core",
+    },
+    "packages/e2e": {
+      "name": "@trading-studio/e2e",
+      "devDependencies": {
+        "@playwright/test": "^1.63.0",
+      },
     },
     "packages/frontend": {
       "name": "@trading-studio/frontend",
@@ -258,6 +263,8 @@
     "@trading-studio/backend": ["@trading-studio/backend@workspace:packages/backend"],
 
     "@trading-studio/core": ["@trading-studio/core@workspace:packages/core"],
+
+    "@trading-studio/e2e": ["@trading-studio/e2e@workspace:packages/e2e"],
 
     "@trading-studio/frontend": ["@trading-studio/frontend@workspace:packages/frontend"],
 

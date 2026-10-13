@@ -114,9 +114,9 @@ dist
 .tern-port
 
 # E2E
-/.e2e-data/
-/test-results/
-/playwright-report/
+/packages/e2e/.e2e-data/
+/packages/e2e/test-results/
+/packages/e2e/playwright-report/
 
 # アプリのバージョン（Docker のビルドで書き出す）
 /BUILT_AT
