@@ -35,6 +35,29 @@ module.exports = {
 			to: { path: "^packages/frontend/" },
 		},
 		{
+			name: "backend-domain-not-to-app-infra",
+			comment:
+				"ドメイン層はアプリケーション層・インフラ層に依存しない。インフラの実装はドメインに置いた型（インターフェース）越しに使う（docs/adr/0028）",
+			severity: "error",
+			from: { path: "^packages/backend/src/.+-domain\\.ts$" },
+			to: { path: "^packages/backend/src/(.+-(app|infra)\\.ts|[^/]+\\.ts)$" },
+		},
+		{
+			name: "backend-infra-not-to-app",
+			comment: "インフラ層はアプリケーション層に依存しない（docs/adr/0028）",
+			severity: "error",
+			from: { path: "^packages/backend/src/.+-infra\\.ts$" },
+			to: { path: "^packages/backend/src/(.+-app\\.ts|[^/]+\\.ts)$" },
+		},
+		{
+			name: "backend-app-not-to-core",
+			comment:
+				"アプリケーション層は core を直接呼ばず、ドメインの手順を通す。型だけの import は呼び出しではないので許す（docs/adr/0028）",
+			severity: "error",
+			from: { path: "^packages/backend/src/(.+-app\\.ts|main\\.ts|app\\.ts)$" },
+			to: { path: "^packages/core/", dependencyTypesNot: ["type-only"] },
+		},
+		{
 			name: "no-circular",
 			comment: "変更の影響範囲を追えなくなるため",
 			severity: "error",

@@ -11,11 +11,12 @@ BTC/JPY の自動売買を、戦略の作成・バックテスト・デモ・リ
 | `bun run build` | frontend をビルドする（`packages/frontend/dist`） |
 | `bun run start` | backend だけを起動し、API とビルド済みの画面を配信する |
 | `bun run db:generate` | `packages/backend/src/db/schema.ts` の変更からマイグレーションの SQL を作る。サーバー起動時に自動で適用される |
-| `bun run check` | 以下の4つをまとめて実行する（CI と同じ） |
+| `bun run check` | 以下の5つをまとめて実行する（CI と同じ） |
 | `bun run lint` | Biome の lint と format の検査。`bun run format` で自動修正 |
 | `bun run typecheck` | 型チェック（ルートと各パッケージ） |
 | `bun run test` | `bun test`（Small と Medium の両方） |
 | `bun run depcruise` | 依存の向きの検査 |
+| `bun run layers` | backend のファイル名が層の構成（`.claude/rules/backend.md`）に沿っているかの検査 |
 | `bun run test:small` / `bun run test:medium` | テストサイズごとに `bun test` を流す。サイズの定義とファイル名の付け方は `docs/testing.md` |
 | `bun run test:e2e` | 画面をビルドし、テスト用 DB で backend を起動して Playwright の E2E（`e2e/*.e2e.ts`）を流す。Claude Code on the web では `PLAYWRIGHT_CHROMIUM_PATH=/opt/pw-browsers/chromium` を付ける |
 

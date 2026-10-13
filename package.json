@@ -17,7 +17,8 @@
 		"test:small": "bun test --pass-with-no-tests --path-ignore-patterns='**/*.medium.test.*'",
 		"test:medium": "bun test --pass-with-no-tests .medium.test",
 		"depcruise": "depcruise packages",
-		"check": "bun run lint && bun run typecheck && bun run test && bun run depcruise",
+		"layers": "bun scripts/check-backend-layers.ts",
+		"check": "bun run lint && bun run typecheck && bun run test && bun run depcruise && bun run layers",
 		"test:e2e": "bun run build && playwright test"
 	},
 	"devDependencies": {
