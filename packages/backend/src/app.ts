@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import type { AdviceService } from "./advice/types";
+import { adviceRoutes } from "./advice/advice-app";
+import type { AdviceService } from "./advice/types-domain";
 import { aiRoutes } from "./ai/ai-app";
 import type { CompatibleService } from "./ai/types-domain";
 import type { AnalysisExportService } from "./analysis-export/types";
@@ -15,7 +16,6 @@ import type { MarketDataService } from "./market-data/types-domain";
 import type { NewsService, ScoringService } from "./news/types";
 import { retentionRoutes } from "./retention/retention-app";
 import type { RetentionService } from "./retention/types-domain";
-import { adviceRoutes } from "./routes/advice";
 import { datasetRoutes, datasetRunRoutes } from "./routes/datasets";
 import { exportRoutes } from "./routes/export";
 import { newsRoutes } from "./routes/news";

@@ -1,12 +1,14 @@
 // テスト用。メモリ上の DB で本物のサービスをつないだ app を作る
-import { demoAdviceModel } from "./advice/fake-model";
-import { DEFAULT_INSTRUCTIONS } from "./advice/prompt";
-import { AdviceRepository } from "./advice/repository";
-import { createAdviceService } from "./advice/service";
+
+import { createAdviceService } from "./advice/advice-domain";
+import { demoAdviceModel } from "./advice/fake-model-infra";
+import { DEFAULT_INSTRUCTIONS } from "./advice/prompt-domain";
+import { SqliteAdviceRepository } from "./advice/repository-infra";
 import { createCompatibleService } from "./ai/ai-domain";
 import { SqliteCompatibleRepository } from "./ai/compatible-infra";
 import { demoCompatibleModels } from "./ai/fake-models-infra";
 import type { GeminiModel } from "./ai/model-domain";
+import { DEFAULT_SCORING_MODEL } from "./ai/model-domain";
 import { AnalysisExportRepository } from "./analysis-export/repository";
 import { createAnalysisExportService } from "./analysis-export/service";
 import type { AppDeps } from "./app";
@@ -27,7 +29,6 @@ import { createMarketDataService } from "./market-data/market-data-domain";
 import { SqliteMarketDataRepository } from "./market-data/repository-infra";
 import { newsDelayMs } from "./news/collector";
 import { demoScoreModel } from "./news/fake-model";
-import { DEFAULT_SCORING_MODEL } from "./news/gemini";
 import { DEFAULT_CRITERIA } from "./news/prompt";
 import { NewsRepository } from "./news/repository";
 import { ScoreRepository } from "./news/score-repository";
@@ -145,7 +146,7 @@ export function createTestApp(
 		segments,
 		now: () => 3_000,
 	});
-	const adviceRepo = new AdviceRepository(db);
+	const adviceRepo = new SqliteAdviceRepository(db);
 	adviceRepo.seedInstructions(DEFAULT_INSTRUCTIONS, 0);
 	// テストから偽物の AI を差し替える
 	const adviceAi: { model: GeminiModel } = { model: demoAdviceModel() };

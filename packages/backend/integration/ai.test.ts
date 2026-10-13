@@ -1,6 +1,6 @@
 /** @module-tag medium */
 import { afterAll, describe, expect, test } from "bun:test";
-import { ADVICE_RESPONSE_SCHEMA } from "../src/advice/prompt";
+import { ADVICE_RESPONSE_SCHEMA } from "../src/advice/prompt-domain";
 import {
 	compatibleModel,
 	fetchCompatibleModels,

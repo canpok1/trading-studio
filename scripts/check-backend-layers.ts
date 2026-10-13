@@ -13,7 +13,6 @@ const ROOT_FILES = new Set(["main.ts", "app.ts", "index.ts"]);
  * Issue #201 で機能ごとに移し、移したらここから外す
  */
 export const NOT_MIGRATED = [
-	"advice/",
 	"analysis-export/",
 	"collector/",
 	"datasets/",

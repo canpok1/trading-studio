@@ -12,18 +12,22 @@ import {
 	singleBuy,
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
-import type { BacktestRun } from "../backtests/types-domain";
-import { createTestDb } from "../db/test-db";
-import { createTestApp } from "../test-app";
-import { DEMO_IMPROVED_STRATEGY } from "./fake-model";
-import { readImprovedStrategy } from "./improved";
-import { aggregateBars, buildAdviceSource, selectBars } from "./input";
+import { DEMO_IMPROVED_STRATEGY } from "../src/advice/fake-model-infra";
+import { readImprovedStrategy } from "../src/advice/improved-domain";
+import {
+	aggregateBars,
+	buildAdviceSource,
+	selectBars,
+} from "../src/advice/input-domain";
 import {
 	buildAdvicePrompt,
 	extractAdviceJson,
 	parseAdviceResponse,
-} from "./prompt";
-import type { BacktestAdvice } from "./types";
+} from "../src/advice/prompt-domain";
+import type { BacktestAdvice } from "../src/advice/types-domain";
+import type { BacktestRun } from "../src/backtests/types-domain";
+import { createTestDb } from "../src/db/test-db";
+import { createTestApp } from "../src/test-app";
 
 const M = TIMEFRAME_MS["1m"];
 const H = TIMEFRAME_MS["1h"];

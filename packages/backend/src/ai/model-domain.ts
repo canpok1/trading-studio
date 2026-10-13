@@ -16,6 +16,14 @@ export type GeminiModel = {
 /** 採点に使うモデル。名前は採点の側から見たもの */
 export type ScoreModel = GeminiModel;
 
+/** 画面で選べるモデル（docs/adr/0008）。先頭が既定 */
+export const SCORING_MODELS = [
+	{ id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite" },
+	{ id: "gemini-3.8-flash", label: "Gemini 3.8 Flash" },
+	{ id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro（プレビュー）" },
+] as const;
+export const DEFAULT_SCORING_MODEL = SCORING_MODELS[0].id;
+
 export type CompatibleConnection = { baseUrl: string; apiKey: string | null };
 
 /** OpenAI 互換の接続先のモデルに付ける印。Gemini 直結のモデル名と区別し、記録にもこの形で残す */

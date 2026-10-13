@@ -4,7 +4,7 @@ export type {
 	BacktestAdvice,
 	ImprovedStrategy,
 	InstructionsVersion,
-} from "./advice/types";
+} from "./advice/types-domain";
 export type {
 	CompatibleConnectionStatus,
 	CompatibleModelsResult,

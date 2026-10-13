@@ -3,7 +3,7 @@
 import type { AggregationRule } from "@trading-studio/core";
 import { maxWindowMs } from "@trading-studio/core";
 import type { ScoreModel } from "../ai/model-domain";
-import { DEFAULT_SCORING_MODEL } from "./gemini";
+import { DEFAULT_SCORING_MODEL } from "../ai/model-domain";
 import type { PromptNews, ScoreResponse } from "./prompt";
 import { buildPrompt, parseScoreResponse, RESPONSE_SCHEMA } from "./prompt";
 import type { ScoreRepository } from "./score-repository";

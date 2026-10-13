@@ -1,10 +1,12 @@
 import { parseConditionSet } from "@trading-studio/core";
 import type { Db } from "../db/open";
+import type { AdviceRepository } from "./repository-domain";
 import type {
 	AdviceContent,
+	AdviceGeneration,
 	BacktestAdvice,
 	InstructionsVersion,
-} from "./types";
+} from "./types-domain";
 
 type AdviceRow = {
 	run_id: number;
@@ -61,13 +63,7 @@ const toInstructions = (r: InstructionsRow): InstructionsVersion => ({
 const ACTIVE_INSTRUCTIONS_KEY = "advice_instructions_active";
 const MODEL_KEY = "advice_model";
 
-export type AdviceGeneration = {
-	model: string;
-	instructionsVersion: number;
-	appBuiltAt: number | null;
-};
-
-export class AdviceRepository {
+export class SqliteAdviceRepository implements AdviceRepository {
 	constructor(private readonly db: Db) {}
 
 	private get sql() {

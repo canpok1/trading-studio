@@ -1,11 +1,10 @@
 import { conditionStrategy } from "@trading-studio/core";
 import type { GeminiModel } from "../ai/model-domain";
-import { isSelectableModel } from "../ai/model-domain";
+import { isSelectableModel, SCORING_MODELS } from "../ai/model-domain";
 import type { BacktestRepository } from "../backtests/repository-domain";
 import type { BacktestService } from "../backtests/types-domain";
-import { SCORING_MODELS } from "../news/gemini";
-import { readImprovedStrategy } from "./improved";
-import { buildAdviceSource } from "./input";
+import { readImprovedStrategy } from "./improved-domain";
+import { buildAdviceSource } from "./input-domain";
 import {
 	ADVICE_RESPONSE_SCHEMA,
 	ADVICE_TEMPLATE,
@@ -13,9 +12,14 @@ import {
 	buildExternalAdvice,
 	extractAdviceJson,
 	parseAdviceResponse,
-} from "./prompt";
-import type { AdviceGeneration, AdviceRepository } from "./repository";
-import type { AdviceContent, AdviceService, BacktestAdvice } from "./types";
+} from "./prompt-domain";
+import type { AdviceRepository } from "./repository-domain";
+import type {
+	AdviceContent,
+	AdviceGeneration,
+	AdviceService,
+	BacktestAdvice,
+} from "./types-domain";
 
 /** 選べるモデルは採点と同じ。分析は採点より重いので、既定は Flash にする */
 export const ADVICE_MODELS = SCORING_MODELS;

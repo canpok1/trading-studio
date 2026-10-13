@@ -14,7 +14,7 @@ import {
 	validateConditionSet,
 } from "@trading-studio/core";
 import type { ResponseSchema } from "../ai/model-domain";
-import type { ImprovedStrategy } from "./types";
+import type { ImprovedStrategy } from "./types-domain";
 
 const str = (description: string, values?: readonly string[]) => ({
 	type: "STRING",

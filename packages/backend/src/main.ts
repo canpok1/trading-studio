@@ -2,10 +2,10 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
-import { demoAdviceModel } from "./advice/fake-model";
-import { DEFAULT_INSTRUCTIONS } from "./advice/prompt";
-import { AdviceRepository } from "./advice/repository";
-import { createAdviceService } from "./advice/service";
+import { createAdviceService } from "./advice/advice-domain";
+import { demoAdviceModel } from "./advice/fake-model-infra";
+import { DEFAULT_INSTRUCTIONS } from "./advice/prompt-domain";
+import { SqliteAdviceRepository } from "./advice/repository-infra";
 import { createCompatibleService } from "./ai/ai-domain";
 import {
 	compatibleModel,
@@ -14,7 +14,7 @@ import {
 	SqliteCompatibleRepository,
 } from "./ai/compatible-infra";
 import { demoCompatibleModels } from "./ai/fake-models-infra";
-import { isCompatibleModel } from "./ai/model-domain";
+import { DEFAULT_SCORING_MODEL, isCompatibleModel } from "./ai/model-domain";
 import { AnalysisExportRepository } from "./analysis-export/repository";
 import { createAnalysisExportService } from "./analysis-export/service";
 import { createApp } from "./app";
@@ -40,7 +40,7 @@ import {
 } from "./news/collector";
 import { demoFetchFeed } from "./news/fake-feed";
 import { demoScoreModel } from "./news/fake-model";
-import { DEFAULT_SCORING_MODEL, geminiModel } from "./news/gemini";
+import { geminiModel } from "./news/gemini";
 import { DEFAULT_CRITERIA } from "./news/prompt";
 import { NewsRepository } from "./news/repository";
 import { ScoreRepository } from "./news/score-repository";
@@ -224,7 +224,7 @@ const datasets = createDatasetService({
 	backtests,
 	segments,
 });
-const adviceRepo = new AdviceRepository(db);
+const adviceRepo = new SqliteAdviceRepository(db);
 adviceRepo.failInterrupted();
 adviceRepo.seedInstructions(DEFAULT_INSTRUCTIONS, Date.now());
 // E2E でアドバイスの失敗を再現するためのファイル。あれば偽物の AI が失敗する

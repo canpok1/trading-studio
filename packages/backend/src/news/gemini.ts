@@ -2,14 +2,6 @@
 
 import type { GeminiModel } from "../ai/model-domain";
 
-/** 画面で選べるモデル（docs/adr/0008）。先頭が既定 */
-export const SCORING_MODELS = [
-	{ id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite" },
-	{ id: "gemini-3.8-flash", label: "Gemini 3.8 Flash" },
-	{ id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro（プレビュー）" },
-] as const;
-export const DEFAULT_SCORING_MODEL = SCORING_MODELS[0].id;
-
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 const TIMEOUT_MS = 60_000;
 

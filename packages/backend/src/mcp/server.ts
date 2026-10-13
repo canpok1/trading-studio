@@ -43,7 +43,7 @@ import {
 } from "@trading-studio/core";
 import { Hono } from "hono";
 import * as z from "zod";
-import type { AdviceService } from "../advice/types";
+import type { AdviceService } from "../advice/types-domain";
 import type {
 	BacktestRun,
 	BacktestService,
