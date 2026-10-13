@@ -1,12 +1,12 @@
-// MCP の道具のうち、advice の機能のもの。サーバーへの登録は mcp/mcp-app.ts
+// MCP の道具のうち、advice の機能のもの
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod";
-import type { McpDeps } from "../mcp/tool-app";
+import type { ToolDeps } from "../mcp/tool-app";
 import { readOnly, text } from "../mcp/tool-app";
 import { jst } from "../mcp/views-domain";
 
-export function registerAdviceTools(server: McpServer, { advice }: McpDeps) {
+export function registerAdviceTools(server: McpServer, { advice }: ToolDeps) {
 	server.registerTool(
 		"get_backtest_advice",
 		{

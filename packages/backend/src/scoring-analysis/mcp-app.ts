@@ -1,14 +1,14 @@
-// MCP の道具のうち、scoring-analysis の機能のもの。サーバーへの登録は mcp/mcp-app.ts
+// MCP の道具のうち、scoring-analysis の機能のもの
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod";
-import type { McpDeps } from "../mcp/tool-app";
+import type { ToolDeps } from "../mcp/tool-app";
 import { atSchema, atTime, fail, readOnly, text } from "../mcp/tool-app";
 import { analysisView, jst, parseTime } from "../mcp/views-domain";
 
 export function registerScoringAnalysisTools(
 	server: McpServer,
-	{ accuracy }: McpDeps,
+	{ accuracy }: ToolDeps,
 ) {
 	server.registerTool(
 		"get_market_evaluation_analysis",

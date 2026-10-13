@@ -1,13 +1,13 @@
-// MCP の道具のうち、market-data の機能のもの。サーバーへの登録は mcp/mcp-app.ts
+// MCP の道具のうち、market-data の機能のもの
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { McpDeps } from "../mcp/tool-app";
+import type { ToolDeps } from "../mcp/tool-app";
 import { readOnly, text } from "../mcp/tool-app";
 import { jst } from "../mcp/views-domain";
 
 export function registerMarketDataTools(
 	server: McpServer,
-	{ marketData }: McpDeps,
+	{ marketData }: ToolDeps,
 ) {
 	server.registerTool(
 		"get_data_coverage",

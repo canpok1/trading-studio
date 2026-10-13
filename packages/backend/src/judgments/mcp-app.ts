@@ -1,15 +1,15 @@
-// MCP の道具のうち、judgments の機能のもの。サーバーへの登録は mcp/mcp-app.ts
+// MCP の道具のうち、judgments の機能のもの
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod";
-import type { McpDeps } from "../mcp/tool-app";
+import type { ToolDeps } from "../mcp/tool-app";
 import { atSchema, atTime, fail, readOnly, text } from "../mcp/tool-app";
 import { evaluationView, jst, resultsView } from "../mcp/views-domain";
 import { parseRuleInput } from "./judgments-domain";
 
 export function registerJudgmentTools(
 	server: McpServer,
-	{ judgments }: McpDeps,
+	{ judgments }: ToolDeps,
 ) {
 	server.registerTool(
 		"get_market_evaluation",

@@ -1,12 +1,15 @@
-// MCP の道具のうち、segments の機能のもの。サーバーへの登録は mcp/mcp-app.ts
+// MCP の道具のうち、segments の機能のもの
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { regimeSchema } from "../mcp/schemas-domain";
-import type { McpDeps } from "../mcp/tool-app";
+import type { ToolDeps } from "../mcp/tool-app";
 import { readOnly, text } from "../mcp/tool-app";
 import { segmentView } from "../mcp/views-domain";
 
-export function registerSegmentTools(server: McpServer, { segments }: McpDeps) {
+export function registerSegmentTools(
+	server: McpServer,
+	{ segments }: ToolDeps,
+) {
 	server.registerTool(
 		"list_segments",
 		{

@@ -1,8 +1,8 @@
-// MCP の道具のうち、strategies の機能のもの。サーバーへの登録は mcp/mcp-app.ts
+// MCP の道具のうち、strategies の機能のもの
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod";
-import type { McpDeps } from "../mcp/tool-app";
+import type { ToolDeps } from "../mcp/tool-app";
 import { fail, paramsSchema, readOnly, text } from "../mcp/tool-app";
 import { strategyView } from "../mcp/views-domain";
 import { conditionSetGuide } from "./guide-domain";
@@ -25,7 +25,7 @@ function strategyFailure(
 
 export function registerStrategyTools(
 	server: McpServer,
-	{ strategies, inUse }: McpDeps,
+	{ strategies, inUse }: ToolDeps,
 ) {
 	server.registerTool(
 		"get_guide",

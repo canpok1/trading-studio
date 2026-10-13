@@ -1,9 +1,9 @@
-// MCP の道具のうち、news の機能のもの。サーバーへの登録は mcp/mcp-app.ts
+// MCP の道具のうち、news の機能のもの
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod";
 import { durationSchema } from "../mcp/schemas-domain";
-import type { McpDeps } from "../mcp/tool-app";
+import type { ToolDeps } from "../mcp/tool-app";
 import { fail, readOnly, text } from "../mcp/tool-app";
 import { jst, newsView, parseTime } from "../mcp/views-domain";
 import {
@@ -15,7 +15,7 @@ import {
 
 export function registerNewsTools(
 	server: McpServer,
-	{ scoring, news, judgments, accuracy }: McpDeps,
+	{ scoring, news, judgments, accuracy }: ToolDeps,
 ) {
 	server.registerTool(
 		"get_scoring_setup",

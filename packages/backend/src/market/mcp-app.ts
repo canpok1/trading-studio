@@ -1,9 +1,9 @@
-// MCP の道具のうち、market の機能のもの。サーバーへの登録は mcp/mcp-app.ts
+// MCP の道具のうち、market の機能のもの
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod";
 import { timeframeSchema } from "../mcp/schemas-domain";
-import type { McpDeps } from "../mcp/tool-app";
+import type { ToolDeps } from "../mcp/tool-app";
 import { fail, readOnly, text } from "../mcp/tool-app";
 import { barsView, jst } from "../mcp/views-domain";
 
@@ -12,7 +12,7 @@ export const BARS_MAX = 2_000;
 
 export function registerMarketTools(
 	server: McpServer,
-	{ judgments, market }: McpDeps,
+	{ judgments, market }: ToolDeps,
 ) {
 	server.registerTool(
 		"get_market_price",

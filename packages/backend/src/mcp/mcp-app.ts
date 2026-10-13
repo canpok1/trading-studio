@@ -16,9 +16,15 @@ import { registerScoringAnalysisTools } from "../scoring-analysis/mcp-app";
 import { registerSegmentTools } from "../segments/mcp-app";
 import { registerStrategyTools } from "../strategies/mcp-app";
 import { registerTradingTools } from "../trading/mcp-app";
-import type { McpDeps } from "./tool-app";
+import type { McpDeps, ToolDeps } from "./tool-app";
+import { BACKTEST_WAIT_MS } from "./tool-app";
 
-function createServer(deps: McpDeps) {
+function createServer(input: McpDeps) {
+	const deps: ToolDeps = {
+		...input,
+		backtestWaitMs: input.backtestWaitMs ?? BACKTEST_WAIT_MS,
+		sleep: input.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))),
+	};
 	const server = new McpServer(
 		{ name: "trading-studio", version: "1.0.0" },
 		{
@@ -35,9 +41,9 @@ function createServer(deps: McpDeps) {
 	registerDatasetTools(server, deps);
 	registerTradingTools(server, deps);
 	registerMarketTools(server, deps);
+	registerNewsTools(server, deps);
 	registerJudgmentTools(server, deps);
 	registerScoringAnalysisTools(server, deps);
-	registerNewsTools(server, deps);
 	return server;
 }
 

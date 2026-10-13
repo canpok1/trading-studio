@@ -1,17 +1,11 @@
-// MCP の道具のうち、backtests の機能のもの。サーバーへの登録は mcp/mcp-app.ts
+// MCP の道具のうち、backtests の機能のもの
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ConditionSet } from "@trading-studio/core";
 import * as z from "zod";
 import { feeSchema } from "../mcp/schemas-domain";
-import type { McpDeps } from "../mcp/tool-app";
-import {
-	BACKTEST_WAIT_MS,
-	fail,
-	paramsSchema,
-	readOnly,
-	text,
-} from "../mcp/tool-app";
+import type { ToolDeps } from "../mcp/tool-app";
+import { fail, paramsSchema, readOnly, text } from "../mcp/tool-app";
 import {
 	datasetRunView,
 	jst,
@@ -61,13 +55,7 @@ function startFailure(e: StartBacktestFailure) {
 
 export function registerBacktestTools(
 	server: McpServer,
-	{
-		strategies,
-		backtests,
-		datasets,
-		backtestWaitMs = BACKTEST_WAIT_MS,
-		sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
-	}: McpDeps,
+	{ strategies, backtests, datasets, backtestWaitMs, sleep }: ToolDeps,
 ) {
 	server.registerTool(
 		"list_backtests",

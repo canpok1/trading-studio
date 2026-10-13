@@ -1,8 +1,8 @@
-// MCP の道具のうち、trading の機能のもの。サーバーへの登録は mcp/mcp-app.ts
+// MCP の道具のうち、trading の機能のもの
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod";
-import type { McpDeps } from "../mcp/tool-app";
+import type { ToolDeps } from "../mcp/tool-app";
 import { fail, readOnly, text } from "../mcp/tool-app";
 import {
 	hidden,
@@ -15,7 +15,7 @@ import {
 
 export function registerTradingTools(
 	server: McpServer,
-	{ trading, market }: McpDeps,
+	{ trading, market }: ToolDeps,
 ) {
 	server.registerTool(
 		"list_trading_runs",

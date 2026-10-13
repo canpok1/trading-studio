@@ -46,6 +46,10 @@ export type McpDeps = {
 	sleep?: (ms: number) => Promise<void>;
 };
 
+/** 既定値を埋めた依存。各機能の道具の登録に渡す */
+export type ToolDeps = McpDeps &
+	Required<Pick<McpDeps, "backtestWaitMs" | "sleep">>;
+
 /** run_backtest が終わりを待つ時間の既定。HTTP の無通信の切断はこれより長くする（main.ts） */
 export const BACKTEST_WAIT_MS = 120_000;
 

@@ -52,7 +52,7 @@ import type {
 	TradingPerformance,
 } from "../trading/types-domain";
 
-export const JST_OFFSET_MS = 9 * 3_600_000;
+const JST_OFFSET_MS = 9 * 3_600_000;
 
 /** エポックミリ秒を JST の ISO 8601 にする */
 export const jst = (ms: number) =>
@@ -84,7 +84,7 @@ export function strategyView(
 	};
 }
 
-export const gradeLabel = (g: GradeBadgeValue | null) => g?.label ?? null;
+const gradeLabel = (g: GradeBadgeValue | null) => g?.label ?? null;
 
 /** 画面の成績の横に出す5段階の評価と、取引が少ないときの注意。損益はガチホと比べるので、ガチホが分からなければ null */
 export function grades(s: {
@@ -195,12 +195,12 @@ export function datasetRunView(r: DatasetRun | DatasetRunDetail) {
 }
 
 /** 画面と同じ評価の日本語名を添える */
-export const level = <J extends Judge>(value: JudgmentValue<J>) => ({
+const level = <J extends Judge>(value: JudgmentValue<J>) => ({
 	value,
 	label: JUDGMENT_VALUE_LABELS[value] ?? value,
 });
 
-export const ratio = (v: number) => Math.round(v * 1000) / 1000;
+const ratio = (v: number) => Math.round(v * 1000) / 1000;
 
 export function newsView(
 	n: NewsItem,
@@ -276,13 +276,13 @@ export function analysisView<J extends Judge>(
 	};
 }
 
-export const MODE_LABELS = { paper: "デモ", live: "リアル" } as const;
+const MODE_LABELS = { paper: "デモ", live: "リアル" } as const;
 
 /** 口座・成績・注文・戦略の見張りを出さないタブ。画面と同じく、動かせないリアル */
 export const hidden = (r: AutoTradingStatus) =>
 	r.mode === "live" && !LIVE_AVAILABLE;
 
-export function positionView(p: Position) {
+function positionView(p: Position) {
 	return { ...p, openedAt: p.openedAt === null ? null : jst(p.openedAt) };
 }
 
