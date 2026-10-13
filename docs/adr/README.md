@@ -31,3 +31,4 @@
 | [0025](0025-delete-old-market-data-keeping-datasets.md) | 古い足・ニュース・採点は5年で消し、期間を過ぎたデータセットは相場ごとに最新だけ残す | 採用 | 2026-10-08 |
 | [0026](0026-dataset-groups-segments-run-separately.md) | データセットは相場データを束ねたものにし、相場データごとに別々に実行して成績を合算する | 採用 | 2026-10-10 |
 | [0027](0027-openai-compatible-connection-per-model.md) | Gemini 直結に加えて OpenAI 互換の接続先を持ち、モデルを選ぶと接続先も決まるようにする | 採用 | 2026-10-11 |
+| [0028](0028-test-scope-and-layers.md) | テストのスコープを層をまたぐかで決め、backend は DDD の3層・frontend は Bulletproof React の構成にする | 採用 | 2026-10-13 |
