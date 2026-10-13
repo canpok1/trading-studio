@@ -1,14 +1,7 @@
 // RSS 2.0 / RSS 1.0 (RDF) / Atom から記事を読む。依存を増やさないため、必要な要素だけを正規表現で拾う
 
-export type FeedItem = {
-	title: string;
-	url: string;
-	/** 概要。無ければ null */
-	summary: string | null;
-	/** 公開時刻。無いか読めなければ null */
-	publishedAt: number | null;
-};
-
+import type { FetchFeed } from "./collector-domain";
+import type { FeedItem } from "./types-domain";
 /** 概要はこの文字数で切る（採点に渡す量と保存量を抑えるため） */
 export const SUMMARY_MAX = 500;
 
@@ -135,3 +128,21 @@ export function parseFeed(xml: string): FeedItem[] {
 		.map((m) => parseItem(m[2] as string))
 		.filter((i): i is FeedItem => i !== null);
 }
+
+const FETCH_TIMEOUT_MS = 20_000;
+
+/** 取得元の本文を HTTP で取る */
+export const httpFetchText = async (url: string): Promise<string> => {
+	const res = await fetch(url, {
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+		headers: { "user-agent": "trading-studio (personal use)" },
+	});
+	if (!res.ok) throw new Error(`HTTP ${res.status}`);
+	return res.text();
+};
+
+/** 本文を取る手段 fetchText で RSS を取り、記事にする */
+export const rssFeed =
+	(fetchText: (url: string) => Promise<string>): FetchFeed =>
+	async (url) =>
+		parseFeed(await fetchText(url));

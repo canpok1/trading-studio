@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { Duration } from "@trading-studio/core";
-import { createTestApp } from "../test-app";
-import type { NewsSearchResult } from "./types";
+import type { NewsSearchResult } from "../src/news/types-domain";
+import { createTestApp } from "../src/test-app";
 
 const H = 3_600_000;
 

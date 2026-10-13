@@ -1,10 +1,10 @@
-// ニュース収集の常駐処理。設定された間隔で、有効な取得元の RSS を順に取得して保存する
+// ニュース収集の1回分の手順と、次の収集の時刻の判断。設定された間隔で、有効な取得元の RSS を順に取得して保存する
 
-import type { NewsRepository } from "./repository";
-import { parseFeed } from "./rss";
+import type { NewsRepository } from "./repository-domain";
+import type { FeedItem } from "./types-domain";
 
-/** RSS を取得する手段。テストと E2E では偽物に差し替える */
-export type FetchFeed = (url: string) => Promise<string>;
+/** 取得元の記事を取る手段。テストと E2E では偽物に差し替える */
+export type FetchFeed = (url: string) => Promise<FeedItem[]>;
 
 export const DEFAULT_INTERVAL_MINUTES = 15;
 
@@ -12,17 +12,6 @@ export const DEFAULT_INTERVAL_MINUTES = 15;
 export function newsDelayMs(repo: Pick<NewsRepository, "intervalMinutes">) {
 	return repo.intervalMinutes(DEFAULT_INTERVAL_MINUTES) * 60_000;
 }
-const FETCH_TIMEOUT_MS = 20_000;
-
-export const httpFetchFeed: FetchFeed = async (url) => {
-	const res = await fetch(url, {
-		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-		headers: { "user-agent": "trading-studio (personal use)" },
-	});
-	if (!res.ok) throw new Error(`HTTP ${res.status}`);
-	return res.text();
-};
-
 export type NewsCollector = {
 	/** 定期的に呼ぶ（main では1秒ごと）。次の収集の時刻を過ぎていれば収集を始める */
 	tick(): void;
@@ -57,7 +46,7 @@ export function createNewsCollector({
 		for (const source of repo.listSources()) {
 			if (!source.enabled) continue;
 			try {
-				const items = parseFeed(await fetchFeed(source.url));
+				const items = await fetchFeed(source.url);
 				// 取得中に無効化・削除されていたら保存しない
 				const current = repo.getSource(source.id);
 				if (!current?.enabled) continue;

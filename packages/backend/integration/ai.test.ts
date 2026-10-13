@@ -10,7 +10,7 @@ import {
 import { DEMO_COMPATIBLE_MODELS } from "../src/ai/fake-models-infra";
 import type { GeminiModel } from "../src/ai/model-domain";
 import { NO_CONNECTION } from "../src/ai/model-domain";
-import { RESPONSE_SCHEMA } from "../src/news/prompt";
+import { RESPONSE_SCHEMA } from "../src/news/prompt-domain";
 import { createTestApp } from "../src/test-app";
 
 /** 受けたリクエストを残し、決まった応答を返す OpenAI 互換の偽サーバー */

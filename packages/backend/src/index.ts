@@ -44,7 +44,7 @@ export type {
 	ScoringModelOption,
 	TrialItem,
 	TrialResult,
-} from "./news/types";
+} from "./news/types-domain";
 export type {
 	RetentionRun,
 	RetentionSettings,

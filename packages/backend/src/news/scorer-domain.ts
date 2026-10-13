@@ -4,9 +4,13 @@ import type { AggregationRule } from "@trading-studio/core";
 import { maxWindowMs } from "@trading-studio/core";
 import type { ScoreModel } from "../ai/model-domain";
 import { DEFAULT_SCORING_MODEL } from "../ai/model-domain";
-import type { PromptNews, ScoreResponse } from "./prompt";
-import { buildPrompt, parseScoreResponse, RESPONSE_SCHEMA } from "./prompt";
-import type { ScoreRepository } from "./score-repository";
+import type { PromptNews, ScoreResponse } from "./prompt-domain";
+import {
+	buildPrompt,
+	parseScoreResponse,
+	RESPONSE_SCHEMA,
+} from "./prompt-domain";
+import type { ScoreRepository } from "./score-repository-domain";
 
 /** 自動の再試行の間隔。3回まで延ばしながら再試行し、それでも失敗なら止めて手動の再試行を待つ */
 export const RETRY_DELAYS_MS = [30_000, 120_000, 600_000] as const;

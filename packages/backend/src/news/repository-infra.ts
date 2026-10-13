@@ -1,9 +1,10 @@
 import type { AggregationRule } from "@trading-studio/core";
 import { LASTING_DURATIONS, windowMs } from "@trading-studio/core";
 import type { Db } from "../db/open";
-import type { FeedItem } from "./rss";
-import { toNewsScore } from "./score-repository";
+import type { NewsRepository } from "./repository-domain";
+import { toNewsScore } from "./score-repository-infra";
 import type {
+	FeedItem,
 	LiveRescore,
 	NewsFilter,
 	NewsItem,
@@ -11,7 +12,7 @@ import type {
 	NewsSearchResult,
 	NewsSource,
 	NewsSourceInput,
-} from "./types";
+} from "./types-domain";
 
 type SourceRow = {
 	id: number;
@@ -85,7 +86,7 @@ const toNewsItem = (r: NewsRow): Omit<NewsItem, "rescore"> => ({
 const INTERVAL_KEY = "news_interval_minutes";
 const SEEDED_KEY = "news_sources_seeded";
 
-export class NewsRepository {
+export class SqliteNewsRepository implements NewsRepository {
 	constructor(
 		private readonly db: Db,
 		private readonly now: () => number = Date.now,

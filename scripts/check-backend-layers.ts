@@ -17,7 +17,6 @@ export const NOT_MIGRATED = [
 	"collector/",
 	"db/",
 	"mcp/",
-	"news/",
 	"routes/",
 	"trading/",
 	"app.test.ts",

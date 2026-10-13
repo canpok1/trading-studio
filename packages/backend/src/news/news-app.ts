@@ -1,27 +1,12 @@
-import type { Duration } from "@trading-studio/core";
-import { DURATIONS } from "@trading-studio/core";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { validator } from "hono/validator";
-import type {
-	NewsFilter,
-	NewsImpact,
-	NewsService,
-	NewsSort,
-	NewsSourceResult,
-} from "../news/types";
-import {
-	NEWS_IMPACTS,
-	NEWS_LANGUAGES,
-	NEWS_LIST_MAX,
-	NEWS_SORTS,
-} from "../news/types";
+import { parseFilter } from "./news-domain";
+import type { NewsService, NewsSourceResult } from "./types-domain";
+import { NEWS_LANGUAGES } from "./types-domain";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
 	typeof v === "object" && v !== null;
-
-/** キーワードの長さの上限 */
-const MAX_Q = 200;
 
 function respond(c: Context, r: NewsSourceResult, okStatus: 200 | 201 = 200) {
 	if (r.ok) return c.json({ source: r.source }, okStatus);
@@ -33,54 +18,6 @@ function respond(c: Context, r: NewsSourceResult, okStatus: 200 | 201 = 200) {
 		case "duplicate_url":
 			return c.json({ message: r.message, field: "url" }, 409);
 	}
-}
-
-/** 一覧の条件を読む。形が違えばその理由 */
-export function parseFilter(
-	q: Record<string, string | undefined>,
-): NewsFilter | string {
-	const limit = Math.min(
-		NEWS_LIST_MAX,
-		Math.max(1, Math.floor(Number(q.limit ?? 100)) || 100),
-	);
-	const time = (v: string | undefined) =>
-		v === undefined || v === "" ? null : Number(v);
-	const from = time(q.from);
-	const to = time(q.to);
-	if (
-		(from !== null && !Number.isSafeInteger(from)) ||
-		(to !== null && !Number.isSafeInteger(to))
-	) {
-		return "期間の形が違う";
-	}
-	const impacts = q.impact ? q.impact.split(",") : [];
-	if (!impacts.every((i) => (NEWS_IMPACTS as readonly string[]).includes(i))) {
-		return "影響の大きさの形が違う";
-	}
-	const durations = q.duration ? q.duration.split(",") : [];
-	if (!durations.every((d) => (DURATIONS as readonly string[]).includes(d))) {
-		return "持続の形が違う";
-	}
-	const activeAt = time(q.active);
-	if (activeAt !== null && !Number.isSafeInteger(activeAt)) {
-		return "評価の時刻の形が違う";
-	}
-	const sort = q.sort ?? "new";
-	if (!(NEWS_SORTS as readonly string[]).includes(sort)) {
-		return "並び順の形が違う";
-	}
-	const text = (q.q ?? "").trim();
-	if (text.length > MAX_Q) return `キーワードは${MAX_Q}文字まで`;
-	return {
-		limit,
-		from,
-		to,
-		q: text,
-		impacts: impacts as NewsImpact[],
-		durations: durations as Duration[],
-		activeAt,
-		sort: sort as NewsSort,
-	};
 }
 
 export function newsRoutes(service: NewsService) {

@@ -1,12 +1,12 @@
 import { Hono } from "hono";
 import { validator } from "hono/validator";
-import type { ScoringService } from "../news/types";
 import type {
 	AccuracyHorizon,
 	AccuracyPeriod,
 	AccuracyService,
 } from "../scoring-analysis/types-domain";
 import { ACCURACY_IDS_MAX } from "../scoring-analysis/types-domain";
+import type { ScoringService } from "./types-domain";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
 	typeof v === "object" && v !== null;

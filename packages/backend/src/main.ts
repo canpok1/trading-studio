@@ -33,20 +33,17 @@ import { createMarketService } from "./market/market-domain";
 import { createMarketDataService } from "./market-data/market-data-domain";
 import { SqliteMarketDataRepository } from "./market-data/repository-infra";
 import { BACKTEST_WAIT_MS, mcpRoutes } from "./mcp/server";
-import {
-	createNewsCollector,
-	httpFetchFeed,
-	newsDelayMs,
-} from "./news/collector";
-import { demoFetchFeed } from "./news/fake-feed";
-import { demoScoreModel } from "./news/fake-model";
-import { geminiModel } from "./news/gemini";
-import { DEFAULT_CRITERIA } from "./news/prompt";
-import { NewsRepository } from "./news/repository";
-import { ScoreRepository } from "./news/score-repository";
-import { createScorer } from "./news/scorer";
-import { createScoringService } from "./news/scoring-service";
-import { createNewsService, DEFAULT_NEWS_SOURCES } from "./news/service";
+import { createNewsCollector, newsDelayMs } from "./news/collector-domain";
+import { demoFetchFeed } from "./news/fake-feed-infra";
+import { demoScoreModel } from "./news/fake-model-infra";
+import { geminiModel } from "./news/gemini-infra";
+import { createNewsService, DEFAULT_NEWS_SOURCES } from "./news/news-domain";
+import { DEFAULT_CRITERIA } from "./news/prompt-domain";
+import { SqliteNewsRepository } from "./news/repository-infra";
+import { httpFetchText, rssFeed } from "./news/rss-infra";
+import { SqliteScoreRepository } from "./news/score-repository-infra";
+import { createScorer } from "./news/scorer-domain";
+import { createScoringService } from "./news/scoring-domain";
 import { SqliteRetentionRepository } from "./retention/repository-infra";
 import { createRetentionService } from "./retention/retention-domain";
 import { SqliteScoringAnalysisRepository } from "./scoring-analysis/repository-infra";
@@ -112,7 +109,7 @@ const collector = createCollector({
 });
 const collectorTimer = setInterval(() => collector.tick(), 1_000);
 
-const newsRepo = new NewsRepository(db);
+const newsRepo = new SqliteNewsRepository(db);
 newsRepo.seedSources(DEFAULT_NEWS_SOURCES, Date.now());
 // E2E で取得元の失敗を再現するためのファイル。あれば偽物の取得元が失敗する
 const newsDownFile = join(dirname(dbPath), "news-down");
@@ -122,12 +119,12 @@ const newsCollector = createNewsCollector({
 	fetchFeed:
 		process.env.NEWS_FEED === "demo"
 			? demoFetchFeed({ isDown: () => existsSync(newsDownFile) })
-			: httpFetchFeed,
+			: rssFeed(httpFetchText),
 });
 const newsTimer = setInterval(() => newsCollector.tick(), 1_000);
 newsCollector.tick();
 
-const scoreRepo = new ScoreRepository(db);
+const scoreRepo = new SqliteScoreRepository(db);
 scoreRepo.seedCriteria(DEFAULT_CRITERIA, Date.now());
 const compatibleRepo = new SqliteCompatibleRepository(db);
 /** 選んだモデルの接続先（Gemini 直結か OpenAI 互換か）で問い合わせる */

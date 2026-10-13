@@ -2,7 +2,7 @@
 
 import { SEGMENT_LEAD_MS } from "@trading-studio/core";
 import type { Db } from "../db/open";
-import { NEWS_DELETED_BEFORE_KEY } from "../news/score-repository";
+import { NEWS_DELETED_BEFORE_KEY } from "../news/score-repository-infra";
 import type { RetentionRepository } from "./repository-domain";
 import type {
 	RetentionRun,

@@ -27,14 +27,14 @@ import { createJudgmentService } from "./judgments/judgments-domain";
 import { createMarketService } from "./market/market-domain";
 import { createMarketDataService } from "./market-data/market-data-domain";
 import { SqliteMarketDataRepository } from "./market-data/repository-infra";
-import { newsDelayMs } from "./news/collector";
-import { demoScoreModel } from "./news/fake-model";
-import { DEFAULT_CRITERIA } from "./news/prompt";
-import { NewsRepository } from "./news/repository";
-import { ScoreRepository } from "./news/score-repository";
-import { createScorer } from "./news/scorer";
-import { createScoringService } from "./news/scoring-service";
-import { createNewsService } from "./news/service";
+import { newsDelayMs } from "./news/collector-domain";
+import { demoScoreModel } from "./news/fake-model-infra";
+import { createNewsService } from "./news/news-domain";
+import { DEFAULT_CRITERIA } from "./news/prompt-domain";
+import { SqliteNewsRepository } from "./news/repository-infra";
+import { SqliteScoreRepository } from "./news/score-repository-infra";
+import { createScorer } from "./news/scorer-domain";
+import { createScoringService } from "./news/scoring-domain";
 import { SqliteRetentionRepository } from "./retention/repository-infra";
 import { createRetentionService } from "./retention/retention-domain";
 import { SqliteScoringAnalysisRepository } from "./scoring-analysis/repository-infra";
@@ -85,12 +85,12 @@ export function createTestApp(
 		now: () => clock.now,
 	});
 	// 収集は動かさず、テストから newsRepo に書き込む
-	const newsRepo = new NewsRepository(db, () => clock.now);
+	const newsRepo = new SqliteNewsRepository(db, () => clock.now);
 	const newsRun = {
 		lastRunAt: null as number | null,
 		nextRunAt: null as number | null,
 	};
-	const scoreRepo = new ScoreRepository(db);
+	const scoreRepo = new SqliteScoreRepository(db);
 	const news = createNewsService({
 		repo: newsRepo,
 		rule: () => scoreRepo.aggregationRule(),

@@ -1,6 +1,7 @@
 // E2E 用。RSS の取得元へつながず、取得元の URL ごとに決まった形の記事を返す
 
-import type { FetchFeed } from "./collector";
+import type { FetchFeed } from "./collector-domain";
+import { rssFeed } from "./rss-infra";
 
 const HOUR = 3_600_000;
 
@@ -19,7 +20,7 @@ export function demoFetchFeed({
 	now?: () => number;
 	isDown?: () => boolean;
 } = {}): FetchFeed {
-	return async (url) => {
+	return rssFeed(async (url) => {
 		if (isDown()) throw new Error("偽物の取得元が止まっている（E2E）");
 		const latest = Math.floor(now() / HOUR);
 		const items = [0, 1, 2].map((k) => {
@@ -28,5 +29,5 @@ export function demoFetchFeed({
 			return `<item><title>${escapeXml(`デモ記事 ${hour}（${url}）`)}</title><link>${escapeXml(link)}</link><description>デモの概要</description><pubDate>${new Date(hour * HOUR).toUTCString()}</pubDate></item>`;
 		});
 		return `<?xml version="1.0"?><rss version="2.0"><channel><title>demo</title>${items.join("")}</channel></rss>`;
-	};
+	});
 }

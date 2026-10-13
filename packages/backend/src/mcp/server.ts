@@ -59,13 +59,17 @@ import type {
 import type { JudgmentService } from "../judgments/types-domain";
 import type { MarketService } from "../market/types-domain";
 import type { MarketDataService } from "../market-data/types-domain";
-import type { NewsItem, NewsService, ScoringService } from "../news/types";
+import type {
+	NewsItem,
+	NewsService,
+	ScoringService,
+} from "../news/types-domain";
 import {
 	NEWS_IMPACTS,
 	NEWS_LIST_MAX,
 	NEWS_SORTS,
 	TRIAL_MAX_NEWS,
-} from "../news/types";
+} from "../news/types-domain";
 import { MOVE_LABELS } from "../scoring-analysis/accuracy-domain";
 import type {
 	AccuracyService,

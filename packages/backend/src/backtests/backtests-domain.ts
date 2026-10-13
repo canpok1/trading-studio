@@ -18,7 +18,7 @@ import {
 import type { JudgmentService } from "../judgments/types-domain";
 import { MAX_CHART_BARS } from "../market/market-domain";
 import type { MarketDataRepository } from "../market-data/repository-domain";
-import type { ScoringService } from "../news/types";
+import type { ScoringService } from "../news/types-domain";
 import type { Segment, SegmentService } from "../segments/types-domain";
 import { checkName } from "../strategies/strategies-domain";
 import type { StrategyService } from "../strategies/types-domain";

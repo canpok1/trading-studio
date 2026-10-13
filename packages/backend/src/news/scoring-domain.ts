@@ -4,18 +4,18 @@ import {
 	isSelectableModel,
 	SCORING_MODELS,
 } from "../ai/model-domain";
-import { newsDelayMs } from "./collector";
-import { PROMPT_TEMPLATE } from "./prompt";
-import type { NewsRepository } from "./repository";
-import type { ScoreRepository } from "./score-repository";
-import type { Scorer } from "./scorer";
+import { newsDelayMs } from "./collector-domain";
+import { PROMPT_TEMPLATE } from "./prompt-domain";
+import type { NewsRepository } from "./repository-domain";
+import type { ScoreRepository } from "./score-repository-domain";
+import type { Scorer } from "./scorer-domain";
 import type {
 	LiveRescoreResult,
 	RescoreResult,
 	ScoringService,
 	TrialItem,
-} from "./types";
-import { TRIAL_MAX_NEWS } from "./types";
+} from "./types-domain";
+import { TRIAL_MAX_NEWS } from "./types-domain";
 
 export const CRITERIA_MAX = 4000;
 const NOTE_MAX = 100;

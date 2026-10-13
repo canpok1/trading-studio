@@ -12,7 +12,7 @@ import type {
 	ValidationError,
 } from "@trading-studio/core";
 import type { JudgmentSeries } from "../judgments/types-domain";
-import type { RescoreCoverage } from "../news/types";
+import type { RescoreCoverage } from "../news/types-domain";
 import type { StoredStrategy } from "../strategies/types-domain";
 
 export type BacktestStatus = "running" | "done" | "failed" | "canceled";

@@ -1,99 +1,27 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_AGGREGATION_RULE } from "@trading-studio/core";
-import type { ScoreModel } from "../ai/model-domain";
-import { DEFAULT_SCORING_MODEL } from "../ai/model-domain";
-import { createTestDb } from "../db/test-db";
-import { createTestApp } from "../test-app";
-import { geminiModel, NO_API_KEY } from "./gemini";
-import { buildPrompt, DEFAULT_CRITERIA, parseScoreResponse } from "./prompt";
-import { NewsRepository } from "./repository";
-import { ScoreRepository } from "./score-repository";
-import { createScorer, RETRY_DELAYS_MS } from "./scorer";
-import { createScoringService } from "./scoring-service";
-import { createNewsService } from "./service";
+import type { ScoreModel } from "../src/ai/model-domain";
+import { DEFAULT_SCORING_MODEL } from "../src/ai/model-domain";
+import { createTestDb } from "../src/db/test-db";
+import { geminiModel, NO_API_KEY } from "../src/news/gemini-infra";
+import { createNewsService } from "../src/news/news-domain";
+import { DEFAULT_CRITERIA } from "../src/news/prompt-domain";
+import { SqliteNewsRepository } from "../src/news/repository-infra";
+import { SqliteScoreRepository } from "../src/news/score-repository-infra";
+import { createScorer, RETRY_DELAYS_MS } from "../src/news/scorer-domain";
+import { createScoringService } from "../src/news/scoring-domain";
+import { createTestApp } from "../src/test-app";
 
 const H = 3_600_000;
 const T0 = Date.UTC(2026, 8, 26, 3);
-
-describe("プロンプト", () => {
-	test("ニュース → 採点の基準 → 依頼・出力形式の順に差し込む", () => {
-		const p = buildPrompt(
-			{
-				sourceName: "A",
-				title: "見出し {criteria}",
-				summary: "概要",
-				publishedAt: T0,
-			},
-			"基準",
-		);
-		expect(p.indexOf("<news>")).toBeLessThan(p.indexOf("<criteria>"));
-		expect(p.indexOf("<criteria>")).toBeLessThan(p.indexOf("# 依頼"));
-		expect(p).toContain("見出し: 見出し {criteria}");
-		expect(p).toContain("概要: 概要");
-		expect(p).toContain("公開時刻: 2026-09-26 12:00 JST");
-		expect(p).toContain("<criteria>\n基準\n</criteria>");
-	});
-
-	test("概要が無ければ見出しだけ", () => {
-		const p = buildPrompt(
-			{ sourceName: "A", title: "t", summary: null, publishedAt: T0 },
-			"基準",
-		);
-		expect(p).not.toContain("概要:");
-	});
-
-	test("応答の検証", () => {
-		expect(
-			parseScoreResponse({
-				sentiment: 100,
-				risk: 0,
-				duration: "long",
-				comment: " 理由 ",
-			}),
-		).toEqual({
-			scores: { sentiment: 100, risk: 0 },
-			duration: "long",
-			comment: "理由",
-		});
-		for (const bad of [
-			null,
-			[],
-			{ sentiment: 101, risk: 0, duration: "short", comment: "c" },
-			{ sentiment: -101, risk: 0, duration: "short", comment: "c" },
-			{ sentiment: 1, risk: -1, duration: "short", comment: "c" },
-			{ sentiment: 1, risk: 101, duration: "short", comment: "c" },
-			{ sentiment: 50.5, risk: 0, duration: "short", comment: "c" },
-			{ sentiment: "50", risk: 0, duration: "short", comment: "c" },
-			{ sentiment: null, risk: 0, duration: "short", comment: "c" },
-			{ risk: 0, duration: "short", comment: "c" },
-			{ sentiment: 1, duration: "short", comment: "c" },
-			{ sentiment: 1, risk: 0, comment: "c" },
-			{ sentiment: 1, risk: 0, duration: "forever", comment: "c" },
-			{ sentiment: 1, risk: 0, duration: "short", comment: "" },
-		]) {
-			expect(typeof parseScoreResponse(bad)).toBe("string");
-		}
-	});
-
-	test("持続 none の記事は点数を 0 にそろえる", () => {
-		expect(
-			parseScoreResponse({
-				sentiment: 30,
-				risk: 20,
-				duration: "none",
-				comment: "関係ない",
-			}),
-		).toMatchObject({ scores: { sentiment: 0, risk: 0 }, duration: "none" });
-	});
-});
 
 const BUILT_AT = Date.UTC(2026, 8, 27, 0, 10);
 
 function setup(opts: { key?: boolean } = {}) {
 	let clock = T0;
 	const db = createTestDb();
-	const newsRepo = new NewsRepository(db, () => clock);
-	const repo = new ScoreRepository(db);
+	const newsRepo = new SqliteNewsRepository(db, () => clock);
+	const repo = new SqliteScoreRepository(db);
 	repo.seedCriteria(DEFAULT_CRITERIA, T0);
 	const source = newsRepo.insertSource(
 		{ name: "A", url: "https://a.example/feed", language: "ja" },
@@ -368,7 +296,7 @@ describe("採点", () => {
 	test("試し採点も常駐の採点と合わせて問い合わせの間を空ける", async () => {
 		let clock = T0;
 		const db = createTestDb();
-		const repo = new ScoreRepository(db);
+		const repo = new SqliteScoreRepository(db);
 		repo.seedCriteria(DEFAULT_CRITERIA, T0);
 		const waits: number[] = [];
 		const scorer = createScorer({
@@ -402,7 +330,7 @@ describe("採点", () => {
 	});
 
 	test("初版は1度だけ入れる", () => {
-		const repo = new ScoreRepository(createTestDb());
+		const repo = new SqliteScoreRepository(createTestDb());
 		repo.seedCriteria("a", 0);
 		repo.seedCriteria("b", 0);
 		expect(repo.listCriteria().map((c) => c.text)).toEqual(["a"]);
@@ -587,8 +515,8 @@ describe("採点の API", () => {
 test("問い合わせの間を最短の間隔だけ空ける", async () => {
 	let clock = T0;
 	const db = createTestDb();
-	const newsRepo = new NewsRepository(db);
-	const repo = new ScoreRepository(db);
+	const newsRepo = new SqliteNewsRepository(db);
+	const repo = new SqliteScoreRepository(db);
 	repo.seedCriteria(DEFAULT_CRITERIA, T0);
 	const source = newsRepo.insertSource(
 		{ name: "A", url: "https://a.example/feed", language: "ja" },

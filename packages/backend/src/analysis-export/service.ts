@@ -25,7 +25,7 @@ import {
 import type { BacktestRepository } from "../backtests/repository-domain";
 import type { BacktestRun } from "../backtests/types-domain";
 import type { MarketDataService } from "../market-data/types-domain";
-import type { ScoreRepository } from "../news/score-repository";
+import type { ScoreRepository } from "../news/score-repository-domain";
 import type {
 	AnalysisExportRepository,
 	DecisionExportRow,

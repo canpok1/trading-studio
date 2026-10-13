@@ -9,8 +9,15 @@ import {
 	validateAggregationRule,
 } from "@trading-studio/core";
 import type { Db } from "../db/open";
-import type { ScoreResponse } from "./prompt";
-import type { CriteriaVersion, NewsScore, RescoreCoverage } from "./types";
+import type { ScoreResponse } from "./prompt-domain";
+import type { ScoreRepository } from "./score-repository-domain";
+import type {
+	CriteriaVersion,
+	NewsScore,
+	NextToRescore,
+	NextToScore,
+	RescoreCoverage,
+} from "./types-domain";
 
 type ScoreRow = {
 	news_id: number;
@@ -102,19 +109,7 @@ const RULE_KEY = "aggregation_rule";
 const API_KEY_KEY = "gemini_api_key";
 const API_KEY_SAVED_AT_KEY = "gemini_api_key_saved_at";
 
-export type NextToScore = {
-	id: number;
-	sourceName: string;
-	title: string;
-	summary: string | null;
-	publishedAt: number;
-	fetchedAt: number;
-	attempts: number;
-};
-
-export type NextToRescore = NextToScore & { criteriaVersion: number };
-
-export class ScoreRepository {
+export class SqliteScoreRepository implements ScoreRepository {
 	constructor(private readonly db: Db) {}
 
 	private get sql() {
