@@ -39,7 +39,8 @@ export const NOT_MIGRATED = [
 	"version.medium.test.ts",
 ];
 
-const LAYERED = /-(app|domain|infra)(\.test)?\.ts$/;
+// .medium は今のテストサイズの印（docs/testing.md）
+const LAYERED = /-(app|domain|infra)((\.medium)?\.test)?\.ts$/;
 
 /** 構成に沿わないファイルの、src/ からの相対パス */
 export function layerViolations(
