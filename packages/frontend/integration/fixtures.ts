@@ -4,11 +4,13 @@ import type {
 	AccuracySummaryResult,
 	AutoTradingStatus,
 	CurrentJudgment,
+	ImportJob,
 	NewsCollectorStatus,
 	NewsItem,
 	NewsScore,
 	NewsSource,
 	ScorerStatus,
+	TimeframeCoverage,
 } from "@trading-studio/backend";
 import type { AggregationRule, Judge, ScoredNews } from "@trading-studio/core";
 import {
@@ -231,6 +233,44 @@ export function accuracySummary(
 			sentiment: accuracyResult("sentiment"),
 			risk: accuracyResult("risk"),
 		},
+		...over,
+	};
+}
+
+export function importJob(
+	over: Partial<ImportJob> & Pick<ImportJob, "id">,
+): ImportJob {
+	return {
+		timeframe: "1m",
+		fileName: "btc.csv",
+		status: "running",
+		phase: "validating",
+		processedRows: 0,
+		totalRows: 0,
+		insertedRows: 0,
+		skippedRows: 0,
+		derivedRows: 0,
+		startedAt: Date.UTC(2026, 8, 1),
+		finishedAt: null,
+		firstTime: null,
+		lastTime: null,
+		overlap: null,
+		overwrite: null,
+		message: null,
+		errors: [],
+		errorCount: 0,
+		...over,
+	};
+}
+
+export function coverage(
+	over: Partial<TimeframeCoverage> &
+		Pick<TimeframeCoverage, "timeframe" | "count" | "firstTime" | "lastTime">,
+): TimeframeCoverage {
+	return {
+		importedCount: over.count,
+		gaps: [],
+		gapCount: 0,
 		...over,
 	};
 }
