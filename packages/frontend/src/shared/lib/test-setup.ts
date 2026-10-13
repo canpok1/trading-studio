@@ -1,6 +1,6 @@
 import { afterAll, beforeAll } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import { fireEvent } from "@testing-library/react";
+import { cleanup, fireEvent } from "@testing-library/react";
 
 /**
  * 画面のテストファイルの先頭で呼ぶ。DOM はそのファイルの間だけ用意し、backend のテストへ持ち込まない（Response などが happy-dom の実装に置き換わるため）。
@@ -8,7 +8,12 @@ import { fireEvent } from "@testing-library/react";
  */
 export function setupDom() {
 	beforeAll(() => GlobalRegistrator.register());
-	afterAll(() => GlobalRegistrator.unregister());
+	// 外す前に画面を片付け、React が予約した処理を流し切る。DOM を外した後に走ると window が無いと落ちる
+	afterAll(async () => {
+		cleanup();
+		await new Promise((r) => setTimeout(r, 50));
+		await GlobalRegistrator.unregister();
+	});
 }
 
 /**
