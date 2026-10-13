@@ -1,0 +1,9 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		// page.evaluate の中で document・window を使う
+		"lib": ["ESNext", "DOM"],
+		"types": ["bun"]
+	},
+	"include": ["src", "playwright.config.ts"]
+}
