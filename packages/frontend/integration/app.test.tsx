@@ -1,6 +1,8 @@
 import "../src/shared/lib/test-setup";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { cleanup, fireEvent, within } from "@testing-library/react";
+import { createFakeApi, routes } from "./fake-api";
+import { marketLatest, tradingRun } from "./fixtures";
 import { renderApp } from "./render-app";
 
 // 画面が読み込みの応答を受け取り終えてから片付ける（DOM を外した後に描画が走らないように）
@@ -59,9 +61,21 @@ describe("画面遷移", () => {
 		).toBeTruthy();
 	});
 
-	test("取引画面の URL はホームへ移り、モードの指定を引き継ぐ", () => {
-		const view = renderApp("/trades?mode=paper");
+	test("取引画面の URL はホームへ移り、モードの指定を引き継ぐ", async () => {
+		const api = createFakeApi()
+			.on(routes.api.market.latest, "$get", () => marketLatest())
+			.on(routes.api.strategies, "$get", () => ({ strategies: [] }))
+			.on(routes.api.data.coverage, "$get", () => ({ timeframes: [] }))
+			.on(routes.api.trading.runs, "$get", () => ({
+				runs: [
+					tradingRun({ id: 1, name: "リアル", mode: "live" }),
+					tradingRun({ id: 2, name: "デモ", mode: "paper" }),
+				],
+			}));
+		const view = renderApp("/trades?mode=paper", api);
 		expect(view.location.current).toBe("/home?mode=paper");
+		const tab = await view.findByRole("tab", { name: "デモ" });
+		expect(tab.getAttribute("aria-selected")).toBe("true");
 	});
 });
 
@@ -73,6 +87,9 @@ describe("サイドメニューの折り畳み", () => {
 		// 項目名は読み上げ用に残り、マウスを乗せると出る
 		const link = view.getByRole("link", { name: "戦略" });
 		expect(link.getAttribute("title")).toBe("戦略");
+		// 畳んだままでも移動できる
+		fireEvent.click(view.getByRole("link", { name: "設定" }));
+		expect(view.getByRole("heading", { level: 1, name: "設定" })).toBeTruthy();
 		cleanup();
 		const again = renderApp("/home");
 		fireEvent.click(

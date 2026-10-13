@@ -38,6 +38,8 @@ export class FakeApi {
 	private routes: Route[] = [];
 	/** 受けた要求。送った内容が振る舞いそのもののとき（保存など）に確かめる */
 	readonly requests: FakeRequest[] = [];
+	/** 登録の無い口への要求（"GET /api/…"）。テストを書くときに、画面が何を読むかを調べるのに使う */
+	readonly unhandled: string[] = [];
 
 	/** 同じ口に後から登録したものが優先される */
 	on<E, M extends Method & keyof E>(
@@ -96,6 +98,7 @@ export class FakeApi {
 			const res = await route.handler(req);
 			return res instanceof Response ? res : Response.json(res ?? null);
 		}
+		this.unhandled.push(`${request.method} ${url.pathname}`);
 		return Response.json(
 			{ error: `偽物の API に無い: ${request.method} ${url.pathname}` },
 			{ status: 404 },
