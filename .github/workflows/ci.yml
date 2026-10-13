@@ -42,16 +42,19 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      # Playwright は packages/e2e の依存なので、そこで動かして同じ版のブラウザを入れる
       - if: steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: packages/e2e
         run: bunx playwright install --with-deps chromium
       - if: steps.playwright-cache.outputs.cache-hit == 'true'
+        working-directory: packages/e2e
         run: bunx playwright install-deps chromium
       - run: bun run test:e2e --shard=${{ matrix.shard }}/4
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-results-${{ matrix.shard }}
-          path: test-results/
+          path: packages/e2e/test-results/
 
   # イメージがビルドできるかは、テストを待たずに確かめる。main ではこのビルドが image のキャッシュになる
   build-image:

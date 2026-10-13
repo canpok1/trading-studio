@@ -18,13 +18,14 @@ BTC/JPY の自動売買を、戦略の作成・バックテスト・デモ・リ
 | `bun run depcruise` | 依存の向きの検査 |
 | `bun run layers` | backend のファイル名が層の構成（`.claude/rules/backend.md`）に沿っているかの検査 |
 | `bun run test:small` / `bun run test:medium` | テストサイズごとに `bun test` を流す。サイズの定義と印の書き方は `docs/testing.md` |
-| `bun run test:e2e` | 画面をビルドし、テスト用 DB で backend を起動して Playwright の E2E（`e2e/*.e2e.ts`）を流す。Claude Code on the web では `PLAYWRIGHT_CHROMIUM_PATH=/opt/pw-browsers/chromium` を付ける |
+| `bun run test:e2e` | 画面をビルドし、テスト用 DB で backend を起動して Playwright の E2E（`packages/e2e/src/*.e2e.ts`）を流す。Claude Code on the web では `PLAYWRIGHT_CHROMIUM_PATH=/opt/pw-browsers/chromium` を付ける |
 
 ## パッケージ
 
 - `packages/core`：取引のルール（戦略の型・バックテスト・約定シミュレーション）。外部に依存しない
 - `packages/backend`：API と定期処理
 - `packages/frontend`：画面
+- `packages/e2e`：E2E（Playwright）
 
 依存の向きは `.dependency-cruiser.cjs` を参照。
 

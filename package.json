@@ -19,11 +19,10 @@
 		"depcruise": "depcruise packages",
 		"layers": "bun scripts/check-backend-layers.ts",
 		"check": "bun run lint && bun run typecheck && bun run test && bun run depcruise && bun run layers",
-		"test:e2e": "bun run build && playwright test"
+		"test:e2e": "bun run build && bun run --cwd packages/e2e test"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.14",
-		"@playwright/test": "^1.63.0",
 		"@swc/core": "^1.16.2",
 		"@types/bun": "^1.4.2",
 		"dependency-cruiser": "^18.4.0",

@@ -5,6 +5,7 @@ COPY package.json bun.lock ./
 COPY packages/core/package.json packages/core/
 COPY packages/backend/package.json packages/backend/
 COPY packages/frontend/package.json packages/frontend/
+COPY packages/e2e/package.json packages/e2e/
 RUN bun install --frozen-lockfile
 COPY . .
 RUN bun run build
@@ -15,6 +16,7 @@ COPY package.json bun.lock ./
 COPY packages/core/package.json packages/core/
 COPY packages/backend/package.json packages/backend/
 COPY packages/frontend/package.json packages/frontend/
+COPY packages/e2e/package.json packages/e2e/
 RUN bun install --frozen-lockfile --production
 COPY packages/core/src packages/core/src
 COPY packages/backend/src packages/backend/src
