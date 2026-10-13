@@ -33,16 +33,11 @@ export const DEMO_IMPROVED_STRATEGY = {
 	],
 };
 
-/** プロンプトの注文の件数を書き込んだアドバイスを返す。isDown が true の間は失敗する */
-export function demoAdviceModel({
-	isDown = () => false,
-}: {
-	isDown?: () => boolean;
-} = {}): GeminiModel {
+/** プロンプトの注文の件数を書き込んだアドバイスを返す */
+export function demoAdviceModel(): GeminiModel {
 	return {
 		unavailable: () => null,
 		async generate(_model, prompt) {
-			if (isDown()) throw new Error("偽物の AI が止まっている（E2E）");
 			const orders = /## 注文（(\d+) 件/.exec(prompt)?.[1] ?? "?";
 			return {
 				analysis: `デモの分析。注文は ${orders} 件。`,

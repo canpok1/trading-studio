@@ -54,14 +54,12 @@ export function manualFeed() {
 
 /**
  * E2E 用。接続するとすぐ購読が始まり、1秒ごとに約定を1件流す。価格は決まった形で上下する
- * （E2E で Coincheck へつながないため）。isDown が true の間は接続を切り、つなげない
+ * （E2E で Coincheck へつながないため）
  */
 export function demoFeed({
 	now = Date.now,
-	isDown = () => false,
 }: {
 	now?: () => number;
-	isDown?: () => boolean;
 } = {}): TradeFeed {
 	let id = 0;
 	const trade = (time: number): MarketTrade => {
@@ -75,23 +73,11 @@ export function demoFeed({
 	};
 	return {
 		connect(handlers) {
-			const down = () => {
-				clearInterval(timer);
-				handlers.onClose("偽物の取引所が止まっている（E2E）");
-			};
 			const timer = setInterval(() => {
-				if (isDown()) {
-					down();
-					return;
-				}
 				handlers.onMessage();
 				handlers.onTrades([trade(Math.floor(now() / 1000) * 1000)]);
 			}, 1_000);
 			queueMicrotask(() => {
-				if (isDown()) {
-					down();
-					return;
-				}
 				handlers.onMessage();
 				handlers.onReady();
 			});

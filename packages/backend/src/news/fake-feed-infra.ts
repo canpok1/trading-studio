@@ -10,18 +10,14 @@ function escapeXml(s: string): string {
 }
 
 /**
- * 1時間ごとに1件ずつ記事が増える取得元を装う。直近3件を返すので、収集のたびに重複が混ざる。
- * isDown が true の間は失敗する
+ * 1時間ごとに1件ずつ記事が増える取得元を装う。直近3件を返すので、収集のたびに重複が混ざる
  */
 export function demoFetchFeed({
 	now = Date.now,
-	isDown = () => false,
 }: {
 	now?: () => number;
-	isDown?: () => boolean;
 } = {}): FetchFeed {
 	return rssFeed(async (url) => {
-		if (isDown()) throw new Error("偽物の取得元が止まっている（E2E）");
 		const latest = Math.floor(now() / HOUR);
 		const items = [0, 1, 2].map((k) => {
 			const hour = latest - k;

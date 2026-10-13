@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
@@ -95,33 +94,24 @@ const backtestRepo = new SqliteBacktestRepository(db);
 backtestRepo.failInterrupted(Date.now());
 const strategies = createStrategyService(new SqliteStrategyRepository(db));
 
-// E2E で収集の停止を再現するためのファイル。あれば偽物の取引所が止まる
-const demoDownFile = join(dirname(dbPath), "feed-down");
 // 自動取引は収集より後に作るので、届いた約定は作った後から渡す
 let trading: TradingEngine | null = null;
 // 収集はサーバーが動いている間は常に行う（ON/OFF は作らない）
 const collector = createCollector({
 	onTrades: (trades) => trading?.onTrades(trades),
 	// E2E では取引所へつながず、偽物の約定を流す
-	feed:
-		process.env.MARKET_FEED === "demo"
-			? demoFeed({ isDown: () => existsSync(demoDownFile) })
-			: coincheckFeed(),
+	feed: process.env.MARKET_FEED === "demo" ? demoFeed() : coincheckFeed(),
 	repo: marketDataRepo,
 });
 const collectorTimer = setInterval(() => collector.tick(), 1_000);
 
 const newsRepo = new SqliteNewsRepository(db);
 newsRepo.seedSources(DEFAULT_NEWS_SOURCES, Date.now());
-// E2E で取得元の失敗を再現するためのファイル。あれば偽物の取得元が失敗する
-const newsDownFile = join(dirname(dbPath), "news-down");
 const newsCollector = createNewsCollector({
 	repo: newsRepo,
 	// E2E では RSS の取得元へつながず、偽物の記事を返す
 	fetchFeed:
-		process.env.NEWS_FEED === "demo"
-			? demoFetchFeed({ isDown: () => existsSync(newsDownFile) })
-			: rssFeed(httpFetchText),
+		process.env.NEWS_FEED === "demo" ? demoFetchFeed() : rssFeed(httpFetchText),
 });
 const newsTimer = setInterval(() => newsCollector.tick(), 1_000);
 newsCollector.tick();
@@ -135,15 +125,11 @@ const aiModel = (timeoutMs: number) =>
 		geminiModel(() => scoreRepo.apiKey(), { timeoutMs }),
 		compatibleModel(() => compatibleRepo.connection(), { timeoutMs }),
 	);
-// E2E で採点の失敗を再現するためのファイル。あれば偽物の AI が失敗する
-const scoringDownFile = join(dirname(dbPath), "scoring-down");
 const scorer = createScorer({
 	repo: scoreRepo,
 	// E2E では Gemini へつながず、決まった点数を返す
 	model:
-		process.env.SCORING_MODEL === "demo"
-			? demoScoreModel({ isDown: () => existsSync(scoringDownFile) })
-			: aiModel(60_000),
+		process.env.SCORING_MODEL === "demo" ? demoScoreModel() : aiModel(60_000),
 	rule: () => scoreRepo.aggregationRule(),
 	appBuiltAt,
 	// E2E では再試行を待ちきれないので短くする
@@ -226,8 +212,6 @@ const datasets = createDatasetService({
 const adviceRepo = new SqliteAdviceRepository(db);
 adviceRepo.failInterrupted();
 adviceRepo.seedInstructions(DEFAULT_INSTRUCTIONS, Date.now());
-// E2E でアドバイスの失敗を再現するためのファイル。あれば偽物の AI が失敗する
-const adviceDownFile = join(dirname(dbPath), "advice-down");
 const advice = createAdviceService({
 	repo: adviceRepo,
 	backtests,
@@ -235,7 +219,7 @@ const advice = createAdviceService({
 	// E2E では Gemini へつながず、決まったアドバイスを返す
 	model:
 		process.env.SCORING_MODEL === "demo"
-			? demoAdviceModel({ isDown: () => existsSync(adviceDownFile) })
+			? demoAdviceModel()
 			: // アドバイスは応答が長く、Pro のモデルでは時間がかかるので長めに待つ
 				aiModel(180_000),
 	appBuiltAt,
