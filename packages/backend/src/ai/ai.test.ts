@@ -1,3 +1,4 @@
+/** @module-tag medium */
 import { afterAll, describe, expect, test } from "bun:test";
 import { ADVICE_RESPONSE_SCHEMA } from "../advice/prompt";
 import type { GeminiModel } from "../news/gemini";

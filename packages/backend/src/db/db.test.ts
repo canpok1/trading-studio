@@ -1,3 +1,4 @@
+/** @module-tag medium */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
 	cp,
