@@ -8,6 +8,7 @@ type Size = (typeof SIZES)[number];
 // node_modules を走査しないよう、テストの置き場所に絞る
 const TEST_FILES = [
 	"packages/*/src/**/*.test.{ts,tsx}",
+	"packages/*/integration/**/*.test.{ts,tsx}",
 	"scripts/**/*.test.{ts,tsx}",
 ];
 
