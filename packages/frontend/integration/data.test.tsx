@@ -57,11 +57,8 @@ describe("CSV の取り込み", () => {
 				timeframes: saved.timeframes,
 			}))
 			.on(routes.api.data.imports, "$get", () => ({ imports: saved.imports }))
-			.on(routes.api.data.imports, "$post", () =>
-				Response.json(
-					{ job: importJob({ id: 1, timeframe: "1h" }) },
-					{ status: 202 },
-				),
+			.on(routes.api.data.imports, "$post", (_, reply) =>
+				reply(202, { job: importJob({ id: 1, timeframe: "1h" }) }),
 			)
 			.on(routes.api.data.imports[":id"], "$get", () => {
 				saved = {
@@ -102,8 +99,8 @@ describe("CSV の取り込み", () => {
 	test("既存の足と重なると件数を出して選ばせ、上書きしないなら読み飛ばした件数を出す", async () => {
 		const overlap = { from: DAY, to: DAY + 9 * M, count: 10 };
 		const api = dataApi()
-			.on(routes.api.data.imports, "$post", () =>
-				Response.json({ job: importJob({ id: 2 }) }, { status: 202 }),
+			.on(routes.api.data.imports, "$post", (_, reply) =>
+				reply(202, { job: importJob({ id: 2 }) }),
 			)
 			.on(routes.api.data.imports[":id"], "$get", () => ({
 				job: importJob({ id: 2, phase: "confirming", overlap }),
@@ -149,8 +146,8 @@ describe("CSV の取り込み", () => {
 	test("既存の足と重なるとき、上書きするを選ぶとそれを送る", async () => {
 		const overlap = { from: DAY, to: DAY + 9 * M, count: 10 };
 		const api = dataApi()
-			.on(routes.api.data.imports, "$post", () =>
-				Response.json({ job: importJob({ id: 3 }) }, { status: 202 }),
+			.on(routes.api.data.imports, "$post", (_, reply) =>
+				reply(202, { job: importJob({ id: 3 }) }),
 			)
 			.on(routes.api.data.imports[":id"], "$get", () => ({
 				job: importJob({ id: 3, phase: "confirming", overlap }),
@@ -189,11 +186,8 @@ describe("CSV の取り込み", () => {
 	test("取り込めなかったときは、ファイル名と原因の行と、選び直す案内が出る", async () => {
 		const content = "2026-08-01 05:11:00,1,1,1,1,0";
 		const api = dataApi()
-			.on(routes.api.data.imports, "$post", () =>
-				Response.json(
-					{ job: importJob({ id: 4, fileName: "broken.csv" }) },
-					{ status: 202 },
-				),
+			.on(routes.api.data.imports, "$post", (_, reply) =>
+				reply(202, { job: importJob({ id: 4, fileName: "broken.csv" }) }),
 			)
 			.on(routes.api.data.imports[":id"], "$get", () => ({
 				job: importJob({

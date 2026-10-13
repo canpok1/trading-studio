@@ -25,7 +25,7 @@
 
 - happy-dom のテストは先頭で `setupDom()`（`src/shared/lib/test-setup.ts`）を呼ぶ。DOM をそのファイルの間だけ用意する
 - テキスト・日付・数値の入力欄へは `changeValue`（同じファイル）で値を入れる。`fireEvent.change` では React の `onChange` が呼ばれない（選択肢・チェックボックス・ファイルは `fireEvent` でよい）
-- 偽物の API は `fake-api.ts` の `FakeApi`。`on(routes.api.version, "$get", () => ({ … }))` のように口を指定し、応答は backend の型で検査される
+- 偽物の API は `fake-api.ts` の `FakeApi`。`on(routes.api.version, "$get", () => ({ … }))` のように口を指定し、応答は backend の型で検査される。状態コードを決めるときはハンドラーの2つ目の引数 `reply(409, { … })` で返す。本文はその状態コードで backend が返す型で検査される。`Response` を直に返すのはファイルなど JSON でない応答だけ（型が効かないため）
 - `createFakeApi()` はどの画面でも読み込む口（自動取引の状況・実行中のバックテスト・バージョン）を空で答える。画面ごとに要る口はテストで足す。登録の無い口は 404 を返し、`FakeApi.unhandled` に残る
 - 応答のひな形は `fixtures.ts`。変えたいところだけ上書きする
 - 送った内容を確かめるのは、送ること自体が振る舞いのとき（保存など）だけ。`FakeApi.requests` で見る

@@ -2,6 +2,7 @@
 import type { AppType } from "@trading-studio/backend";
 import type { InferResponseType } from "hono/client";
 import { hc } from "hono/client";
+import type { StatusCode } from "hono/utils/http-status";
 import type { ApiClient } from "../src/shared/lib/api";
 
 type Method = "$get" | "$post" | "$put" | "$patch" | "$delete";
@@ -19,16 +20,28 @@ type Body<F> = F extends (...args: never[]) => Promise<unknown>
 	? InferResponseType<F>
 	: never;
 
-/** 型の付いた本文か、状態コードを決めたいときの Response を返す */
+/** 状態コードを決めて返す。本文は backend がその口・その状態コードで返す型で検査する */
+type Reply<F> = <S extends StatusCode>(
+	status: S,
+	body: F extends (...args: never[]) => Promise<unknown>
+		? InferResponseType<F, S>
+		: never,
+) => Response;
+
+/** 型の付いた本文を返す。状態コードを決めたいときは reply を使う。JSON でない応答（ファイルなど）だけ Response を直に返す */
 type Handler<F> = (
 	req: FakeRequest,
+	reply: Reply<F>,
 ) => Body<F> | Response | Promise<Body<F> | Response>;
+
+const reply = (status: number, body: unknown) =>
+	Response.json(body, { status });
 
 type Route = {
 	method: string;
 	pattern: RegExp;
 	keys: string[];
-	handler: (req: FakeRequest) => unknown;
+	handler: (req: FakeRequest, r: typeof reply) => unknown;
 };
 
 /** 偽物にする口を指す。`on(routes.api.version, "$get", …)` のように使う。$url は絶対 URL でないと作れないので、パスを取り出すためだけのホストを付ける */
@@ -95,7 +108,7 @@ export class FakeApi {
 				body,
 			};
 			this.requests.push(req);
-			const res = await route.handler(req);
+			const res = await route.handler(req, reply);
 			return res instanceof Response ? res : Response.json(res ?? null);
 		}
 		this.unhandled.push(`${request.method} ${url.pathname}`);
