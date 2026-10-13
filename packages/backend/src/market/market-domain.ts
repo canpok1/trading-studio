@@ -1,9 +1,12 @@
 // 最新価格とホームのチャートの足
 
 import { candleStart, TIMEFRAME_MS } from "@trading-studio/core";
-import type { Collector } from "../collector/collector";
-import type { MarketDataRepository } from "../market-data/repository";
-import type { ChartRangeId, MarketService } from "./types";
+
+// API の入口が入力の検査に使う。アプリケーション層は core を直接呼ばない（docs/adr/0028）
+export { isTimeframe } from "@trading-studio/core";
+
+import type { LiveMarketSource, MarketRepository } from "./repository-domain";
+import type { ChartRangeId, MarketService } from "./types-domain";
 
 /** チャートに一度に返す足の上限。これより多い組み合わせは選べなくする */
 export const MAX_CHART_BARS = 50_000;
@@ -20,8 +23,8 @@ export function createMarketService({
 	repo,
 	now = Date.now,
 }: {
-	collector: Pick<Collector, "live">;
-	repo: MarketDataRepository;
+	collector: LiveMarketSource;
+	repo: MarketRepository;
 	now?: () => number;
 }): MarketService {
 	return {

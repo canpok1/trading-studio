@@ -1,8 +1,8 @@
-import { isTimeframe } from "@trading-studio/core";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import { validator } from "hono/validator";
-import type { ChartRangeId, MarketService } from "../market/types";
+import { isTimeframe } from "./market-domain";
+import type { ChartRangeId, MarketService } from "./types-domain";
 
 const RANGES: readonly ChartRangeId[] = ["1d", "1w", "1m", "all"];
 const isRange = (v: unknown): v is ChartRangeId =>

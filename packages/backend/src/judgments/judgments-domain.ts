@@ -7,15 +7,28 @@ import {
 	maxWindowMs,
 	validateAggregationRule,
 } from "@trading-studio/core";
-import type { ScoreRepository } from "../news/score-repository";
-import type { CurrentJudgment, JudgmentSeries, JudgmentService } from "./types";
+
+// API の入口が入力の検査に使う。アプリケーション層は core を直接呼ばない（docs/adr/0028）
+export {
+	isTimeframe,
+	parseAggregationRule,
+	TIMEFRAME_MS,
+	validateAggregationRule,
+} from "@trading-studio/core";
+
+import type { JudgmentRepository } from "./repository-domain";
+import type {
+	CurrentJudgment,
+	JudgmentSeries,
+	JudgmentService,
+} from "./types-domain";
 
 export function createJudgmentService({
 	repo,
 	newsDelayMs,
 	now = Date.now,
 }: {
-	repo: ScoreRepository;
+	repo: JudgmentRepository;
 	/** バックテストで記事を使い始めるまでの遅れ（取得の間隔） */
 	newsDelayMs: () => number;
 	now?: () => number;

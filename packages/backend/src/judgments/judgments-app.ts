@@ -1,15 +1,15 @@
 import type { AggregationRule } from "@trading-studio/core";
+import type { Context } from "hono";
+import { Hono } from "hono";
+import { compress } from "hono/compress";
+import { validator } from "hono/validator";
 import {
 	isTimeframe,
 	parseAggregationRule,
 	TIMEFRAME_MS,
 	validateAggregationRule,
-} from "@trading-studio/core";
-import type { Context } from "hono";
-import { Hono } from "hono";
-import { compress } from "hono/compress";
-import { validator } from "hono/validator";
-import type { JudgmentService } from "../judgments/types";
+} from "./judgments-domain";
+import type { JudgmentService } from "./types-domain";
 
 /** 一度に返す足の上限。チャートの足の上限（5万本）に余裕を持たせる */
 const MAX_SERIES = 100_000;

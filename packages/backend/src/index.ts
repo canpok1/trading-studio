@@ -26,8 +26,8 @@ export type {
 	HistoryEntry,
 	HistoryResult,
 } from "./datasets/types";
-export type { CurrentJudgment, JudgmentSeries } from "./judgments/types";
-export type { ChartRangeId, LatestMarket } from "./market/types";
+export type { CurrentJudgment, JudgmentSeries } from "./judgments/types-domain";
+export type { ChartRangeId, LatestMarket } from "./market/types-domain";
 export type { ImportJob, TimeframeCoverage } from "./market-data/types";
 export type {
 	ApiKeyStatus,
