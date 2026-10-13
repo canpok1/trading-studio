@@ -3,6 +3,7 @@ import type {
 	AccuracySummary,
 	AccuracySummaryResult,
 	AutoTradingStatus,
+	BacktestRun,
 	CurrentJudgment,
 	ImportJob,
 	NewsCollectorStatus,
@@ -15,9 +16,11 @@ import type {
 import type { AggregationRule, Judge, ScoredNews } from "@trading-studio/core";
 import {
 	DEFAULT_AGGREGATION_RULE,
+	DEFAULT_FEE_RATES,
 	JUDGMENT_VALUES,
 	judgeAt,
 	judgmentBreakdown,
+	strategyTemplate,
 } from "@trading-studio/core";
 import type { InferResponseType } from "hono/client";
 import type { ApiClient } from "../src/shared/lib/api";
@@ -271,6 +274,39 @@ export function coverage(
 		importedCount: over.count,
 		gaps: [],
 		gapCount: 0,
+		...over,
+	};
+}
+
+export function backtestRun(
+	over: Partial<BacktestRun> & Pick<BacktestRun, "id" | "name">,
+): BacktestRun {
+	return {
+		params: strategyTemplate("blank").params,
+		timeframe: "1h",
+		from: Date.UTC(2026, 7, 31, 15),
+		to: Date.UTC(2026, 8, 30, 15),
+		initialCash: 1_000_000,
+		fees: DEFAULT_FEE_RATES,
+		skipGaps: false,
+		stepTimeframe: "1h",
+		stepLimited: false,
+		status: "done",
+		progress: 1,
+		startedAt: Date.UTC(2026, 9, 1),
+		finishedAt: Date.UTC(2026, 9, 1, 0, 1),
+		barCount: 720,
+		summary: null,
+		filledCount: 0,
+		orderCount: 0,
+		error: null,
+		aggregationRule: null,
+		criteriaVersion: null,
+		newsDelayMs: null,
+		newsDataVersion: null,
+		segment: null,
+		datasetRunId: null,
+		dailyLossLimitApplied: true,
 		...over,
 	};
 }
