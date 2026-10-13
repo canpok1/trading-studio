@@ -5,14 +5,28 @@
 | サイズ | 収まる範囲 | 使ってよいもの | このリポジトリでの該当 | 流し方 |
 |---|---|---|---|---|
 | Small | 1プロセス | メモリ上だけ。ファイル・ネットワーク・別プロセスは使わない。メモリ上の SQLite（`createTestDb`）は可 | `*.test.ts(x)` のうち下記以外 | `bun run test:small` |
-| Medium | 1マシン | 一時ファイル、localhost のサーバー、ブラウザ | 先頭に `/** @module-tag medium */` と書いた `*.test.ts(x)`、E2E（`packages/e2e/src/*.e2e.ts`） | `bun run test:medium`、`bun run test:e2e` |
+| Medium | 1マシン | 一時ファイル、localhost のサーバー、ブラウザ | 先頭に `/** @module-tag medium */` と書いた `*.test.ts(x)`、画面の配置のテスト（`packages/frontend/integration/*.pw.ts`）、E2E（`packages/e2e/src/*.e2e.ts`） | `bun run test:medium`、`bun run test:browser`、`bun run test:e2e` |
 | Large | 複数マシン | 本物の外部サービス（Coincheck・Gemini など） | なし | — |
 
 - サイズはファイル単位で決め、Medium のファイルだけ先頭に `/** @module-tag medium */` と書く（Vitest 4.1 の[タグ](https://vitest.dev/guide/test-tags)の書き方）。印の無い `*.test.ts(x)` は Small とみなす
 - `test:small` と `test:medium` は `scripts/test-size.ts` が印を読んでファイルを分け、`bun test` に渡す。`small`・`medium` 以外の印はエラーになる
 - 1つのファイルに Small と Medium が混ざるなら、Medium の部分を別ファイルに分ける
-- E2E はすべて Medium なので印を付けない
+- Playwright で流すもの（`*.pw.ts`・E2E）はすべて Medium なので印を付けない
 - `bun run test`（CI の `check`）は Small と Medium の両方を流す
+
+# 画面のインテグレーション
+
+`packages/frontend/integration/` に置く。ページを API だけ偽物にして確かめる（`docs/adr/0028-test-scope-and-layers.md`）。
+
+| 確かめる内容 | 書き方 | 流し方 |
+|---|---|---|
+| 画面の振る舞い（入力の検証、絞り込み、表示の切り替え、画面の移動） | `*.test.tsx`。`render-app.tsx` の `renderApp` で画面全体を happy-dom の上に描き、Testing Library で操作する | `bun run test` |
+| 見た目の配置（スマホと PC で見える項目、横にはみ出さない、並び順） | `*.pw.ts`。`browser.ts` の `test` を使い、ビルド済みの画面を実ブラウザで開く | `bun run test:browser` |
+
+- 偽物の API は `fake-api.ts` の `FakeApi`。`on(routes.api.version, "$get", () => ({ … }))` のように口を指定し、応答は backend の型で検査される
+- `createFakeApi()` はどの画面でも読み込む口（自動取引の状況・実行中のバックテスト・バージョン）を空で答える。画面ごとに要る口はテストで足す。登録の無い口は 404 を返し、`FakeApi.unhandled` に残る
+- 応答のひな形は `fixtures.ts`。変えたいところだけ上書きする
+- 送った内容を確かめるのは、送ること自体が振る舞いのとき（保存など）だけ。`FakeApi.requests` で見る
 
 # E2E
 

@@ -19,6 +19,7 @@
 		"depcruise": "depcruise packages",
 		"layers": "bun scripts/check-backend-layers.ts",
 		"check": "bun run lint && bun run typecheck && bun run test && bun run depcruise && bun run layers",
+		"test:browser": "bun run build && bun run --cwd packages/frontend test:browser",
 		"test:e2e": "bun run build && bun run --cwd packages/e2e test"
 	},
 	"devDependencies": {

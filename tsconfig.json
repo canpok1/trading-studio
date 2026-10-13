@@ -9,9 +9,10 @@
 	"include": [
 		"packages/*/src",
 		"packages/backend/integration",
+		"packages/frontend/integration",
 		"packages/*/vite.config.ts",
 		"packages/*/drizzle.config.ts",
-		"packages/e2e/playwright.config.ts",
+		"packages/*/playwright.config.ts",
 		"scripts"
 	]
 }
