@@ -6,14 +6,15 @@ import { demoAdviceModel } from "./advice/fake-model";
 import { DEFAULT_INSTRUCTIONS } from "./advice/prompt";
 import { AdviceRepository } from "./advice/repository";
 import { createAdviceService } from "./advice/service";
+import { createCompatibleService } from "./ai/ai-domain";
 import {
-	CompatibleRepository,
 	compatibleModel,
-	isCompatibleModel,
+	fetchCompatibleModels,
 	routedModel,
-} from "./ai/compatible";
-import { demoCompatibleModels } from "./ai/fake-models";
-import { createCompatibleService } from "./ai/service";
+	SqliteCompatibleRepository,
+} from "./ai/compatible-infra";
+import { demoCompatibleModels } from "./ai/fake-models-infra";
+import { isCompatibleModel } from "./ai/model-domain";
 import { AnalysisExportRepository } from "./analysis-export/repository";
 import { createAnalysisExportService } from "./analysis-export/service";
 import { createApp } from "./app";
@@ -128,7 +129,7 @@ newsCollector.tick();
 
 const scoreRepo = new ScoreRepository(db);
 scoreRepo.seedCriteria(DEFAULT_CRITERIA, Date.now());
-const compatibleRepo = new CompatibleRepository(db);
+const compatibleRepo = new SqliteCompatibleRepository(db);
 /** 選んだモデルの接続先（Gemini 直結か OpenAI 互換か）で問い合わせる */
 const aiModel = (timeoutMs: number) =>
 	routedModel(
@@ -201,9 +202,10 @@ const compatible = createCompatibleService({
 		scorer.clearFailure();
 	},
 	// E2E では接続先へつながず、決まった一覧を返す
-	...(process.env.SCORING_MODEL === "demo"
-		? { listModels: demoCompatibleModels }
-		: {}),
+	listModels:
+		process.env.SCORING_MODEL === "demo"
+			? demoCompatibleModels
+			: fetchCompatibleModels,
 });
 const backtests = createBacktestService({
 	repo: backtestRepo,

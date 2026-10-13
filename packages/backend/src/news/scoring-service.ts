@@ -1,5 +1,5 @@
 import { maxWindowMs } from "@trading-studio/core";
-import { isSelectableModel } from "../ai/compatible";
+import { isSelectableModel } from "../ai/model-domain";
 import { newsDelayMs } from "./collector";
 import { DEFAULT_SCORING_MODEL, SCORING_MODELS } from "./gemini";
 import { PROMPT_TEMPLATE } from "./prompt";

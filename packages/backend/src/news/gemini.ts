@@ -1,20 +1,6 @@
 // Gemini API（generateContent）へ問い合わせる。ニュースの採点とバックテストのアドバイスで使う。構造化出力で JSON の形を強制する
 
-/** Gemini の構造化出力の形（responseSchema の書き方） */
-export type ResponseSchema = Record<string, unknown>;
-
-/** モデルへ1回問い合わせ、応答の JSON を返す。テストと E2E では偽物に差し替える */
-export type GeminiModel = {
-	/** そのモデルを使えない理由（API キーが無いなど）。使えれば null */
-	unavailable(model: string): string | null;
-	generate(
-		model: string,
-		prompt: string,
-		schema: ResponseSchema,
-	): Promise<unknown>;
-};
-/** 採点に使うモデル。名前は採点の側から見たもの */
-export type ScoreModel = GeminiModel;
+import type { GeminiModel } from "../ai/model-domain";
 
 /** 画面で選べるモデル（docs/adr/0008）。先頭が既定 */
 export const SCORING_MODELS = [

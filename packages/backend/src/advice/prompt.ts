@@ -1,6 +1,6 @@
 // アドバイスのプロンプトと、AI の応答の検証。ひな形と出力形式は画面の見出しの前提なので固定する
 
-import type { ResponseSchema } from "../news/gemini";
+import type { ResponseSchema } from "../ai/model-domain";
 import { IMPROVED_STRATEGY_SCHEMA } from "./improved";
 import type { AdviceContent } from "./types";
 

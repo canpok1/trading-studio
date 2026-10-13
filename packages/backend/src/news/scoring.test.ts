@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_AGGREGATION_RULE } from "@trading-studio/core";
+import type { ScoreModel } from "../ai/model-domain";
 import { createTestDb } from "../db/test-db";
 import { createTestApp } from "../test-app";
-import type { ScoreModel } from "./gemini";
 import { DEFAULT_SCORING_MODEL, geminiModel, NO_API_KEY } from "./gemini";
 import { buildPrompt, DEFAULT_CRITERIA, parseScoreResponse } from "./prompt";
 import { NewsRepository } from "./repository";

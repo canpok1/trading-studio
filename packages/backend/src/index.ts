@@ -8,7 +8,7 @@ export type {
 export type {
 	CompatibleConnectionStatus,
 	CompatibleModelsResult,
-} from "./ai/types";
+} from "./ai/types-domain";
 export type { AppType } from "./app";
 export type {
 	BacktestChart,

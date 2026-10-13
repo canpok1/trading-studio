@@ -1,33 +1,18 @@
+import type { CompatibleRepository } from "./repository-domain";
 // OpenAI 互換 API（Chat Completions）へ問い合わせる。Bifrost などの集約サービス経由で Gemini 以外の AI も使うため（ADR 0027）
 
 import type { Db } from "../db/open";
-import type { GeminiModel, ResponseSchema } from "../news/gemini";
-import type { CompatibleModelOption } from "./types";
-
-/** OpenAI 互換の接続先のモデルに付ける印。Gemini 直結のモデル名と区別し、記録にもこの形で残す */
-export const COMPATIBLE_PREFIX = "openai:";
-
-export const isCompatibleModel = (id: string) =>
-	id.startsWith(COMPATIBLE_PREFIX);
-
-const MODEL_ID_MAX = 200;
-
-/**
- * 選べるモデルか。OpenAI 互換のモデルは接続先の一覧を取らないと確かめられないので、形だけ見る。
- * 一覧を取れないときも保存済みの選択を変えずに済むようにするため
- */
-export const isSelectableModel = (
-	fixed: readonly { id: string }[],
-	id: string,
-) =>
-	fixed.some((m) => m.id === id) ||
-	(isCompatibleModel(id) &&
-		id.length > COMPATIBLE_PREFIX.length &&
-		id.length <= MODEL_ID_MAX &&
-		!/\s/.test(id));
-
-export const NO_CONNECTION =
-	"OpenAI 互換の接続先が設定されていない。設定画面の「全般」で設定する";
+import type {
+	CompatibleConnection,
+	GeminiModel,
+	ResponseSchema,
+} from "./model-domain";
+import {
+	COMPATIBLE_PREFIX,
+	isCompatibleModel,
+	NO_CONNECTION,
+} from "./model-domain";
+import type { CompatibleModelOption } from "./types-domain";
 
 const TIMEOUT_MS = 60_000;
 const LIST_TIMEOUT_MS = 10_000;
@@ -36,9 +21,7 @@ const BASE_URL_KEY = "openai_base_url";
 const API_KEY_KEY = "openai_api_key";
 const API_KEY_SAVED_AT_KEY = "openai_api_key_saved_at";
 
-export type CompatibleConnection = { baseUrl: string; apiKey: string | null };
-
-export class CompatibleRepository {
+export class SqliteCompatibleRepository implements CompatibleRepository {
 	constructor(private readonly db: Db) {}
 
 	private get sql() {

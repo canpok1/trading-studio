@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { validator } from "hono/validator";
-import type { CompatibleService } from "../ai/types";
+import type { CompatibleService } from "./types-domain";
 
 export function aiRoutes(compatible: CompatibleService) {
 	return new Hono()

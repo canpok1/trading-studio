@@ -1,6 +1,6 @@
 // テストと E2E で使う、Gemini の代わりに決まった点数を返す偽物
 
-import type { ScoreModel } from "./gemini";
+import type { ScoreModel } from "../ai/model-domain";
 
 /** 見出しから決まる点数を返す。isDown が true の間は失敗する */
 export function demoScoreModel({

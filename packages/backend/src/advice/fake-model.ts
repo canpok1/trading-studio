@@ -1,6 +1,6 @@
 // テストと E2E で使う、Gemini の代わりに決まったアドバイスを返す偽物
 
-import type { GeminiModel } from "../news/gemini";
+import type { GeminiModel } from "../ai/model-domain";
 
 /** 偽物が出す改善版の戦略。決まった値なので、元の戦略と同じなら「変更なし」になる */
 export const DEMO_IMPROVED_STRATEGY = {

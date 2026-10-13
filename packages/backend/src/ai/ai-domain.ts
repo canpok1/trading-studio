@@ -1,6 +1,7 @@
-import type { CompatibleRepository } from "./compatible";
-import { fetchCompatibleModels, NO_CONNECTION } from "./compatible";
-import type { CompatibleService } from "./types";
+import type { CompatibleConnection } from "./model-domain";
+import { NO_CONNECTION } from "./model-domain";
+import type { CompatibleRepository } from "./repository-domain";
+import type { CompatibleModelOption, CompatibleService } from "./types-domain";
 
 const URL_MAX = 300;
 const API_KEY_MAX = 300;
@@ -20,13 +21,14 @@ function normalizeBaseUrl(raw: string): string | null {
 export function createCompatibleService({
 	repo,
 	onSaved = () => {},
-	listModels = fetchCompatibleModels,
+	listModels,
 	now = Date.now,
 }: {
 	repo: CompatibleRepository;
 	/** 接続先を保存したとき。前の接続先で失敗した採点をやり直すのに使う */
 	onSaved?: () => void;
-	listModels?: typeof fetchCompatibleModels;
+	/** 接続先のモデルの一覧を取る */
+	listModels: (c: CompatibleConnection) => Promise<CompatibleModelOption[]>;
 	now?: () => number;
 }): CompatibleService {
 	return {

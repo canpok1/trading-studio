@@ -1,17 +1,17 @@
 /** @module-tag medium */
 import { afterAll, describe, expect, test } from "bun:test";
-import { ADVICE_RESPONSE_SCHEMA } from "../advice/prompt";
-import type { GeminiModel } from "../news/gemini";
-import { RESPONSE_SCHEMA } from "../news/prompt";
-import { createTestApp } from "../test-app";
+import { ADVICE_RESPONSE_SCHEMA } from "../src/advice/prompt";
 import {
 	compatibleModel,
 	fetchCompatibleModels,
-	NO_CONNECTION,
 	routedModel,
 	toJsonSchema,
-} from "./compatible";
-import { DEMO_COMPATIBLE_MODELS } from "./fake-models";
+} from "../src/ai/compatible-infra";
+import { DEMO_COMPATIBLE_MODELS } from "../src/ai/fake-models-infra";
+import type { GeminiModel } from "../src/ai/model-domain";
+import { NO_CONNECTION } from "../src/ai/model-domain";
+import { RESPONSE_SCHEMA } from "../src/news/prompt";
+import { createTestApp } from "../src/test-app";
 
 /** 受けたリクエストを残し、決まった応答を返す OpenAI 互換の偽サーバー */
 const received: { path: string; auth: string | null; body: unknown }[] = [];

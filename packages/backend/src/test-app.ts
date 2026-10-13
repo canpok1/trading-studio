@@ -3,9 +3,10 @@ import { demoAdviceModel } from "./advice/fake-model";
 import { DEFAULT_INSTRUCTIONS } from "./advice/prompt";
 import { AdviceRepository } from "./advice/repository";
 import { createAdviceService } from "./advice/service";
-import { CompatibleRepository } from "./ai/compatible";
-import { demoCompatibleModels } from "./ai/fake-models";
-import { createCompatibleService } from "./ai/service";
+import { createCompatibleService } from "./ai/ai-domain";
+import { SqliteCompatibleRepository } from "./ai/compatible-infra";
+import { demoCompatibleModels } from "./ai/fake-models-infra";
+import type { GeminiModel } from "./ai/model-domain";
 import { AnalysisExportRepository } from "./analysis-export/repository";
 import { createAnalysisExportService } from "./analysis-export/service";
 import type { AppDeps } from "./app";
@@ -26,7 +27,6 @@ import { createMarketDataService } from "./market-data/market-data-domain";
 import { SqliteMarketDataRepository } from "./market-data/repository-infra";
 import { newsDelayMs } from "./news/collector";
 import { demoScoreModel } from "./news/fake-model";
-import type { GeminiModel } from "./news/gemini";
 import { DEFAULT_SCORING_MODEL } from "./news/gemini";
 import { DEFAULT_CRITERIA } from "./news/prompt";
 import { NewsRepository } from "./news/repository";
@@ -193,7 +193,7 @@ export function createTestApp(
 		now: () => clock.now,
 	});
 	const compatible = createCompatibleService({
-		repo: new CompatibleRepository(db),
+		repo: new SqliteCompatibleRepository(db),
 		listModels: demoCompatibleModels,
 		now: () => clock.now,
 	});

@@ -13,7 +13,7 @@ import {
 	TIMEFRAMES,
 	validateConditionSet,
 } from "@trading-studio/core";
-import type { ResponseSchema } from "../news/gemini";
+import type { ResponseSchema } from "../ai/model-domain";
 import type { ImprovedStrategy } from "./types";
 
 const str = (description: string, values?: readonly string[]) => ({
