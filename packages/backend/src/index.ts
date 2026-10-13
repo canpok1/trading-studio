@@ -4,11 +4,11 @@ export type {
 	BacktestAdvice,
 	ImprovedStrategy,
 	InstructionsVersion,
-} from "./advice/types";
+} from "./advice/types-domain";
 export type {
 	CompatibleConnectionStatus,
 	CompatibleModelsResult,
-} from "./ai/types";
+} from "./ai/types-domain";
 export type { AppType } from "./app";
 export type {
 	BacktestChart,
@@ -16,7 +16,7 @@ export type {
 	BacktestRun,
 	RunListResult,
 	RunSort,
-} from "./backtests/types";
+} from "./backtests/types-domain";
 export type { CollectorStatus } from "./collector/types";
 export type {
 	Dataset,
@@ -25,10 +25,10 @@ export type {
 	DatasetRunDetail,
 	HistoryEntry,
 	HistoryResult,
-} from "./datasets/types";
+} from "./datasets/types-domain";
 export type { CurrentJudgment, JudgmentSeries } from "./judgments/types-domain";
 export type { ChartRangeId, LatestMarket } from "./market/types-domain";
-export type { ImportJob, TimeframeCoverage } from "./market-data/types";
+export type { ImportJob, TimeframeCoverage } from "./market-data/types-domain";
 export type {
 	ApiKeyStatus,
 	CriteriaVersion,
@@ -44,13 +44,13 @@ export type {
 	ScoringModelOption,
 	TrialItem,
 	TrialResult,
-} from "./news/types";
+} from "./news/types-domain";
 export type {
 	RetentionRun,
 	RetentionSettings,
 	RetentionStatus,
 	RetentionTable,
-} from "./retention/types";
+} from "./retention/types-domain";
 export type {
 	AccuracyHorizon,
 	AccuracyPeriod,
@@ -61,9 +61,9 @@ export type {
 	ArticleAccuracyReport,
 	RiskBands,
 	SentimentBands,
-} from "./scoring-analysis/types";
-export type { ListedSegment, Segment } from "./segments/types";
-export type { StoredStrategy } from "./strategies/types";
+} from "./scoring-analysis/types-domain";
+export type { ListedSegment, Segment } from "./segments/types-domain";
+export type { StoredStrategy } from "./strategies/types-domain";
 export type {
 	AutoTradingStatus,
 	OrderSummary,

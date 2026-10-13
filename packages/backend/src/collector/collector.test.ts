@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { MarketTrade } from "@trading-studio/core";
 import { TIMEFRAME_MS } from "@trading-studio/core";
 import { createTestDb } from "../db/test-db";
-import { MarketDataRepository } from "../market-data/repository";
+import { SqliteMarketDataRepository } from "../market-data/repository-infra";
 import { parseRestTrade, parseWsTrade } from "./coincheck";
 import { createCollector } from "./collector";
 import { manualFeed } from "./fake-feed";
@@ -22,7 +22,7 @@ const tr = (time: number, price: number, quantity = 100): MarketTrade => ({
 
 function setup(start = T0) {
 	let clock = start;
-	const repo = new MarketDataRepository(createTestDb());
+	const repo = new SqliteMarketDataRepository(createTestDb());
 	const f = manualFeed();
 	const received: MarketTrade[] = [];
 	const collector = createCollector({
@@ -164,7 +164,7 @@ describe("価格収集", () => {
 	});
 
 	test("1分足が欠けた区切りでは、1段細かい足が揃って見えても取り込んだ粗い足を残す", () => {
-		const repo = new MarketDataRepository(createTestDb());
+		const repo = new SqliteMarketDataRepository(createTestDb());
 		const candle = { open: 1, high: 1, low: 1, close: 1, volume: 1 };
 		const importId = repo.createImport("1h", "a.csv", 0);
 		repo.insertImported("1h", [{ time: T0, ...candle }], importId);

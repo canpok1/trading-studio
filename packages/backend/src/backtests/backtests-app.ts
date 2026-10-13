@@ -1,0 +1,202 @@
+import { Hono } from "hono";
+import { compress } from "hono/compress";
+import { validator } from "hono/validator";
+import type { DatasetService } from "../datasets/types-domain";
+import { parseBacktestInput, parseChartQuery } from "./backtests-domain";
+import type { BacktestService, OrderFilter, RunFilter } from "./types-domain";
+
+const isObj = (v: unknown): v is Record<string, unknown> =>
+	typeof v === "object" && v !== null;
+
+const NOT_FOUND = { message: "バックテストの実行が見つからない" };
+
+/** 実行の一覧の既定の件数と上限 */
+const RUNS_PAGE = 20;
+const MAX_RUNS = 1000;
+
+/** 注文一覧の1ページの上限 */
+const MAX_LIMIT = 200;
+
+function runFilter(q: Record<string, string>): RunFilter | null {
+	const limit = q.limit === undefined ? RUNS_PAGE : Number(q.limit);
+	if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_RUNS) {
+		return null;
+	}
+	return {
+		limit,
+		q: q.q ?? "",
+		hideFailed: q.hideFailed === "1",
+		sort: q.sort === "pnl" ? "pnl" : "new",
+	};
+}
+
+export function backtestRoutes(
+	service: BacktestService,
+	datasets: Pick<DatasetService, "history">,
+) {
+	return (
+		new Hono()
+			.get("/", (c) => {
+				const f = runFilter(c.req.query());
+				if (!f) return c.json({ message: `件数は 1〜${MAX_RUNS}` }, 400);
+				return c.json(service.list(f), 200);
+			})
+			// 履歴の画面。まとめた実行は1行にし、含む実行は出さない
+			.get("/history", (c) => {
+				const f = runFilter(c.req.query());
+				if (!f) return c.json({ message: `件数は 1〜${MAX_RUNS}` }, 400);
+				return c.json(datasets.history(f), 200);
+			})
+			.post(
+				"/",
+				validator("json", (v, c) => {
+					const input = parseBacktestInput(v);
+					if (!input) return c.json({ message: "実行条件の形が違う" }, 400);
+					return input;
+				}),
+				(c) => {
+					const r = service.start(c.req.valid("json"));
+					if (r.ok) return c.json({ run: r.run }, 202);
+					const e = r.error;
+					switch (e.kind) {
+						case "busy":
+							return c.json(
+								{
+									kind: e.kind,
+									message:
+										"別のバックテストを実行中。終わるか中止してから実行する",
+									run: e.run,
+								},
+								409,
+							);
+						case "invalid_params":
+							return c.json(
+								{
+									kind: e.kind,
+									message: "条件に入力の誤りがある",
+									errors: e.errors,
+								},
+								400,
+							);
+						case "invalid_input":
+							return c.json(
+								{ kind: e.kind, message: e.message, field: e.field },
+								400,
+							);
+						case "no_data":
+							return c.json({ kind: e.kind, message: e.message }, 400);
+						case "no_judgments":
+							return c.json(
+								{
+									kind: e.kind,
+									message: e.message,
+									firstScoredAt: e.firstScoredAt,
+								},
+								400,
+							);
+						case "missing_scores":
+							return c.json(
+								{
+									kind: e.kind,
+									message: e.message,
+									version: e.version,
+									coverage: e.coverage,
+								},
+								409,
+							);
+						case "gaps":
+							return c.json(
+								{
+									kind: e.kind,
+									message: "期間内にデータの欠損がある",
+									gaps: e.gaps,
+									gapCount: e.gapCount,
+									missingBars: e.missingBars,
+								},
+								409,
+							);
+					}
+				},
+			)
+			.get("/current", (c) => c.json({ run: service.current() }))
+			.get("/:id", (c) => {
+				const run = service.get(Number(c.req.param("id")));
+				return run ? c.json({ run }, 200) : c.json(NOT_FOUND, 404);
+			})
+			.post("/:id/cancel", (c) => {
+				const run = service.cancel(Number(c.req.param("id")));
+				return run ? c.json({ run }, 200) : c.json(NOT_FOUND, 404);
+			})
+			// 1分足で数か月分だと数 MB になるため圧縮して返す
+			.get(
+				"/:id/chart",
+				compress(),
+				validator("query", (q, c) => {
+					const r = parseChartQuery(q);
+					if (!r.ok) return c.json({ message: r.message }, 400);
+					return { timeframe: r.timeframe };
+				}),
+				(c) => {
+					const r = service.chart(
+						Number(c.req.param("id")),
+						c.req.valid("query").timeframe,
+					);
+					if (r.ok) return c.json(r.chart, 200);
+					if (r.kind === "not_found") return c.json(NOT_FOUND, 404);
+					return c.json(
+						{
+							message: `足が ${r.count.toLocaleString("ja-JP")} 本あり、${r.max.toLocaleString("ja-JP")} 本を超えるため出せない。粗い足を選ぶ`,
+						},
+						400,
+					);
+				},
+			)
+			.get(
+				"/:id/orders",
+				validator("query", (q) => {
+					const filter: OrderFilter = q.filter === "filled" ? "filled" : "all";
+					const offset = Math.max(0, Number(q.offset ?? 0) || 0);
+					const limit = Math.min(
+						MAX_LIMIT,
+						Math.max(1, Number(q.limit ?? 20) || 20),
+					);
+					return { filter, offset, limit };
+				}),
+				(c) => {
+					const { filter, offset, limit } = c.req.valid("query");
+					const r = service.orders(
+						Number(c.req.param("id")),
+						filter,
+						offset,
+						limit,
+					);
+					return r ? c.json(r, 200) : c.json(NOT_FOUND, 404);
+				},
+			)
+			.get("/:id/orders/:orderId", (c) => {
+				const order = service.order(
+					Number(c.req.param("id")),
+					c.req.param("orderId"),
+				);
+				return order
+					? c.json({ order }, 200)
+					: c.json({ message: "注文が見つからない" }, 404);
+			})
+			.post(
+				"/:id/save",
+				validator("json", (v, c) => {
+					if (isObj(v) && typeof v.name === "string") return { name: v.name };
+					return c.json({ message: "name が必要" }, 400);
+				}),
+				(c) => {
+					const r = service.saveToStrategy(
+						Number(c.req.param("id")),
+						c.req.valid("json").name,
+					);
+					if (r.ok) return c.json({ strategy: r.strategy }, 200);
+					if (r.kind === "not_found") return c.json(NOT_FOUND, 404);
+					return c.json({ message: r.message }, r.status);
+				},
+			)
+	);
+}

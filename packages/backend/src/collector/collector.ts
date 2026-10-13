@@ -14,7 +14,7 @@ import {
 	startMinuteCandles,
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
-import type { MarketDataRepository } from "../market-data/repository";
+import type { MarketDataRepository } from "../market-data/repository-domain";
 import type { CollectorStatus, LiveMarket, TradeFeed } from "./types";
 
 export type CollectorOptions = {

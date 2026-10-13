@@ -2,59 +2,58 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
-import { demoAdviceModel } from "./advice/fake-model";
-import { DEFAULT_INSTRUCTIONS } from "./advice/prompt";
-import { AdviceRepository } from "./advice/repository";
-import { createAdviceService } from "./advice/service";
+import { createAdviceService } from "./advice/advice-domain";
+import { demoAdviceModel } from "./advice/fake-model-infra";
+import { DEFAULT_INSTRUCTIONS } from "./advice/prompt-domain";
+import { SqliteAdviceRepository } from "./advice/repository-infra";
+import { createCompatibleService } from "./ai/ai-domain";
 import {
-	CompatibleRepository,
 	compatibleModel,
-	isCompatibleModel,
+	fetchCompatibleModels,
 	routedModel,
-} from "./ai/compatible";
-import { demoCompatibleModels } from "./ai/fake-models";
-import { createCompatibleService } from "./ai/service";
+	SqliteCompatibleRepository,
+} from "./ai/compatible-infra";
+import { demoCompatibleModels } from "./ai/fake-models-infra";
+import { DEFAULT_SCORING_MODEL, isCompatibleModel } from "./ai/model-domain";
 import { AnalysisExportRepository } from "./analysis-export/repository";
 import { createAnalysisExportService } from "./analysis-export/service";
 import { createApp } from "./app";
-import { BacktestRepository } from "./backtests/repository";
-import { createBacktestService } from "./backtests/service";
-import { workerRunner } from "./backtests/worker-runner";
+import { createBacktestService } from "./backtests/backtests-domain";
+import { SqliteBacktestRepository } from "./backtests/repository-infra";
+import { workerRunner } from "./backtests/worker-runner-infra";
 import { coincheckFeed } from "./collector/coincheck";
 import { createCollector } from "./collector/collector";
 import { demoFeed } from "./collector/fake-feed";
-import { DatasetRepository } from "./datasets/repository";
-import { createDatasetService } from "./datasets/service";
+import { createDatasetService } from "./datasets/datasets-domain";
+import { SqliteDatasetRepository } from "./datasets/repository-infra";
 import { migrateDb } from "./db/migrate";
 import { isDbReachable, openDb } from "./db/open";
 import { createJudgmentService } from "./judgments/judgments-domain";
 import { createMarketService } from "./market/market-domain";
-import { MarketDataRepository } from "./market-data/repository";
-import { createMarketDataService } from "./market-data/service";
+import { createMarketDataService } from "./market-data/market-data-domain";
+import { SqliteMarketDataRepository } from "./market-data/repository-infra";
 import { BACKTEST_WAIT_MS, mcpRoutes } from "./mcp/server";
-import {
-	createNewsCollector,
-	httpFetchFeed,
-	newsDelayMs,
-} from "./news/collector";
-import { demoFetchFeed } from "./news/fake-feed";
-import { demoScoreModel } from "./news/fake-model";
-import { DEFAULT_SCORING_MODEL, geminiModel } from "./news/gemini";
-import { DEFAULT_CRITERIA } from "./news/prompt";
-import { NewsRepository } from "./news/repository";
-import { ScoreRepository } from "./news/score-repository";
-import { createScorer } from "./news/scorer";
-import { createScoringService } from "./news/scoring-service";
-import { createNewsService, DEFAULT_NEWS_SOURCES } from "./news/service";
-import { RetentionRepository } from "./retention/repository";
-import { createRetentionService } from "./retention/service";
-import { ScoringAnalysisRepository } from "./scoring-analysis/repository";
-import { createScoringAnalysis } from "./scoring-analysis/service";
-import { SegmentRepository } from "./segments/repository";
-import { createSegmentService } from "./segments/service";
+import { createNewsCollector, newsDelayMs } from "./news/collector-domain";
+import { demoFetchFeed } from "./news/fake-feed-infra";
+import { demoScoreModel } from "./news/fake-model-infra";
+import { geminiModel } from "./news/gemini-infra";
+import { createNewsService, DEFAULT_NEWS_SOURCES } from "./news/news-domain";
+import { DEFAULT_CRITERIA } from "./news/prompt-domain";
+import { SqliteNewsRepository } from "./news/repository-infra";
+import { httpFetchText, rssFeed } from "./news/rss-infra";
+import { SqliteScoreRepository } from "./news/score-repository-infra";
+import { createScorer } from "./news/scorer-domain";
+import { createScoringService } from "./news/scoring-domain";
+import { SqliteRetentionRepository } from "./retention/repository-infra";
+import { createRetentionService } from "./retention/retention-domain";
+import { SqliteScoringAnalysisRepository } from "./scoring-analysis/repository-infra";
+import { createScoringAnalysis } from "./scoring-analysis/scoring-analysis-domain";
+import { SqliteSegmentRepository } from "./segments/repository-infra";
+import { createSegmentService } from "./segments/segments-domain";
 import { slowRequestLog, watchEventLoopLag } from "./slow-log";
 import { serveFrontend } from "./static";
-import { createStrategyService } from "./strategies/service";
+import { SqliteStrategyRepository } from "./strategies/repository-infra";
+import { createStrategyService } from "./strategies/strategies-domain";
 import { TradingRepository } from "./trading/repository";
 import type { TradingEngine } from "./trading/service";
 import { createTradingService } from "./trading/service";
@@ -88,11 +87,11 @@ try {
 	process.exit(1);
 }
 
-const marketDataRepo = new MarketDataRepository(db);
+const marketDataRepo = new SqliteMarketDataRepository(db);
 marketDataRepo.failInterrupted(Date.now());
-const backtestRepo = new BacktestRepository(db);
+const backtestRepo = new SqliteBacktestRepository(db);
 backtestRepo.failInterrupted(Date.now());
-const strategies = createStrategyService(db);
+const strategies = createStrategyService(new SqliteStrategyRepository(db));
 
 // E2E で収集の停止を再現するためのファイル。あれば偽物の取引所が止まる
 const demoDownFile = join(dirname(dbPath), "feed-down");
@@ -110,7 +109,7 @@ const collector = createCollector({
 });
 const collectorTimer = setInterval(() => collector.tick(), 1_000);
 
-const newsRepo = new NewsRepository(db);
+const newsRepo = new SqliteNewsRepository(db);
 newsRepo.seedSources(DEFAULT_NEWS_SOURCES, Date.now());
 // E2E で取得元の失敗を再現するためのファイル。あれば偽物の取得元が失敗する
 const newsDownFile = join(dirname(dbPath), "news-down");
@@ -120,14 +119,14 @@ const newsCollector = createNewsCollector({
 	fetchFeed:
 		process.env.NEWS_FEED === "demo"
 			? demoFetchFeed({ isDown: () => existsSync(newsDownFile) })
-			: httpFetchFeed,
+			: rssFeed(httpFetchText),
 });
 const newsTimer = setInterval(() => newsCollector.tick(), 1_000);
 newsCollector.tick();
 
-const scoreRepo = new ScoreRepository(db);
+const scoreRepo = new SqliteScoreRepository(db);
 scoreRepo.seedCriteria(DEFAULT_CRITERIA, Date.now());
-const compatibleRepo = new CompatibleRepository(db);
+const compatibleRepo = new SqliteCompatibleRepository(db);
 /** 選んだモデルの接続先（Gemini 直結か OpenAI 互換か）で問い合わせる */
 const aiModel = (timeoutMs: number) =>
 	routedModel(
@@ -168,14 +167,14 @@ trading = tradingEngine;
 const tradingTimer = setInterval(() => tradingEngine.tick(), 1_000);
 
 const retention = createRetentionService({
-	repo: new RetentionRepository(db),
+	repo: new SqliteRetentionRepository(db),
 	marketData: marketDataRepo,
 });
 const retentionTimer = setInterval(() => retention.tick(), 60_000);
 retention.tick();
 
 const segments = createSegmentService({
-	repo: new SegmentRepository(db),
+	repo: new SqliteSegmentRepository(db),
 	marketData: marketDataRepo,
 	newsDeletedBefore: () => scoreRepo.newsDeletedBefore(),
 });
@@ -200,9 +199,10 @@ const compatible = createCompatibleService({
 		scorer.clearFailure();
 	},
 	// E2E では接続先へつながず、決まった一覧を返す
-	...(process.env.SCORING_MODEL === "demo"
-		? { listModels: demoCompatibleModels }
-		: {}),
+	listModels:
+		process.env.SCORING_MODEL === "demo"
+			? demoCompatibleModels
+			: fetchCompatibleModels,
 });
 const backtests = createBacktestService({
 	repo: backtestRepo,
@@ -213,7 +213,7 @@ const backtests = createBacktestService({
 	scoring,
 	segments,
 });
-const datasetRepo = new DatasetRepository(db, backtestRepo);
+const datasetRepo = new SqliteDatasetRepository(db, backtestRepo);
 datasetRepo.failInterrupted(Date.now());
 const datasets = createDatasetService({
 	repo: datasetRepo,
@@ -221,7 +221,7 @@ const datasets = createDatasetService({
 	backtests,
 	segments,
 });
-const adviceRepo = new AdviceRepository(db);
+const adviceRepo = new SqliteAdviceRepository(db);
 adviceRepo.failInterrupted();
 adviceRepo.seedInstructions(DEFAULT_INSTRUCTIONS, Date.now());
 // E2E でアドバイスの失敗を再現するためのファイル。あれば偽物の AI が失敗する
@@ -239,7 +239,7 @@ const advice = createAdviceService({
 	appBuiltAt,
 });
 const scoringAnalysis = createScoringAnalysis({
-	repo: new ScoringAnalysisRepository(db),
+	repo: new SqliteScoringAnalysisRepository(db),
 	marketData,
 	judgments,
 	activeCriteriaVersion: () => scoreRepo.activeCriteriaVersion(),

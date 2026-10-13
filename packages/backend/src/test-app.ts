@@ -1,46 +1,48 @@
 // テスト用。メモリ上の DB で本物のサービスをつないだ app を作る
-import { demoAdviceModel } from "./advice/fake-model";
-import { DEFAULT_INSTRUCTIONS } from "./advice/prompt";
-import { AdviceRepository } from "./advice/repository";
-import { createAdviceService } from "./advice/service";
-import { CompatibleRepository } from "./ai/compatible";
-import { demoCompatibleModels } from "./ai/fake-models";
-import { createCompatibleService } from "./ai/service";
+
+import { createAdviceService } from "./advice/advice-domain";
+import { demoAdviceModel } from "./advice/fake-model-infra";
+import { DEFAULT_INSTRUCTIONS } from "./advice/prompt-domain";
+import { SqliteAdviceRepository } from "./advice/repository-infra";
+import { createCompatibleService } from "./ai/ai-domain";
+import { SqliteCompatibleRepository } from "./ai/compatible-infra";
+import { demoCompatibleModels } from "./ai/fake-models-infra";
+import type { GeminiModel } from "./ai/model-domain";
+import { DEFAULT_SCORING_MODEL } from "./ai/model-domain";
 import { AnalysisExportRepository } from "./analysis-export/repository";
 import { createAnalysisExportService } from "./analysis-export/service";
 import type { AppDeps } from "./app";
 import { createApp } from "./app";
-import { inlineRunner } from "./backtests/inline-runner";
-import { BacktestRepository } from "./backtests/repository";
-import type { BacktestRunner } from "./backtests/runner";
-import { createBacktestService } from "./backtests/service";
+import { createBacktestService } from "./backtests/backtests-domain";
+import { inlineRunner } from "./backtests/inline-runner-infra";
+import { SqliteBacktestRepository } from "./backtests/repository-infra";
+import type { BacktestRunner } from "./backtests/runner-domain";
 import type { Collector } from "./collector/collector";
 import type { LiveMarket } from "./collector/types";
-import { DatasetRepository } from "./datasets/repository";
-import { createDatasetService } from "./datasets/service";
+import { createDatasetService } from "./datasets/datasets-domain";
+import { SqliteDatasetRepository } from "./datasets/repository-infra";
 import type { Db } from "./db/open";
 import { createTestDb } from "./db/test-db";
 import { createJudgmentService } from "./judgments/judgments-domain";
 import { createMarketService } from "./market/market-domain";
-import { MarketDataRepository } from "./market-data/repository";
-import { createMarketDataService } from "./market-data/service";
-import { newsDelayMs } from "./news/collector";
-import { demoScoreModel } from "./news/fake-model";
-import type { GeminiModel } from "./news/gemini";
-import { DEFAULT_SCORING_MODEL } from "./news/gemini";
-import { DEFAULT_CRITERIA } from "./news/prompt";
-import { NewsRepository } from "./news/repository";
-import { ScoreRepository } from "./news/score-repository";
-import { createScorer } from "./news/scorer";
-import { createScoringService } from "./news/scoring-service";
-import { createNewsService } from "./news/service";
-import { RetentionRepository } from "./retention/repository";
-import { createRetentionService } from "./retention/service";
-import { ScoringAnalysisRepository } from "./scoring-analysis/repository";
-import { createScoringAnalysis } from "./scoring-analysis/service";
-import { SegmentRepository } from "./segments/repository";
-import { createSegmentService } from "./segments/service";
-import { createStrategyService } from "./strategies/service";
+import { createMarketDataService } from "./market-data/market-data-domain";
+import { SqliteMarketDataRepository } from "./market-data/repository-infra";
+import { newsDelayMs } from "./news/collector-domain";
+import { demoScoreModel } from "./news/fake-model-infra";
+import { createNewsService } from "./news/news-domain";
+import { DEFAULT_CRITERIA } from "./news/prompt-domain";
+import { SqliteNewsRepository } from "./news/repository-infra";
+import { SqliteScoreRepository } from "./news/score-repository-infra";
+import { createScorer } from "./news/scorer-domain";
+import { createScoringService } from "./news/scoring-domain";
+import { SqliteRetentionRepository } from "./retention/repository-infra";
+import { createRetentionService } from "./retention/retention-domain";
+import { SqliteScoringAnalysisRepository } from "./scoring-analysis/repository-infra";
+import { createScoringAnalysis } from "./scoring-analysis/scoring-analysis-domain";
+import { SqliteSegmentRepository } from "./segments/repository-infra";
+import { createSegmentService } from "./segments/segments-domain";
+import { SqliteStrategyRepository } from "./strategies/repository-infra";
+import { createStrategyService } from "./strategies/strategies-domain";
 import { TradingRepository } from "./trading/repository";
 import { createTradingService } from "./trading/service";
 
@@ -52,11 +54,14 @@ export function createTestApp(
 	db: Db = createTestDb(),
 	runner: BacktestRunner = inlineRunner(),
 ) {
-	const marketDataRepo = new MarketDataRepository(db);
+	const marketDataRepo = new SqliteMarketDataRepository(db);
 	const marketData = createMarketDataService(marketDataRepo, {
 		now: () => 1_000,
 	});
-	const strategies = createStrategyService(db, () => 2_000);
+	const strategies = createStrategyService(
+		new SqliteStrategyRepository(db),
+		() => 2_000,
+	);
 	// 収集は動かさず、テストから live を差し替える
 	const live: { current: LiveMarket } = {
 		current: {
@@ -80,12 +85,12 @@ export function createTestApp(
 		now: () => clock.now,
 	});
 	// 収集は動かさず、テストから newsRepo に書き込む
-	const newsRepo = new NewsRepository(db, () => clock.now);
+	const newsRepo = new SqliteNewsRepository(db, () => clock.now);
 	const newsRun = {
 		lastRunAt: null as number | null,
 		nextRunAt: null as number | null,
 	};
-	const scoreRepo = new ScoreRepository(db);
+	const scoreRepo = new SqliteScoreRepository(db);
 	const news = createNewsService({
 		repo: newsRepo,
 		rule: () => scoreRepo.aggregationRule(),
@@ -118,12 +123,12 @@ export function createTestApp(
 	});
 	// 定期の作成は動かさず、テストから segments.build() を呼ぶ
 	const segments = createSegmentService({
-		repo: new SegmentRepository(db),
+		repo: new SqliteSegmentRepository(db),
 		marketData: marketDataRepo,
 		newsDeletedBefore: () => scoreRepo.newsDeletedBefore(),
 		now: () => clock.now,
 	});
-	const backtestRepo = new BacktestRepository(db);
+	const backtestRepo = new SqliteBacktestRepository(db);
 	const backtests = createBacktestService({
 		repo: backtestRepo,
 		marketData: marketDataRepo,
@@ -135,13 +140,13 @@ export function createTestApp(
 		now: () => 3_000,
 	});
 	const datasets = createDatasetService({
-		repo: new DatasetRepository(db, backtestRepo),
+		repo: new SqliteDatasetRepository(db, backtestRepo),
 		backtestRepo,
 		backtests,
 		segments,
 		now: () => 3_000,
 	});
-	const adviceRepo = new AdviceRepository(db);
+	const adviceRepo = new SqliteAdviceRepository(db);
 	adviceRepo.seedInstructions(DEFAULT_INSTRUCTIONS, 0);
 	// テストから偽物の AI を差し替える
 	const adviceAi: { model: GeminiModel } = { model: demoAdviceModel() };
@@ -176,12 +181,12 @@ export function createTestApp(
 	});
 	// 定期の削除は動かさず、テストから retention.tick() を呼ぶ
 	const retention = createRetentionService({
-		repo: new RetentionRepository(db),
+		repo: new SqliteRetentionRepository(db),
 		marketData: marketDataRepo,
 		now: () => clock.now,
 	});
 	const scoringAnalysis = createScoringAnalysis({
-		repo: new ScoringAnalysisRepository(db),
+		repo: new SqliteScoringAnalysisRepository(db),
 		marketData,
 		judgments,
 		activeCriteriaVersion: () => scoreRepo.activeCriteriaVersion(),
@@ -189,7 +194,7 @@ export function createTestApp(
 		now: () => clock.now,
 	});
 	const compatible = createCompatibleService({
-		repo: new CompatibleRepository(db),
+		repo: new SqliteCompatibleRepository(db),
 		listModels: demoCompatibleModels,
 		now: () => clock.now,
 	});

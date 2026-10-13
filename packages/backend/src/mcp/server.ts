@@ -43,37 +43,44 @@ import {
 } from "@trading-studio/core";
 import { Hono } from "hono";
 import * as z from "zod";
-import type { AdviceService } from "../advice/types";
+import type { AdviceService } from "../advice/types-domain";
 import type {
 	BacktestRun,
 	BacktestService,
 	StartBacktestFailure,
-} from "../backtests/types";
+} from "../backtests/types-domain";
 import type {
 	Dataset,
 	DatasetRun,
 	DatasetRunDetail,
 	DatasetService,
 	StartDatasetFailure,
-} from "../datasets/types";
+} from "../datasets/types-domain";
 import type { JudgmentService } from "../judgments/types-domain";
 import type { MarketService } from "../market/types-domain";
-import type { MarketDataService } from "../market-data/types";
-import type { NewsItem, NewsService, ScoringService } from "../news/types";
+import type { MarketDataService } from "../market-data/types-domain";
+import type {
+	NewsItem,
+	NewsService,
+	ScoringService,
+} from "../news/types-domain";
 import {
 	NEWS_IMPACTS,
 	NEWS_LIST_MAX,
 	NEWS_SORTS,
 	TRIAL_MAX_NEWS,
-} from "../news/types";
-import { MOVE_LABELS } from "../scoring-analysis/accuracy";
+} from "../news/types-domain";
+import { MOVE_LABELS } from "../scoring-analysis/accuracy-domain";
 import type {
 	AccuracyService,
 	AccuracySummaryResult,
 	ArticleAccuracy,
-} from "../scoring-analysis/types";
-import type { SegmentService } from "../segments/types";
-import type { StoredStrategy, StrategyService } from "../strategies/types";
+} from "../scoring-analysis/types-domain";
+import type { SegmentService } from "../segments/types-domain";
+import type {
+	StoredStrategy,
+	StrategyService,
+} from "../strategies/types-domain";
 import type {
 	AutoTradingStatus,
 	StoredOrder,
