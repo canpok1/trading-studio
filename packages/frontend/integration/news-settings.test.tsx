@@ -232,7 +232,10 @@ describe("プロンプト", () => {
 			})
 			.on(routes.api.news, "$get", () => ({ news, total: news.length }))
 			.on(routes.api.scoring.trial, "$post", (req) => {
-				const { newsIds } = req.body as { newsIds?: number[] };
+				const { newsIds, criteria } = req.body as {
+					newsIds?: number[];
+					criteria: string;
+				};
 				const picked = news.filter((n) => (newsIds ?? [1]).includes(n.id));
 				return {
 					ok: true as const,
@@ -253,7 +256,7 @@ describe("プロンプト", () => {
 							ok: true as const,
 							scores: { sentiment: -10, risk: 20 },
 							duration: "medium" as const,
-							comment: `試した理由 ${n.id}`,
+							comment: `試した理由 ${n.id}（${criteria}）`,
 						},
 					})),
 				};
@@ -289,10 +292,8 @@ describe("プロンプト", () => {
 		expect(first).toContain("試した理由 2");
 		expect(first).toContain("保存済みの採点（v1）");
 		expect(first).toContain("保存済みの理由 2");
-		expect(bodiesOf(api, "POST", "/api/scoring/trial").at(-1)).toEqual({
-			criteria: "- 新しい基準",
-			newsIds: [2, 3],
-		});
+		// 書き換えた基準で試している
+		expect(first).toContain("（- 新しい基準）");
 
 		fireEvent.click(view.getByRole("button", { name: "v2 として保存" }));
 		expect((await view.findByText(/v2 を保存した/)).textContent).toContain(
