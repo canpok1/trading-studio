@@ -9,7 +9,7 @@ paths:
 
 ## 層の構成（docs/adr/0028-test-scope-and-layers.md）
 
-`src/` の下を機能ごとのフォルダに分け、ファイル名の末尾で層を表す（`<名前>-<層>.ts`）。移し終えていない機能は `scripts/check-backend-layers.ts` の `NOT_MIGRATED` にあり、検査から外れている。
+`src/` の下を機能ごとのフォルダに分け、ファイル名の末尾で層を表す（`<名前>-<層>.ts`）。
 
 | 末尾 | 層 | 置くもの |
 |---|---|---|
