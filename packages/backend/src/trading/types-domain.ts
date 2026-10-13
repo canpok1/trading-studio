@@ -52,25 +52,6 @@ export type StoredDecision = {
 	judgments: Record<string, string>;
 };
 
-/** 運用（ホームのタブ1つ）の行。モード・戦略・口座・実行状態を運用ごとに持つ */
-export type TradingRunRow = {
-	id: number;
-	name: string;
-	mode: TradingMode;
-	/** 運用する戦略。オン中は動かしている戦略 */
-	strategyId: number | null;
-	createdAt: number;
-	enabled: boolean;
-	state: JsonValue;
-	nextEvalAt: number | null;
-	/** 自分の注文が約定したので、次の見回りで評価し直す */
-	reevaluate: boolean;
-	startedAt: number | null;
-	initialCash: number;
-	account: Account;
-	resetAt: number;
-};
-
 export type TradingAccountView = {
 	initialCash: number;
 	cash: number;

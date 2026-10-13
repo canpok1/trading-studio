@@ -13,7 +13,7 @@ import type {
 	DatasetRunDetail,
 	HistoryResult,
 } from "../src/datasets/types-domain";
-import { createTestApp } from "../src/test-app";
+import { createTestApp } from "./test-app";
 
 const H = TIMEFRAME_MS["1h"];
 const D = 24 * H;

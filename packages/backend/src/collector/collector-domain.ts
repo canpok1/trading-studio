@@ -15,11 +15,37 @@ import {
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
 import type { MarketDataRepository } from "../market-data/repository-domain";
-import type { CollectorStatus, LiveMarket, TradeFeed } from "./types";
+import type { CollectorStatus } from "./types-domain";
+
+export type LiveMarket = {
+	/** 直近の約定。まだ無ければ null */
+	latestTrade: MarketTrade | null;
+	/** 形成中の1分足。価格が分からなければ null */
+	forming: Candle | null;
+	/** 分は終わったが、確定の猶予の間でまだ保存していない1分足（古い順） */
+	unsaved: Candle[];
+	status: CollectorStatus;
+};
+
+export type FeedHandlers = {
+	/** 購読が始まった（この後に届く約定は漏れなく届く） */
+	onReady(): void;
+	onTrades(trades: MarketTrade[]): void;
+	/** 約定以外も含め、何かを受け取った。接続が生きている印に使う */
+	onMessage(): void;
+	onClose(reason: string): void;
+};
+
+/** 取引所から約定を受ける手段。テストと E2E では偽物に差し替える */
+export interface TradeFeed {
+	connect(handlers: FeedHandlers): { close(): void };
+	/** 直近の約定（遡れる範囲だけ）。新しい順とは限らない */
+	recentTrades(): Promise<MarketTrade[]>;
+}
 
 export type CollectorOptions = {
 	feed: TradeFeed;
-	repo: MarketDataRepository;
+	repo: Pick<MarketDataRepository, "upsertCollected" | "refillDerived">;
 	now?: () => number;
 	/** 分が終わってから確定するまでの猶予 */
 	graceMs?: number;

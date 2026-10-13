@@ -7,7 +7,7 @@ import type {
 	TradingMode,
 	TradingResult,
 	TradingService,
-} from "../trading/types";
+} from "./types-domain";
 
 /** 注文の一覧で一度に返す上限 */
 const MAX_ORDERS = 1000;

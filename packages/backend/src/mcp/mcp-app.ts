@@ -4,90 +4,65 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import type {
-	ConditionSet,
-	GradeBadgeValue,
-	Judge,
-	JudgeResult,
-	JudgmentValue,
-	MarketRegime,
-	Position,
-	StrategyWatch,
-	Timeframe,
-	WatchAction,
-	WatchGroup,
-} from "@trading-studio/core";
-import {
-	conditionScreenText,
-	conditionSetScreenText,
-	DEFAULT_FEE_RATES,
-	DURATIONS,
-	fewTradesNote,
-	gradeMaxDrawdown,
-	gradePnl,
-	gradeProfitFactor,
-	gradeWinRate,
-	JUDGES,
-	JUDGMENT_VALUE_LABELS,
-	JUDGMENT_VALUES,
-	LIVE_AVAILABLE,
-	MARKET_REGIME_LABELS,
-	MARKET_REGIMES,
-	nextMoves,
-	parseAggregationRule,
-	parseConditionSet,
-	TIMEFRAME_MS,
-	TIMEFRAMES,
-	unrealizedPnl,
-	validateAggregationRule,
-} from "@trading-studio/core";
+import type { ConditionSet } from "@trading-studio/core";
 import { Hono } from "hono";
 import * as z from "zod";
 import type { AdviceService } from "../advice/types-domain";
 import type {
-	BacktestRun,
 	BacktestService,
 	StartBacktestFailure,
 } from "../backtests/types-domain";
 import type {
-	Dataset,
-	DatasetRun,
-	DatasetRunDetail,
 	DatasetService,
 	StartDatasetFailure,
 } from "../datasets/types-domain";
+import { parseRuleInput } from "../judgments/judgments-domain";
 import type { JudgmentService } from "../judgments/types-domain";
 import type { MarketService } from "../market/types-domain";
 import type { MarketDataService } from "../market-data/types-domain";
-import type {
-	NewsItem,
-	NewsService,
-	ScoringService,
-} from "../news/types-domain";
+import type { NewsService, ScoringService } from "../news/types-domain";
 import {
 	NEWS_IMPACTS,
 	NEWS_LIST_MAX,
 	NEWS_SORTS,
 	TRIAL_MAX_NEWS,
 } from "../news/types-domain";
-import { MOVE_LABELS } from "../scoring-analysis/accuracy-domain";
-import type {
-	AccuracyService,
-	AccuracySummaryResult,
-	ArticleAccuracy,
-} from "../scoring-analysis/types-domain";
+import type { AccuracyService } from "../scoring-analysis/types-domain";
 import type { SegmentService } from "../segments/types-domain";
-import type {
-	StoredStrategy,
-	StrategyService,
-} from "../strategies/types-domain";
-import type {
-	AutoTradingStatus,
-	StoredOrder,
-	TradingPerformance,
-	TradingService,
-} from "../trading/types";
-import { conditionSetGuide } from "./guide";
+import { parseParamsInput } from "../strategies/strategies-domain";
+import type { StrategyService } from "../strategies/types-domain";
+import type { TradingService } from "../trading/types-domain";
+import { conditionSetGuide } from "./guide-domain";
+import {
+	durationSchema,
+	feeSchema,
+	regimeSchema,
+	timeframeSchema,
+} from "./schemas-domain";
+
+import {
+	analysisView,
+	barsView,
+	datasetRunDetailView,
+	datasetRunView,
+	datasetView,
+	evaluationView,
+	hidden,
+	jst,
+	judgmentsView,
+	newsView,
+	paperView,
+	parseTime,
+	resultsView,
+	runDetailView,
+	runView,
+	segmentRef,
+	segmentView,
+	strategyView,
+	tradingOrderView,
+	tradingRunView,
+	watchView,
+} from "./views-domain";
 
 export type McpDeps = {
 	strategies: StrategyService;
@@ -98,7 +73,7 @@ export type McpDeps = {
 	datasets: DatasetService;
 	scoring: ScoringService;
 	news: Pick<NewsService, "searchNews">;
-	judgments: Pick<JudgmentService, "rule" | "current" | "series">;
+	judgments: Pick<JudgmentService, "rule" | "current" | "series" | "preview">;
 	accuracy: AccuracyService;
 	/** ホームのタブ（運用）。読むだけで、オンオフや戦略の切替は道具にしない */
 	trading: Pick<
@@ -123,24 +98,6 @@ export type McpDeps = {
 /** run_backtest が終わりを待つ時間の既定。HTTP の無通信の切断はこれより長くする（main.ts） */
 export const BACKTEST_WAIT_MS = 120_000;
 
-const JST_OFFSET_MS = 9 * 3_600_000;
-
-/** エポックミリ秒を JST の ISO 8601 にする */
-export const jst = (ms: number) =>
-	new Date(ms + JST_OFFSET_MS).toISOString().replace(/(\.000)?Z$/, "+09:00");
-
-/** ISO 8601（タイムゾーン付き）か YYYY-MM-DD（JST の 0:00）をエポックミリ秒にする。読めなければ null */
-export function parseTime(s: string): number | null {
-	if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-		const t = Date.parse(`${s}T00:00:00+09:00`);
-		return Number.isNaN(t) ? null : t;
-	}
-	// タイムゾーンの無い日時は実行環境の TZ で読まれてしまうので受け付けない
-	if (!/(Z|[+-]\d{2}:?\d{2})$/.test(s)) return null;
-	const t = Date.parse(s);
-	return Number.isNaN(t) ? null : t;
-}
-
 const text = (v: unknown) => ({
 	content: [
 		{
@@ -157,87 +114,6 @@ const fail = (message: string, detail?: unknown) => ({
 const paramsSchema = z
 	.record(z.string(), z.unknown())
 	.describe("条件セット。形は get_guide を参照");
-
-function strategyView(s: StoredStrategy, inUse: (id: number) => boolean) {
-	return {
-		id: s.id,
-		name: s.name,
-		active: inUse(s.id),
-		updatedAt: jst(s.updatedAt),
-		screenText: conditionSetScreenText(s.params).join("\n"),
-		params: s.params,
-	};
-}
-
-const gradeLabel = (g: GradeBadgeValue | null) => g?.label ?? null;
-
-/** 画面の成績の横に出す5段階の評価と、取引が少ないときの注意。損益はガチホと比べるので、ガチホが分からなければ null */
-function grades(s: {
-	pnlPercent: number | null;
-	buyHoldPercent: number | null;
-	idle: boolean;
-	winRate: number | null;
-	profitFactor: number | null;
-	trades: number;
-	maxDrawdownPercent: number;
-}) {
-	return {
-		pnl: gradeLabel(gradePnl(s.pnlPercent, s.buyHoldPercent, s.idle)),
-		winRate: gradeLabel(gradeWinRate(s.winRate)),
-		profitFactor: gradeLabel(gradeProfitFactor(s.profitFactor, s.trades)),
-		maxDrawdown: gradeMaxDrawdown(s.maxDrawdownPercent).label,
-		note: fewTradesNote(s.trades),
-	};
-}
-
-function runView(r: BacktestRun) {
-	const s = r.summary;
-	return {
-		id: r.id,
-		name: r.name,
-		status: r.status,
-		progress: r.progress,
-		from: jst(r.from),
-		to: jst(r.to),
-		stepTimeframe: r.stepTimeframe,
-		stepLimited: r.stepLimited,
-		initialCash: r.initialCash,
-		fees: r.fees,
-		criteriaVersion: r.criteriaVersion,
-		// 記事を公開から何分後に使ったか。市場評価の条件が無い・公開時刻から使う前の実行は null
-		newsDelayMinutes:
-			r.newsDelayMs === null ? null : Math.round(r.newsDelayMs / 60_000),
-		// 使ったニュースのデータの版。違えば使ったニュースが違う
-		newsDataVersion: r.newsDataVersion === null ? null : jst(r.newsDataVersion),
-		// 期間を相場データで選んだときの相場データと、そのときの相場
-		segment: r.segment && {
-			id: r.segment.id,
-			regime: MARKET_REGIME_LABELS[r.segment.regime],
-		},
-		// データセット（相場データを束ねたもの）でまとめて実行したときの、まとめた実行（get_dataset_run）
-		datasetRunId: r.datasetRunId,
-		startedAt: jst(r.startedAt),
-		summary: s && {
-			...s,
-			maxDrawdownFrom:
-				s.maxDrawdownFrom === null ? null : jst(s.maxDrawdownFrom),
-			maxDrawdownTo: s.maxDrawdownTo === null ? null : jst(s.maxDrawdownTo),
-			averageHoldingHours:
-				s.averageHoldingMs === null
-					? null
-					: Math.round((s.averageHoldingMs / 3_600_000) * 10) / 10,
-			// ガチホを持たない古い実行は損益の評価が null（画面はチャートの足から求める）
-			grades: grades({
-				...s,
-				buyHoldPercent: s.buyHoldPercent ?? null,
-				idle: s.trades === 0 && s.openPositionQuantity === 0,
-			}),
-		},
-		orderCount: r.orderCount,
-		filledCount: r.filledCount,
-		error: r.error,
-	};
-}
 
 function startFailure(e: StartBacktestFailure) {
 	switch (e.kind) {
@@ -276,51 +152,6 @@ function startFailure(e: StartBacktestFailure) {
 	}
 }
 
-function datasetView(s: Dataset) {
-	return {
-		id: s.id,
-		name: s.name,
-		segments: s.segments.map((d) => ({
-			id: d.id,
-			from: jst(d.from),
-			to: jst(d.to),
-			regime: MARKET_REGIME_LABELS[d.regime],
-		})),
-		// 保存した後に消えた相場データの数
-		missing: s.missing,
-	};
-}
-
-function datasetRunView(r: DatasetRun | DatasetRunDetail) {
-	return {
-		id: r.id,
-		name: r.name,
-		dataset: { id: r.datasetId, name: r.datasetName },
-		status: r.status,
-		progress: r.progress,
-		initialCash: r.initialCash,
-		fees: r.fees,
-		criteriaVersion: r.criteriaVersion,
-		startedAt: jst(r.startedAt),
-		// 全取引をまとめた勝率・PF、損益率の平均・最悪、最大DDの最大、ガチホ以上だった件数、相場ごとの平均
-		summary: r.summary && {
-			...r.summary,
-			byRegime: r.summary.byRegime.map((x) => ({
-				...x,
-				regime: MARKET_REGIME_LABELS[x.regime],
-			})),
-			// 損益の評価は損益率の平均をガチホの平均と比べる（画面の「損益の平均」）
-			grades: grades({
-				...r.summary,
-				pnlPercent: r.summary.averagePnlPercent,
-				buyHoldPercent: r.summary.averageBuyHoldPercent,
-			}),
-		},
-		error: r.error,
-		runs: "runs" in r ? r.runs.map(runView) : undefined,
-	};
-}
-
 function datasetFailure(e: StartDatasetFailure) {
 	switch (e.kind) {
 		case "busy":
@@ -335,12 +166,7 @@ function datasetFailure(e: StartDatasetFailure) {
 			return fail(
 				"実行できない相場データがあるため、全体を実行しない。欠損だけなら skipGaps: true で実行し直す",
 				e.blockers.map((b) => ({
-					segment: {
-						id: b.segment.id,
-						from: jst(b.segment.from),
-						to: jst(b.segment.to),
-						regime: MARKET_REGIME_LABELS[b.segment.regime],
-					},
+					segment: segmentRef(b.segment),
 					kind: b.error.kind,
 					message:
 						"message" in b.error
@@ -349,56 +175,6 @@ function datasetFailure(e: StartDatasetFailure) {
 				})),
 			);
 	}
-}
-
-/** 画面と同じ評価の日本語名を添える */
-const level = <J extends Judge>(value: JudgmentValue<J>) => ({
-	value,
-	label: JUDGMENT_VALUE_LABELS[value] ?? value,
-});
-
-const ratio = (v: number) => Math.round(v * 1000) / 1000;
-
-function newsView(
-	n: NewsItem,
-	weight: number | undefined,
-	accuracy: ArticleAccuracy | undefined,
-) {
-	const s = n.score;
-	const done = s?.status === "done";
-	return {
-		id: n.id,
-		source: n.sourceName,
-		language: n.language,
-		title: n.title,
-		summary: n.summary,
-		url: n.url,
-		publishedAt: jst(n.publishedAt),
-		fetchedAt: jst(n.fetchedAt),
-		status: s?.status ?? "unscored",
-		scores: done ? s.scores : null,
-		duration: done ? s.duration : null,
-		comment: s?.comment ?? null,
-		scoredAt: s?.scoredAt == null ? null : jst(s.scoredAt),
-		rescoredAt: s?.rescoredAt == null ? null : jst(s.rescoredAt),
-		criteriaVersion: s?.criteriaVersion ?? null,
-		model: s?.model ?? null,
-		appVersion: s?.appBuiltAt == null ? null : jst(s.appBuiltAt),
-		error: s?.error ?? null,
-		nextAttemptAt: s?.nextAttemptAt == null ? null : jst(s.nextAttemptAt),
-		weight: done ? ratio(weight ?? 0) : null,
-		precision:
-			accuracy === undefined
-				? null
-				: accuracy.status === "ok"
-					? { sentiment: accuracy.sentiment, risk: accuracy.risk }
-					: accuracy.status,
-		rescore: n.rescore && {
-			...n.rescore,
-			nextAttemptAt:
-				n.rescore.nextAttemptAt === null ? null : jst(n.rescore.nextAttemptAt),
-		},
-	};
 }
 
 /** 時点の入力。省けば今。読めなければエラーの応答 */
@@ -417,193 +193,8 @@ const atSchema = z
 		"市場評価の時点。ISO 8601（タイムゾーン付き）か YYYY-MM-DD（JST の 0:00）。省けば今",
 	);
 
-/** 市場評価の分析の観点1つ。画面の 精度ごと・評価ごと・評価×値動き と同じ数 */
-function analysisView<J extends Judge>(j: J, r: AccuracySummaryResult<J>) {
-	const values = JUDGMENT_VALUES[j] as readonly JudgmentValue<J>[];
-	return {
-		count: r.count,
-		byPrecision: r.rows.map((row) => ({
-			precision: row.precision,
-			count: row.count,
-			byLevel: row.levels.map((l) => ({ ...level(l.value), count: l.count })),
-		})),
-		byLevel: values.map((value) => {
-			const counts = r.rows.map((row) => ({
-				precision: row.precision,
-				count: row.levels.find((l) => l.value === value)?.count ?? 0,
-			}));
-			const n = counts.reduce((a, x) => a + x.count, 0);
-			return {
-				...level(value),
-				count: n,
-				byPrecision: counts,
-			};
-		}),
-		byLevelAndMove: r.matrix.map((m) => ({
-			...level(m.value),
-			moves: m.moves.map((count, i) => ({ move: MOVE_LABELS[j][i], count })),
-		})),
-	};
-}
-
 /** get_price_bars で一度に返す足の上限 */
 const BARS_MAX = 2_000;
-
-const MODE_LABELS = { paper: "デモ", live: "リアル" } as const;
-
-/** 口座・成績・注文・戦略の見張りを出さないタブ。画面と同じく、動かせないリアル */
-const hidden = (r: AutoTradingStatus) => r.mode === "live" && !LIVE_AVAILABLE;
-
-function positionView(p: Position) {
-	return { ...p, openedAt: p.openedAt === null ? null : jst(p.openedAt) };
-}
-
-function tradingPerformanceView(p: TradingPerformance) {
-	return {
-		...p,
-		resetAt: jst(p.resetAt),
-		position: positionView(p.position),
-		maxDrawdownFrom: p.maxDrawdownFrom === null ? null : jst(p.maxDrawdownFrom),
-		maxDrawdownTo: p.maxDrawdownTo === null ? null : jst(p.maxDrawdownTo),
-		averageHoldingHours:
-			p.averageHoldingMs === null
-				? null
-				: Math.round((p.averageHoldingMs / 3_600_000) * 10) / 10,
-		grades: grades({
-			...p,
-			idle: p.trades === 0 && p.position.quantity === 0,
-		}),
-	};
-}
-
-function tradingRunView(r: AutoTradingStatus) {
-	return {
-		id: r.id,
-		name: r.name,
-		mode: r.mode,
-		modeLabel: MODE_LABELS[r.mode],
-		enabled: r.enabled,
-		strategy: r.strategy,
-		nextEvalAt: r.nextEvalAt === null ? null : jst(r.nextEvalAt),
-		startedAt: r.startedAt === null ? null : jst(r.startedAt),
-		waitingForMarket: r.waitingForMarket,
-		dailyLoss: r.dailyLoss,
-	};
-}
-
-/** デモのタブの口座・含み損益・成績。リアルは画面と同じく出さない */
-function paperView(
-	r: AutoTradingStatus,
-	price: number | null,
-	performance: TradingPerformance | null,
-) {
-	const a = r.account;
-	return {
-		account: {
-			initialCash: a.initialCash,
-			cash: a.cash,
-			equity: a.equity,
-			position: positionView(a.position),
-			lots: a.lots.map((l) => ({
-				...l,
-				openedAt: jst(l.openedAt),
-				unrealizedPnl: unrealizedPnl(l.quantity, l.entryPrice, price),
-			})),
-			openOrderCount: a.openOrderCount,
-			resetAt: jst(a.resetAt),
-		},
-		unrealizedPnl: unrealizedPnl(
-			a.position.quantity,
-			a.position.entryPrice,
-			price,
-		),
-		performance: performance && tradingPerformanceView(performance),
-	};
-}
-
-function tradingOrderView(o: StoredOrder) {
-	return {
-		id: o.id,
-		side: o.side,
-		type: o.type,
-		price: o.price,
-		quantity: o.quantity,
-		status: o.status,
-		placedAt: jst(o.placedAt),
-		filledAt: o.filledAt === null ? null : jst(o.filledAt),
-		fillPrice: o.fillPrice,
-		fee: o.fee,
-		canceledAt: o.canceledAt === null ? null : jst(o.canceledAt),
-		cancelReason: o.cancelReason,
-		reason: o.reason,
-		pnl: o.pnl,
-		lotPrice: o.lotPrice,
-		exitKind: o.exitKind,
-		buyName: o.buyName ?? null,
-		strategyName: o.strategyName,
-	};
-}
-
-/** 発注したときの市場評価。判断の記録が無ければ null、採点の記録の前は空 */
-function judgmentsView(j: Record<string, string> | undefined) {
-	if (!j) return null;
-	return Object.fromEntries(
-		JUDGES.filter((k) => j[k] !== undefined).map((k) => [
-			k,
-			level(j[k] as JudgmentValue<typeof k>),
-		]),
-	);
-}
-
-/** 条件は画面の文言にする */
-function watchGroupView(g: WatchGroup) {
-	return {
-		match: g.match,
-		met: g.met,
-		triggers: g.triggers,
-		conditions: g.conditions.map((c) => ({
-			text: conditionScreenText(c.condition),
-			met: c.met,
-			detail: c.detail,
-			edge: c.edge,
-		})),
-	};
-}
-
-function watchView(w: StrategyWatch) {
-	const action = (a: WatchAction) => ({
-		...a,
-		distancePercent:
-			a.price === null
-				? null
-				: Math.round((a.price / w.price - 1) * 10_000) / 100,
-	});
-	const next = nextMoves(w);
-	return {
-		price: w.price,
-		nextMoves: {
-			now: next.now.map(action),
-			up: next.up && action(next.up),
-			down: next.down && action(next.down),
-		},
-		actions: w.actions.map(action),
-		buys: w.buys.map((b) => ({
-			...b,
-			buy: watchGroupView(b.buy),
-			lots: b.lots.map((l) => ({
-				...l,
-				groups:
-					l.groups &&
-					Object.fromEntries(
-						Object.entries(l.groups).map(([k, g]) => [
-							k,
-							g && watchGroupView(g),
-						]),
-					),
-			})),
-		})),
-	};
-}
 
 function createServer({
 	strategies,
@@ -680,7 +271,7 @@ function createServer({
 			annotations: { destructiveHint: false, openWorldHint: false },
 		},
 		({ name, params }) => {
-			const p = parseConditionSet(params);
+			const p = parseParamsInput({ params });
 			if (!p) return fail("条件セットの形が違う。get_guide を参照");
 			const r = strategies.create({ name, from: { params: p } });
 			if (!r.ok) return strategyFailure(r.error);
@@ -706,7 +297,7 @@ function createServer({
 					"運用する戦略は変えられない。create_strategy で新しい戦略として作る",
 				);
 			}
-			const p = parseConditionSet(params);
+			const p = parseParamsInput({ params });
 			if (!p) return fail("条件セットの形が違う。get_guide を参照");
 			const r = strategies.updateParams(id, p);
 			if (!r.ok) return strategyFailure(r.error);
@@ -738,8 +329,7 @@ function createServer({
 			description:
 				"相場データ（画面の呼び名。コード上の名前は segment）の一覧（新しい順）。毎月、直近2か月の期間に相場のラベル（上昇・下落・レンジ・乱高下）を1つ付けて作る。run_backtest の segmentId に渡すとその期間で実行する。returnPercent は期間の騰落率、volatilityPercent は日ごとの騰落率の標準偏差",
 			inputSchema: {
-				regime: z
-					.enum(MARKET_REGIMES as [MarketRegime, ...MarketRegime[]])
+				regime: regimeSchema
 					.optional()
 					.describe(
 						"相場で絞る。up=上昇・down=下落・range=レンジ・volatile=乱高下",
@@ -747,18 +337,7 @@ function createServer({
 			},
 			annotations: readOnly,
 		},
-		({ regime }) =>
-			text(
-				segments.list(regime ?? null).map((d) => ({
-					id: d.id,
-					from: jst(d.from),
-					to: jst(d.to),
-					regime: d.regime,
-					label: MARKET_REGIME_LABELS[d.regime],
-					returnPercent: d.returnPpm / 10_000,
-					volatilityPercent: d.volatilityPpm / 10_000,
-				})),
-			),
+		({ regime }) => text(segments.list(regime ?? null).map(segmentView)),
 	);
 
 	server.registerTool(
@@ -830,11 +409,7 @@ function createServer({
 		({ id }) => {
 			const r = backtests.get(id);
 			if (!r) return fail("バックテストが見つからない");
-			return text({
-				...runView(r),
-				screenText: conditionSetScreenText(r.params).join("\n"),
-				params: r.params,
-			});
+			return text(runDetailView(r));
 		},
 	);
 
@@ -889,8 +464,7 @@ function createServer({
 					.optional()
 					.describe("相場データ（list_segments）。渡すとその期間で実行する"),
 				initialCash: z.number().int().default(2_000_000).describe("円"),
-				limitFeePpm: z.number().int().default(DEFAULT_FEE_RATES.limitPpm),
-				marketFeePpm: z.number().int().default(DEFAULT_FEE_RATES.marketPpm),
+				...feeSchema,
 				skipGaps: z
 					.boolean()
 					.default(false)
@@ -914,7 +488,7 @@ function createServer({
 				params = strategies.get(a.strategyId)?.params ?? null;
 				if (!params) return fail("戦略が見つからない");
 			} else if (a.params !== undefined) {
-				params = parseConditionSet(a.params);
+				params = parseParamsInput({ params: a.params });
 				if (!params) return fail("条件セットの形が違う。get_guide を参照");
 			} else {
 				return fail("strategyId か params が必要");
@@ -995,8 +569,7 @@ function createServer({
 				strategyId: z.number().int().optional(),
 				params: paramsSchema.optional(),
 				initialCash: z.number().int().default(2_000_000).describe("円"),
-				limitFeePpm: z.number().int().default(DEFAULT_FEE_RATES.limitPpm),
-				marketFeePpm: z.number().int().default(DEFAULT_FEE_RATES.marketPpm),
+				...feeSchema,
 				skipGaps: z
 					.boolean()
 					.default(false)
@@ -1018,7 +591,7 @@ function createServer({
 				params = strategies.get(a.strategyId)?.params ?? null;
 				if (!params) return fail("戦略が見つからない");
 			} else if (a.params !== undefined) {
-				params = parseConditionSet(a.params);
+				params = parseParamsInput({ params: a.params });
 				if (!params) return fail("条件セットの形が違う。get_guide を参照");
 			} else {
 				return fail("strategyId か params が必要");
@@ -1057,11 +630,7 @@ function createServer({
 		({ id }) => {
 			const r = datasets.run(id);
 			if (!r) return fail("まとめた実行が見つからない");
-			return text({
-				...datasetRunView(r),
-				screenText: conditionSetScreenText(r.params).join("\n"),
-				params: r.params,
-			});
+			return text(datasetRunDetailView(r));
 		},
 	);
 
@@ -1173,7 +742,7 @@ function createServer({
 			description:
 				"ホームのチャートの足（始値・高値・安値・終値・出来高）と、足ごとの市場評価（チャートの背景。採点の記録の前は null）。期間の中の新しいほうから limit 本を古い順で返す。volume は satoshi。最新の価格は get_market_price",
 			inputSchema: {
-				timeframe: z.enum(TIMEFRAMES as unknown as [Timeframe, ...Timeframe[]]),
+				timeframe: timeframeSchema,
 				range: z
 					.enum(["1d", "1w", "1m", "all"])
 					.default("1w")
@@ -1189,29 +758,7 @@ function createServer({
 					`足が多すぎる（${r.count}本。上限 ${r.max}本）。期間を短くするか粗い粒度にする`,
 				);
 			}
-			const bars = r.bars.slice(-limit);
-			const first = bars[0];
-			const last = bars.at(-1);
-			if (!first || !last) return text({ total: 0, bars: [] });
-			const step = TIMEFRAME_MS[timeframe];
-			const series = judgments.series(first.time, last.time + step, step);
-			const at = (j: Judge, time: number) => {
-				const v = series.values[j][Math.floor((time - series.from) / step)];
-				return v == null ? null : level(v);
-			};
-			return text({
-				total: r.bars.length,
-				firstScoredAt:
-					series.firstScoredAt === null ? null : jst(series.firstScoredAt),
-				bars: bars.map((b) => ({
-					...b,
-					time: jst(b.time),
-					marketEvaluation: {
-						sentiment: at("sentiment", b.time),
-						risk: at("risk", b.time),
-					},
-				})),
-			});
+			return text(barsView(r.bars, limit, timeframe, judgments));
 		},
 	);
 
@@ -1260,32 +807,7 @@ function createServer({
 		(a) => {
 			const t = atTime(a.at);
 			if ("isError" in t) return t;
-			const c = judgments.current(undefined, t.at);
-			const result = <J extends Judge>(r: JudgeResult<J>) => ({
-				...level(r.value),
-				average: r.average,
-				count: r.count,
-			});
-			return text({
-				time: jst(c.time),
-				firstScoredAt: c.firstScoredAt === null ? null : jst(c.firstScoredAt),
-				results: {
-					sentiment: result(c.results.sentiment),
-					risk: result(c.results.risk),
-				},
-				breakdown: Object.fromEntries(
-					JUDGES.map((j) => [
-						j,
-						c.breakdown[j].map((row) => ({
-							...level(row.value),
-							count: row.count,
-							average: row.average,
-							weightShare: ratio(row.share),
-						})),
-					]),
-				),
-				note: "breakdown は評価基準の上の段階から順。weightShare は重みの合計に占める割合（0〜1）。段階ごとの average × weightShare の和が全体の average になる",
-			});
+			return text(evaluationView(judgments.current(undefined, t.at)));
 		},
 	);
 
@@ -1304,22 +826,13 @@ function createServer({
 			annotations: readOnly,
 		},
 		(a) => {
-			const rule = parseAggregationRule(a.rule);
+			const rule = parseRuleInput({ rule: a.rule });
 			if (!rule) return fail("評価ルールの形が違う");
-			const errors = validateAggregationRule(rule);
-			if (errors.length) return fail("評価ルールに入力の誤りがある", errors);
-			const c = judgments.current(rule);
+			const r = judgments.preview(rule);
+			if (!r.ok) return fail("評価ルールに入力の誤りがある", r.errors);
 			return text({
-				time: jst(c.time),
-				results: Object.fromEntries(
-					JUDGES.map((j) => {
-						const r = c.results[j];
-						return [
-							j,
-							{ ...level(r.value), average: r.average, count: r.count },
-						];
-					}),
-				),
+				time: jst(r.judgment.time),
+				results: resultsView(r.judgment),
 			});
 		},
 	);
@@ -1441,7 +954,7 @@ function createServer({
 						"影響の大きさ（今の評価基準で測る）。どれかに当てはまる採点済みのもの。bull: 強気材料（やや強気以上） / bear: 弱気材料（やや弱気以下） / risk: リスク高（警戒以上）",
 					),
 				durations: z
-					.array(z.enum(DURATIONS))
+					.array(durationSchema)
 					.default([])
 					.describe("持続。どれかに当てはまる採点済みのもの"),
 				active: z

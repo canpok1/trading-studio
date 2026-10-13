@@ -29,23 +29,22 @@ import {
 	validateConditionSet,
 	watchConditionSet,
 } from "@trading-studio/core";
-import type { LiveMarket } from "../collector/types";
+import type { LiveMarket } from "../collector/collector-domain";
 import type { JudgmentService } from "../judgments/types-domain";
 import type { MarketDataRepository } from "../market-data/repository-domain";
 import type {
 	StoredStrategy,
 	StrategyService,
 } from "../strategies/types-domain";
-import { equityOf, tradingPerformance } from "./performance";
-import type { TradingRepository } from "./repository";
+import { equityOf, tradingPerformance } from "./performance-domain";
+import type { TradingRepository, TradingRunRow } from "./repository-domain";
 import type {
 	AutoTradingStatus,
 	StrategyLock,
 	TradingFailure,
 	TradingResult,
-	TradingRunRow,
 	TradingService,
-} from "./types";
+} from "./types-domain";
 
 /** デモの注文の id の頭につける文字 */
 const PAPER_ID_PREFIX = "p";

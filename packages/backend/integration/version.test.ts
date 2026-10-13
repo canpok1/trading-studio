@@ -3,8 +3,8 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { readAppBuiltAt } from "../src/server/version-infra";
 import { createTestApp } from "./test-app";
-import { readAppBuiltAt } from "./version";
 
 let dir: string;
 

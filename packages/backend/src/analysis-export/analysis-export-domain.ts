@@ -32,9 +32,13 @@ import type {
 	NewsExportRow,
 	OrderExportRow,
 	StrategyExportRow,
-} from "./repository";
-import type { AnalysisExportService } from "./types";
-import { createZip } from "./zip";
+} from "./repository-domain";
+import type { AnalysisExportService } from "./types-domain";
+
+export type CreateZip = (
+	entries: readonly { name: string; data: Uint8Array }[],
+	now: number,
+) => Uint8Array;
 
 const HOUR = 3_600_000;
 
@@ -720,12 +724,26 @@ export function createAnalysisExportService({
 	scoreRepo,
 	backtestRepo,
 	marketData,
+	zip,
 	now = Date.now,
 }: {
 	repo: AnalysisExportRepository;
-	scoreRepo: ScoreRepository;
-	backtestRepo: BacktestRepository;
+	scoreRepo: Pick<
+		ScoreRepository,
+		| "activeCriteriaVersion"
+		| "aggregationRule"
+		| "firstScoredAt"
+		| "listCriteria"
+		| "newsDeletedBefore"
+		| "scoredNews"
+	>;
+	backtestRepo: Pick<
+		BacktestRepository,
+		"contents" | "get" | "listDoneStartedBetween"
+	>;
 	marketData: Pick<MarketDataService, "exportCandles">;
+	/** ファイルを ZIP にまとめる。now はファイルの更新時刻 */
+	zip: CreateZip;
 	now?: () => number;
 }): AnalysisExportService {
 	return {
@@ -837,7 +855,7 @@ export function createAnalysisExportService({
 			return {
 				ok: true,
 				fileName: `trading-studio-analysis-${day(from)}-${day(to - 1)}.zip`,
-				data: createZip(files, t),
+				data: zip(files, t),
 			};
 		},
 	};

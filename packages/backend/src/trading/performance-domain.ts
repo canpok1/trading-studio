@@ -2,7 +2,7 @@
 
 import type { Position, TradeOrder } from "@trading-studio/core";
 import { notionalYen } from "@trading-studio/core";
-import type { TradingPerformance } from "./types";
+import type { TradingPerformance } from "./types-domain";
 
 /** 評価に使う価格。足の終値なら足の終わりの時刻 */
 export type PricePoint = { time: number; price: number };

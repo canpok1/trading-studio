@@ -11,15 +11,15 @@ import {
 	newAccount,
 	normalizeAccount,
 } from "@trading-studio/core";
-import type { Db } from "../db/open";
+import type { Db } from "../db/open-infra";
+import type { TradingRepository, TradingRunRow } from "./repository-domain";
 import type {
 	OrderFilter,
 	OrderSummary,
 	StoredDecision,
 	StoredOrder,
 	TradingMode,
-	TradingRunRow,
-} from "./types";
+} from "./types-domain";
 
 type RunRow = {
 	id: number;
@@ -141,7 +141,7 @@ function orderWhere(filter: OrderFilter): {
 /** 既定の開始時の資金（円） */
 export const DEFAULT_INITIAL_CASH = 1_000_000;
 
-export class TradingRepository {
+export class SqliteTradingRepository implements TradingRepository {
 	constructor(private readonly db: Db) {}
 
 	private get sql() {

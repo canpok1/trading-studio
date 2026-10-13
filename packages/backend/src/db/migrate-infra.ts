@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { readMigrationFiles } from "drizzle-orm/migrator";
-import type { Db } from "./open";
+import type { Db } from "./open-infra";
 
 export const MIGRATIONS_FOLDER = fileURLToPath(
 	new URL("../../drizzle", import.meta.url),

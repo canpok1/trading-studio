@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
-import { serveFrontend } from "./static";
+import { serveFrontend } from "../src/server/static-app";
 import { createTestApp } from "./test-app";
 
 let dir: string;

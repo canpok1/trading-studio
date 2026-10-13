@@ -1,7 +1,7 @@
 // テストと E2E で使う、取引所の代わりに約定を流す偽物
 
 import type { MarketTrade } from "@trading-studio/core";
-import type { FeedHandlers, TradeFeed } from "./types";
+import type { FeedHandlers, TradeFeed } from "./collector-domain";
 
 /** テストから接続・約定・切断を操作する */
 export function manualFeed() {

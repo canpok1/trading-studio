@@ -1,6 +1,6 @@
 import type { ConditionSet } from "@trading-studio/core";
 import { parseConditionSet } from "@trading-studio/core";
-import type { Db } from "../db/open";
+import type { Db } from "../db/open-infra";
 import type { StrategyRepository } from "./repository-domain";
 import type { StoredStrategy } from "./types-domain";
 

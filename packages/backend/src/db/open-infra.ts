@@ -3,7 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import * as schema from "./schema";
+import * as schema from "./schema-infra";
 
 export type Db = BunSQLiteDatabase<typeof schema> & { $client: Database };
 

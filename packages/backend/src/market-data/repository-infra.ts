@@ -8,7 +8,7 @@ import {
 	TIMEFRAME_MS,
 	TIMEFRAMES,
 } from "@trading-studio/core";
-import type { Db } from "../db/open";
+import type { Db } from "../db/open-infra";
 import type { MarketDataRepository } from "./repository-domain";
 import type {
 	ImportJob,

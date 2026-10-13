@@ -2,14 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { DEFAULT_AGGREGATION_RULE } from "@trading-studio/core";
 import type { ScoreModel } from "../src/ai/model-domain";
 import { DEFAULT_SCORING_MODEL } from "../src/ai/model-domain";
-import { createTestDb } from "../src/db/test-db";
+import { createTestDb } from "../src/db/test-db-infra";
 import { createNewsService } from "../src/news/news-domain";
 import { DEFAULT_CRITERIA } from "../src/news/prompt-domain";
 import { SqliteNewsRepository } from "../src/news/repository-infra";
 import { SqliteScoreRepository } from "../src/news/score-repository-infra";
 import { createScorer, RETRY_DELAYS_MS } from "../src/news/scorer-domain";
 import { createScoringService } from "../src/news/scoring-domain";
-import { createTestApp } from "../src/test-app";
+import { createTestApp } from "./test-app";
 
 const H = 3_600_000;
 const T0 = Date.UTC(2026, 8, 26, 3);

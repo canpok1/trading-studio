@@ -7,9 +7,9 @@ import type {
 	Trade,
 } from "@trading-studio/core";
 import { strategyTemplate } from "@trading-studio/core";
-import type { BacktestRun } from "../backtests/types-domain";
-import { createTestApp } from "../test-app";
-import { crc32 } from "./zip";
+import { crc32 } from "../src/analysis-export/zip-infra";
+import type { BacktestRun } from "../src/backtests/types-domain";
+import { createTestApp } from "./test-app";
 
 const M = 60_000;
 const H = 3_600_000;

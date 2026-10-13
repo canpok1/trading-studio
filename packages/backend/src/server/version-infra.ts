@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 
 /** Dockerfile がビルド時に書き出すファイル。リポジトリ直下（イメージでは /app）に置く */
-export const BUILT_AT_FILE = new URL("../../../BUILT_AT", import.meta.url);
+export const BUILT_AT_FILE = new URL("../../../../BUILT_AT", import.meta.url);
 
 /** ビルド日時を読む。ファイルが無いか読めない値なら null（開発版） */
 export function readAppBuiltAt(

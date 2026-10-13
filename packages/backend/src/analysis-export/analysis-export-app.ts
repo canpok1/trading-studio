@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { validator } from "hono/validator";
-import type { AnalysisExportService } from "../analysis-export/types";
+import type { AnalysisExportService } from "./types-domain";
 
 /** 期間 [from, to) の形を確かめる */
 function period(q: Record<string, string | string[]>) {

@@ -11,10 +11,10 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
-import { MIGRATIONS_FOLDER, migrateDb } from "./migrate";
-import { isDbReachable, openDb } from "./open";
-import { settings } from "./schema";
-import { createTestDb } from "./test-db";
+import { MIGRATIONS_FOLDER, migrateDb } from "./migrate-infra";
+import { isDbReachable, openDb } from "./open-infra";
+import { settings } from "./schema-infra";
+import { createTestDb } from "./test-db-infra";
 
 let dir: string;
 

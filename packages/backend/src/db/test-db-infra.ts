@@ -1,6 +1,6 @@
-import { migrateDb } from "./migrate";
-import type { Db } from "./open";
-import { openDb } from "./open";
+import { migrateDb } from "./migrate-infra";
+import type { Db } from "./open-infra";
+import { openDb } from "./open-infra";
 
 // テスト用。ファイルを作らず、マイグレーションを適用済みの DB を返す
 export function createTestDb(): Db {

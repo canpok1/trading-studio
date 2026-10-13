@@ -3,7 +3,8 @@ import { adviceRoutes } from "./advice/advice-app";
 import type { AdviceService } from "./advice/types-domain";
 import { aiRoutes } from "./ai/ai-app";
 import type { CompatibleService } from "./ai/types-domain";
-import type { AnalysisExportService } from "./analysis-export/types";
+import { exportRoutes } from "./analysis-export/analysis-export-app";
+import type { AnalysisExportService } from "./analysis-export/types-domain";
 import { backtestRoutes } from "./backtests/backtests-app";
 import type { BacktestService } from "./backtests/types-domain";
 import { datasetRoutes, datasetRunRoutes } from "./datasets/datasets-app";
@@ -19,14 +20,13 @@ import { scoringRoutes } from "./news/scoring-app";
 import type { NewsService, ScoringService } from "./news/types-domain";
 import { retentionRoutes } from "./retention/retention-app";
 import type { RetentionService } from "./retention/types-domain";
-import { exportRoutes } from "./routes/export";
-import { tradingRoutes } from "./routes/trading";
 import type { AccuracyService } from "./scoring-analysis/types-domain";
 import { segmentRoutes } from "./segments/segments-app";
 import type { SegmentService } from "./segments/types-domain";
 import { strategyRoutes } from "./strategies/strategies-app";
 import type { StrategyService } from "./strategies/types-domain";
-import type { TradingService } from "./trading/types";
+import { tradingRoutes } from "./trading/trading-app";
+import type { TradingService } from "./trading/types-domain";
 
 export type AppDeps = {
 	isDbReachable: () => boolean;

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { TradeOrder } from "@trading-studio/core";
 import { EMPTY_POSITION } from "@trading-studio/core";
-import { tradingPerformance } from "./performance";
+import { tradingPerformance } from "./performance-domain";
 
 const H = 3_600_000;
 const P = 10_000_000;

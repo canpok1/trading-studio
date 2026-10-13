@@ -10,10 +10,13 @@ import {
 	MARKET_BUY_ORDER,
 	singleBuy,
 } from "@trading-studio/core";
-import { createTestApp, TEST_FEE_RATES } from "../test-app";
-import { TradingRepository } from "./repository";
-import { createTradingService } from "./service";
-import type { AutoTradingStatus, StoredOrder } from "./types";
+import { SqliteTradingRepository } from "../src/trading/repository-infra";
+import { createTradingService } from "../src/trading/trading-domain";
+import type {
+	AutoTradingStatus,
+	StoredOrder,
+} from "../src/trading/types-domain";
+import { createTestApp, TEST_FEE_RATES } from "./test-app";
 
 const M = 60_000;
 const T0 = 1_800_000_000_000; // 分の区切り
@@ -409,7 +412,7 @@ describe("止まっていた間と再起動", () => {
 		const before = t.status();
 		// 同じ DB で作り直す（再起動）
 		const restarted = createTradingService({
-			repo: new TradingRepository(t.db),
+			repo: new SqliteTradingRepository(t.db),
 			strategies: t.strategies,
 			judgments: {
 				current: () => {

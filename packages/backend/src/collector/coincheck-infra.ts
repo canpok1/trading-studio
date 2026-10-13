@@ -2,7 +2,7 @@
 
 import type { MarketTrade } from "@trading-studio/core";
 import { btcToSatoshi, roundYen } from "@trading-studio/core";
-import type { TradeFeed } from "./types";
+import type { TradeFeed } from "./collector-domain";
 
 const WS_URL = "wss://ws-api.coincheck.com/";
 const TRADES_URL = "https://coincheck.com/api/trades?pair=btc_jpy&limit=100";

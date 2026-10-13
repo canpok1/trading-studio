@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Hono } from "hono";
-import { SLOW_MS, slowRequestLog } from "./slow-log";
+import { SLOW_MS, slowRequestLog } from "./slow-log-app";
 
 test("応答に SLOW_MS 以上かかった API だけをログに出す", async () => {
 	const lines: string[] = [];
