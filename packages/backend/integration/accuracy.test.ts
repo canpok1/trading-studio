@@ -3,9 +3,9 @@ import type {
 	AccuracySettings,
 	AccuracySummary,
 	ArticleAccuracyReport,
-} from "../index";
-import { createTestApp } from "../test-app";
-import { DEFAULT_ACCURACY_SETTINGS } from "./types";
+} from "../src/index";
+import { DEFAULT_ACCURACY_SETTINGS } from "../src/scoring-analysis/types-domain";
+import { createTestApp } from "../src/test-app";
 
 const H = 3_600_000;
 const START = Date.UTC(2026, 6, 31, 15);

@@ -66,12 +66,12 @@ import {
 	NEWS_SORTS,
 	TRIAL_MAX_NEWS,
 } from "../news/types";
-import { MOVE_LABELS } from "../scoring-analysis/accuracy";
+import { MOVE_LABELS } from "../scoring-analysis/accuracy-domain";
 import type {
 	AccuracyService,
 	AccuracySummaryResult,
 	ArticleAccuracy,
-} from "../scoring-analysis/types";
+} from "../scoring-analysis/types-domain";
 import type { SegmentService } from "../segments/types-domain";
 import type {
 	StoredStrategy,

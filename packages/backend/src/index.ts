@@ -61,7 +61,7 @@ export type {
 	ArticleAccuracyReport,
 	RiskBands,
 	SentimentBands,
-} from "./scoring-analysis/types";
+} from "./scoring-analysis/types-domain";
 export type { ListedSegment, Segment } from "./segments/types-domain";
 export type { StoredStrategy } from "./strategies/types-domain";
 export type {

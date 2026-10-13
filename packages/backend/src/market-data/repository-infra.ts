@@ -1,4 +1,3 @@
-import type { MarketDataRepository } from "./repository-domain";
 // 足と取り込みの記録の読み書き
 
 import type { Candle, CsvRowError, Gap, Timeframe } from "@trading-studio/core";
@@ -10,6 +9,7 @@ import {
 	TIMEFRAMES,
 } from "@trading-studio/core";
 import type { Db } from "../db/open";
+import type { MarketDataRepository } from "./repository-domain";
 import type {
 	ImportJob,
 	ImportStatus,

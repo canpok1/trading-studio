@@ -1,4 +1,3 @@
-import type { DatasetRepository } from "./repository-domain";
 // データセットとまとめた実行の読み書き
 
 import type { ConditionSet, DatasetSummary } from "@trading-studio/core";
@@ -6,6 +5,7 @@ import { parseConditionSet } from "@trading-studio/core";
 import type { BacktestRepository } from "../backtests/repository-domain";
 import type { BacktestStatus, RunFilter } from "../backtests/types-domain";
 import type { Db } from "../db/open";
+import type { DatasetRepository } from "./repository-domain";
 import type {
 	DatasetRun,
 	HistoryEntry,

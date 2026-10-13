@@ -14,22 +14,23 @@ import {
 } from "@trading-studio/core";
 import type { JudgmentService } from "../judgments/types-domain";
 import type { MarketDataService } from "../market-data/types-domain";
-import { actualLevels, articlePrecision } from "./accuracy";
-import type { AnalysisNewsRow, ScoringAnalysisRepository } from "./repository";
+import { actualLevels, articlePrecision } from "./accuracy-domain";
+import type { ScoringAnalysisRepository } from "./repository-domain";
 import type {
 	AccuracyFilter,
 	AccuracySettings,
 	AccuracySummary,
 	AccuracySummaryResult,
+	AnalysisNewsRow,
 	ArticleAccuracy,
 	ArticleAccuracyReport,
 	SetAccuracySettingsResult,
-} from "./types";
+} from "./types-domain";
 import {
 	ACCURACY_BAND_MAX,
 	ACCURACY_HORIZONS,
 	ACCURACY_PERIODS,
-} from "./types";
+} from "./types-domain";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;

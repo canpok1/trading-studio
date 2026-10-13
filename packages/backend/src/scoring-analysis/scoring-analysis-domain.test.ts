@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { TIMEFRAME_MS } from "@trading-studio/core";
-import { priceSeries } from "./service";
+import { priceSeries } from "./scoring-analysis-domain";
 
 const H = TIMEFRAME_MS["1h"];
 const bar = (time: number, close: number) => ({

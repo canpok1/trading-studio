@@ -1,36 +1,14 @@
 // 精度を測るニュースと採点。読むだけで書き換えない。書くのは精度の設定だけ
 
-import type { Duration } from "@trading-studio/core";
 import type { Db } from "../db/open";
 import { NEWS_TIME_SQL } from "../news/score-repository";
-import type { AccuracySettings } from "./types";
+import type { ScoringAnalysisRepository } from "./repository-domain";
+import type { AccuracySettings, AnalysisNewsRow } from "./types-domain";
 import {
 	ACCURACY_HORIZONS,
 	ACCURACY_PERIODS,
 	DEFAULT_ACCURACY_SETTINGS,
-} from "./types";
-
-/** ニュースと採点。採点の行が無ければ status は null */
-export type AnalysisNewsRow = {
-	id: number;
-	sourceName: string;
-	language: string;
-	url: string;
-	title: string;
-	summary: string | null;
-	publishedAt: number;
-	fetchedAt: number;
-	status: string | null;
-	risk: number | null;
-	sentiment: number | null;
-	duration: Duration | null;
-	comment: string | null;
-	scoredAt: number | null;
-	criteriaVersion: number | null;
-	model: string | null;
-	appBuiltAt: number | null;
-	error: string | null;
-};
+} from "./types-domain";
 
 const COLUMNS = `n.id, n.source_name as sourceName, n.language, n.url, n.title, n.summary,
   n.published_at as publishedAt, n.fetched_at as fetchedAt, s.status, s.risk, s.sentiment,
@@ -39,7 +17,9 @@ const COLUMNS = `n.id, n.source_name as sourceName, n.language, n.url, n.title, 
 
 const ACCURACY_SETTINGS_KEY = "accuracy_settings";
 
-export class ScoringAnalysisRepository {
+export class SqliteScoringAnalysisRepository
+	implements ScoringAnalysisRepository
+{
 	constructor(private readonly db: Db) {}
 
 	private get sql() {

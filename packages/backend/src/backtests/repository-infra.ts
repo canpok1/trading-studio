@@ -1,4 +1,3 @@
-import type { BacktestRepository } from "./repository-domain";
 // バックテストの実行と結果の読み書き
 
 import { gunzipSync } from "node:zlib";
@@ -13,6 +12,7 @@ import type {
 } from "@trading-studio/core";
 import { parseAggregationRule, parseConditionSet } from "@trading-studio/core";
 import type { Db } from "../db/open";
+import type { BacktestRepository } from "./repository-domain";
 import type { RunnerOutput } from "./runner-domain";
 import type {
 	BacktestChart,

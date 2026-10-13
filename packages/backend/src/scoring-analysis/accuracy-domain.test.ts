@@ -5,7 +5,7 @@ import {
 	articlePrecision,
 	moveLevel,
 	roughLevel,
-} from "./accuracy";
+} from "./accuracy-domain";
 
 const BANDS = {
 	sentiment: { small: 0.5, large: 2 },

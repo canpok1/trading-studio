@@ -37,8 +37,8 @@ import { createScoringService } from "./news/scoring-service";
 import { createNewsService } from "./news/service";
 import { SqliteRetentionRepository } from "./retention/repository-infra";
 import { createRetentionService } from "./retention/retention-domain";
-import { ScoringAnalysisRepository } from "./scoring-analysis/repository";
-import { createScoringAnalysis } from "./scoring-analysis/service";
+import { SqliteScoringAnalysisRepository } from "./scoring-analysis/repository-infra";
+import { createScoringAnalysis } from "./scoring-analysis/scoring-analysis-domain";
 import { SqliteSegmentRepository } from "./segments/repository-infra";
 import { createSegmentService } from "./segments/segments-domain";
 import { SqliteStrategyRepository } from "./strategies/repository-infra";
@@ -186,7 +186,7 @@ export function createTestApp(
 		now: () => clock.now,
 	});
 	const scoringAnalysis = createScoringAnalysis({
-		repo: new ScoringAnalysisRepository(db),
+		repo: new SqliteScoringAnalysisRepository(db),
 		marketData,
 		judgments,
 		activeCriteriaVersion: () => scoreRepo.activeCriteriaVersion(),

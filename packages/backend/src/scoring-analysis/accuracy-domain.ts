@@ -2,7 +2,7 @@
 
 import type { AggregationRule, Scores } from "@trading-studio/core";
 import { classify as judgmentOf } from "@trading-studio/core";
-import type { RiskBands, SentimentBands } from "./types";
+import type { RiskBands, SentimentBands } from "./types-domain";
 
 /** 値動きの段階の名前。番号（0〜4）は actualLevels と同じ */
 export const MOVE_LABELS = {

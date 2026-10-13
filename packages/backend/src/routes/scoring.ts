@@ -5,8 +5,8 @@ import type {
 	AccuracyHorizon,
 	AccuracyPeriod,
 	AccuracyService,
-} from "../scoring-analysis/types";
-import { ACCURACY_IDS_MAX } from "../scoring-analysis/types";
+} from "../scoring-analysis/types-domain";
+import { ACCURACY_IDS_MAX } from "../scoring-analysis/types-domain";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
 	typeof v === "object" && v !== null;

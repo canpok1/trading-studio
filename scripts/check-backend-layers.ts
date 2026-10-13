@@ -19,7 +19,6 @@ export const NOT_MIGRATED = [
 	"mcp/",
 	"news/",
 	"routes/",
-	"scoring-analysis/",
 	"trading/",
 	"app.test.ts",
 	"slow-log.ts",

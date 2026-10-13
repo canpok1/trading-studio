@@ -21,7 +21,7 @@ import { exportRoutes } from "./routes/export";
 import { newsRoutes } from "./routes/news";
 import { scoringRoutes } from "./routes/scoring";
 import { tradingRoutes } from "./routes/trading";
-import type { AccuracyService } from "./scoring-analysis/types";
+import type { AccuracyService } from "./scoring-analysis/types-domain";
 import { segmentRoutes } from "./segments/segments-app";
 import type { SegmentService } from "./segments/types-domain";
 import { strategyRoutes } from "./strategies/strategies-app";

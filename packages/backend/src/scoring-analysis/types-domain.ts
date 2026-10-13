@@ -1,6 +1,6 @@
 // 市場評価の精度（ニュース画面の記事ごとの精度と、評価詳細のタブの集計）の型。app.ts から参照されるため、Bun 固有の型を持ち込まない（docs/news-page.md）
 
-import type { Judge, JudgmentValue } from "@trading-studio/core";
+import type { Duration, Judge, JudgmentValue } from "@trading-studio/core";
 
 /** 精度を測る、公開時刻からの長さ */
 export const ACCURACY_HORIZONS = ["4h", "24h"] as const;
@@ -137,3 +137,25 @@ export interface AccuracyService {
 	accuracySettings(): AccuracySettings;
 	setAccuracySettings(s: AccuracySettings): SetAccuracySettingsResult;
 }
+
+/** ニュースと採点。採点の行が無ければ status は null */
+export type AnalysisNewsRow = {
+	id: number;
+	sourceName: string;
+	language: string;
+	url: string;
+	title: string;
+	summary: string | null;
+	publishedAt: number;
+	fetchedAt: number;
+	status: string | null;
+	risk: number | null;
+	sentiment: number | null;
+	duration: Duration | null;
+	comment: string | null;
+	scoredAt: number | null;
+	criteriaVersion: number | null;
+	model: string | null;
+	appBuiltAt: number | null;
+	error: string | null;
+};
