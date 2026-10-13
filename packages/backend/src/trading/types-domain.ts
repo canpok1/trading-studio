@@ -1,10 +1,8 @@
 // 自動取引の API が使う型。app.ts から参照されるため、Bun 固有の型を持ち込まない
 
 import type {
-	Account,
 	DecisionLog,
 	ExitKind,
-	JsonValue,
 	Lot,
 	Position,
 	StrategyWatch,
