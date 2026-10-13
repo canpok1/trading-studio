@@ -1,13 +1,9 @@
-import { rmSync, writeFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+// ホームのチャートと表示の切り替え。チャート（lightweight-charts）は canvas に描くので happy-dom では動かず、実ブラウザで確かめる
 import type { Page } from "@playwright/test";
-import { expect, test } from "@playwright/test";
-import { chooseStrategy } from "./run-settings";
-
-// e2e/server.ts の DB と同じ場所。このファイルがあると偽物の取引所が止まる
-const downFile = fileURLToPath(
-	new URL("../.e2e-data/feed-down", import.meta.url),
-);
+import { strategyTemplate } from "@trading-studio/core";
+import { expect, test } from "./browser";
+import { templateStrategy, tradingRun } from "./fixtures";
+import { onHome } from "./home-api";
 
 /** チャート上端の「表示」のメニューを開く。線の表示の切り替えと本数の歯車はこの中にある */
 async function openDisplay(page: Page) {
@@ -17,55 +13,68 @@ async function openDisplay(page: Page) {
 	}
 }
 
-test("アプリを開くとホームが出て、現在値が自動で更新される", async ({
+/** タブの設定で運用する戦略を選び、設定を閉じる */
+async function chooseStrategy(page: Page, label: string | null) {
+	await page.getByRole("button", { name: "タブの設定" }).click();
+	const dialog = page.getByRole("dialog", { name: /の設定$/ });
+	const select = dialog.getByLabel("運用する戦略");
+	await (label === null
+		? select.selectOption("")
+		: select.selectOption({ label }));
+	await dialog.getByRole("button", { name: "閉じる" }).click();
+}
+
+const PRICE = /^[\d,]+円$/;
+
+test("現在値と24時間の変化率が出て、5秒ごとに読み直して更新される", async ({
 	page,
+	api,
 }) => {
-	await page.goto("/");
-	await expect(page).toHaveURL(/\/home$/);
+	const state = onHome(api);
+	await page.goto("/home");
 	const price = page.getByTestId("chart-close");
-	await expect(price).toHaveText(/^[\d,]+円$/, { timeout: 15_000 });
-	await expect(page.getByTestId("home-change")).toHaveText(/^24h /);
-	const first = await price.textContent();
-	// 偽物の取引所は1秒ごとに価格を変える。画面は5秒ごとに問い合わせる
-	await expect(price).not.toHaveText(first as string, { timeout: 15_000 });
+	await expect(price).toHaveText("10,000,000円");
+	await expect(page.getByTestId("home-change")).toHaveText(/^24h \+/);
 	await expect(page.getByRole("img", { name: "価格チャート" })).toBeVisible();
+	state.price = 10_500_000;
+	await expect(price).toHaveText("10,500,000円", { timeout: 10_000 });
 });
 
-test("収集が止まると現在値の下にエラーが出て、直ると消える", async ({
-	page,
-}) => {
+test("収集が止まるとエラーが出て、直ると消える", async ({ page, api }) => {
+	const state = onHome(api);
+	const running = state.collector;
 	await page.goto("/home");
-	await expect(page.getByTestId("chart-close")).toHaveText(/^[\d,]+円$/, {
-		timeout: 15_000,
-	});
+	await expect(page.getByTestId("chart-close")).toHaveText(PRICE);
 	const alert = page.getByRole("alert").filter({
 		hasText: "価格の収集が止まっている",
 	});
-	writeFileSync(downFile, "");
-	try {
-		await expect(alert).toBeVisible({ timeout: 15_000 });
-		await expect(alert).toContainText("止まった時刻");
-		await expect(alert).toContainText("自動で再接続中");
-	} finally {
-		rmSync(downFile, { force: true });
-	}
-	await expect(alert).toBeHidden({ timeout: 30_000 });
+	const now = Date.now();
+	state.collector = {
+		state: "stopped",
+		stoppedSince: now,
+		error: null,
+		retryAt: now + 30_000,
+		lastReceivedAt: now,
+	};
+	await expect(alert).toBeVisible({ timeout: 10_000 });
+	await expect(alert).toContainText("止まった時刻");
+	await expect(alert).toContainText("自動で再接続中");
+	state.collector = running;
+	await expect(alert).toBeHidden({ timeout: 10_000 });
 });
 
 test("EMA は戦略で使っていれば表示して始まり、どの粒度でも出せて、本数を変えられる", async ({
 	page,
-}, info) => {
-	const create = async (name: string, template: string) => {
-		const res = await page.request.post("/api/strategies", {
-			data: { name, from: { template } },
-		});
-		expect(res.ok()).toBe(true);
-	};
-	const trend = `ホーム トレンド ${info.project.name}`;
-	const range = `ホーム レンジ ${info.project.name}`;
-	await create(trend, "trend");
-	await create(range, "range");
-
+	api,
+}) => {
+	const trend = "トレンド";
+	const range = "レンジ";
+	onHome(api, {
+		strategies: [
+			templateStrategy(1, trend, "trend"),
+			templateStrategy(2, range, "range"),
+		],
+	});
 	await page.goto("/home");
 	const ema = page.getByRole("button", { name: "EMA", exact: true });
 
@@ -95,18 +104,13 @@ test("EMA は戦略で使っていれば表示して始まり、どの粒度で�
 	await page.getByRole("button", { name: "表示する" }).click();
 	await openDisplay(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "true");
-	await expect(page.getByTestId("chart-ema-9")).toHaveText(/^EMA9 [\d,—]+$/, {
-		timeout: 15_000,
-	});
+	await expect(page.getByTestId("chart-ema-9")).toHaveText(/^EMA9 [\d,]+$/);
 	await page.reload();
 	await openDisplay(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "true");
-	await expect(page.getByTestId("chart-ema-9")).toBeVisible({
-		timeout: 15_000,
-	});
+	await expect(page.getByTestId("chart-ema-9")).toBeVisible();
 	await page.getByRole("button", { name: "EMA の本数を変える" }).click();
 	await page.getByRole("button", { name: "既定の値に戻す" }).click();
-	// 値の行はタップした位置の足（データの無い足のこともある）を指すことがあるので、本数は設定の画面で確かめる
 	await openDisplay(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "true");
 	await page.getByRole("button", { name: "EMA の本数を変える" }).click();
@@ -117,29 +121,19 @@ test("EMA は戦略で使っていれば表示して始まり、どの粒度で�
 	// 選んだ戦略は保存される
 	await page.reload();
 	await expect(page.getByTestId("auto-strategy")).toHaveText(range);
-	await chooseStrategy(page, null);
 });
 
 test("RSI の条件を持つ戦略を選ぶと RSI の小窓と値が出て、ボタンで隠せる", async ({
 	page,
-}, info) => {
-	const created = await page.request.post("/api/strategies", {
-		data: {
-			name: `ホーム RSI ${info.project.name}`,
-			from: { template: "trend" },
-		},
-	});
-	const { strategy } = (await created.json()) as {
-		strategy: {
-			id: number;
-			params: { buys: Record<string, unknown>[] } & Record<string, unknown>;
-		};
-	};
-	const params = {
-		...strategy.params,
+	api,
+}) => {
+	const params = strategyTemplate("trend").params;
+	const buy = params.buys[0] as (typeof params.buys)[number];
+	const rsiStrategy = templateStrategy(1, "RSI", "trend", {
+		...params,
 		buys: [
 			{
-				...strategy.params.buys[0],
+				...buy,
 				buy: {
 					match: "all",
 					conditions: [
@@ -154,50 +148,42 @@ test("RSI の条件を持つ戦略を選ぶと RSI の小窓と値が出て、�
 				},
 			},
 		],
-	};
-	expect(
-		(
-			await page.request.put(`/api/strategies/${strategy.id}/params`, {
-				data: { params },
-			})
-		).ok(),
-	).toBe(true);
-	await page.request.patch("/api/trading/runs/1", {
-		data: { strategyId: strategy.id },
 	});
-	try {
-		await page.goto("/home");
-		const toggle = page.getByRole("button", { name: "RSI", exact: true });
-		const value = page.getByTestId("chart-rsi-2");
-		await openDisplay(page);
-		await expect(toggle).toHaveAttribute("aria-pressed", "true");
-		await expect(value).toHaveText(/^RSI2 (\d+\.\d|—)$/, {
-			timeout: 15_000,
-		});
-		await toggle.click();
-		await expect(value).toBeHidden();
-		await toggle.click();
-		await expect(value).toBeVisible();
+	onHome(api, {
+		strategies: [rsiStrategy],
+		runs: [
+			tradingRun({
+				id: 1,
+				name: "デモ",
+				strategy: { id: 1, name: "RSI" },
+			}),
+		],
+	});
+	await page.goto("/home");
+	const toggle = page.getByRole("button", { name: "RSI", exact: true });
+	const value = page.getByTestId("chart-rsi-2");
+	await openDisplay(page);
+	await expect(toggle).toHaveAttribute("aria-pressed", "true");
+	await expect(value).toHaveText(/^RSI2 \d+\.\d$/);
+	await toggle.click();
+	await expect(value).toBeHidden();
+	await toggle.click();
+	await expect(value).toBeVisible();
 
-		// 条件の足以外でも出す
-		await page.getByLabel("足の粒度").selectOption("5m");
-		await openDisplay(page);
-		await expect(toggle).toHaveAttribute("aria-pressed", "true");
-		await expect(value).toBeVisible({ timeout: 15_000 });
-	} finally {
-		await page.request.patch("/api/trading/runs/1", {
-			data: { strategyId: null },
-		});
-	}
+	// 条件の足以外でも出す
+	await page.getByLabel("足の粒度").selectOption("5m");
+	await openDisplay(page);
+	await expect(toggle).toHaveAttribute("aria-pressed", "true");
+	await expect(value).toBeVisible();
 });
 
 test("ローソク足に切り替えると4本値が出て、再読み込み後も保たれる", async ({
 	page,
+	api,
 }) => {
+	onHome(api);
 	await page.goto("/home");
-	await expect(page.getByTestId("chart-close")).toHaveText(/^[\d,]+円$/, {
-		timeout: 15_000,
-	});
+	await expect(page.getByTestId("chart-close")).toHaveText(PRICE);
 	const toggle = page.getByRole("button", { name: "ローソク足", exact: true });
 	await openDisplay(page);
 	await expect(toggle).toHaveAttribute("aria-pressed", "false");
@@ -213,48 +199,34 @@ test("ローソク足に切り替えると4本値が出て、再読み込み後�
 	await expect(page.getByText(/^始 /)).toBeHidden();
 });
 
-test("買値は最初は出し、隠すと再読み込み後も隠したまま", async ({ page }) => {
-	await page.goto("/home");
-	await expect(page.getByTestId("chart-close")).toHaveText(/^[\d,]+円$/, {
-		timeout: 15_000,
+for (const name of ["買値", "出来高"]) {
+	test(`${name}は最初は出し、隠すと再読み込み後も隠したまま`, async ({
+		page,
+		api,
+	}) => {
+		onHome(api);
+		await page.goto("/home");
+		await expect(page.getByTestId("chart-close")).toHaveText(PRICE);
+		const menu = page.getByRole("button", { name: /^表示/ });
+		const toggle = page.getByRole("button", { name, exact: true });
+		await expect(menu).toContainText(name);
+		await openDisplay(page);
+		await expect(toggle).toHaveAttribute("aria-pressed", "true");
+		await toggle.click();
+		await expect(toggle).toHaveAttribute("aria-pressed", "false");
+		await expect(menu).not.toContainText(name);
+
+		await page.reload();
+		await expect(menu).not.toContainText(name);
+		await openDisplay(page);
+		await expect(toggle).toHaveAttribute("aria-pressed", "false");
+		await toggle.click();
+		await expect(toggle).toHaveAttribute("aria-pressed", "true");
 	});
-	const menu = page.getByRole("button", { name: /^表示/ });
-	const toggle = page.getByRole("button", { name: "買値", exact: true });
-	await expect(menu).toContainText("買値");
-	await openDisplay(page);
-	await expect(toggle).toHaveAttribute("aria-pressed", "true");
-	await toggle.click();
-	await expect(toggle).toHaveAttribute("aria-pressed", "false");
-	await expect(menu).not.toContainText("買値");
+}
 
-	await page.reload();
-	await expect(menu).not.toContainText("買値");
-	await openDisplay(page);
-	await expect(toggle).toHaveAttribute("aria-pressed", "false");
-});
-
-test("出来高は最初は出し、隠すと再読み込み後も隠したまま", async ({ page }) => {
-	await page.goto("/home");
-	await expect(page.getByTestId("chart-close")).toHaveText(/^[\d,]+円$/, {
-		timeout: 15_000,
-	});
-	const menu = page.getByRole("button", { name: /^表示/ });
-	const toggle = page.getByRole("button", { name: "出来高", exact: true });
-	await expect(menu).toContainText("出来高");
-	await openDisplay(page);
-	await expect(toggle).toHaveAttribute("aria-pressed", "true");
-	await toggle.click();
-	await expect(toggle).toHaveAttribute("aria-pressed", "false");
-	await expect(menu).not.toContainText("出来高");
-
-	await page.reload();
-	await expect(menu).not.toContainText("出来高");
-	await openDisplay(page);
-	await toggle.click();
-	await expect(toggle).toHaveAttribute("aria-pressed", "true");
-});
-
-test("ホームは横にはみ出さない", async ({ page }) => {
+test("ホームは横にはみ出さない", async ({ page, api }) => {
+	onHome(api);
 	await page.goto("/home");
 	await expect(page.getByTestId("chart-close")).toBeVisible();
 	const overflow = await page.evaluate(
@@ -265,8 +237,11 @@ test("ホームは横にはみ出さない", async ({ page }) => {
 
 test("PC 幅では要点が横一列（自動取引は右端）、その下にチャート、成績｜口座情報、注文・約定の順に並ぶ", async ({
 	page,
-}, testInfo) => {
-	test.skip(testInfo.project.name !== "desktop", "横一列になるのは PC 幅だけ");
+	api,
+	isMobile,
+}) => {
+	test.skip(isMobile, "横一列になるのは PC 幅だけ");
+	onHome(api);
 	await page.goto("/home");
 	const box = async (name: string) => {
 		const b = await page
@@ -275,9 +250,7 @@ test("PC 幅では要点が横一列（自動取引は右端）、その下に�
 		if (!b) throw new Error(`${name} の位置を取れなかった`);
 		return b;
 	};
-	await expect(page.getByRole("region", { name: "価格チャート" })).toBeVisible({
-		timeout: 15_000,
-	});
+	await expect(page.getByRole("region", { name: "注文・約定" })).toBeVisible();
 	const total = await box("通算損益");
 	const unrealized = await box("含み損益");
 	const market = await page
@@ -300,36 +273,28 @@ test("PC 幅では要点が横一列（自動取引は右端）、その下に�
 	expect(chart.x + chart.width).toBeGreaterThanOrEqual(auto.x + auto.width - 1);
 	// その下の段に成績｜口座情報、最後に注文・約定
 	expect(perf.y).toBeGreaterThan(chart.y + chart.height - 1);
-	expect(account.y).toBe(perf.y);
+	// 読み込みで上の段の高さが変わると、2つを測る間に位置がずれることがあるので、そろうまで測り直す
+	await expect
+		.poll(async () => (await box("口座情報")).y - (await box("成績")).y)
+		.toBe(0);
 	expect(account.x).toBeGreaterThan(perf.x + perf.width);
 	expect(orders.y).toBeGreaterThan(perf.y + perf.height - 1);
 });
 
 test("チャートに市場評価の背景と帯が出て、帯をタップすると背景が入れ替わり、再読み込み後も保たれる", async ({
 	page,
+	api,
+	isMobile,
 }) => {
-	// 足は1分ごとに閉じるので、採点が付いた後の足ができるまで待つことがある
-	test.setTimeout(180_000);
+	onHome(api);
 	await page.goto("/home");
 	await expect(
 		page.getByTestId("home-judge-sentiment").getByTestId("badge-sentiment"),
-	).toBeVisible({
-		timeout: 20_000,
-	});
-	// 偽物の採点が付いた後に閉じた足ができるまで待つ
-	await expect(async () => {
-		await page.reload();
-		await expect(page.getByTestId("chart-judgment-sentiment")).toBeVisible({
-			timeout: 3_000,
-		});
-	}).toPass({ timeout: 120_000 });
-	// 上の値の表示の判定は短い観点名と、評価の色付きのバッジ
-	await expect(page.getByTestId("chart-judgment-sentiment")).toContainText(
-		"センチ",
-	);
-	await expect(
-		page.getByTestId("chart-judgment-sentiment").getByTestId("badge-sentiment"),
 	).toBeVisible();
+	// 上の値の表示の判定は短い観点名と、評価の色付きのバッジ
+	const sentiment = page.getByTestId("chart-judgment-sentiment");
+	await expect(sentiment).toContainText("センチ");
+	await expect(sentiment.getByTestId("badge-sentiment")).toBeVisible();
 	await expect(page.getByTestId("chart-judgment-risk")).toContainText("リスク");
 	// スマホでは −/＋/最新へ を値の表示の下（チャートのすぐ上）に置く。PC では右
 	const close = await page.getByTestId("chart-close").boundingBox();
@@ -337,42 +302,38 @@ test("チャートに市場評価の背景と帯が出て、帯をタップす�
 		.getByRole("button", { name: "最新へ" })
 		.boundingBox();
 	if (!close || !latest) throw new Error("値の表示かボタンが無い");
-	if ((page.viewportSize()?.width ?? 0) < 1024) {
+	if (isMobile) {
 		expect(latest.y).toBeGreaterThan(close.y + close.height);
 	} else {
 		expect(latest.x).toBeGreaterThan(close.x + close.width);
 	}
 
 	const bgSelect = page.getByLabel("背景に使う判定");
-	await bgSelect.selectOption("sentiment");
 	await expect(bgSelect).toHaveValue("sentiment");
 	// 背景がセンチメントのとき、帯はリスクの1本。その帯をタップする
 	const chart = page.getByRole("img", { name: "価格チャート" });
-	// 指した足で上の値の表示の行数が変わり、チャートが上下にずれる（足の無い枠は「データなし」の1行）。
-	// 帯は下端近くにあり、ずれると指す位置がチャートの外へ出て表示が戻り、ずれが止まらない。
-	// 先に同じ足の上の方を指してずれを済ませてから、帯を押す
-	const x = (await chart.boundingBox())?.width ?? 0;
-	await chart.hover({ position: { x: x / 2, y: 40 } });
 	const box = await chart.boundingBox();
 	if (!box) throw new Error("チャートが無い");
+	// 指した足で上の値の表示の行数が変わるとチャートが上下にずれるので、先に同じ足の上の方を指してずれを済ませる
+	await chart.hover({ position: { x: box.width / 2, y: 40 } });
+	const moved = await chart.boundingBox();
+	if (!moved) throw new Error("チャートが無い");
 	// 下端から時間軸（約 26px）を除き、帯の中ほどの位置
 	await chart.click({
-		position: { x: box.width / 2, y: box.height - 26 - 10 },
+		position: { x: moved.width / 2, y: moved.height - 26 - 10 },
 	});
 	await expect(bgSelect).toHaveValue("risk");
 	await page.reload();
-	await expect(page.getByLabel("背景に使う判定")).toHaveValue("risk", {
-		timeout: 20_000,
-	});
+	await expect(page.getByLabel("背景に使う判定")).toHaveValue("risk");
 });
 
 test("ボリンジャーバンドは戦略で使っていなければ隠して始まり、本数と σ を変えると表示する", async ({
 	page,
+	api,
 }) => {
+	onHome(api);
 	await page.goto("/home");
-	await expect(page.getByTestId("chart-close")).toHaveText(/^[\d,]+円$/, {
-		timeout: 15_000,
-	});
+	await expect(page.getByTestId("chart-close")).toHaveText(PRICE);
 	const bb = page.getByRole("button", { name: "BB", exact: true });
 	await openDisplay(page);
 	await expect(bb).toHaveAttribute("aria-pressed", "false");
@@ -387,13 +348,11 @@ test("ボリンジャーバンドは戦略で使っていなければ隠して�
 	await openDisplay(page);
 	await expect(bb).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByTestId("chart-bb")).toHaveText(
-		/^BB5 [\d,—]+\/[\d,—]+\/[\d,—]+$/,
+		/^BB5 [\d,]+\/[\d,]+\/[\d,]+$/,
 	);
 
 	await page.getByRole("button", { name: "BB の本数を変える" }).click();
 	await page.getByRole("button", { name: "既定の値に戻す" }).click();
-	// 閉じたモーダルの位置にポインタが残ると、値の行がデータの無い足を指して BB を出さないことがある
-	await page.mouse.move(0, 0);
 	await expect(page.getByTestId("chart-bb")).toHaveText(/^BB20 /);
 	await openDisplay(page);
 	await bb.click();
@@ -402,16 +361,12 @@ test("ボリンジャーバンドは戦略で使っていなければ隠して�
 
 test("運用する戦略を選ぶと、次の動きと戦略の見張りが出て、グループの開閉を覚える", async ({
 	page,
-}, info) => {
-	const name = `見張り ${info.project.name}`;
-	const created = await page.request.post("/api/strategies", {
-		data: { name, from: { template: "range" } },
-	});
-	expect(created.ok()).toBe(true);
+	api,
+}) => {
+	const name = "見張り";
+	onHome(api, { strategies: [templateStrategy(1, name, "range")] });
 	await page.goto("/home");
-	await expect(page.getByTestId("chart-close")).toHaveText(/^[\d,]+円$/, {
-		timeout: 15_000,
-	});
+	await expect(page.getByTestId("chart-close")).toHaveText(PRICE);
 	await chooseStrategy(page, name);
 	await expect(page.getByRole("region", { name: "次の動き" })).toBeVisible();
 	const panel = page.getByRole("region", { name: "戦略の見張り" });
@@ -426,12 +381,7 @@ test("運用する戦略を選ぶと、次の動きと戦略の見張りが出�
 	);
 
 	await page.reload();
-	await expect(
-		page
-			.getByRole("region", { name: "戦略の見張り" })
-			.locator("details")
-			.first(),
-	).toHaveAttribute("open");
+	await expect(buyGroup).toHaveAttribute("open");
 	await buyGroup.locator("summary").click();
 	await expect(buyGroup).not.toHaveAttribute("open");
 	await chooseStrategy(page, null);

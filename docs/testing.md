@@ -28,6 +28,8 @@
 - 偽物の API は `fake-api.ts` の `FakeApi`。`on(routes.api.version, "$get", () => ({ … }))` のように口を指定し、応答は backend の型で検査される。状態コードを決めるときはハンドラーの2つ目の引数 `reply(409, { … })` で返す。本文はその状態コードで backend が返す型で検査される。`Response` を直に返すのはファイルなど JSON でない応答だけ（型が効かないため）
 - `createFakeApi()` はどの画面でも読み込む口（自動取引の状況・実行中のバックテスト・バージョン）を空で答える。画面ごとに要る口はテストで足す。登録の無い口は 404 を返し、`FakeApi.unhandled` に残る
 - 応答のひな形は `fixtures.ts`。変えたいところだけ上書きする
+- ホームが読む口は `home-api.ts` の `onHome` でまとめて偽物にする。タブの操作は返した状態に反映され、テストから価格や収集の状態を書き換えられる
+- ホームはチャート（lightweight-charts）が canvas を使い happy-dom では描けないので、ホームのテストは `*.pw.ts` に書く
 - 送った内容を確かめるのは、送ること自体が振る舞いのとき（保存など）だけ。`FakeApi.requests` で見る
 - バックテストの実行・結果の画面が読む口は `backtest-fakes.ts` の `onRunPage`・`onResults` でまとめて偽物にする。この画面だけで使うひな形（`resultRun`・`ORDERS`）もここに置く。結果のチャートは happy-dom では描けないので、チャートを渡さなければ応答を返さず描かせない
 
