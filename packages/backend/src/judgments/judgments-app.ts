@@ -1,24 +1,12 @@
-import type { AggregationRule } from "@trading-studio/core";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import { validator } from "hono/validator";
-import {
-	isTimeframe,
-	parseAggregationRule,
-	TIMEFRAME_MS,
-	validateAggregationRule,
-} from "./judgments-domain";
+import { parseRuleInput, parseSeriesQuery } from "./judgments-domain";
 import type { JudgmentService } from "./types-domain";
 
-/** 一度に返す足の上限。チャートの足の上限（5万本）に余裕を持たせる */
-const MAX_SERIES = 100_000;
-
-const isObj = (v: unknown): v is Record<string, unknown> =>
-	typeof v === "object" && v !== null;
-
 function ruleOf(v: unknown, c: Context) {
-	const rule = parseAggregationRule(isObj(v) ? v.rule : null);
+	const rule = parseRuleInput(v);
 	if (!rule) return c.json({ message: "評価ルールの形が違う" }, 400);
 	return { rule };
 }
@@ -36,39 +24,24 @@ export function judgmentRoutes(service: JudgmentService) {
 		.get(
 			"/series",
 			validator("query", (q, c) => {
-				const from = Number(q.from);
-				const to = Number(q.to);
-				if (!isTimeframe(q.timeframe)) {
-					return c.json({ message: "足の粒度を選ぶ" }, 400);
-				}
-				if (
-					!Number.isSafeInteger(from) ||
-					!Number.isSafeInteger(to) ||
-					from > to
-				) {
-					return c.json({ message: "期間の形が違う" }, 400);
-				}
-				const step = TIMEFRAME_MS[q.timeframe];
-				if ((to - from) / step > MAX_SERIES) {
-					return c.json(
-						{ message: `足が多すぎる（上限 ${MAX_SERIES}本）` },
-						400,
-					);
-				}
-				return { from, to, timeframe: q.timeframe };
+				const r = parseSeriesQuery(q);
+				if (!r.ok) return c.json({ message: r.message }, 400);
+				return { from: r.from, to: r.to, timeframe: r.timeframe };
 			}),
 			compress(),
 			(c) => {
 				const { from, to, timeframe } = c.req.valid("query");
-				return c.json(service.series(from, to, TIMEFRAME_MS[timeframe]), 200);
+				return c.json(service.seriesOf(from, to, timeframe), 200);
 			},
 		)
 		.post("/preview", validator("json", ruleOf), (c) => {
-			const rule: AggregationRule = c.req.valid("json").rule;
-			const errors = validateAggregationRule(rule);
-			return errors.length
-				? c.json({ message: "評価ルールに入力の誤りがある", errors }, 400)
-				: c.json(service.current(rule), 200);
+			const r = service.preview(c.req.valid("json").rule);
+			return r.ok
+				? c.json(r.judgment, 200)
+				: c.json(
+						{ message: "評価ルールに入力の誤りがある", errors: r.errors },
+						400,
+					);
 		})
 		.get("/rule", (c) => c.json({ rule: service.rule() }))
 		.put("/rule", validator("json", ruleOf), (c) => {

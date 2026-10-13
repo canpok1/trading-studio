@@ -20,5 +20,5 @@ paths:
 - `src/` 直下は起動まわり（`main.ts`・`app.ts`・`index.ts`）だけ。アプリケーション層に属する
 - テストは対象の後ろに `.test.ts`（`market-domain.test.ts`）。層をまたぐテストは `packages/backend/integration/` に置く
 - ドメインは他の機能のインフラを型でも参照しない。使うものだけをリポジトリの型として自分の `repository-domain.ts` に書き、`main.ts` で実装を渡す
-- アプリケーション層は core を直接呼ばない（型だけの import は可）。入力の検査に core の関数が要るときは、その機能の `-domain.ts` から export する
+- アプリケーション層は core を直接呼ばない（型だけの import は可）。入力の検査（形の確認を含む）はドメインの関数にし、入口は結果を応答に変えるだけにする。core の関数を `-domain.ts` から素通しで export して回避しない
 - 検査: 末尾の有無は `bun run layers`、依存の向き（ドメイン → アプリケーション・インフラ、インフラ → アプリケーション、アプリケーション → core）は `bun run depcruise`

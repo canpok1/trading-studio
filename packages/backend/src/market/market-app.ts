@@ -1,14 +1,8 @@
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import { validator } from "hono/validator";
-import { isTimeframe } from "./market-domain";
-import type { ChartRangeId, MarketService } from "./types-domain";
-
-const RANGES: readonly ChartRangeId[] = ["1d", "1w", "1m", "all"];
-const isRange = (v: unknown): v is ChartRangeId =>
-	(RANGES as readonly unknown[]).includes(v);
-/** EMA の計算に足す本数の上限 */
-const MAX_HISTORY = 1_000;
+import { parseBarsQuery } from "./market-domain";
+import type { MarketService } from "./types-domain";
 
 export function marketRoutes(service: MarketService) {
 	return new Hono()
@@ -16,17 +10,9 @@ export function marketRoutes(service: MarketService) {
 		.get(
 			"/bars",
 			validator("query", (q, c) => {
-				if (!isTimeframe(q.timeframe)) {
-					return c.json({ message: "足の粒度を選ぶ" }, 400);
-				}
-				if (!isRange(q.range)) {
-					return c.json({ message: "期間を選ぶ" }, 400);
-				}
-				const history = Math.min(
-					MAX_HISTORY,
-					Math.max(0, Math.floor(Number(q.history ?? 0)) || 0),
-				);
-				return { timeframe: q.timeframe, range: q.range, history };
+				const r = parseBarsQuery(q);
+				if (!r.ok) return c.json({ message: r.message }, 400);
+				return { timeframe: r.timeframe, range: r.range, history: r.history };
 			}),
 			compress(),
 			(c) => {

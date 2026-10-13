@@ -1,9 +1,7 @@
 // 最新価格とホームのチャートの足
 
-import { candleStart, TIMEFRAME_MS } from "@trading-studio/core";
-
-// API の入口が入力の検査に使う。アプリケーション層は core を直接呼ばない（docs/adr/0028）
-export { isTimeframe } from "@trading-studio/core";
+import type { Timeframe } from "@trading-studio/core";
+import { candleStart, isTimeframe, TIMEFRAME_MS } from "@trading-studio/core";
 
 import type { LiveMarketSource, MarketRepository } from "./repository-domain";
 import type { ChartRangeId, MarketService } from "./types-domain";
@@ -17,6 +15,28 @@ export const CHART_RANGE_MS: Record<Exclude<ChartRangeId, "all">, number> = {
 	"1w": 7 * DAY,
 	"1m": 30 * DAY,
 };
+
+const RANGES: readonly ChartRangeId[] = ["1d", "1w", "1m", "all"];
+const isRange = (v: unknown): v is ChartRangeId =>
+	(RANGES as readonly unknown[]).includes(v);
+/** EMA の計算に足す本数の上限 */
+const MAX_HISTORY = 1_000;
+
+/** チャートの足の粒度・期間・前に足す本数の入力を確かめる */
+export function parseBarsQuery(
+	q: Record<string, unknown>,
+):
+	| { ok: true; timeframe: Timeframe; range: ChartRangeId; history: number }
+	| { ok: false; message: string } {
+	if (!isTimeframe(q.timeframe))
+		return { ok: false, message: "足の粒度を選ぶ" };
+	if (!isRange(q.range)) return { ok: false, message: "期間を選ぶ" };
+	const history = Math.min(
+		MAX_HISTORY,
+		Math.max(0, Math.floor(Number(q.history ?? 0)) || 0),
+	);
+	return { ok: true, timeframe: q.timeframe, range: q.range, history };
+}
 
 export function createMarketService({
 	collector,
