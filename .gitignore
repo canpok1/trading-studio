@@ -118,5 +118,9 @@ dist
 /packages/e2e/test-results/
 /packages/e2e/playwright-report/
 
+# 画面のインテグレーション（Playwright）
+/packages/frontend/test-results/
+/packages/frontend/playwright-report/
+
 # アプリのバージョン（Docker のビルドで書き出す）
 /BUILT_AT

@@ -56,6 +56,33 @@ jobs:
           name: playwright-results-${{ matrix.shard }}
           path: packages/e2e/test-results/
 
+  # 見た目の配置のインテグレーション（Playwright、API は偽物）。backend を起動しないので E2E と分ける
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - if: steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: packages/frontend
+        run: bunx playwright install --with-deps chromium
+      - if: steps.playwright-cache.outputs.cache-hit == 'true'
+        working-directory: packages/frontend
+        run: bunx playwright install-deps chromium
+      - run: bun run test:browser
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results-browser
+          path: packages/frontend/test-results/
+
   # イメージがビルドできるかは、テストを待たずに確かめる。main ではこのビルドが image のキャッシュになる
   build-image:
     runs-on: ubuntu-latest
@@ -70,9 +97,9 @@ jobs:
           cache-to: type=gha,mode=max
 
   # main への push のときだけ GHCR へ push する（mini-pc の Watchtower が latest を拾う）。
-  # PR では何もしないが、必須チェックの image が check・e2e・build-image の成功を待つ関所になる
+  # PR では何もしないが、必須チェックの image が check・e2e・browser・build-image の成功を待つ関所になる
   image:
-    needs: [check, e2e, build-image]
+    needs: [check, e2e, browser, build-image]
     runs-on: ubuntu-latest
     # 古いコミットのビルドが後から終わって latest を巻き戻さないよう、同じブランチでは順に実行する
     concurrency:
