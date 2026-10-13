@@ -1,9 +1,11 @@
-import "../src/shared/lib/test-setup";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { cleanup, fireEvent, within } from "@testing-library/react";
+import { setupDom } from "../src/shared/lib/test-setup";
 import { createFakeApi, routes } from "./fake-api";
 import { marketLatest, tradingRun } from "./fixtures";
 import { renderApp } from "./render-app";
+
+setupDom();
 
 // 画面が読み込みの応答を受け取り終えてから片付ける（DOM を外した後に描画が走らないように）
 afterEach(async () => {
