@@ -1,32 +1,19 @@
 import type { ConditionSet } from "@trading-studio/core";
 import {
+	isTemplateId,
 	parseConditionSet,
 	strategyTemplate,
 	validateConditionSet,
 } from "@trading-studio/core";
-import type { Db } from "../db/open";
-import type { StoredStrategy, StrategyResult, StrategyService } from "./types";
-
-type Row = {
-	id: number;
-	name: string;
-	params: string;
-	created_at: number;
-	updated_at: number;
-};
+import type { StrategyRepository } from "./repository-domain";
+import type {
+	CreateStrategyInput,
+	StoredStrategy,
+	StrategyResult,
+	StrategyService,
+} from "./types-domain";
 
 const NAME_MAX = 40;
-
-function toStrategy(r: Row): StoredStrategy {
-	return {
-		id: r.id,
-		name: r.name,
-		// 保存するときに形を検証しているので、読み出しでは形が崩れていない前提で読む
-		params: parseConditionSet(JSON.parse(r.params)) as ConditionSet,
-		createdAt: r.created_at,
-		updatedAt: r.updated_at,
-	};
-}
 
 export function checkName(name: string): string | null {
 	const n = name.trim();
@@ -35,24 +22,43 @@ export function checkName(name: string): string | null {
 	return null;
 }
 
+const isObj = (v: unknown): v is Record<string, unknown> =>
+	typeof v === "object" && v !== null;
+
+/** 戦略を作る入力の形を確かめる（名前と条件の中身は create で確かめる） */
+export function parseCreateInput(
+	v: unknown,
+): { ok: true; input: CreateStrategyInput } | { ok: false; message: string } {
+	if (!isObj(v) || typeof v.name !== "string" || !isObj(v.from)) {
+		return { ok: false, message: "name と from が必要" };
+	}
+	const f = v.from;
+	let from: CreateStrategyInput["from"] | null = null;
+	if (isTemplateId(f.template)) from = { template: f.template };
+	else if (typeof f.copyOf === "number") from = { copyOf: f.copyOf };
+	else {
+		const params = parseConditionSet(f.params);
+		if (params) from = { params };
+	}
+	if (!from) return { ok: false, message: "from の形が違う" };
+	return { ok: true, input: { name: v.name, from } };
+}
+
+/** { params } の形の入力から条件セットを取り出す。形が違えば null */
+export function parseParamsInput(v: unknown): ConditionSet | null {
+	return parseConditionSet(isObj(v) ? v.params : null);
+}
+
 export function createStrategyService(
-	db: Db,
+	repo: StrategyRepository,
 	now: () => number = Date.now,
 ): StrategyService {
-	const sql = db.$client;
-	const byName = (name: string) =>
-		sql
-			.query<{ id: number }, [string]>(
-				"select id from strategies where name = ?",
-			)
-			.get(name);
-
 	const nameError = (name: string, selfId?: number): StrategyResult | null => {
 		const invalid = checkName(name);
 		if (invalid)
 			return { ok: false, error: { kind: "invalid_name", message: invalid } };
-		const same = byName(name.trim());
-		if (same && same.id !== selfId) {
+		const same = repo.idByName(name.trim());
+		if (same !== null && same !== selfId) {
 			return {
 				ok: false,
 				error: {
@@ -65,19 +71,8 @@ export function createStrategyService(
 	};
 
 	const service: StrategyService = {
-		list() {
-			return sql
-				.query<Row, []>("select * from strategies order by id")
-				.all()
-				.map(toStrategy);
-		},
-
-		get(id) {
-			const r = sql
-				.query<Row, [number]>("select * from strategies where id = ?")
-				.get(id);
-			return r ? toStrategy(r) : null;
-		},
+		list: () => repo.list(),
+		get: (id) => repo.get(id),
 
 		create({ name, from }) {
 			const bad = nameError(name);
@@ -96,13 +91,10 @@ export function createStrategyService(
 					return { ok: false, error: { kind: "invalid_params", errors } };
 				params = from.params;
 			}
-			const t = now();
-			const r = sql
-				.query<Row, [string, string, number, number]>(
-					"insert into strategies (name, params, created_at, updated_at) values (?, ?, ?, ?) returning *",
-				)
-				.get(name.trim(), JSON.stringify(params), t, t) as Row;
-			return { ok: true, strategy: toStrategy(r) };
+			return {
+				ok: true,
+				strategy: repo.insert(name.trim(), params, now()),
+			};
 		},
 
 		updateParams(id, params) {
@@ -110,11 +102,7 @@ export function createStrategyService(
 			const errors = validateConditionSet(params);
 			if (errors.length)
 				return { ok: false, error: { kind: "invalid_params", errors } };
-			sql.run("update strategies set params = ?, updated_at = ? where id = ?", [
-				JSON.stringify(params),
-				now(),
-				id,
-			]);
+			repo.updateParams(id, params, now());
 			return { ok: true, strategy: service.get(id) as StoredStrategy };
 		},
 
@@ -122,17 +110,11 @@ export function createStrategyService(
 			if (!service.get(id)) return { ok: false, error: { kind: "not_found" } };
 			const bad = nameError(name, id);
 			if (bad) return bad;
-			sql.run("update strategies set name = ?, updated_at = ? where id = ?", [
-				name.trim(),
-				now(),
-				id,
-			]);
+			repo.rename(id, name.trim(), now());
 			return { ok: true, strategy: service.get(id) as StoredStrategy };
 		},
 
-		remove(id) {
-			return sql.run("delete from strategies where id = ?", [id]).changes > 0;
-		},
+		remove: (id) => repo.remove(id),
 	};
 	return service;
 }

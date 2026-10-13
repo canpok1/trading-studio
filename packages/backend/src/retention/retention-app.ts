@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { validator } from "hono/validator";
-import type { RetentionService } from "../retention/types";
+import type { RetentionService } from "./types-domain";
 
 const isDays = (v: unknown): v is number | null =>
 	v === null || typeof v === "number";

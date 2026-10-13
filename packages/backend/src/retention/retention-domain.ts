@@ -2,13 +2,13 @@
 
 import { rangesOutside } from "@trading-studio/core";
 import type { MarketDataRepository } from "../market-data/repository-domain";
-import type { RetentionRepository } from "./repository";
+import type { RetentionRepository } from "./repository-domain";
 import type {
 	RetentionRun,
 	RetentionService,
 	RetentionSettings,
 	SetRetentionResult,
-} from "./types";
+} from "./types-domain";
 
 const DAY_MS = 86_400_000;
 /** 毎日の実行時刻。4:00 JST は 19:00 UTC */

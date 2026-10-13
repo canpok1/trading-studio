@@ -13,7 +13,7 @@ import type {
 } from "@trading-studio/core";
 import type { JudgmentSeries } from "../judgments/types-domain";
 import type { RescoreCoverage } from "../news/types";
-import type { StoredStrategy } from "../strategies/types";
+import type { StoredStrategy } from "../strategies/types-domain";
 
 export type BacktestStatus = "running" | "done" | "failed" | "canceled";
 

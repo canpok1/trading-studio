@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { Timeframe } from "@trading-studio/core";
 import { TIMEFRAME_MS } from "@trading-studio/core";
-import type { Db } from "../db/open";
-import { createTestApp } from "../test-app";
+import type { Db } from "../src/db/open";
+import { createTestApp } from "../src/test-app";
 
 const jst = (s: string) => Date.parse(`${s}+09:00`);
 const DAY = TIMEFRAME_MS["1d"];

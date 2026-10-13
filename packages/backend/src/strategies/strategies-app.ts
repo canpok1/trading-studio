@@ -1,13 +1,9 @@
-import { isTemplateId, parseConditionSet } from "@trading-studio/core";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { validator } from "hono/validator";
-import type {
-	CreateStrategyInput,
-	StrategyResult,
-	StrategyService,
-} from "../strategies/types";
 import type { StrategyLock } from "../trading/types";
+import { parseCreateInput, parseParamsInput } from "./strategies-domain";
+import type { StrategyResult, StrategyService } from "./types-domain";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
 	typeof v === "object" && v !== null;
@@ -57,26 +53,16 @@ export function strategyRoutes(
 		.post(
 			"/",
 			validator("json", (v, c) => {
-				if (!isObj(v) || typeof v.name !== "string" || !isObj(v.from)) {
-					return c.json({ message: "name と from が必要" }, 400);
-				}
-				const f = v.from;
-				let from: CreateStrategyInput["from"] | null = null;
-				if (isTemplateId(f.template)) from = { template: f.template };
-				else if (typeof f.copyOf === "number") from = { copyOf: f.copyOf };
-				else {
-					const params = parseConditionSet(f.params);
-					if (params) from = { params };
-				}
-				if (!from) return c.json({ message: "from の形が違う" }, 400);
-				return { name: v.name, from };
+				const r = parseCreateInput(v);
+				if (!r.ok) return c.json({ message: r.message }, 400);
+				return { name: r.input.name, from: r.input.from };
 			}),
 			(c) => respond(c, service.create(c.req.valid("json")), 201),
 		)
 		.put(
 			"/:id/params",
 			validator("json", (v, c) => {
-				const params = parseConditionSet(isObj(v) ? v.params : null);
+				const params = parseParamsInput(v);
 				if (!params) return c.json({ message: "条件の形が違う" }, 400);
 				return { params };
 			}),

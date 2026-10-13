@@ -1,9 +1,14 @@
+import type { RetentionRepository } from "./repository-domain";
 // 古いデータの削除。保持期間の設定と前回の結果は settings に持つ
 
 import { SEGMENT_LEAD_MS } from "@trading-studio/core";
 import type { Db } from "../db/open";
 import { NEWS_DELETED_BEFORE_KEY } from "../news/score-repository";
-import type { RetentionRun, RetentionSettings, RetentionTable } from "./types";
+import type {
+	RetentionRun,
+	RetentionSettings,
+	RetentionTable,
+} from "./types-domain";
 
 const SETTINGS_KEY = "retention_settings";
 const LAST_RUN_KEY = "retention_last_run";
@@ -24,7 +29,7 @@ const TABLES: readonly [string, string][] = [
 	["news", "ニュース"],
 ];
 
-export class RetentionRepository {
+export class SqliteRetentionRepository implements RetentionRepository {
 	constructor(private readonly db: Db) {}
 
 	private get sql() {

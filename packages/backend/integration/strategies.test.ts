@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { strategyTemplate } from "@trading-studio/core";
-import { createTestApp } from "../test-app";
-import type { StoredStrategy } from "./types";
+import type { StoredStrategy } from "../src/strategies/types-domain";
+import { createTestApp } from "../src/test-app";
 
 type Json = Record<string, unknown>;
 

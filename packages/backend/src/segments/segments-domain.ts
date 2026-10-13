@@ -3,17 +3,38 @@
 
 import {
 	classifyMarket,
+	isMarketRegime,
 	SEGMENT_LEAD_MS,
 	SEGMENT_MIN_COVERAGE_PPM,
 	segmentPeriods,
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
+import type { JudgmentService } from "../judgments/types-domain";
 import type { MarketDataRepository } from "../market-data/repository-domain";
-import { nextRunTime } from "../retention/service";
-import type { SegmentRepository } from "./repository";
-import type { SegmentService } from "./types";
+import { nextRunTime } from "../retention/retention-domain";
+import type { SegmentRepository } from "./repository-domain";
+import type { ListedSegment, SegmentService } from "./types-domain";
 
 const SETTLE_MS = 3_600_000;
+
+/** 画面に出す相場データの一覧。regime は相場の絞り込みの入力（省略できる） */
+export function listSegments(
+	service: Pick<SegmentService, "list">,
+	judgments: Pick<JudgmentService, "firstScoredAt">,
+	regime: string | undefined,
+): { ok: true; segments: ListedSegment[] } | { ok: false; message: string } {
+	if (regime !== undefined && !isMarketRegime(regime)) {
+		return {
+			ok: false,
+			message: "相場は up・down・range・volatile のどれか",
+		};
+	}
+	// 古いニュースを消した後も、残した相場データではそのニュースで市場評価を出せるので、記録の始まりは相場データごとに違う
+	const segments = service
+		.list(regime ?? null)
+		.map((d) => ({ ...d, firstScoredAt: judgments.firstScoredAt(d.from) }));
+	return { ok: true, segments };
+}
 
 export type SegmentEngine = SegmentService & {
 	/** 定期的に呼ぶ（main では1分ごと）。前回から 4:00 をまたいでいれば作る */

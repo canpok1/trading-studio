@@ -46,15 +46,16 @@ import { ScoreRepository } from "./news/score-repository";
 import { createScorer } from "./news/scorer";
 import { createScoringService } from "./news/scoring-service";
 import { createNewsService, DEFAULT_NEWS_SOURCES } from "./news/service";
-import { RetentionRepository } from "./retention/repository";
-import { createRetentionService } from "./retention/service";
+import { SqliteRetentionRepository } from "./retention/repository-infra";
+import { createRetentionService } from "./retention/retention-domain";
 import { ScoringAnalysisRepository } from "./scoring-analysis/repository";
 import { createScoringAnalysis } from "./scoring-analysis/service";
-import { SegmentRepository } from "./segments/repository";
-import { createSegmentService } from "./segments/service";
+import { SqliteSegmentRepository } from "./segments/repository-infra";
+import { createSegmentService } from "./segments/segments-domain";
 import { slowRequestLog, watchEventLoopLag } from "./slow-log";
 import { serveFrontend } from "./static";
-import { createStrategyService } from "./strategies/service";
+import { SqliteStrategyRepository } from "./strategies/repository-infra";
+import { createStrategyService } from "./strategies/strategies-domain";
 import { TradingRepository } from "./trading/repository";
 import type { TradingEngine } from "./trading/service";
 import { createTradingService } from "./trading/service";
@@ -92,7 +93,7 @@ const marketDataRepo = new SqliteMarketDataRepository(db);
 marketDataRepo.failInterrupted(Date.now());
 const backtestRepo = new BacktestRepository(db);
 backtestRepo.failInterrupted(Date.now());
-const strategies = createStrategyService(db);
+const strategies = createStrategyService(new SqliteStrategyRepository(db));
 
 // E2E で収集の停止を再現するためのファイル。あれば偽物の取引所が止まる
 const demoDownFile = join(dirname(dbPath), "feed-down");
@@ -168,14 +169,14 @@ trading = tradingEngine;
 const tradingTimer = setInterval(() => tradingEngine.tick(), 1_000);
 
 const retention = createRetentionService({
-	repo: new RetentionRepository(db),
+	repo: new SqliteRetentionRepository(db),
 	marketData: marketDataRepo,
 });
 const retentionTimer = setInterval(() => retention.tick(), 60_000);
 retention.tick();
 
 const segments = createSegmentService({
-	repo: new SegmentRepository(db),
+	repo: new SqliteSegmentRepository(db),
 	marketData: marketDataRepo,
 	newsDeletedBefore: () => scoreRepo.newsDeletedBefore(),
 });

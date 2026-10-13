@@ -72,8 +72,11 @@ import type {
 	AccuracySummaryResult,
 	ArticleAccuracy,
 } from "../scoring-analysis/types";
-import type { SegmentService } from "../segments/types";
-import type { StoredStrategy, StrategyService } from "../strategies/types";
+import type { SegmentService } from "../segments/types-domain";
+import type {
+	StoredStrategy,
+	StrategyService,
+} from "../strategies/types-domain";
 import type {
 	AutoTradingStatus,
 	StoredOrder,

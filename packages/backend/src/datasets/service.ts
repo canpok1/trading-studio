@@ -12,8 +12,8 @@ import type {
 	BacktestService,
 	StartBacktestFailure,
 } from "../backtests/types";
-import type { Segment, SegmentService } from "../segments/types";
-import { checkName } from "../strategies/service";
+import type { Segment, SegmentService } from "../segments/types-domain";
+import { checkName } from "../strategies/strategies-domain";
 import type { DatasetRepository, StoredDataset } from "./repository";
 import type {
 	Dataset,

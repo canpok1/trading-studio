@@ -11,21 +11,21 @@ import type { MarketService } from "./market/types-domain";
 import { marketDataRoutes } from "./market-data/market-data-app";
 import type { MarketDataService } from "./market-data/types-domain";
 import type { NewsService, ScoringService } from "./news/types";
-import type { RetentionService } from "./retention/types";
+import { retentionRoutes } from "./retention/retention-app";
+import type { RetentionService } from "./retention/types-domain";
 import { adviceRoutes } from "./routes/advice";
 import { aiRoutes } from "./routes/ai";
 import { backtestRoutes } from "./routes/backtests";
 import { datasetRoutes, datasetRunRoutes } from "./routes/datasets";
 import { exportRoutes } from "./routes/export";
 import { newsRoutes } from "./routes/news";
-import { retentionRoutes } from "./routes/retention";
 import { scoringRoutes } from "./routes/scoring";
-import { segmentRoutes } from "./routes/segments";
-import { strategyRoutes } from "./routes/strategies";
 import { tradingRoutes } from "./routes/trading";
 import type { AccuracyService } from "./scoring-analysis/types";
-import type { SegmentService } from "./segments/types";
-import type { StrategyService } from "./strategies/types";
+import { segmentRoutes } from "./segments/segments-app";
+import type { SegmentService } from "./segments/types-domain";
+import { strategyRoutes } from "./strategies/strategies-app";
+import type { StrategyService } from "./strategies/types-domain";
 import type { TradingService } from "./trading/types";
 
 export type AppDeps = {

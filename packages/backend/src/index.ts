@@ -50,7 +50,7 @@ export type {
 	RetentionSettings,
 	RetentionStatus,
 	RetentionTable,
-} from "./retention/types";
+} from "./retention/types-domain";
 export type {
 	AccuracyHorizon,
 	AccuracyPeriod,
@@ -62,8 +62,8 @@ export type {
 	RiskBands,
 	SentimentBands,
 } from "./scoring-analysis/types";
-export type { ListedSegment, Segment } from "./segments/types";
-export type { StoredStrategy } from "./strategies/types";
+export type { ListedSegment, Segment } from "./segments/types-domain";
+export type { StoredStrategy } from "./strategies/types-domain";
 export type {
 	AutoTradingStatus,
 	OrderSummary,

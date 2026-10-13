@@ -13,7 +13,7 @@ import type {
 	RunFilter,
 	StartBacktestFailure,
 } from "../backtests/types";
-import type { Segment } from "../segments/types";
+import type { Segment } from "../segments/types-domain";
 
 export type Dataset = {
 	id: number;

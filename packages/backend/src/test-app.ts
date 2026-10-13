@@ -34,13 +34,14 @@ import { ScoreRepository } from "./news/score-repository";
 import { createScorer } from "./news/scorer";
 import { createScoringService } from "./news/scoring-service";
 import { createNewsService } from "./news/service";
-import { RetentionRepository } from "./retention/repository";
-import { createRetentionService } from "./retention/service";
+import { SqliteRetentionRepository } from "./retention/repository-infra";
+import { createRetentionService } from "./retention/retention-domain";
 import { ScoringAnalysisRepository } from "./scoring-analysis/repository";
 import { createScoringAnalysis } from "./scoring-analysis/service";
-import { SegmentRepository } from "./segments/repository";
-import { createSegmentService } from "./segments/service";
-import { createStrategyService } from "./strategies/service";
+import { SqliteSegmentRepository } from "./segments/repository-infra";
+import { createSegmentService } from "./segments/segments-domain";
+import { SqliteStrategyRepository } from "./strategies/repository-infra";
+import { createStrategyService } from "./strategies/strategies-domain";
 import { TradingRepository } from "./trading/repository";
 import { createTradingService } from "./trading/service";
 
@@ -56,7 +57,10 @@ export function createTestApp(
 	const marketData = createMarketDataService(marketDataRepo, {
 		now: () => 1_000,
 	});
-	const strategies = createStrategyService(db, () => 2_000);
+	const strategies = createStrategyService(
+		new SqliteStrategyRepository(db),
+		() => 2_000,
+	);
 	// 収集は動かさず、テストから live を差し替える
 	const live: { current: LiveMarket } = {
 		current: {
@@ -118,7 +122,7 @@ export function createTestApp(
 	});
 	// 定期の作成は動かさず、テストから segments.build() を呼ぶ
 	const segments = createSegmentService({
-		repo: new SegmentRepository(db),
+		repo: new SqliteSegmentRepository(db),
 		marketData: marketDataRepo,
 		newsDeletedBefore: () => scoreRepo.newsDeletedBefore(),
 		now: () => clock.now,
@@ -176,7 +180,7 @@ export function createTestApp(
 	});
 	// 定期の削除は動かさず、テストから retention.tick() を呼ぶ
 	const retention = createRetentionService({
-		repo: new RetentionRepository(db),
+		repo: new SqliteRetentionRepository(db),
 		marketData: marketDataRepo,
 		now: () => clock.now,
 	});

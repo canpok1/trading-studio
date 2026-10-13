@@ -1,6 +1,7 @@
 import type { MarketRegime } from "@trading-studio/core";
 import type { Db } from "../db/open";
-import type { Segment } from "./types";
+import type { SegmentRepository } from "./repository-domain";
+import type { Segment } from "./types-domain";
 
 type Row = {
 	id: number;
@@ -22,7 +23,7 @@ const toSegment = (r: Row): Segment => ({
 	createdAt: r.created_at,
 });
 
-export class SegmentRepository {
+export class SqliteSegmentRepository implements SegmentRepository {
 	constructor(private readonly db: Db) {}
 
 	private get sql() {
