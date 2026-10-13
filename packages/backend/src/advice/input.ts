@@ -15,7 +15,7 @@ import {
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
 import type { BacktestChart, BacktestRun } from "../backtests/types";
-import type { JudgmentSeries } from "../judgments/types";
+import type { JudgmentSeries } from "../judgments/types-domain";
 
 /** AI に渡す足の上限。1分足で1か月を回すと約4.3万本になり、一度に渡すには多すぎる */
 export const MAX_BARS = 3_000;

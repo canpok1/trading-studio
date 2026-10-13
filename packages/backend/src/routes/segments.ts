@@ -1,6 +1,6 @@
 import { isMarketRegime } from "@trading-studio/core";
 import { Hono } from "hono";
-import type { JudgmentService } from "../judgments/types";
+import type { JudgmentService } from "../judgments/types-domain";
 import type { ListedSegment, SegmentService } from "../segments/types";
 
 export function segmentRoutes(

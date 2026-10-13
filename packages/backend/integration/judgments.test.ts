@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import { DEFAULT_AGGREGATION_RULE } from "@trading-studio/core";
-import { createTestApp } from "../test-app";
-import type { CurrentJudgment, JudgmentSeries } from "./types";
+import type {
+	CurrentJudgment,
+	JudgmentSeries,
+} from "../src/judgments/types-domain";
+import { createTestApp } from "../src/test-app";
 
 const H = 3_600_000;
 

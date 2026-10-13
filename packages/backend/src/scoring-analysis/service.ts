@@ -12,7 +12,7 @@ import {
 	newsTime,
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
-import type { JudgmentService } from "../judgments/types";
+import type { JudgmentService } from "../judgments/types-domain";
 import type { MarketDataService } from "../market-data/types";
 import { actualLevels, articlePrecision } from "./accuracy";
 import type { AnalysisNewsRow, ScoringAnalysisRepository } from "./repository";

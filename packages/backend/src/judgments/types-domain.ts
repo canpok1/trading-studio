@@ -7,6 +7,7 @@ import type {
 	JudgeResult,
 	JudgmentValue,
 	ScoredNews,
+	Timeframe,
 	ValidationError,
 } from "@trading-studio/core";
 
@@ -74,6 +75,14 @@ export interface JudgmentService {
 		version: number | null,
 		delayMs: number,
 	): number | null;
+	/** [from, to) の、足の粒度 timeframe の足ごとの今のルールでの判定 */
+	seriesOf(from: number, to: number, timeframe: Timeframe): JudgmentSeries;
+	/** rule で計算した今の評価（保存しない）。ルールに入力の誤りがあれば errors */
+	preview(
+		rule: AggregationRule,
+	):
+		| { ok: true; judgment: CurrentJudgment }
+		| { ok: false; errors: ValidationError[] };
 	saveRule(
 		rule: AggregationRule,
 	): { ok: true } | { ok: false; errors: ValidationError[] };

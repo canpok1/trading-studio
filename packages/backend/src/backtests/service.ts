@@ -13,8 +13,8 @@ import {
 	validateConditionSet,
 	withSellDetails,
 } from "@trading-studio/core";
-import type { JudgmentService } from "../judgments/types";
-import { MAX_CHART_BARS } from "../market/service";
+import type { JudgmentService } from "../judgments/types-domain";
+import { MAX_CHART_BARS } from "../market/market-domain";
 import type { MarketDataRepository } from "../market-data/repository";
 import type { ScoringService } from "../news/types";
 import type { Segment, SegmentService } from "../segments/types";

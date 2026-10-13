@@ -56,8 +56,8 @@ import type {
 	DatasetService,
 	StartDatasetFailure,
 } from "../datasets/types";
-import type { JudgmentService } from "../judgments/types";
-import type { MarketService } from "../market/types";
+import type { JudgmentService } from "../judgments/types-domain";
+import type { MarketService } from "../market/types-domain";
 import type { MarketDataService } from "../market-data/types";
 import type { NewsItem, NewsService, ScoringService } from "../news/types";
 import {

@@ -1,21 +1,60 @@
+import type { AggregationRule, Timeframe } from "@trading-studio/core";
 import {
+	isTimeframe,
 	JUDGES,
 	judgeAt,
 	judgmentBreakdown,
 	judgmentRecordStart,
 	judgmentSeries,
 	maxWindowMs,
+	parseAggregationRule,
+	TIMEFRAME_MS,
 	validateAggregationRule,
 } from "@trading-studio/core";
-import type { ScoreRepository } from "../news/score-repository";
-import type { CurrentJudgment, JudgmentSeries, JudgmentService } from "./types";
+
+import type { JudgmentRepository } from "./repository-domain";
+import type {
+	CurrentJudgment,
+	JudgmentSeries,
+	JudgmentService,
+} from "./types-domain";
+
+/** 一度に返す足の上限。チャートの足の上限（5万本）に余裕を持たせる */
+const MAX_SERIES = 100_000;
+
+/** 足ごとの評価を求める期間と足の粒度の入力を確かめる */
+export function parseSeriesQuery(
+	q: Record<string, unknown>,
+):
+	| { ok: true; from: number; to: number; timeframe: Timeframe }
+	| { ok: false; message: string } {
+	const from = Number(q.from);
+	const to = Number(q.to);
+	if (!isTimeframe(q.timeframe))
+		return { ok: false, message: "足の粒度を選ぶ" };
+	if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from > to) {
+		return { ok: false, message: "期間の形が違う" };
+	}
+	const step = TIMEFRAME_MS[q.timeframe];
+	if ((to - from) / step > MAX_SERIES) {
+		return { ok: false, message: `足が多すぎる（上限 ${MAX_SERIES}本）` };
+	}
+	return { ok: true, from, to, timeframe: q.timeframe };
+}
+
+/** { rule } の形の入力から評価ルールを取り出す。形が違えば null（値の範囲は確かめない） */
+export function parseRuleInput(v: unknown): AggregationRule | null {
+	return parseAggregationRule(
+		typeof v === "object" && v !== null && "rule" in v ? v.rule : null,
+	);
+}
 
 export function createJudgmentService({
 	repo,
 	newsDelayMs,
 	now = Date.now,
 }: {
-	repo: ScoreRepository;
+	repo: JudgmentRepository;
 	/** バックテストで記事を使い始めるまでの遅れ（取得の間隔） */
 	newsDelayMs: () => number;
 	now?: () => number;
@@ -26,7 +65,7 @@ export function createJudgmentService({
 			repo.newsDeletedBefore(),
 			segmentFrom,
 		);
-	return {
+	const service: JudgmentService = {
 		current(rule = repo.aggregationRule(), at?: number): CurrentJudgment {
 			// 先の時刻は今として扱う
 			const t = at === undefined ? now() : Math.min(at, now());
@@ -88,6 +127,8 @@ export function createJudgmentService({
 			});
 			return { from, step, firstScoredAt, values };
 		},
+		seriesOf: (from, to, timeframe) =>
+			service.series(from, to, TIMEFRAME_MS[timeframe]),
 		rule: () => repo.aggregationRule(),
 		firstScoredAt: (segmentFrom) => recordStart(segmentFrom),
 		scoredNews: (from, to, version, delayMs) =>
@@ -95,6 +136,12 @@ export function createJudgmentService({
 		newsDelayMs,
 		newsDataVersion: (from, to, version, delayMs) =>
 			repo.newsDataVersion(from, to, version, delayMs),
+		preview(rule) {
+			const errors = validateAggregationRule(rule);
+			return errors.length
+				? { ok: false, errors }
+				: { ok: true, judgment: service.current(rule) };
+		},
 		saveRule(rule) {
 			const errors = validateAggregationRule(rule);
 			if (errors.length) return { ok: false, errors };
@@ -102,4 +149,5 @@ export function createJudgmentService({
 			return { ok: true };
 		},
 	};
+	return service;
 }

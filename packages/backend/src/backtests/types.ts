@@ -11,7 +11,7 @@ import type {
 	Timeframe,
 	ValidationError,
 } from "@trading-studio/core";
-import type { JudgmentSeries } from "../judgments/types";
+import type { JudgmentSeries } from "../judgments/types-domain";
 import type { RescoreCoverage } from "../news/types";
 import type { StoredStrategy } from "../strategies/types";
 
