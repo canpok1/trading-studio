@@ -1,11 +1,9 @@
-import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { afterEach, expect, test } from "bun:test";
 import { cleanup, fireEvent, render } from "@testing-library/react";
+import { setupDom } from "../lib/test-setup";
 import { Help } from "./Help";
 
-// test-setup は最初に読み込んだテストファイルでしか DOM を用意しないため、このファイルの間だけ自分で用意する
-beforeAll(() => GlobalRegistrator.register());
-afterAll(() => GlobalRegistrator.unregister());
+setupDom();
 afterEach(cleanup);
 
 const renderHelp = () =>

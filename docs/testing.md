@@ -23,6 +23,8 @@
 | 画面の振る舞い（入力の検証、絞り込み、表示の切り替え、画面の移動） | `*.test.tsx`。`render-app.tsx` の `renderApp` で画面全体を happy-dom の上に描き、Testing Library で操作する | `bun run test` |
 | 見た目の配置（スマホと PC で見える項目、横にはみ出さない、並び順） | `*.pw.ts`。`browser.ts` の `test` を使い、ビルド済みの画面を実ブラウザで開く | `bun run test:browser` |
 
+- happy-dom のテストは先頭で `setupDom()`（`src/shared/lib/test-setup.ts`）を呼ぶ。DOM をそのファイルの間だけ用意する
+- テキスト・日付・数値の入力欄へは `changeValue`（同じファイル）で値を入れる。`fireEvent.change` では React の `onChange` が呼ばれない（選択肢・チェックボックス・ファイルは `fireEvent` でよい）
 - 偽物の API は `fake-api.ts` の `FakeApi`。`on(routes.api.version, "$get", () => ({ … }))` のように口を指定し、応答は backend の型で検査される
 - `createFakeApi()` はどの画面でも読み込む口（自動取引の状況・実行中のバックテスト・バージョン）を空で答える。画面ごとに要る口はテストで足す。登録の無い口は 404 を返し、`FakeApi.unhandled` に残る
 - 応答のひな形は `fixtures.ts`。変えたいところだけ上書きする
