@@ -27,6 +27,10 @@ BTC/JPY の自動売買を、戦略の作成・バックテスト・デモ・リ
 
 依存の向きは `.dependency-cruiser.cjs` を参照。
 
+## PR を作る前
+
+- `rule-reviewer`（`.claude/agents/rule-reviewer.md`）のレビューを通す。違反は直す。ルールの方が誤っていると判断したら、理由を PR 本文に書く
+
 ## ドキュメント
 
 - docs には実装済みの内容だけを置く。未実装の仕様は GitHub の Issue に置く
