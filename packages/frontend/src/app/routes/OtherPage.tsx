@@ -1,0 +1,49 @@
+import { Link } from "react-router";
+import { AppVersion } from "../../shared/components/AppVersion";
+import { Page } from "../../shared/components/Page";
+
+export function OtherPage() {
+	return (
+		<Page title="その他">
+			<div className="overflow-hidden rounded-xl border border-line bg-surface">
+				<Link
+					to="/data"
+					className="flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-[15px] hover:bg-surface-2"
+				>
+					<span className="flex-1">
+						インポート
+						<span className="block text-xs text-text-2">
+							CSV の取り込みと取り込み済みの期間
+						</span>
+					</span>
+					›
+				</Link>
+				<Link
+					to="/export"
+					className="flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-[15px] hover:bg-surface-2"
+				>
+					<span className="flex-1">
+						エクスポート
+						<span className="block text-xs text-text-2">
+							分析用の ZIP と、価格データの CSV の書き出し
+						</span>
+					</span>
+					›
+				</Link>
+				<Link
+					to="/settings"
+					className="flex w-full items-center gap-3 px-4 py-3.5 text-[15px] hover:bg-surface-2"
+				>
+					<span className="flex-1">
+						設定
+						<span className="block text-xs text-text-2">
+							画面の色・API キー、ニュースの採点、バックテストのアドバイス
+						</span>
+					</span>
+					›
+				</Link>
+			</div>
+			<AppVersion className="block text-center text-text-2" />
+		</Page>
+	);
+}
