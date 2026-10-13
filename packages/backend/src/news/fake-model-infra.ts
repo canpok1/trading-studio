@@ -2,16 +2,11 @@
 
 import type { ScoreModel } from "../ai/model-domain";
 
-/** 見出しから決まる点数を返す。isDown が true の間は失敗する */
-export function demoScoreModel({
-	isDown = () => false,
-}: {
-	isDown?: () => boolean;
-} = {}): ScoreModel {
+/** 見出しから決まる点数を返す */
+export function demoScoreModel(): ScoreModel {
 	return {
 		unavailable: () => null,
 		async generate(_model, prompt) {
-			if (isDown()) throw new Error("偽物の AI が止まっている（E2E）");
 			const title = /見出し: (.*)/.exec(prompt)?.[1] ?? "";
 			let h = 0;
 			for (const ch of title)
