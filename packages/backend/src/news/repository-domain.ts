@@ -1,12 +1,20 @@
 import type { AggregationRule } from "@trading-studio/core";
 import type {
-	FeedItem,
 	NewsFilter,
 	NewsItem,
 	NewsSearchResult,
 	NewsSource,
 	NewsSourceInput,
 } from "./types-domain";
+
+export type FeedItem = {
+	title: string;
+	url: string;
+	/** 概要。無ければ null */
+	summary: string | null;
+	/** 公開時刻。無いか読めなければ null */
+	publishedAt: number | null;
+};
 
 export interface NewsRepository {
 	listSources(): NewsSource[];

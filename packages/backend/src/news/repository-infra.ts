@@ -1,10 +1,9 @@
 import type { AggregationRule } from "@trading-studio/core";
 import { LASTING_DURATIONS, windowMs } from "@trading-studio/core";
 import type { Db } from "../db/open";
-import type { NewsRepository } from "./repository-domain";
+import type { FeedItem, NewsRepository } from "./repository-domain";
 import { toNewsScore } from "./score-repository-infra";
 import type {
-	FeedItem,
 	LiveRescore,
 	NewsFilter,
 	NewsItem,

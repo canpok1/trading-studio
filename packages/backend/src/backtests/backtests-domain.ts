@@ -93,7 +93,10 @@ export function parseChartQuery(
 
 export type BacktestServiceDeps = {
 	repo: BacktestRepository;
-	marketData: MarketDataRepository;
+	marketData: Pick<
+		MarketDataRepository,
+		"importedTimeframes" | "gaps" | "countCandles" | "loadCandles"
+	>;
 	strategies: StrategyService;
 	runner: BacktestRunner;
 	judgments: Pick<

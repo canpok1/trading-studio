@@ -1,7 +1,7 @@
 // RSS 2.0 / RSS 1.0 (RDF) / Atom から記事を読む。依存を増やさないため、必要な要素だけを正規表現で拾う
 
 import type { FetchFeed } from "./collector-domain";
-import type { FeedItem } from "./types-domain";
+import type { FeedItem } from "./repository-domain";
 /** 概要はこの文字数で切る（採点に渡す量と保存量を抑えるため） */
 export const SUMMARY_MAX = 500;
 

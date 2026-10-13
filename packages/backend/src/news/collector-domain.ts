@@ -1,7 +1,6 @@
 // ニュース収集の1回分の手順と、次の収集の時刻の判断。設定された間隔で、有効な取得元の RSS を順に取得して保存する
 
-import type { NewsRepository } from "./repository-domain";
-import type { FeedItem } from "./types-domain";
+import type { FeedItem, NewsRepository } from "./repository-domain";
 
 /** 取得元の記事を取る手段。テストと E2E では偽物に差し替える */
 export type FetchFeed = (url: string) => Promise<FeedItem[]>;

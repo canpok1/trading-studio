@@ -23,6 +23,20 @@ import {
 /** キーワードの長さの上限 */
 const MAX_Q = 200;
 
+/** 取得元の入力を読む。形が違うか選べない言語なら null */
+export function parseSourceInput(v: unknown): NewsSourceInput | null {
+	if (typeof v !== "object" || v === null) return null;
+	const { name, url, language } = v as Record<string, unknown>;
+	if (
+		typeof name !== "string" ||
+		typeof url !== "string" ||
+		!(NEWS_LANGUAGES as readonly unknown[]).includes(language)
+	) {
+		return null;
+	}
+	return { name, url, language: language as NewsSourceInput["language"] };
+}
+
 /** 一覧の条件を読む。形が違えばその理由 */
 export function parseFilter(
 	q: Record<string, string | undefined>,

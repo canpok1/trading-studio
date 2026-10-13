@@ -30,7 +30,7 @@ import type {
 
 export type DatasetServiceDeps = {
 	repo: DatasetRepository;
-	backtestRepo: BacktestRepository;
+	backtestRepo: Pick<BacktestRepository, "get" | "trades">;
 	backtests: BacktestService;
 	segments: Pick<SegmentService, "get">;
 	now?: () => number;

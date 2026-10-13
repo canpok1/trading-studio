@@ -1,9 +1,8 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { validator } from "hono/validator";
-import { parseFilter } from "./news-domain";
+import { parseFilter, parseSourceInput } from "./news-domain";
 import type { NewsService, NewsSourceResult } from "./types-domain";
-import { NEWS_LANGUAGES } from "./types-domain";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
 	typeof v === "object" && v !== null;
@@ -33,19 +32,10 @@ export function newsRoutes(service: NewsService) {
 		.post(
 			"/sources",
 			validator("json", (v, c) => {
-				if (
-					!isObj(v) ||
-					typeof v.name !== "string" ||
-					typeof v.url !== "string" ||
-					!(NEWS_LANGUAGES as readonly unknown[]).includes(v.language)
-				) {
+				const input = parseSourceInput(v);
+				if (!input)
 					return c.json({ message: "name・url・language が必要" }, 400);
-				}
-				return {
-					name: v.name,
-					url: v.url,
-					language: v.language as (typeof NEWS_LANGUAGES)[number],
-				};
+				return { name: input.name, url: input.url, language: input.language };
 			}),
 			(c) => respond(c, service.addSource(c.req.valid("json")), 201),
 		)
