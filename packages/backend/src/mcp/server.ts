@@ -58,7 +58,7 @@ import type {
 } from "../datasets/types";
 import type { JudgmentService } from "../judgments/types-domain";
 import type { MarketService } from "../market/types-domain";
-import type { MarketDataService } from "../market-data/types";
+import type { MarketDataService } from "../market-data/types-domain";
 import type { NewsItem, NewsService, ScoringService } from "../news/types";
 import {
 	NEWS_IMPACTS,

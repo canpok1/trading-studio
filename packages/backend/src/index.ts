@@ -28,7 +28,7 @@ export type {
 } from "./datasets/types";
 export type { CurrentJudgment, JudgmentSeries } from "./judgments/types-domain";
 export type { ChartRangeId, LatestMarket } from "./market/types-domain";
-export type { ImportJob, TimeframeCoverage } from "./market-data/types";
+export type { ImportJob, TimeframeCoverage } from "./market-data/types-domain";
 export type {
 	ApiKeyStatus,
 	CriteriaVersion,

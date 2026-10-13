@@ -1,12 +1,11 @@
-import {
-	CSV_HEADER,
-	formatCandleCsvRow,
-	formatJstRfc3339,
-	isTimeframe,
-} from "@trading-studio/core";
 import { Hono } from "hono";
 import { validator } from "hono/validator";
-import type { MarketDataService } from "../market-data/types";
+import {
+	candleCsv,
+	parseExportQuery,
+	parseImportForm,
+} from "./market-data-domain";
+import type { MarketDataService } from "./types-domain";
 
 export function marketDataRoutes(service: MarketDataService) {
 	return new Hono()
@@ -32,41 +31,22 @@ export function marketDataRoutes(service: MarketDataService) {
 		.get(
 			"/export",
 			validator("query", (q, c) => {
-				if (!isTimeframe(q.timeframe)) {
-					return c.json({ message: "足の粒度を選ぶ" }, 400);
-				}
-				// 期間は省略できる（省略した側は保存済みの足の端まで）
-				const from = q.from === undefined ? 0 : Number(q.from);
-				const to = q.to === undefined ? Number.MAX_SAFE_INTEGER : Number(q.to);
-				if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to)) {
-					return c.json({ message: "期間の形が違う" }, 400);
-				}
-				return { timeframe: q.timeframe, from, to };
+				const r = parseExportQuery(q);
+				if (!r.ok) return c.json({ message: r.message }, 400);
+				return { timeframe: r.timeframe, from: r.from, to: r.to };
 			}),
 			(c) => {
 				const { timeframe, from, to } = c.req.valid("query");
 				const r = service.exportCandles(timeframe, from, to);
 				if (!r) return c.json({ message: "期間に足が無い" }, 404);
-				const day = (ms: number) =>
-					formatJstRfc3339(ms).slice(0, 10).replaceAll("-", "");
-				const fileName = `btcjpy-${timeframe}-${day(r.first)}-${day(r.last)}.csv`;
-				const pages = r.pages[Symbol.iterator]();
+				const { fileName, chunks } = candleCsv(timeframe, r);
+				const it = chunks[Symbol.iterator]();
 				const encoder = new TextEncoder();
-				let headerSent = false;
 				const body = new ReadableStream<Uint8Array>({
 					pull(controller) {
-						if (!headerSent) {
-							headerSent = true;
-							controller.enqueue(encoder.encode(`${CSV_HEADER}\n`));
-							return;
-						}
-						const next = pages.next();
-						if (next.done) {
-							controller.close();
-							return;
-						}
-						const lines = next.value.map(formatCandleCsvRow).join("\n");
-						controller.enqueue(encoder.encode(`${lines}\n`));
+						const next = it.next();
+						if (next.done) controller.close();
+						else controller.enqueue(encoder.encode(next.value));
 					},
 				});
 				return c.body(body, 200, {
@@ -79,15 +59,9 @@ export function marketDataRoutes(service: MarketDataService) {
 		.post(
 			"/imports",
 			validator("form", (value, c) => {
-				const file = value.file;
-				const timeframe = value.timeframe;
-				if (!(file instanceof File)) {
-					return c.json({ message: "CSV ファイルを選ぶ" }, 400);
-				}
-				if (!isTimeframe(timeframe)) {
-					return c.json({ message: "足の粒度を選ぶ" }, 400);
-				}
-				return { file, timeframe };
+				const r = parseImportForm(value);
+				if (!r.ok) return c.json({ message: r.message }, 400);
+				return { file: r.file, timeframe: r.timeframe };
 			}),
 			async (c) => {
 				const { file, timeframe } = c.req.valid("form");

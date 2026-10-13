@@ -31,7 +31,7 @@ import {
 } from "@trading-studio/core";
 import type { LiveMarket } from "../collector/types";
 import type { JudgmentService } from "../judgments/types-domain";
-import type { MarketDataRepository } from "../market-data/repository";
+import type { MarketDataRepository } from "../market-data/repository-domain";
 import type { StoredStrategy, StrategyService } from "../strategies/types";
 import { equityOf, tradingPerformance } from "./performance";
 import type { TradingRepository } from "./repository";

@@ -20,7 +20,6 @@ export const NOT_MIGRATED = [
 	"collector/",
 	"datasets/",
 	"db/",
-	"market-data/",
 	"mcp/",
 	"news/",
 	"retention/",

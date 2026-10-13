@@ -1,14 +1,20 @@
 // 過去データの取り込みジョブ。同時に動かすのは1つだけで、画面は進捗を定期的に問い合わせる
 
-import type { Candle } from "@trading-studio/core";
-import { parseCandleCsv } from "@trading-studio/core";
-import type { MarketDataRepository } from "./repository";
+import type { Candle, Timeframe } from "@trading-studio/core";
+import {
+	CSV_HEADER,
+	formatCandleCsvRow,
+	formatJstRfc3339,
+	isTimeframe,
+	parseCandleCsv,
+} from "@trading-studio/core";
+import type { MarketDataRepository } from "./repository-domain";
 import type {
 	ImportJob,
 	MarketDataService,
 	StartImportResult,
 	TimeframeCoverage,
-} from "./types";
+} from "./types-domain";
 
 /** 1回のトランザクションで保存する行数。この単位で API の応答と中止の受け付けを挟む */
 const CHUNK = 5000;
@@ -16,6 +22,54 @@ const CHUNK = 5000;
 const EXPORT_PAGE = 5000;
 
 const yieldToEventLoop = () => new Promise((r) => setTimeout(r, 0));
+
+/** 書き出しの足の粒度と期間を確かめる。期間は省略できる（省略した側は保存済みの足の端まで） */
+export function parseExportQuery(
+	q: Record<string, unknown>,
+):
+	| { ok: true; timeframe: Timeframe; from: number; to: number }
+	| { ok: false; message: string } {
+	if (!isTimeframe(q.timeframe))
+		return { ok: false, message: "足の粒度を選ぶ" };
+	const from = q.from === undefined ? 0 : Number(q.from);
+	const to = q.to === undefined ? Number.MAX_SAFE_INTEGER : Number(q.to);
+	if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to)) {
+		return { ok: false, message: "期間の形が違う" };
+	}
+	return { ok: true, timeframe: q.timeframe, from, to };
+}
+
+/** 取り込みの CSV ファイルと足の粒度を確かめる */
+export function parseImportForm(
+	v: Record<string, unknown>,
+):
+	| { ok: true; file: File; timeframe: Timeframe }
+	| { ok: false; message: string } {
+	if (!(v.file instanceof File))
+		return { ok: false, message: "CSV ファイルを選ぶ" };
+	if (!isTimeframe(v.timeframe))
+		return { ok: false, message: "足の粒度を選ぶ" };
+	return { ok: true, file: v.file, timeframe: v.timeframe };
+}
+
+/** 書き出した足の CSV。chunks は見出しから順に送る文字列 */
+export function candleCsv(
+	timeframe: Timeframe,
+	r: { first: number; last: number; pages: Iterable<Candle[]> },
+): { fileName: string; chunks: Iterable<string> } {
+	const day = (ms: number) =>
+		formatJstRfc3339(ms).slice(0, 10).replaceAll("-", "");
+	function* chunks() {
+		yield `${CSV_HEADER}\n`;
+		for (const page of r.pages) {
+			yield `${page.map(formatCandleCsvRow).join("\n")}\n`;
+		}
+	}
+	return {
+		fileName: `btcjpy-${timeframe}-${day(r.first)}-${day(r.last)}.csv`,
+		chunks: chunks(),
+	};
+}
 
 export type MarketDataServiceOptions = {
 	now?: () => number;

@@ -1,3 +1,4 @@
+import type { MarketDataRepository } from "./repository-domain";
 // 足と取り込みの記録の読み書き
 
 import type { Candle, CsvRowError, Gap, Timeframe } from "@trading-studio/core";
@@ -9,7 +10,11 @@ import {
 	TIMEFRAMES,
 } from "@trading-studio/core";
 import type { Db } from "../db/open";
-import type { ImportJob, ImportStatus, TimeframeCoverage } from "./types";
+import type {
+	ImportJob,
+	ImportStatus,
+	TimeframeCoverage,
+} from "./types-domain";
 
 type ImportRow = {
 	id: number;
@@ -74,7 +79,7 @@ const spanOf = (times: Iterable<number>): Span | null => {
 	return from < to ? { from, to } : null;
 };
 
-export class MarketDataRepository {
+export class SqliteMarketDataRepository implements MarketDataRepository {
 	constructor(private readonly db: Db) {}
 
 	/**

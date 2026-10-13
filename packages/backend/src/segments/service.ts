@@ -8,7 +8,7 @@ import {
 	segmentPeriods,
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
-import type { MarketDataRepository } from "../market-data/repository";
+import type { MarketDataRepository } from "../market-data/repository-domain";
 import { nextRunTime } from "../retention/service";
 import type { SegmentRepository } from "./repository";
 import type { SegmentService } from "./types";

@@ -22,8 +22,8 @@ import type { Db } from "./db/open";
 import { createTestDb } from "./db/test-db";
 import { createJudgmentService } from "./judgments/judgments-domain";
 import { createMarketService } from "./market/market-domain";
-import { MarketDataRepository } from "./market-data/repository";
-import { createMarketDataService } from "./market-data/service";
+import { createMarketDataService } from "./market-data/market-data-domain";
+import { SqliteMarketDataRepository } from "./market-data/repository-infra";
 import { newsDelayMs } from "./news/collector";
 import { demoScoreModel } from "./news/fake-model";
 import type { GeminiModel } from "./news/gemini";
@@ -52,7 +52,7 @@ export function createTestApp(
 	db: Db = createTestDb(),
 	runner: BacktestRunner = inlineRunner(),
 ) {
-	const marketDataRepo = new MarketDataRepository(db);
+	const marketDataRepo = new SqliteMarketDataRepository(db);
 	const marketData = createMarketDataService(marketDataRepo, {
 		now: () => 1_000,
 	});

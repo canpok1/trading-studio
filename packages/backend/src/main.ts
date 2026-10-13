@@ -29,8 +29,8 @@ import { migrateDb } from "./db/migrate";
 import { isDbReachable, openDb } from "./db/open";
 import { createJudgmentService } from "./judgments/judgments-domain";
 import { createMarketService } from "./market/market-domain";
-import { MarketDataRepository } from "./market-data/repository";
-import { createMarketDataService } from "./market-data/service";
+import { createMarketDataService } from "./market-data/market-data-domain";
+import { SqliteMarketDataRepository } from "./market-data/repository-infra";
 import { BACKTEST_WAIT_MS, mcpRoutes } from "./mcp/server";
 import {
 	createNewsCollector,
@@ -88,7 +88,7 @@ try {
 	process.exit(1);
 }
 
-const marketDataRepo = new MarketDataRepository(db);
+const marketDataRepo = new SqliteMarketDataRepository(db);
 marketDataRepo.failInterrupted(Date.now());
 const backtestRepo = new BacktestRepository(db);
 backtestRepo.failInterrupted(Date.now());

@@ -24,7 +24,7 @@ import {
 } from "@trading-studio/core";
 import type { BacktestRepository } from "../backtests/repository";
 import type { BacktestRun } from "../backtests/types";
-import type { MarketDataService } from "../market-data/types";
+import type { MarketDataService } from "../market-data/types-domain";
 import type { ScoreRepository } from "../news/score-repository";
 import type {
 	AnalysisExportRepository,

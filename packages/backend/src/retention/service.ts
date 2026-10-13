@@ -1,7 +1,7 @@
 // 古いデータの定期削除。毎日 4:00（JST）に、保持期間を過ぎた判断の記録・バックテストの実行・足・ニュースを消す
 
 import { rangesOutside } from "@trading-studio/core";
-import type { MarketDataRepository } from "../market-data/repository";
+import type { MarketDataRepository } from "../market-data/repository-domain";
 import type { RetentionRepository } from "./repository";
 import type {
 	RetentionRun,

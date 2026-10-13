@@ -15,7 +15,7 @@ import {
 } from "@trading-studio/core";
 import type { JudgmentService } from "../judgments/types-domain";
 import { MAX_CHART_BARS } from "../market/market-domain";
-import type { MarketDataRepository } from "../market-data/repository";
+import type { MarketDataRepository } from "../market-data/repository-domain";
 import type { ScoringService } from "../news/types";
 import type { Segment, SegmentService } from "../segments/types";
 import { checkName } from "../strategies/service";

@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { TIMEFRAME_MS } from "@trading-studio/core";
-import { createTestApp } from "../test-app";
-import { MarketDataRepository } from "./repository";
-import type { ImportJob } from "./types";
+import { SqliteMarketDataRepository } from "../src/market-data/repository-infra";
+import type { ImportJob } from "../src/market-data/types-domain";
+import { createTestApp } from "../src/test-app";
 
 const M = TIMEFRAME_MS["1m"];
 // JST 2026-09-26 00:00
@@ -248,7 +248,7 @@ describe("過去データの取り込み", () => {
 	test("一度欠損を探した後に足を書いても、全部を探し直したときと同じ欠損を返す", async () => {
 		const t = createTestApp();
 		await importCsv(t, csv([DAY, DAY + 5 * M, DAY + 10 * M, DAY + 20 * M]));
-		const fresh = () => new MarketDataRepository(t.db).coverage();
+		const fresh = () => new SqliteMarketDataRepository(t.db).coverage();
 		const bar = (time: number) => ({
 			time,
 			open: 1,
