@@ -24,8 +24,8 @@ import { workerRunner } from "./backtests/worker-runner-infra";
 import { coincheckFeed } from "./collector/coincheck";
 import { createCollector } from "./collector/collector";
 import { demoFeed } from "./collector/fake-feed";
-import { DatasetRepository } from "./datasets/repository";
-import { createDatasetService } from "./datasets/service";
+import { createDatasetService } from "./datasets/datasets-domain";
+import { SqliteDatasetRepository } from "./datasets/repository-infra";
 import { migrateDb } from "./db/migrate";
 import { isDbReachable, openDb } from "./db/open";
 import { createJudgmentService } from "./judgments/judgments-domain";
@@ -216,7 +216,7 @@ const backtests = createBacktestService({
 	scoring,
 	segments,
 });
-const datasetRepo = new DatasetRepository(db, backtestRepo);
+const datasetRepo = new SqliteDatasetRepository(db, backtestRepo);
 datasetRepo.failInterrupted(Date.now());
 const datasets = createDatasetService({
 	repo: datasetRepo,

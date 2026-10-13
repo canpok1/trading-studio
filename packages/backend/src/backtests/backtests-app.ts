@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { compress } from "hono/compress";
 import { validator } from "hono/validator";
-import type { DatasetService } from "../datasets/types";
+import type { DatasetService } from "../datasets/types-domain";
 import { parseBacktestInput, parseChartTimeframe } from "./backtests-domain";
 import type { BacktestService, OrderFilter, RunFilter } from "./types-domain";
 

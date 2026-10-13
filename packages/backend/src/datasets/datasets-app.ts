@@ -1,15 +1,10 @@
-import { parseConditionSet } from "@trading-studio/core";
 import { Hono } from "hono";
 import { validator } from "hono/validator";
-import type {
-	DatasetInput,
-	DatasetRunInput,
-	DatasetService,
-} from "../datasets/types";
+import { parseDatasetRunInput } from "./datasets-domain";
+import type { DatasetInput, DatasetService } from "./types-domain";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
 	typeof v === "object" && v !== null;
-const num = (v: unknown) => (typeof v === "number" ? v : Number.NaN);
 
 const NOT_FOUND = { message: "データセットが見つからない" };
 const RUN_NOT_FOUND = { message: "まとめた実行が見つからない" };
@@ -63,25 +58,8 @@ export function datasetRunRoutes(service: DatasetService) {
 		.post(
 			"/",
 			validator("json", (v, c) => {
-				const params = parseConditionSet(isObj(v) ? v.params : null);
-				if (!isObj(v) || !params || !isObj(v.fees)) {
-					return c.json({ message: "実行条件の形が違う" }, 400);
-				}
-				const input: DatasetRunInput = {
-					datasetId: num(v.datasetId),
-					name: typeof v.name === "string" ? v.name : "",
-					params,
-					initialCash: num(v.initialCash),
-					fees: {
-						limitPpm: num(v.fees.limitPpm),
-						marketPpm: num(v.fees.marketPpm),
-					},
-					skipGaps: v.skipGaps === true,
-					criteriaVersion:
-						v.criteriaVersion === undefined || v.criteriaVersion === null
-							? null
-							: num(v.criteriaVersion),
-				};
+				const input = parseDatasetRunInput(v);
+				if (!input) return c.json({ message: "実行条件の形が違う" }, 400);
 				return input;
 			}),
 			(c) => {

@@ -55,7 +55,7 @@ import type {
 	DatasetRunDetail,
 	DatasetService,
 	StartDatasetFailure,
-} from "../datasets/types";
+} from "../datasets/types-domain";
 import type { JudgmentService } from "../judgments/types-domain";
 import type { MarketService } from "../market/types-domain";
 import type { MarketDataService } from "../market-data/types-domain";

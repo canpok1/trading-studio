@@ -1,15 +1,18 @@
+import type { DatasetRepository } from "./repository-domain";
 // データセットとまとめた実行の読み書き
 
-import type {
-	ConditionSet,
-	DatasetSummary,
-	FeeRates,
-} from "@trading-studio/core";
+import type { ConditionSet, DatasetSummary } from "@trading-studio/core";
 import { parseConditionSet } from "@trading-studio/core";
 import type { BacktestRepository } from "../backtests/repository-domain";
 import type { BacktestStatus, RunFilter } from "../backtests/types-domain";
 import type { Db } from "../db/open";
-import type { DatasetRun, HistoryEntry, HistoryResult } from "./types";
+import type {
+	DatasetRun,
+	HistoryEntry,
+	HistoryResult,
+	StoredDataset,
+	StoredDatasetInput,
+} from "./types-domain";
 
 type DatasetRow = {
 	id: number;
@@ -17,14 +20,6 @@ type DatasetRow = {
 	segment_ids: string;
 	created_at: number;
 	updated_at: number;
-};
-
-export type StoredDataset = {
-	id: number;
-	name: string;
-	segmentIds: number[];
-	createdAt: number;
-	updatedAt: number;
 };
 
 const toDataset = (r: DatasetRow): StoredDataset => ({
@@ -36,14 +31,6 @@ const toDataset = (r: DatasetRow): StoredDataset => ({
 });
 
 /** まとめた実行の条件。相場データごとの実行を始めるのに使う */
-export type StoredDatasetInput = {
-	params: ConditionSet;
-	initialCash: number;
-	fees: FeeRates;
-	skipGaps: boolean;
-	criteriaVersion: number | null;
-};
-
 type RunRow = {
 	id: number;
 	dataset_id: number;
@@ -81,7 +68,7 @@ function toRun(r: RunRow): DatasetRun {
 	};
 }
 
-export class DatasetRepository {
+export class SqliteDatasetRepository implements DatasetRepository {
 	constructor(
 		private readonly db: Db,
 		private readonly backtests: BacktestRepository,

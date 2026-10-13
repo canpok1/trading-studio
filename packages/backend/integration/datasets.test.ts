@@ -6,10 +6,14 @@ import {
 	singleBuy,
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
-import { inlineRunner } from "../backtests/inline-runner-infra";
-import type { BacktestRun } from "../backtests/types-domain";
-import { createTestApp } from "../test-app";
-import type { Dataset, DatasetRunDetail, HistoryResult } from "./types";
+import { inlineRunner } from "../src/backtests/inline-runner-infra";
+import type { BacktestRun } from "../src/backtests/types-domain";
+import type {
+	Dataset,
+	DatasetRunDetail,
+	HistoryResult,
+} from "../src/datasets/types-domain";
+import { createTestApp } from "../src/test-app";
 
 const H = TIMEFRAME_MS["1h"];
 const D = 24 * H;

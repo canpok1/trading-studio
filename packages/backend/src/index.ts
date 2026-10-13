@@ -25,7 +25,7 @@ export type {
 	DatasetRunDetail,
 	HistoryEntry,
 	HistoryResult,
-} from "./datasets/types";
+} from "./datasets/types-domain";
 export type { CurrentJudgment, JudgmentSeries } from "./judgments/types-domain";
 export type { ChartRangeId, LatestMarket } from "./market/types-domain";
 export type { ImportJob, TimeframeCoverage } from "./market-data/types-domain";

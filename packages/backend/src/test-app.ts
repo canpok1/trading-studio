@@ -19,8 +19,8 @@ import { SqliteBacktestRepository } from "./backtests/repository-infra";
 import type { BacktestRunner } from "./backtests/runner-domain";
 import type { Collector } from "./collector/collector";
 import type { LiveMarket } from "./collector/types";
-import { DatasetRepository } from "./datasets/repository";
-import { createDatasetService } from "./datasets/service";
+import { createDatasetService } from "./datasets/datasets-domain";
+import { SqliteDatasetRepository } from "./datasets/repository-infra";
 import type { Db } from "./db/open";
 import { createTestDb } from "./db/test-db";
 import { createJudgmentService } from "./judgments/judgments-domain";
@@ -140,7 +140,7 @@ export function createTestApp(
 		now: () => 3_000,
 	});
 	const datasets = createDatasetService({
-		repo: new DatasetRepository(db, backtestRepo),
+		repo: new SqliteDatasetRepository(db, backtestRepo),
 		backtestRepo,
 		backtests,
 		segments,

@@ -111,3 +111,19 @@ export interface DatasetService {
 	/** 単独の実行とまとめた実行を新しい順などで並べる。まとめた実行に含まれる実行は出さない */
 	history(filter?: Partial<RunFilter>): HistoryResult;
 }
+
+export type StoredDataset = {
+	id: number;
+	name: string;
+	segmentIds: number[];
+	createdAt: number;
+	updatedAt: number;
+};
+
+export type StoredDatasetInput = {
+	params: ConditionSet;
+	initialCash: number;
+	fees: FeeRates;
+	skipGaps: boolean;
+	criteriaVersion: number | null;
+};
