@@ -6,21 +6,27 @@ import type {
 	BacktestRun,
 	CurrentJudgment,
 	ImportJob,
+	JudgmentSeries,
 	NewsCollectorStatus,
 	NewsItem,
 	NewsScore,
 	NewsSource,
 	ScorerStatus,
+	StoredOrder,
 	StoredStrategy,
 	TimeframeCoverage,
+	TradingPerformance,
 } from "@trading-studio/backend";
 import type {
 	AggregationRule,
+	ConditionSet,
 	Judge,
 	ScoredNews,
+	TemplateId,
 	Timeframe,
 } from "@trading-studio/core";
 import {
+	candleStart,
 	DEFAULT_AGGREGATION_RULE,
 	DEFAULT_FEE_RATES,
 	JUDGMENT_VALUES,
@@ -346,5 +352,129 @@ export function storedStrategy(
 		createdAt: 0,
 		updatedAt: 0,
 		...over,
+	};
+}
+
+type Bars = Extract<
+	InferResponseType<ApiClient["api"]["market"]["bars"]["$get"]>,
+	{ bars: unknown }
+>["bars"];
+
+export function chartBars(
+	timeframe: Timeframe,
+	now: number,
+	count = 120,
+	base = 10_000_000,
+): Bars {
+	const last = candleStart(now, timeframe);
+	return Array.from({ length: count }, (_, i) => {
+		const close = base + Math.round(Math.sin(i / 5) * 100_000) + i * 1_000;
+		return {
+			time: last - (count - 1 - i) * TIMEFRAME_MS[timeframe],
+			open: close - 20_000,
+			high: close + 50_000,
+			low: close - 50_000,
+			close,
+			volume: 50_000_000,
+		};
+	});
+}
+
+export function tradingPerformance(
+	over: Partial<TradingPerformance> = {},
+): TradingPerformance {
+	return {
+		resetAt: 0,
+		initialCash: 1_000_000,
+		cash: 1_000_000,
+		position: { quantity: 0, entryPrice: null, openedAt: null },
+		price: null,
+		equity: 1_000_000,
+		pnl: 0,
+		pnlPercent: 0,
+		buyHoldPercent: null,
+		realizedPnl: 0,
+		trades: 0,
+		wins: 0,
+		losses: 0,
+		winRate: null,
+		profitFactor: null,
+		maxDrawdownPercent: 0,
+		maxDrawdownFrom: null,
+		maxDrawdownTo: null,
+		averageHoldingMs: null,
+		...over,
+	};
+}
+
+export function storedOrder(
+	over: Partial<StoredOrder> & Pick<StoredOrder, "id">,
+): StoredOrder {
+	return {
+		side: "buy",
+		type: "market",
+		price: null,
+		quantity: 2_000_000,
+		placedAt: 0,
+		status: "filled",
+		filledAt: 0,
+		fillPrice: 10_000_000,
+		fee: 0,
+		canceledAt: null,
+		cancelReason: null,
+		reason: "買いの条件が成立",
+		pairId: null,
+		pnl: null,
+		runId: 1,
+		mode: "paper",
+		decisionId: null,
+		strategyId: null,
+		strategyName: "",
+		lotPrice: null,
+		exitKind: null,
+		...over,
+	};
+}
+
+export function judgmentSeries(
+	from: number,
+	to: number,
+	step: number,
+): JudgmentSeries {
+	const n = Math.max(0, Math.ceil((to - from) / step));
+	return {
+		from,
+		step,
+		firstScoredAt: from,
+		values: {
+			sentiment: Array.from({ length: n }, () => "+1" as const),
+			risk: Array.from({ length: n }, () => "mild" as const),
+		},
+	};
+}
+
+/** ひな形の条件で保存済みの戦略 */
+export function templateStrategy(
+	id: number,
+	name: string,
+	template: TemplateId = "trend",
+	params: ConditionSet = strategyTemplate(template).params,
+): StoredStrategy {
+	return storedStrategy({ id, name, params });
+}
+
+/** センチメントは中立、リスクは平常の市場評価（記事1件ぶん） */
+export function neutralJudgment(time: number): CurrentJudgment {
+	const result = { average: 0, count: 1 };
+	return {
+		time,
+		rule: DEFAULT_AGGREGATION_RULE,
+		results: {
+			sentiment: { value: "0", ...result },
+			risk: { value: "calm", ...result },
+		},
+		weights: {},
+		breakdown: { sentiment: [], risk: [] },
+		firstScoredAt: 0,
 	};
 }
