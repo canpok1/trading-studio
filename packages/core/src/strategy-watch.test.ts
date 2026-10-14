@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { BuyRule, ConditionSet } from "./condition-strategy";
 import { DEFAULT_BUY_ORDER, DEFAULT_PARTIAL_SELL } from "./condition-strategy";
-import { rsi } from "./indicators";
+import { adx, rsi } from "./indicators";
 import type { StrategyWatch, WatchAction, WatchInput } from "./strategy-watch";
 import { nextMoves, watchConditionSet } from "./strategy-watch";
 import { TIMEFRAME_MS } from "./timeframe";
@@ -153,6 +153,36 @@ describe("watchConditionSet", () => {
 			rsi([...closes.slice(0, -1), x], 14).at(-1) as number;
 		expect(at(t)).toBeLessThanOrEqual(30);
 		expect(at(t + 1)).toBeGreaterThan(30);
+	});
+
+	test("ADX の条件は今の値を小数1桁で出し、発動価格は持たない", () => {
+		const w = watchConditionSet(
+			input(
+				params([
+					rule({
+						buy: {
+							match: "all",
+							conditions: [
+								{
+									type: "adx",
+									timeframe: "1h",
+									period: 14,
+									threshold: 20,
+									direction: "above",
+								},
+							],
+						},
+					}),
+				]),
+			),
+		);
+		const v = adx(candles(closes), 14).at(-1) as number;
+		expect(w.buys[0]?.buy.conditions[0]).toMatchObject({
+			met: v >= 20,
+			detail: `今 ${v.toFixed(1)}`,
+			// 価格に対して単調でないので発動価格を探さない
+			edge: null,
+		});
 	});
 
 	test("すべて満たすのグループは、価格で変わらない条件が不成立なら発動価格を出さない", () => {

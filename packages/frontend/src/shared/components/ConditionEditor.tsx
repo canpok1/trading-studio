@@ -377,6 +377,7 @@ const CONDITION_NAMES: Record<ConditionKind, string> = {
 	rsi: "RSI",
 	rsiCross: "RSI のクロス",
 	bollinger: "ボリンジャーバンド",
+	adx: "ADX（トレンドの強さ）",
 	entryChange: "買値からの %",
 	trailingStop: "買ってからの最高値からの %（トレーリングストップ）",
 	holdingBars: "買ってからの本数",
@@ -392,6 +393,7 @@ const SELL_KINDS: ConditionKind[] = [
 	"rsi",
 	"rsiCross",
 	"bollinger",
+	"adx",
 	"entryChange",
 	"trailingStop",
 	"holdingBars",
@@ -406,6 +408,7 @@ const PRICE_KINDS: Record<ConditionGroupKey, ConditionKind[]> = {
 		"rsi",
 		"rsiCross",
 		"bollinger",
+		"adx",
 	],
 	partialTakeProfit: SELL_KINDS,
 	takeProfit: SELL_KINDS,
@@ -492,6 +495,14 @@ function defaultCondition(
 				period: 20,
 				sigma: 2,
 				band: sell ? "upper" : "lower",
+			};
+		case "adx":
+			return {
+				type: kind,
+				timeframe,
+				period: 14,
+				threshold: 20,
+				direction: sell ? "below" : "above",
 			};
 		case "entryChange":
 			return group === "stopLoss"
@@ -783,6 +794,44 @@ function ConditionRow({
 					>
 						<option value="upper">上限以上</option>
 						<option value="lower">下限以下</option>
+					</select>
+				</>
+			);
+			break;
+		case "adx":
+			body = (
+				<>
+					<span>ADX</span>
+					<NumberInput
+						value={c.period}
+						onChange={(period) => onChange({ ...c, period })}
+						invalid={bad("period")}
+						inputMode="numeric"
+						aria-label="ADX の本数"
+						className="w-16"
+					/>
+					<span>本が</span>
+					<NumberInput
+						value={c.threshold}
+						onChange={(threshold) => onChange({ ...c, threshold })}
+						invalid={bad("threshold")}
+						inputMode="numeric"
+						aria-label="ADX のしきい値"
+						className="w-16"
+					/>
+					<select
+						aria-label="以上・以下"
+						value={c.direction}
+						onChange={(e) =>
+							onChange({
+								...c,
+								direction: e.target.value as "above" | "below",
+							})
+						}
+						className={selectClass}
+					>
+						<option value="above">以上</option>
+						<option value="below">以下</option>
 					</select>
 				</>
 			);

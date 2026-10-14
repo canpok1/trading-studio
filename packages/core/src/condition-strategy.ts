@@ -1,7 +1,7 @@
 // 画面で作る「条件のセット」を実行する汎用の条件戦略
 
 import { formatBtc, formatYen } from "./format";
-import { bollinger, ema, rsi } from "./indicators";
+import { adx, bollinger, ema, rsi } from "./indicators";
 import { limitBuyPriceBelow, notionalYen, SATOSHI_PER_BTC } from "./money";
 import type {
 	Judge,
@@ -108,6 +108,14 @@ export type Condition =
 			sigma: number;
 			band: "upper" | "lower";
 	  }
+	/** ADX(period) が threshold 以上（above）/ 以下（below）。トレンドの強さだけを見る（向きは見ない）。どのグループでも使える */
+	| {
+			type: "adx";
+			timeframe: Timeframe;
+			period: number;
+			threshold: number;
+			direction: "above" | "below";
+	  }
 	/** 現在値が買値から percent % 上がった（up）/ 下がった（down）。売りのグループだけで使える */
 	| { type: "entryChange"; percent: number; direction: "up" | "down" }
 	/**
@@ -134,6 +142,7 @@ export const TIMEFRAME_CONDITION_TYPES = [
 	"emaPosition",
 	"emaSlope",
 	"bollinger",
+	"adx",
 	"holdingBars",
 ] as const satisfies readonly TimeframeCondition["type"][];
 
@@ -330,6 +339,8 @@ export const LIMITS = {
 	bollingerPeriod: { min: 2, max: 500 },
 	/** ボリンジャーバンドの σ。0.1 刻み */
 	bollingerSigma: { min: 0.1, max: 5 },
+	adxPeriod: { min: 2, max: 100 },
+	adxThreshold: { min: 1, max: 99 },
 	percent: { min: 0.1, max: 100 },
 	/** トレーリングストップを発動する、最高値の買値からの %。0 は買った直後から */
 	trailingActivatePercent: { min: 0, max: 100 },
@@ -365,7 +376,7 @@ export const DEFAULT_DAILY_LOSS_LIMIT = 30_000;
 /** 損切り後に買わない本数の既定。これを持たない保存済みの戦略もこの本数（止めない）で読む */
 export const DEFAULT_STOP_LOSS_COOLDOWN_BARS = 0;
 
-/** EMA・RSI を途中から計算しても値がほぼ一致するよう、本数のこの倍の足を渡してもらう */
+/** EMA・RSI・ADX（平滑化を重ねる指標）を途中から計算しても値がほぼ一致するよう、本数のこの倍の足を渡してもらう */
 const EMA_HISTORY_FACTOR = 10;
 
 export type Hit =
@@ -380,6 +391,7 @@ export type Series = {
 	emaCache: Map<number, number[]>;
 	rsiCache: Map<number, number[]>;
 	bollingerCache: Map<string, ReturnType<typeof bollinger>>;
+	adxCache: Map<number, number[]>;
 };
 
 export type Ctx = {
@@ -404,6 +416,7 @@ export function seriesOf(candles: readonly Candle[]): Series {
 		emaCache: new Map(),
 		rsiCache: new Map(),
 		bollingerCache: new Map(),
+		adxCache: new Map(),
 	};
 }
 
@@ -425,7 +438,16 @@ export function rsiOf(ctx: Series, period: number): number[] {
 	return v;
 }
 
-/** RSI の見せ方。小数1桁 */
+export function adxOf(ctx: Series, period: number): number[] {
+	let v = ctx.adxCache.get(period);
+	if (!v) {
+		v = adx(ctx.candles, period);
+		ctx.adxCache.set(period, v);
+	}
+	return v;
+}
+
+/** RSI・ADX の見せ方。小数1桁 */
 export const formatRsi = (v: number) => v.toFixed(1);
 
 /** 条件を判定できる最少の足の数（途中の足を含む）。これより少なければ判定しない */
@@ -445,6 +467,8 @@ export function minBars(c: CandleCondition): number {
 		case "emaPosition":
 		case "bollinger":
 			return c.period;
+		case "adx":
+			return 2 * c.period + 1;
 	}
 }
 
@@ -650,6 +674,22 @@ export function checkCondition(c: Condition, ctx: Ctx): Hit {
 				? {
 						ok: true,
 						why: `終値 ${formatYen(ctx.price)} が${name}の下限 ${formatYen(v)} 以下`,
+					}
+				: { ok: false };
+		}
+		case "adx": {
+			const need = minBars(c);
+			if (n < need) {
+				return {
+					insufficient: `${tf}ADX(${c.period}) に ${need} 本必要、現在 ${n} 本`,
+				};
+			}
+			const v = adxOf(sr, c.period)[n - 1] as number;
+			const hit = c.direction === "above" ? v >= c.threshold : v <= c.threshold;
+			return hit
+				? {
+						ok: true,
+						why: `${tf}ADX(${c.period}) ${formatRsi(v)} が ${c.threshold} ${c.direction === "above" ? "以上" : "以下"}`,
 					}
 				: { ok: false };
 		}
@@ -888,20 +928,30 @@ export function candleNeeds(
 	for (const g of allGroups(params)) {
 		for (const c of g.conditions) {
 			if (!needsCandles(c)) continue;
-			const n =
-				c.type === "emaCross"
-					? c.slow * EMA_HISTORY_FACTOR + 1
-					: c.type === "emaPosition" || c.type === "rsi"
-						? c.period * EMA_HISTORY_FACTOR + 1
-						: c.type === "emaSlope" || c.type === "rsiCross"
-							? c.period * EMA_HISTORY_FACTOR + c.bars + 1
-							: c.type === "breakout"
-								? c.lookback + 1
-								: c.period;
+			const n = candleNeed(c);
 			out[c.timeframe] = Math.max(out[c.timeframe] ?? 1, n);
 		}
 	}
 	return out;
+}
+
+function candleNeed(c: CandleCondition): number {
+	switch (c.type) {
+		case "emaCross":
+			return c.slow * EMA_HISTORY_FACTOR + 1;
+		case "emaPosition":
+		case "rsi":
+			return c.period * EMA_HISTORY_FACTOR + 1;
+		case "emaSlope":
+		case "rsiCross":
+			return c.period * EMA_HISTORY_FACTOR + c.bars + 1;
+		case "adx":
+			return 2 * c.period * EMA_HISTORY_FACTOR + 1;
+		case "breakout":
+			return c.lookback + 1;
+		case "bollinger":
+			return c.period;
+	}
 }
 
 /**
@@ -1083,6 +1133,17 @@ function validateBuyRule(
 					}
 					break;
 				}
+				case "adx":
+					if (!isIntIn(c.period, LIMITS.adxPeriod)) {
+						err(`${at}.period`, `${range(LIMITS.adxPeriod)} の整数で入れる`);
+					}
+					if (!isIntIn(c.threshold, LIMITS.adxThreshold)) {
+						err(
+							`${at}.threshold`,
+							`${range(LIMITS.adxThreshold)} の整数で入れる`,
+						);
+					}
+					break;
 				case "bollinger": {
 					if (!isIntIn(c.period, LIMITS.bollingerPeriod)) {
 						err(
@@ -1688,6 +1749,15 @@ function parseCondition(
 				period: num(v.period),
 				bars: num(v.bars),
 				percent: num(v.percent),
+				direction: v.direction,
+			};
+		case "adx":
+			if (v.direction !== "above" && v.direction !== "below") return null;
+			return {
+				type: "adx",
+				timeframe,
+				period: num(v.period),
+				threshold: num(v.threshold),
 				direction: v.direction,
 			};
 		case "bollinger":

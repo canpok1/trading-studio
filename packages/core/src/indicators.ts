@@ -80,3 +80,68 @@ export function bollinger(
 	}
 	return { middle, upper, lower };
 }
+
+type Bar = { high: number; low: number; close: number };
+
+/** 真の値幅（TR）。前の足が無い最初の足は NaN */
+export function trueRange(candles: readonly Bar[]): number[] {
+	return candles.map((c, i) => {
+		const prev = candles[i - 1];
+		if (!prev) return Number.NaN;
+		return Math.max(
+			c.high - c.low,
+			Math.abs(c.high - prev.close),
+			Math.abs(c.low - prev.close),
+		);
+	});
+}
+
+/**
+ * ADX（Wilder 方式）。TR・+DM・−DM を period 本で Wilder 平滑して +DI・−DI を出し、DX = 100 × |+DI − −DI| ÷ (+DI + −DI)（分母が 0 なら 0）。
+ * ADX は DX の Wilder 平均で、最初の値は最初の period 本の DX の単純平均。2 × period − 1 本目（0 始まり）より前は NaN
+ */
+export function adx(candles: readonly Bar[], period: number): number[] {
+	const out = new Array<number>(candles.length).fill(Number.NaN);
+	if (candles.length < 2 * period) {
+		return out;
+	}
+	const tr = trueRange(candles);
+	let sTr = 0;
+	let sPlus = 0;
+	let sMinus = 0;
+	let dxSum = 0;
+	let prevAdx = 0;
+	for (let i = 1; i < candles.length; i++) {
+		const c = candles[i] as Bar;
+		const prev = candles[i - 1] as Bar;
+		const up = c.high - prev.high;
+		const down = prev.low - c.low;
+		const plus = up > down && up > 0 ? up : 0;
+		const minus = down > up && down > 0 ? down : 0;
+		// 最初の period 本は合計し、以降は Wilder 平滑（合計の形のまま。DI は比なので平均にしても同じ）
+		if (i <= period) {
+			sTr += tr[i] as number;
+			sPlus += plus;
+			sMinus += minus;
+		} else {
+			sTr = sTr - sTr / period + (tr[i] as number);
+			sPlus = sPlus - sPlus / period + plus;
+			sMinus = sMinus - sMinus / period + minus;
+		}
+		if (i < period) continue;
+		const plusDi = sTr === 0 ? 0 : (100 * sPlus) / sTr;
+		const minusDi = sTr === 0 ? 0 : (100 * sMinus) / sTr;
+		const sum = plusDi + minusDi;
+		const dx = sum === 0 ? 0 : (100 * Math.abs(plusDi - minusDi)) / sum;
+		if (i < 2 * period - 1) {
+			dxSum += dx;
+		} else if (i === 2 * period - 1) {
+			prevAdx = (dxSum + dx) / period;
+			out[i] = prevAdx;
+		} else {
+			prevAdx = (prevAdx * (period - 1) + dx) / period;
+			out[i] = prevAdx;
+		}
+	}
+	return out;
+}
