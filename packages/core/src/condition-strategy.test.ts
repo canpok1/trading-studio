@@ -2487,5 +2487,14 @@ describe("ATR の条件", () => {
 		expect(parseConditionSet(JSON.parse(JSON.stringify(p)))?.stopLoss).toEqual(
 			p.stopLoss,
 		);
+		const { activateMultiple: _, ...omitted } = trail as Extract<
+			Condition,
+			{ type: "trailingAtr" }
+		>;
+		expect(
+			parseConditionSet(
+				JSON.parse(JSON.stringify(sellOn(omitted as Condition))),
+			)?.stopLoss.conditions[0],
+		).toEqual(trail);
 	});
 });

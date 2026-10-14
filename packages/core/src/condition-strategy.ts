@@ -761,13 +761,11 @@ export function checkCondition(c: Condition, ctx: Ctx): Hit {
 					: { ok: false };
 			}
 			// 最高値が買値から ATR の activateMultiple 倍以上になるまでは発動しない
-			if (
-				c.activateMultiple > 0 &&
-				peak < entryPrice + a.atr * c.activateMultiple
-			) {
+			const t = trailingAtrLines(c, entryPrice, peak, a.atr);
+			if (!t.active) {
 				return { ok: false };
 			}
-			const line = peak - a.atr * c.multiple;
+			const line = t.line;
 			const since =
 				c.activateMultiple > 0
 					? `。最高値が買値から ATR の ${c.activateMultiple} 倍以上になってから発動`
@@ -810,6 +808,21 @@ export function entryAtrLine(
 ): number {
 	const width = atrValue * c.multiple;
 	return c.direction === "up" ? entryPrice + width : entryPrice - width;
+}
+
+/** 最高値からの ATR の条件の、発動する最高値（activate）と成立する価格（line）。active は発動済みか */
+export function trailingAtrLines(
+	c: Extract<Condition, { type: "trailingAtr" }>,
+	entryPrice: number,
+	peak: number,
+	atrValue: number,
+): { activate: number; active: boolean; line: number } {
+	const activate = entryPrice + atrValue * c.activateMultiple;
+	return {
+		activate,
+		active: c.activateMultiple <= 0 || peak >= activate,
+		line: peak - atrValue * c.multiple,
+	};
 }
 
 /** ロットを買った時点の ATR。判定の前に求めておく（lotEntryAtrs）が、無ければ判定時の ATR で代える */
@@ -1537,7 +1550,7 @@ export function lotEntryAtrs(
 					mine[k] = { atr: atEntry, current: false };
 					continue;
 				}
-				const now = atr(candles, c.period).at(-1);
+				const now = atrOf(series(c.timeframe), c.period).at(-1);
 				if (now !== undefined && Number.isFinite(now)) {
 					mine[k] = { atr: now, current: true };
 				}
@@ -2011,7 +2024,9 @@ function parseCondition(
 				timeframe,
 				period: num(v.period),
 				multiple: num(v.multiple),
-				activateMultiple: num(v.activateMultiple),
+				// 発動の倍数を省いた条件（AI の改善案・MCP）は、買った直後から発動する
+				activateMultiple:
+					v.activateMultiple === undefined ? 0 : num(v.activateMultiple),
 			};
 		case "holdingBars":
 			return { type: "holdingBars", timeframe, bars: num(v.bars) };

@@ -27,6 +27,7 @@ import {
 	prevStopLossAt,
 	rsiOf,
 	seriesOf,
+	trailingAtrLines,
 	usesAtr,
 	usesPeaks,
 } from "./condition-strategy";
@@ -290,11 +291,11 @@ function detailOf(c: Condition, ctx: Ctx): string {
 			if (c.type === "entryAtr") {
 				return `${atr} ・ 基準 ${formatYen(entryAtrLine(c, entryPrice, a.atr))} 円`;
 			}
-			const activate = entryPrice + a.atr * c.activateMultiple;
-			if (c.activateMultiple > 0 && peak < activate) {
-				return `未発動・最高値 ${formatYen(peak)} 円（発動 ${formatYen(activate)} 円）`;
+			const t = trailingAtrLines(c, entryPrice, peak, a.atr);
+			if (!t.active) {
+				return `未発動・最高値 ${formatYen(peak)} 円（発動 ${formatYen(t.activate)} 円）`;
 			}
-			return `${atr} ・ 基準 ${formatYen(peak - a.atr * c.multiple)} 円`;
+			return `${atr} ・ 基準 ${formatYen(t.line)} 円`;
 		}
 	}
 }
