@@ -11,6 +11,7 @@ import type {
 	Series,
 } from "./condition-strategy";
 import {
+	adxOf,
 	buyRuleOf,
 	checkCondition,
 	emaOf,
@@ -260,6 +261,8 @@ function detailOf(c: Condition, ctx: Ctx): string {
 		case "rsi":
 		case "rsiCross":
 			return `今 ${formatRsi(rsiOf(sr, c.period)[n - 1] as number)}`;
+		case "adx":
+			return `今 ${formatRsi(adxOf(sr, c.period)[n - 1] as number)}`;
 		case "emaPosition":
 			return `EMA ${formatYen(emaOf(sr, c.period)[n - 1] as number)} 円`;
 		case "emaSlope": {

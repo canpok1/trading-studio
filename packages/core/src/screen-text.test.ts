@@ -5,7 +5,7 @@ import {
 	DEFAULT_PARTIAL_SELL,
 	singleBuy,
 } from "./condition-strategy";
-import { conditionSetChanges } from "./screen-text";
+import { conditionScreenText, conditionSetChanges } from "./screen-text";
 
 const BASE: ConditionSet = singleBuy({
 	frequency: {
@@ -116,5 +116,19 @@ describe("戦略設定の変更点", () => {
 		expect(
 			changes.every((c) => c.removed.length > 0 || c.added.length > 0),
 		).toBe(true);
+	});
+});
+
+describe("条件の文言", () => {
+	test("ADX は足・本数・しきい値・以上/以下で書く", () => {
+		expect(
+			conditionScreenText({
+				type: "adx",
+				timeframe: "1h",
+				period: 14,
+				threshold: 20,
+				direction: "above",
+			}),
+		).toBe("1時間足で ADX 14 本が 20 以上");
 	});
 });
