@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { bollinger, ema, rsi } from "./indicators";
+import { atr, bollinger, ema, rsi } from "./indicators";
 
 describe("ema", () => {
 	test("最初の period 本の単純平均を起点にする", () => {
@@ -55,5 +55,38 @@ describe("bollinger", () => {
 		const { upper, lower } = bollinger([5, 5, 5], 3, 2);
 		expect(upper[2]).toBe(5);
 		expect(lower[2]).toBe(5);
+	});
+});
+
+describe("atr", () => {
+	const bar = (high: number, low: number, close: number) => ({
+		high,
+		low,
+		close,
+	});
+
+	test("最初の period 本の TR の平均を起点にし、以降は 1/period で平滑化する", () => {
+		const out = atr(
+			[
+				bar(10, 8, 9),
+				// TR: max(12−9, |12−9|, |9−9|) = 3
+				bar(12, 9, 11),
+				// 前の終値より下に窓を開けた: max(9−8, |9−11|, |8−11|) = 3
+				bar(9, 8, 8.5),
+				// 前の終値より上に窓を開けた: max(11−10, |11−8.5|, |10−8.5|) = 2.5
+				bar(11, 10, 10.5),
+			],
+			2,
+		);
+		expect(out[0]).toBeNaN();
+		expect(out[1]).toBeNaN();
+		// (3 + 3) / 2
+		expect(out[2]).toBe(3);
+		// (3 × 1 + 2.5) / 2
+		expect(out[3]).toBe(2.75);
+	});
+
+	test("本数が period 以下ならすべて NaN", () => {
+		expect(atr([bar(2, 1, 1), bar(2, 1, 1)], 2).every(Number.isNaN)).toBe(true);
 	});
 });
