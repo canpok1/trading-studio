@@ -2207,3 +2207,198 @@ describe("複数の買い", () => {
 		expect(parseConditionSetOf({ ...p, buys: [{ id: 1 }] })).toBeNull();
 	});
 });
+
+describe("ATR の条件", () => {
+	// 終値 1000 のまま、高値・安値の幅 range の足。前の終値も 1000 なので TR は range
+	const bar = (i: number, range: number, close = 1000): Candle => ({
+		time: i * H,
+		open: close,
+		high: close + range / 2,
+		low: close - range / 2,
+		close,
+		volume: 0,
+	});
+	const down: Condition = {
+		type: "entryAtr",
+		timeframe: "1h",
+		period: 2,
+		multiple: 2,
+		direction: "down",
+	};
+	const trail: Condition = {
+		type: "trailingAtr",
+		timeframe: "1h",
+		period: 2,
+		multiple: 3,
+		activateMultiple: 0,
+	};
+	const sellOn = (...conditions: Condition[]) =>
+		params({ stopLoss: { match: "any", conditions } });
+	const lot = (openedAt: number) => ({
+		id: "b1",
+		quantity: 1_000_000,
+		entryPrice: 1000,
+		openedAt,
+	});
+	// 買う前の3本は TR 10、買った後は TR 100。買った時点の ATR(2) は 10
+	const cs = (last: number) => [
+		bar(0, 10),
+		bar(1, 10),
+		bar(2, 10),
+		bar(3, 100),
+		bar(4, 100, last),
+	];
+
+	test("買値から、買った時点の ATR の倍数 下がったら売る。ATR は約定した足の1本前までで求め、state に持つ", () => {
+		const out = evaluateConditionSet(
+			input(cs(980), sellOn(down), { lots: [lot(3 * H)] }),
+		);
+		expect(out.intents).toHaveLength(1);
+		expect(out.note).toContain(
+			"現在値 980 円が基準 980 円（買値 1,000 円 − 1時間足のATR(2) 10 円 × 2）以下",
+		);
+		expect(out.state).toEqual({
+			entryAtrs: { b1: { "1h:2": { atr: 10, current: false } } },
+		});
+		const miss = evaluateConditionSet(
+			input(cs(981), sellOn(down), { lots: [lot(3 * H)] }),
+		);
+		expect(miss.intents).toHaveLength(0);
+	});
+
+	test("上がった向きは、買値 + ATR の倍数 以上で成立する", () => {
+		const up: Condition = { ...down, multiple: 3, direction: "up" };
+		const out = evaluateConditionSet(
+			input(cs(1030), sellOn(up), { lots: [lot(3 * H)] }),
+		);
+		expect(out.intents).toHaveLength(1);
+		expect(out.note).toContain("基準 1,030 円（買値 1,000 円 + ");
+	});
+
+	test("state に持つ ATR を使い、その後の値動きで変えない", () => {
+		const out = evaluateConditionSet(
+			input(cs(990), sellOn(down), {
+				lots: [lot(3 * H)],
+				state: {
+					entryAtrs: {
+						b1: { "1h:2": { atr: 5, current: false } },
+						old: { "1h:2": { atr: 1, current: false } },
+					},
+				},
+			}),
+		);
+		expect(out.intents).toHaveLength(1);
+		expect(out.note).toContain("ATR(2) 5 円 × 2");
+		// 売ったロット（old）は消える
+		expect(out.state).toEqual({
+			entryAtrs: { b1: { "1h:2": { atr: 5, current: false } } },
+		});
+	});
+
+	test("買った時点の足が足りなければ今の ATR で代え、理由にその旨を書く", () => {
+		// 約定した足の前は1本だけなので ATR(2) は求まらない。今の ATR(2) は (10 + 150) / 2 = 80 で、基準は 1000 − 8 = 992
+		const out = evaluateConditionSet(
+			input(
+				[bar(0, 10), bar(1, 10), bar(2, 100, 900)],
+				sellOn({ ...down, multiple: 0.1 }),
+				{
+					lots: [lot(1 * H)],
+				},
+			),
+		);
+		expect(out.intents).toHaveLength(1);
+		expect(out.note).toContain("今の ATR で代えた");
+		expect(out.note).toContain("基準 992 円");
+		expect(out.state).toEqual({
+			entryAtrs: { b1: { "1h:2": { atr: 80, current: true } } },
+		});
+	});
+
+	// 最高値は state だけで決める（直近の足を渡さない）
+	const noRecent = { timeframeMs: H, candles: [] };
+
+	test("最高値から、買った時点の ATR の倍数 下がったら売る", () => {
+		const p = sellOn(trail);
+		const at = (last: number) =>
+			evaluateConditionSet(
+				input(cs(last), p, {
+					lots: [lot(3 * H)],
+					recent: noRecent,
+					state: { peaks: { b1: 1100 } },
+				}),
+			);
+		expect(at(1071).intents).toHaveLength(0);
+		const out = at(1070);
+		expect(out.intents).toHaveLength(1);
+		expect(out.note).toContain(
+			"現在値 1,070 円が基準 1,070 円（買ってからの最高値 1,100 円 − 1時間足のATR(2) 10 円 × 3）以下",
+		);
+		expect(out.state).toMatchObject({
+			peaks: { b1: 1100 },
+			entryAtrs: { b1: { "1h:2": { atr: 10, current: false } } },
+		});
+	});
+
+	test("最高値が買値から ATR の発動の倍数に届くまでは成立しない", () => {
+		const p = sellOn({ ...trail, activateMultiple: 5 });
+		const at = (peak: number) =>
+			evaluateConditionSet(
+				input(cs(900), p, {
+					lots: [lot(3 * H)],
+					recent: noRecent,
+					state: { peaks: { b1: peak } },
+				}),
+			);
+		expect(at(1049).intents).toHaveLength(0);
+		const out = at(1050);
+		expect(out.intents).toHaveLength(1);
+		expect(out.note).toContain(
+			"最高値が買値から ATR の 5 倍以上になってから発動",
+		);
+	});
+
+	test("同じ入力で2回判定すると結果が一致する", () => {
+		const make = () =>
+			input(cs(980), sellOn(down, trail), { lots: [lot(3 * H)] });
+		expect(evaluateConditionSet(make())).toEqual(evaluateConditionSet(make()));
+	});
+
+	test("本数が足りなければ判定しない。渡してほしい本数は本数の10倍＋1", () => {
+		const out = evaluateConditionSet(
+			input([bar(0, 10), bar(1, 10)], sellOn(down), { lots: [lot(0)] }),
+		);
+		expect(out.note).toContain("1時間足のATR(2) に 3 本必要、現在 2 本");
+		expect(candleNeeds(sellOn({ ...down, period: 14 }))["1h"]).toBe(141);
+		expect(recentMs(sellOn(trail))).toBe(15 * 60_000);
+		expect(recentMs(sellOn(down))).toBe(0);
+	});
+
+	test("売りのグループだけで使え、本数 2〜100・倍数 0.1〜20・発動 0〜20（0.1 刻み）。JSON から読み戻せる", () => {
+		const errs = validateConditionSet(
+			params({
+				buy: { match: "all", conditions: [down] },
+				stopLoss: {
+					match: "any",
+					conditions: [
+						{ ...down, period: 1 },
+						{ ...down, multiple: 0 },
+						{ ...trail, multiple: 2.55 },
+						{ ...trail, activateMultiple: 20.1 },
+						{ ...trail, multiple: 20, activateMultiple: 0 },
+					],
+				},
+			}),
+		);
+		expect(errs.map((e) => e.path)).toEqual([
+			"buy.conditions.0",
+			"stopLoss.conditions.0.period",
+			"stopLoss.conditions.1.multiple",
+			"stopLoss.conditions.2.multiple",
+			"stopLoss.conditions.3.activateMultiple",
+		]);
+		const p = sellOn(down, trail);
+		expect(parseConditionSet(JSON.parse(JSON.stringify(p)))?.stopLoss).toEqual(
+			p.stopLoss,
+		);
+	});
+});

@@ -5,7 +5,7 @@ import {
 	DEFAULT_PARTIAL_SELL,
 	singleBuy,
 } from "./condition-strategy";
-import { conditionSetChanges } from "./screen-text";
+import { conditionScreenText, conditionSetChanges } from "./screen-text";
 
 const BASE: ConditionSet = singleBuy({
 	frequency: {
@@ -116,5 +116,30 @@ describe("戦略設定の変更点", () => {
 		expect(
 			changes.every((c) => c.removed.length > 0 || c.added.length > 0),
 		).toBe(true);
+	});
+});
+
+describe("条件の文言", () => {
+	test("ATR の条件は足を ATR の前に置く", () => {
+		expect(
+			conditionScreenText({
+				type: "entryAtr",
+				timeframe: "1h",
+				period: 14,
+				multiple: 2,
+				direction: "down",
+			}),
+		).toBe("買値から 1時間足の ATR 14 本の 2 倍 下がった");
+		expect(
+			conditionScreenText({
+				type: "trailingAtr",
+				timeframe: "1h",
+				period: 14,
+				multiple: 3,
+				activateMultiple: 1,
+			}),
+		).toBe(
+			"買ってからの最高値から 1時間足の ATR 14 本の 3 倍 下がった（最高値が買値から ATR の 1 倍以上になってから発動）",
+		);
 	});
 });

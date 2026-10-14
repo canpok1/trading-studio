@@ -417,3 +417,48 @@ describe("nextMoves", () => {
 		expect(m.down?.kind).toBe("stopLoss");
 	});
 });
+
+describe("ATR の条件の見張り", () => {
+	// 買う前の足は1本 1 万円ずつ上がる（高値・安値＝終値）ので、買った時点の ATR(14) は 1 万円
+	const entry = 10_300_000;
+	const watchOn = (
+		conditions: ConditionSet["buys"][number]["stopLoss"]["conditions"],
+	) =>
+		watchConditionSet(
+			input(params([rule({ stopLoss: { match: "any", conditions } })]), {
+				lots: [lot(entry, { openedAt: 20 * H })],
+			}),
+		);
+
+	test("買値からの ATR は 買値 − ATR × 倍数 が発動価格になる", () => {
+		const w = watchOn([
+			{
+				type: "entryAtr",
+				timeframe: "1h",
+				period: 14,
+				multiple: 2,
+				direction: "down",
+			},
+		]);
+		const g = w.buys[0]?.lots[0]?.groups?.stopLoss;
+		expect(g?.conditions[0]?.detail).toBe(
+			"ATR 10,000 円 ・ 基準 10,280,000 円",
+		);
+		expect(g?.triggers).toEqual([10_280_000]);
+	});
+
+	test("最高値からの ATR は 最高値 − ATR × 倍数 が発動価格になる", () => {
+		const w = watchOn([
+			{
+				type: "trailingAtr",
+				timeframe: "1h",
+				period: 14,
+				multiple: 3,
+				activateMultiple: 0,
+			},
+		]);
+		const g = w.buys[0]?.lots[0]?.groups?.stopLoss;
+		// 最高値は直近の足が無いので買値
+		expect(g?.triggers).toEqual([10_270_000]);
+	});
+});
