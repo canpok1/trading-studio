@@ -15,8 +15,11 @@ import {
 	buyRuleOf,
 	checkCondition,
 	emaOf,
+	entryAtrLine,
 	formatRsi,
 	latestJudgments,
+	lotAtrOf,
+	lotEntryAtrs,
 	lotPeaks,
 	needsCandles,
 	partialSellQuantity,
@@ -24,7 +27,9 @@ import {
 	prevStopLossAt,
 	rsiOf,
 	seriesOf,
-	usesCondition,
+	trailingAtrLines,
+	usesAtr,
+	usesPeaks,
 } from "./condition-strategy";
 import { formatYen } from "./format";
 import { bollinger } from "./indicators";
@@ -277,6 +282,21 @@ function detailOf(c: Condition, ctx: Ctx): string {
 				? `上限 ${formatYen(b.upper[n - 1] as number)} 円`
 				: `下限 ${formatYen(b.lower[n - 1] as number)} 円`;
 		}
+		case "entryAtr":
+		case "trailingAtr": {
+			if (!ctx.lot) return "";
+			const a = lotAtrOf(c, ctx);
+			const { entryPrice, peak } = ctx.lot;
+			const atr = `ATR ${formatYen(a.atr)} 円${a.current ? "（今の値）" : ""}`;
+			if (c.type === "entryAtr") {
+				return `${atr} ・ 基準 ${formatYen(entryAtrLine(c, entryPrice, a.atr))} 円`;
+			}
+			const t = trailingAtrLines(c, entryPrice, peak, a.atr);
+			if (!t.active) {
+				return `未発動・最高値 ${formatYen(peak)} 円（発動 ${formatYen(t.activate)} 円）`;
+			}
+			return `${atr} ・ 基準 ${formatYen(t.line)} 円`;
+		}
 	}
 }
 
@@ -398,8 +418,9 @@ export function watchConditionSet(input: WatchInput): StrategyWatch {
 		lot: null,
 		judgments: latestJudgments(input.judgments),
 	};
-	const peaks = usesCondition(p, "trailingStop")
-		? lotPeaks(lots, input.recent, state)
+	const peaks = usesPeaks(p) ? lotPeaks(lots, input.recent, state) : null;
+	const entryAtrs = usesAtr(p)
+		? lotEntryAtrs(p, lots, ctx.series, state)
 		: null;
 	const hits = prevBuyHits(state, p);
 	const stopLossAt = p.stopLossCooldownBars > 0 ? prevStopLossAt(state) : null;
@@ -468,6 +489,7 @@ export function watchConditionSet(input: WatchInput): StrategyWatch {
 					entryPrice: lot.entryPrice,
 					openedAt: lot.openedAt,
 					peak: peaks?.[lot.id] ?? lot.entryPrice,
+					atrs: entryAtrs?.[lot.id] ?? {},
 				},
 			};
 			const partialQty = partialDone

@@ -28,6 +28,7 @@ import {
 	FREQUENCY_UNITS,
 	formatBtc,
 	hasTimeframe,
+	isAtrCondition,
 	JUDGE_LABELS,
 	JUDGES,
 	JUDGMENT_CONDITION_VALUES,
@@ -380,6 +381,8 @@ const CONDITION_NAMES: Record<ConditionKind, string> = {
 	adx: "ADX（トレンドの強さ）",
 	entryChange: "買値からの %",
 	trailingStop: "買ってからの最高値からの %（トレーリングストップ）",
+	entryAtr: "買値からの ATR の倍数",
+	trailingAtr: "買ってからの最高値からの ATR の倍数",
 	holdingBars: "買ってからの本数",
 	"judgment:sentiment": "センチメントが指定のどれか",
 	"judgment:risk": "リスクが指定のどれか",
@@ -396,6 +399,8 @@ const SELL_KINDS: ConditionKind[] = [
 	"adx",
 	"entryChange",
 	"trailingStop",
+	"entryAtr",
+	"trailingAtr",
 	"holdingBars",
 ];
 
@@ -510,6 +515,18 @@ function defaultCondition(
 				: { type: kind, percent: 4, direction: "up" };
 		case "trailingStop":
 			return { type: kind, percent: 3, activatePercent: 0 };
+		case "entryAtr":
+			return group === "stopLoss"
+				? { type: kind, timeframe, period: 14, multiple: 2, direction: "down" }
+				: { type: kind, timeframe, period: 14, multiple: 3, direction: "up" };
+		case "trailingAtr":
+			return {
+				type: kind,
+				timeframe,
+				period: 14,
+				multiple: 3,
+				activateMultiple: 0,
+			};
 		case "holdingBars":
 			return { type: kind, timeframe, bars: 24 };
 		default: {
@@ -864,6 +881,78 @@ function ConditionRow({
 				</>
 			);
 			break;
+		case "entryAtr":
+		case "trailingAtr": {
+			// 足は ATR の前に置く（「1時間足で」と頭に付けると、買値からの幅まで足で決まるように読めるため）
+			const atr = (
+				<>
+					<TimeframeSelect
+						value={c.timeframe}
+						onChange={(timeframe) => onChange({ ...c, timeframe })}
+						label="ATR の足"
+						invalid={bad("timeframe")}
+					/>
+					<span>の ATR</span>
+					<NumberInput
+						value={c.period}
+						onChange={(period) => onChange({ ...c, period })}
+						invalid={bad("period")}
+						inputMode="numeric"
+						aria-label="ATR の本数"
+						className="w-16"
+					/>
+					<span>本の</span>
+					<NumberInput
+						value={c.multiple}
+						onChange={(multiple) => onChange({ ...c, multiple })}
+						invalid={bad("multiple")}
+						inputMode="decimal"
+						aria-label="ATR の倍数"
+						className="w-16"
+					/>
+					<span>倍</span>
+				</>
+			);
+			body =
+				c.type === "entryAtr" ? (
+					<>
+						<span>買値から</span>
+						{atr}
+						<select
+							aria-label="上下"
+							value={c.direction}
+							onChange={(e) =>
+								onChange({ ...c, direction: e.target.value as "up" | "down" })
+							}
+							className={selectClass}
+						>
+							<option value="up">上がった</option>
+							<option value="down">下がった</option>
+						</select>
+					</>
+				) : (
+					<>
+						<span>買ってからの最高値から</span>
+						{atr}
+						<span>下がった</span>
+						<span className="flex basis-full flex-wrap items-center gap-1.5">
+							<span>発動: 最高値が買値から ATR の</span>
+							<NumberInput
+								value={c.activateMultiple}
+								onChange={(activateMultiple) =>
+									onChange({ ...c, activateMultiple })
+								}
+								invalid={bad("activateMultiple")}
+								inputMode="decimal"
+								aria-label="発動する最高値の買値からの ATR の倍数"
+								className="w-16"
+							/>
+							<span>倍以上になってから（0 は買った直後から）</span>
+						</span>
+					</>
+				);
+			break;
+		}
 		case "holdingBars":
 			body = (
 				<>
@@ -946,7 +1035,7 @@ function ConditionRow({
 		<fieldset className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-1.5 gap-y-1 rounded-[10px] bg-bg py-2 pr-1 pl-3">
 			<legend className="sr-only">{label}</legend>
 			<div className="flex flex-wrap items-center gap-1.5 text-sm leading-normal">
-				{hasTimeframe(c) && (
+				{hasTimeframe(c) && !isAtrCondition(c) && (
 					<>
 						<TimeframeSelect
 							value={c.timeframe}

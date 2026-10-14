@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { adx, bollinger, ema, rsi, trueRange } from "./indicators";
+import { adx, atr, bollinger, ema, rsi, trueRange } from "./indicators";
 
 describe("ema", () => {
 	test("最初の period 本の単純平均を起点にする", () => {
@@ -108,5 +108,40 @@ describe("adx", () => {
 
 	test("本数が 2 × period 未満ならすべて NaN", () => {
 		expect(adx(ADX_BARS.slice(0, 3), 2).every(Number.isNaN)).toBe(true);
+	});
+});
+
+describe("atr", () => {
+	test("最初の period 本の TR の平均を起点にし、以降は 1/period で平滑化する", () => {
+		const out = atr(
+			bars([
+				[10, 8, 9],
+				// TR: max(12−9, |12−9|, |9−9|) = 3
+				[12, 9, 11],
+				// 前の終値より下に窓を開けた: max(9−8, |9−11|, |8−11|) = 3
+				[9, 8, 8.5],
+				// 前の終値より上に窓を開けた: max(11−10, |11−8.5|, |10−8.5|) = 2.5
+				[11, 10, 10.5],
+			]),
+			2,
+		);
+		expect(out[0]).toBeNaN();
+		expect(out[1]).toBeNaN();
+		// (3 + 3) / 2
+		expect(out[2]).toBe(3);
+		// (3 × 1 + 2.5) / 2
+		expect(out[3]).toBe(2.75);
+	});
+
+	test("本数が period 以下ならすべて NaN", () => {
+		expect(
+			atr(
+				bars([
+					[2, 1, 1],
+					[2, 1, 1],
+				]),
+				2,
+			).every(Number.isNaN),
+		).toBe(true);
 	});
 });

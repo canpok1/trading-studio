@@ -6,6 +6,7 @@ import {
 	CONDITION_GROUPS,
 	FREQUENCY_UNIT_LABELS,
 	hasTimeframe,
+	isAtrCondition,
 } from "./condition-strategy";
 import { formatBtc, formatYen } from "./format";
 import type { AggregationRule, Judge } from "./news-judgment";
@@ -22,10 +23,15 @@ import type { FeeRates } from "./trading";
 const freq = (f: Frequency) => `${f.value}${FREQUENCY_UNIT_LABELS[f.unit]}`;
 const pct = (ppm: number) => `${ppm / 10_000}%`;
 
-/** 条件1つ。戦略画面の条件の文言に揃える。足を持つ条件は頭に「1時間足で」のように足を付ける */
+/**
+ * 条件1つ。戦略画面の条件の文言に揃える。足を持つ条件は頭に「1時間足で」のように足を付ける。
+ * ATR の条件は足を ATR の前に置く（買値・最高値からの幅だけが足で決まるため）
+ */
 export function conditionScreenText(c: Condition): string {
 	const body = conditionBody(c);
-	return hasTimeframe(c) ? `${TIMEFRAME_LABELS[c.timeframe]}で ${body}` : body;
+	return hasTimeframe(c) && !isAtrCondition(c)
+		? `${TIMEFRAME_LABELS[c.timeframe]}で ${body}`
+		: body;
 }
 
 function conditionBody(c: Condition): string {
@@ -50,6 +56,10 @@ function conditionBody(c: Condition): string {
 			return `買値から ${c.percent}% ${c.direction === "up" ? "上がった" : "下がった"}`;
 		case "trailingStop":
 			return `買ってからの最高値から ${c.percent}% 下がった${c.activatePercent > 0 ? `（最高値が買値から ${c.activatePercent}% 以上になってから発動）` : ""}`;
+		case "entryAtr":
+			return `買値から ${TIMEFRAME_LABELS[c.timeframe]}の ATR ${c.period} 本の ${c.multiple} 倍 ${c.direction === "up" ? "上がった" : "下がった"}`;
+		case "trailingAtr":
+			return `買ってからの最高値から ${TIMEFRAME_LABELS[c.timeframe]}の ATR ${c.period} 本の ${c.multiple} 倍 下がった${c.activateMultiple > 0 ? `（最高値が買値から ATR の ${c.activateMultiple} 倍以上になってから発動）` : ""}`;
 		case "holdingBars":
 			return `買ってから ${c.bars} 本経った`;
 		case "judgment":

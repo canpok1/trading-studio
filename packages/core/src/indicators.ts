@@ -145,3 +145,26 @@ export function adx(candles: readonly Bar[], period: number): number[] {
 	}
 	return out;
 }
+
+/**
+ * ATR（Wilder 方式）。最初の period 本の TR の単純平均を起点にし、以降は 1/period で平滑化する。
+ * TR に前の足が要るので、period 本目（0 始まり）より前は NaN
+ */
+export function atr(candles: readonly Bar[], period: number): number[] {
+	const out = new Array<number>(candles.length).fill(Number.NaN);
+	if (candles.length <= period) {
+		return out;
+	}
+	const tr = trueRange(candles);
+	let sum = 0;
+	for (let i = 1; i <= period; i++) {
+		sum += tr[i] as number;
+	}
+	let prev = sum / period;
+	out[period] = prev;
+	for (let i = period + 1; i < candles.length; i++) {
+		prev = (prev * (period - 1) + (tr[i] as number)) / period;
+		out[i] = prev;
+	}
+	return out;
+}

@@ -58,6 +58,10 @@ function conditionBody(c: Condition): string {
 			return `${c.direction === "up" ? "+" : "−"}${c.percent}%`;
 		case "trailingStop":
 			return `最高値−${c.percent}%${c.activatePercent > 0 ? `（+${c.activatePercent}%で発動）` : ""}`;
+		case "entryAtr":
+			return `${c.direction === "up" ? "+" : "−"}ATR${c.period}×${c.multiple}`;
+		case "trailingAtr":
+			return `最高値−ATR${c.period}×${c.multiple}${c.activateMultiple > 0 ? `（+ATR×${c.activateMultiple}で発動）` : ""}`;
 		case "holdingBars":
 			return `${c.bars}本保有`;
 		case "judgment":

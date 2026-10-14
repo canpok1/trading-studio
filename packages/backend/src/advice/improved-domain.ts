@@ -51,6 +51,8 @@ const CONDITION: ResponseSchema = {
 				"adx=ADX period 本が threshold 以上(direction=above)/以下(below)。トレンドの強さだけを見る（向きは見ない）。",
 				"entryChange=買値から percent % 上がった(direction=up)/下がった(down)。売りの条件だけ。",
 				"trailingStop=買ってからの最高値から percent % 下がった。最高値が買値から activatePercent % 以上になってから発動（0 は買った直後から）。売りの条件だけ。",
+				"entryAtr=買値から、買った時点の timeframe の足の ATR period 本の multiple 倍 上がった(direction=up)/下がった(down)。売りの条件だけ。",
+				"trailingAtr=買ってからの最高値から、買った時点の timeframe の足の ATR period 本の multiple 倍 下がった。最高値が買値から ATR の activateMultiple 倍以上になってから発動（0 は買った直後から）。売りの条件だけ。",
 				"holdingBars=買ってから timeframe の足で bars 本経った。売りの条件だけ。",
 				"judgment=judge の判定が values のどれか",
 			].join(""),
@@ -65,26 +67,34 @@ const CONDITION: ResponseSchema = {
 				"adx",
 				"entryChange",
 				"trailingStop",
+				"entryAtr",
+				"trailingAtr",
 				"holdingBars",
 				"judgment",
 			],
 		),
 		timeframe: opt(
 			str(
-				`条件の足。emaCross・breakout・rsi・rsiCross・emaPosition・emaSlope・bollinger・adx・holdingBars では必須で、本数はこの足で数える。${TIMEFRAMES.map((t) => `${t}=${TIMEFRAME_LABELS[t]}`).join("・")}`,
+				`条件の足。emaCross・breakout・rsi・rsiCross・emaPosition・emaSlope・bollinger・adx・entryAtr・trailingAtr・holdingBars では必須で、本数はこの足で数える。${TIMEFRAMES.map((t) => `${t}=${TIMEFRAME_LABELS[t]}`).join("・")}`,
 				TIMEFRAMES,
 			),
 		),
 		fast: opt(int("短期EMAの本数")),
 		slow: opt(int("長期EMAの本数")),
 		lookback: opt(int("直近の本数")),
-		period: opt(int("RSI・EMA・ボリンジャーバンド・ADX の本数")),
+		period: opt(int("RSI・EMA・ボリンジャーバンド・ADX・ATR の本数")),
 		threshold: opt(int("RSI・ADX のしきい値")),
 		sigma: opt(num("ボリンジャーバンドの σ")),
 		band: opt(str("ボリンジャーバンドの上限・下限", ["upper", "lower"])),
 		percent: opt(num("%")),
 		activatePercent: opt(
 			num("trailingStop を発動する、最高値の買値からの %。0 は買った直後から"),
+		),
+		multiple: opt(num("entryAtr・trailingAtr の ATR の倍数")),
+		activateMultiple: opt(
+			num(
+				"trailingAtr を発動する、最高値の買値からの ATR の倍数。0 は買った直後から",
+			),
 		),
 		bars: opt(
 			int(

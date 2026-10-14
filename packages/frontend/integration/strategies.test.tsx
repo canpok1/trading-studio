@@ -332,6 +332,47 @@ describe("戦略の編集", () => {
 		);
 	});
 
+	test("買値・最高値からの ATR の倍数を既定値で足して保存でき、倍数が 0.1 刻みでなければ保存できない", async () => {
+		let view = await open(strategiesApi());
+		await createFromTemplate(view, "ATR", /^トレンド追随/);
+		const tp = "売り注文（利確）する条件";
+		const sl = "売り注文（損切り）する条件";
+
+		addCondition(view, tp, "買値からの ATR の倍数");
+		const entry = () => row(view, tp, "ATR の本数");
+		expect(value(entry().getByLabelText("ATR の足"))).toBe("1h");
+		expect(value(entry().getByLabelText("ATR の本数"))).toBe("14");
+		expect(value(entry().getByLabelText("ATR の倍数"))).toBe("3");
+		expect(value(entry().getByLabelText("上下"))).toBe("up");
+		addCondition(view, sl, "買ってからの最高値からの ATR の倍数");
+		const trail = () => row(view, sl, "ATR の本数");
+		expect(value(trail().getByLabelText("ATR の倍数"))).toBe("3");
+		expect(
+			value(trail().getByLabelText("発動する最高値の買値からの ATR の倍数")),
+		).toBe("0");
+
+		changeValue(trail().getByLabelText("ATR の倍数"), "2.55");
+		expect(trail().getByText("0.1〜20、0.1 刻みで入れる")).toBeTruthy();
+		expect(blocked(view)).toBe(true);
+		changeValue(trail().getByLabelText("ATR の倍数"), "2.5");
+		changeValue(
+			trail().getByLabelText("発動する最高値の買値からの ATR の倍数"),
+			"1",
+		);
+		await save(view);
+
+		view = await reopen(view);
+		expect(value(region(view, tp).getByLabelText("ATR の倍数"))).toBe("3");
+		expect(value(region(view, sl).getByLabelText("ATR の倍数"))).toBe("2.5");
+		expect(
+			value(
+				region(view, sl).getByLabelText(
+					"発動する最高値の買値からの ATR の倍数",
+				),
+			),
+		).toBe("1");
+	});
+
 	test("ADX を買いと売りに足すと既定は 14 本・20 以上/以下になり、範囲外のしきい値は保存できない", async () => {
 		let view = await open(strategiesApi());
 		await createFromTemplate(view, "ADX", /^トレンド追随/);

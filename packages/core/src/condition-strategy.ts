@@ -1,7 +1,7 @@
 // 画面で作る「条件のセット」を実行する汎用の条件戦略
 
 import { formatBtc, formatYen } from "./format";
-import { adx, bollinger, ema, rsi } from "./indicators";
+import { adx, atr, bollinger, ema, rsi } from "./indicators";
 import { limitBuyPriceBelow, notionalYen, SATOSHI_PER_BTC } from "./money";
 import type {
 	Judge,
@@ -25,6 +25,7 @@ import type {
 } from "./strategy";
 import type { Timeframe } from "./timeframe";
 import {
+	candleStart,
 	isCoarser,
 	isTimeframe,
 	TIMEFRAME_LABELS,
@@ -123,6 +124,25 @@ export type Condition =
 	 * 売りのグループだけで使える
 	 */
 	| { type: "trailingStop"; percent: number; activatePercent: number }
+	/** 現在値が買値から、そのロットを買った時点の ATR(period) の multiple 倍以上 上がった（up）/ 下がった（down）。売りのグループだけで使える */
+	| {
+			type: "entryAtr";
+			timeframe: Timeframe;
+			period: number;
+			multiple: number;
+			direction: "up" | "down";
+	  }
+	/**
+	 * 現在値が買ってからの最高値から、そのロットを買った時点の ATR(period) の multiple 倍以上 下がった。
+	 * 最高値が買値から ATR の activateMultiple 倍以上になるまでは成立しない（0 は買った直後から）。売りのグループだけで使える
+	 */
+	| {
+			type: "trailingAtr";
+			timeframe: Timeframe;
+			period: number;
+			multiple: number;
+			activateMultiple: number;
+	  }
 	/** 買ってから timeframe の足で bars 本ぶんの時間が経った。売りのグループだけで使える */
 	| { type: "holdingBars"; timeframe: Timeframe; bars: number }
 	/** AI の判定が values のどれか。判定がまだ無いときは values に NO_JUDGMENT があれば成立。どのグループでも使える */
@@ -143,11 +163,23 @@ export const TIMEFRAME_CONDITION_TYPES = [
 	"emaSlope",
 	"bollinger",
 	"adx",
+	"entryAtr",
+	"trailingAtr",
 	"holdingBars",
 ] as const satisfies readonly TimeframeCondition["type"][];
 
 export function hasTimeframe(c: Condition): c is TimeframeCondition {
 	return (TIMEFRAME_CONDITION_TYPES as readonly string[]).includes(c.type);
+}
+
+/** 買った時点の ATR で見る条件 */
+export type AtrCondition = Extract<
+	Condition,
+	{ type: "entryAtr" | "trailingAtr" }
+>;
+
+export function isAtrCondition(c: Condition): c is AtrCondition {
+	return c.type === "entryAtr" || c.type === "trailingAtr";
 }
 
 /** 足のデータで指標を計算する条件 */
@@ -344,6 +376,11 @@ export const LIMITS = {
 	percent: { min: 0.1, max: 100 },
 	/** トレーリングストップを発動する、最高値の買値からの %。0 は買った直後から */
 	trailingActivatePercent: { min: 0, max: 100 },
+	atrPeriod: { min: 2, max: 100 },
+	/** ATR の何倍か。0.1 刻み */
+	atrMultiple: { min: 0.1, max: 20 },
+	/** ATR のトレーリングを発動する、最高値の買値からの ATR の倍数。0 は買った直後から。0.1 刻み */
+	atrActivateMultiple: { min: 0, max: 20 },
 	/** 一部利確で売る割合（%、整数） */
 	partialSellPercent: { min: 1, max: 99 },
 	/** EMA の傾きで何本前と比べるか */
@@ -391,8 +428,12 @@ export type Series = {
 	emaCache: Map<number, number[]>;
 	rsiCache: Map<number, number[]>;
 	bollingerCache: Map<string, ReturnType<typeof bollinger>>;
+	atrCache: Map<number, number[]>;
 	adxCache: Map<number, number[]>;
 };
+
+/** ロットを買った時点の ATR。current は、買った時点の足が足りず判定時の ATR で代えたもの */
+export type LotAtr = { atr: number; current: boolean };
 
 export type Ctx = {
 	/** 粒度ごとの足。渡されていない粒度は足が0本 */
@@ -406,6 +447,8 @@ export type Ctx = {
 		entryPrice: number;
 		openedAt: number;
 		peak: number;
+		/** 買った時点の ATR。キーは atrKey */
+		atrs: Record<string, LotAtr>;
 	} | null;
 };
 
@@ -416,6 +459,7 @@ export function seriesOf(candles: readonly Candle[]): Series {
 		emaCache: new Map(),
 		rsiCache: new Map(),
 		bollingerCache: new Map(),
+		atrCache: new Map(),
 		adxCache: new Map(),
 	};
 }
@@ -434,6 +478,15 @@ export function rsiOf(ctx: Series, period: number): number[] {
 	if (!v) {
 		v = rsi(ctx.closes, period);
 		ctx.rsiCache.set(period, v);
+	}
+	return v;
+}
+
+export function atrOf(ctx: Series, period: number): number[] {
+	let v = ctx.atrCache.get(period);
+	if (!v) {
+		v = atr(ctx.candles, period);
+		ctx.atrCache.set(period, v);
 	}
 	return v;
 }
@@ -458,6 +511,8 @@ export function minBars(c: CandleCondition): number {
 		case "breakout":
 			return c.lookback + 1;
 		case "rsi":
+		case "entryAtr":
+		case "trailingAtr":
 			return c.period + 1;
 		// 最も古い足でのクロスに、その前の足の RSI が要る
 		case "rsiCross":
@@ -677,6 +732,51 @@ export function checkCondition(c: Condition, ctx: Ctx): Hit {
 					}
 				: { ok: false };
 		}
+		case "entryAtr":
+		case "trailingAtr": {
+			if (ctx.lot === null) {
+				return { ok: false };
+			}
+			const need = minBars(c);
+			if (n < need) {
+				return {
+					insufficient: `${tf}ATR(${c.period}) に ${need} 本必要、現在 ${n} 本`,
+				};
+			}
+			const { entryPrice, peak } = ctx.lot;
+			const a = lotAtrOf(c, ctx);
+			const name = `${tf}ATR(${c.period}) ${formatYen(a.atr)} 円`;
+			// 代えたことは別の文にする（売りのバッジが条件の文の終わりから条件名を読むため）
+			const fallback = a.current
+				? "。買った時点の ATR を求める足が足りないため、今の ATR で代えた"
+				: "";
+			if (c.type === "entryAtr") {
+				const up = c.direction === "up";
+				const line = entryAtrLine(c, entryPrice, a.atr);
+				return (up ? ctx.price >= line : ctx.price <= line)
+					? {
+							ok: true,
+							why: `現在値 ${formatYen(ctx.price)} 円が基準 ${formatYen(line)} 円（買値 ${formatYen(entryPrice)} 円 ${up ? "+" : "−"} ${name} × ${c.multiple}）${up ? "以上" : "以下"}${fallback}`,
+						}
+					: { ok: false };
+			}
+			// 最高値が買値から ATR の activateMultiple 倍以上になるまでは発動しない
+			const t = trailingAtrLines(c, entryPrice, peak, a.atr);
+			if (!t.active) {
+				return { ok: false };
+			}
+			const line = t.line;
+			const since =
+				c.activateMultiple > 0
+					? `。最高値が買値から ATR の ${c.activateMultiple} 倍以上になってから発動`
+					: "";
+			return ctx.price <= line
+				? {
+						ok: true,
+						why: `現在値 ${formatYen(ctx.price)} 円が基準 ${formatYen(line)} 円（買ってからの最高値 ${formatYen(peak)} 円 − ${name} × ${c.multiple}）以下${since}${fallback}`,
+					}
+				: { ok: false };
+		}
 		case "adx": {
 			const need = minBars(c);
 			if (n < need) {
@@ -694,6 +794,46 @@ export function checkCondition(c: Condition, ctx: Ctx): Hit {
 				: { ok: false };
 		}
 	}
+}
+
+/** 条件の足と本数ごとの、ロットを買った時点の ATR のキー */
+export const atrKey = (c: { timeframe: Timeframe; period: number }) =>
+	`${c.timeframe}:${c.period}`;
+
+/** 買値からの ATR の条件が成立する価格 */
+export function entryAtrLine(
+	c: Extract<Condition, { type: "entryAtr" }>,
+	entryPrice: number,
+	atrValue: number,
+): number {
+	const width = atrValue * c.multiple;
+	return c.direction === "up" ? entryPrice + width : entryPrice - width;
+}
+
+/** 最高値からの ATR の条件の、発動する最高値（activate）と成立する価格（line）。active は発動済みか */
+export function trailingAtrLines(
+	c: Extract<Condition, { type: "trailingAtr" }>,
+	entryPrice: number,
+	peak: number,
+	atrValue: number,
+): { activate: number; active: boolean; line: number } {
+	const activate = entryPrice + atrValue * c.activateMultiple;
+	return {
+		activate,
+		active: c.activateMultiple <= 0 || peak >= activate,
+		line: peak - atrValue * c.multiple,
+	};
+}
+
+/** ロットを買った時点の ATR。判定の前に求めておく（lotEntryAtrs）が、無ければ判定時の ATR で代える */
+export function lotAtrOf(c: AtrCondition, ctx: Ctx): LotAtr {
+	const saved = ctx.lot?.atrs[atrKey(c)];
+	if (saved) return saved;
+	const sr = ctx.series(c.timeframe);
+	return {
+		atr: atrOf(sr, c.period)[sr.candles.length - 1] as number,
+		current: true,
+	};
 }
 
 /** 足に依らない条件と、買ってからの本数 */
@@ -941,6 +1081,8 @@ function candleNeed(c: CandleCondition): number {
 			return c.slow * EMA_HISTORY_FACTOR + 1;
 		case "emaPosition":
 		case "rsi":
+		case "entryAtr":
+		case "trailingAtr":
 			return c.period * EMA_HISTORY_FACTOR + 1;
 		case "emaSlope":
 		case "rsiCross":
@@ -959,9 +1101,7 @@ function candleNeed(c: CandleCondition): number {
  * 使わなければ 0
  */
 export function recentMs(params: ConditionSet): number {
-	return usesCondition(params, "trailingStop")
-		? frequencyMs(params.frequency.holding)
-		: 0;
+	return usesPeaks(params) ? frequencyMs(params.frequency.holding) : 0;
 }
 
 function isIntIn(v: unknown, r: { min: number; max: number }): v is number {
@@ -1186,6 +1326,30 @@ function validateBuyRule(
 					}
 					break;
 				}
+				case "entryAtr":
+				case "trailingAtr": {
+					if (g === "buy") {
+						err(at, "ATR の条件は売りの条件だけで使える");
+						break;
+					}
+					if (!isIntIn(c.period, LIMITS.atrPeriod)) {
+						err(`${at}.period`, `${range(LIMITS.atrPeriod)} の整数で入れる`);
+					}
+					const tenth = (v: number) =>
+						Math.abs(v * 10 - Math.round(v * 10)) <= 1e-9;
+					const m = LIMITS.atrMultiple;
+					if (!isNumIn(c.multiple, m) || !tenth(c.multiple)) {
+						err(`${at}.multiple`, `${range(m)}、0.1 刻みで入れる`);
+					}
+					const r = LIMITS.atrActivateMultiple;
+					if (
+						c.type === "trailingAtr" &&
+						(!isNumIn(c.activateMultiple, r) || !tenth(c.activateMultiple))
+					) {
+						err(`${at}.activateMultiple`, `${range(r)}、0.1 刻みで入れる`);
+					}
+					break;
+				}
 				case "holdingBars":
 					if (g === "buy") {
 						err(at, "保有本数は売りの条件だけで使える");
@@ -1332,6 +1496,71 @@ export function usesCondition(p: ConditionSet, type: ConditionType): boolean {
 	return allGroups(p).some((g) => g.conditions.some((c) => c.type === type));
 }
 
+/** 買ってからの最高値を使うか */
+export function usesPeaks(p: ConditionSet): boolean {
+	return usesCondition(p, "trailingStop") || usesCondition(p, "trailingAtr");
+}
+
+/** ATR の条件を使うか */
+export function usesAtr(p: ConditionSet): boolean {
+	return usesCondition(p, "entryAtr") || usesCondition(p, "trailingAtr");
+}
+
+/**
+ * ロットごと・ATR の条件の足と本数ごとの、ロットを買った時点の ATR。
+ * 約定時刻を含む足の1本前までの確定した足で計算する。前回までに求めた値（state）があればそれを使う。
+ * state は自動取引をオンにし直すと消えるため、渡された足から求め直す。足りなければ判定時の ATR で代える
+ */
+export function lotEntryAtrs(
+	p: ConditionSet,
+	lots: StrategyInput<ConditionSet>["lots"],
+	series: Ctx["series"],
+	state: JsonValue,
+): Record<string, Record<string, LotAtr>> {
+	const saved =
+		isObj(state) && isObj(state.entryAtrs)
+			? (state.entryAtrs as Record<string, unknown>)
+			: {};
+	const out: Record<string, Record<string, LotAtr>> = {};
+	for (const lot of lots) {
+		const rule = buyRuleOf(p, lot.buyId);
+		const prev = saved[lot.id];
+		const mine: Record<string, LotAtr> = {};
+		for (const key of CONDITION_GROUPS) {
+			for (const c of rule[key].conditions) {
+				if (!isAtrCondition(c)) continue;
+				const k = atrKey(c);
+				if (k in mine) continue;
+				const kept = isObj(prev) ? prev[k] : undefined;
+				if (
+					isObj(kept) &&
+					typeof kept.atr === "number" &&
+					Number.isFinite(kept.atr) &&
+					typeof kept.current === "boolean"
+				) {
+					mine[k] = { atr: kept.atr, current: kept.current };
+					continue;
+				}
+				const { candles } = series(c.timeframe);
+				const start = candleStart(lot.openedAt, c.timeframe);
+				const end = candles.findIndex((x) => x.time >= start);
+				const before = end < 0 ? candles : candles.slice(0, end);
+				const atEntry = atr(before, c.period).at(-1);
+				if (atEntry !== undefined && Number.isFinite(atEntry)) {
+					mine[k] = { atr: atEntry, current: false };
+					continue;
+				}
+				const now = atrOf(series(c.timeframe), c.period).at(-1);
+				if (now !== undefined && Number.isFinite(now)) {
+					mine[k] = { atr: now, current: true };
+				}
+			}
+		}
+		out[lot.id] = mine;
+	}
+	return out;
+}
+
 /**
  * ロットごとの、買ってからの最高値。前回までの最高値（state）と、渡された直近の細かい足のうち約定より後の値動きから求める。
  * state は自動取引をオンにし直すと消えるため、足だけでも求められる形にしている
@@ -1405,8 +1634,9 @@ export function evaluateConditionSet(
 	const buyHits = prevBuyHits(state, p);
 	const cooldown = p.stopLossCooldownBars > 0;
 	let stopLossAt = cooldown ? prevStopLossAt(state) : null;
-	const peaks = usesCondition(p, "trailingStop")
-		? lotPeaks(lots, input.recent, state)
+	const peaks = usesPeaks(p) ? lotPeaks(lots, input.recent, state) : null;
+	const entryAtrs = usesAtr(p)
+		? lotEntryAtrs(p, lots, ctx.series, state)
 		: null;
 
 	// 売り: ロットごとに、ロットを買った買いの条件で判定する。同じ判定で利確と損切りの両方が成立したら損切りを優先する（損失を小さく見積もらないため）
@@ -1425,6 +1655,7 @@ export function evaluateConditionSet(
 					entryPrice: lot.entryPrice,
 					openedAt: lot.openedAt,
 					peak: peaks?.[lot.id] ?? lot.entryPrice,
+					atrs: entryAtrs?.[lot.id] ?? {},
 				},
 			};
 			const done = lot.partialExitDone ?? false;
@@ -1569,11 +1800,12 @@ export function evaluateConditionSet(
 
 	const hasHits = Object.keys(buyHits).length > 0;
 	const nextState: JsonValue =
-		!hasHits && peaks === null && stopLossAt === null
+		!hasHits && peaks === null && entryAtrs === null && stopLossAt === null
 			? null
 			: {
 					...(hasHits ? { buyHits } : {}),
 					...(peaks === null ? {} : { peaks }),
+					...(entryAtrs === null ? {} : { entryAtrs }),
 					...(stopLossAt === null ? {} : { stopLossAt }),
 				};
 	return { intents, nextEvalAt, state: nextState, note: notes.join("。") };
@@ -1776,6 +2008,25 @@ function parseCondition(
 				// 発動の % を持つ前の条件は、買った直後から発動する
 				activatePercent:
 					v.activatePercent === undefined ? 0 : num(v.activatePercent),
+			};
+		case "entryAtr":
+			if (v.direction !== "up" && v.direction !== "down") return null;
+			return {
+				type: "entryAtr",
+				timeframe,
+				period: num(v.period),
+				multiple: num(v.multiple),
+				direction: v.direction,
+			};
+		case "trailingAtr":
+			return {
+				type: "trailingAtr",
+				timeframe,
+				period: num(v.period),
+				multiple: num(v.multiple),
+				// 発動の倍数を省いた条件（AI の改善案・MCP）は、買った直後から発動する
+				activateMultiple:
+					v.activateMultiple === undefined ? 0 : num(v.activateMultiple),
 			};
 		case "holdingBars":
 			return { type: "holdingBars", timeframe, bars: num(v.bars) };
