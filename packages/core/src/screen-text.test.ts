@@ -142,4 +142,16 @@ describe("条件の文言", () => {
 			"買ってからの最高値から 1時間足の ATR 14 本の 3 倍 下がった（最高値が買値から ATR の 1 倍以上になってから発動）",
 		);
 	});
+
+	test("ADX は足・本数・しきい値・以上/以下で書く", () => {
+		expect(
+			conditionScreenText({
+				type: "adx",
+				timeframe: "1h",
+				period: 14,
+				threshold: 20,
+				direction: "above",
+			}),
+		).toBe("1時間足で ADX 14 本が 20 以上");
+	});
 });

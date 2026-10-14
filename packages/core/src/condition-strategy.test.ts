@@ -1345,6 +1345,93 @@ describe("ボリンジャーバンド", () => {
 	});
 });
 
+describe("ADX", () => {
+	const above: Condition = {
+		type: "adx",
+		timeframe: "1h",
+		period: 2,
+		threshold: 40,
+		direction: "above",
+	};
+	// 高値・安値・終値。ADX(2) は最後の足で 46.67（indicators.test.ts の手計算と同じ足）
+	const hlc: Candle[] = [
+		[10, 8, 9],
+		[12, 9, 11],
+		[13, 10, 12],
+		[12, 9, 10],
+		[11, 8, 9],
+	].map(([high, low, close], i) => ({
+		time: i * H,
+		open: close as number,
+		high: high as number,
+		low: low as number,
+		close: close as number,
+		volume: 0,
+	}));
+
+	test("ADX がしきい値以上なら成立し、値を記録に残す", () => {
+		const out = evaluateConditionSet(input(hlc, buyWith(above)));
+		expect(out.intents).toHaveLength(1);
+		expect(out.note).toContain("1時間足のADX(2) 46.7 が 40 以上");
+	});
+
+	test("以下は超えれば成立しない", () => {
+		const below = (threshold: number): Condition => ({
+			...above,
+			threshold,
+			direction: "below",
+		});
+		expect(
+			evaluateConditionSet(input(hlc, buyWith(below(40)))).intents,
+		).toHaveLength(0);
+		expect(
+			evaluateConditionSet(input(hlc, buyWith(below(47)))).intents,
+		).toHaveLength(1);
+	});
+
+	test("本数が 2 × 期間 + 1 に足りない間は判定しない", () => {
+		const out = evaluateConditionSet(input(hlc.slice(0, 4), buyWith(above)));
+		expect(out.intents).toHaveLength(0);
+		expect(out.note).toContain("ADX(2) に 5 本必要、現在 4 本");
+	});
+
+	test("期間は 2〜100、しきい値は 1〜99 の整数", () => {
+		const errs = validateConditionSet(
+			params({
+				buy: {
+					match: "all",
+					conditions: [
+						{ ...above, period: 1 },
+						{ ...above, threshold: 100 },
+						{ ...above, threshold: 20.5 },
+						{ ...above, period: 100, threshold: 99 },
+						{ ...above, period: 2, threshold: 1 },
+					],
+				},
+				stopLoss: { match: "any", conditions: [above] },
+			}),
+		);
+		expect(errs.map((e) => e.path)).toEqual([
+			"buy.conditions.0.period",
+			"buy.conditions.1.threshold",
+			"buy.conditions.2.threshold",
+		]);
+	});
+
+	test("必要な足の本数は 2 × 期間 × 10 + 1。JSON から読み戻せる", () => {
+		const p = buyWith({ ...above, period: 14 });
+		expect(candleNeeds(p)["1h"]).toBe(281);
+		expect(parseConditionSet(JSON.parse(JSON.stringify(p)))).toEqual(p);
+		expect(
+			parseConditionSet(
+				JSON.parse(
+					JSON.stringify(buyWith({ ...above, direction: "up" as "above" })),
+				),
+			),
+		).toBeNull();
+	});
+});
+
 describe("トレーリングストップ", () => {
 	const trail: Condition = {
 		type: "trailingStop",

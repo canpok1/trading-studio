@@ -373,6 +373,32 @@ describe("戦略の編集", () => {
 		).toBe("1");
 	});
 
+	test("ADX を買いと売りに足すと既定は 14 本・20 以上/以下になり、範囲外のしきい値は保存できない", async () => {
+		let view = await open(strategiesApi());
+		await createFromTemplate(view, "ADX", /^トレンド追随/);
+		const buy = "買い注文する条件";
+		const sl = "売り注文（損切り）する条件";
+
+		addCondition(view, buy, /^ADX/);
+		const b = () => row(view, buy, "ADX の本数");
+		expect(value(b().getByLabelText("ADX の本数"))).toBe("14");
+		expect(value(b().getByLabelText("ADX のしきい値"))).toBe("20");
+		expect(value(b().getByLabelText("以上・以下"))).toBe("above");
+		addCondition(view, sl, /^ADX/);
+		const s = () => row(view, sl, "ADX の本数");
+		expect(value(s().getByLabelText("以上・以下"))).toBe("below");
+
+		changeValue(b().getByLabelText("ADX のしきい値"), "100");
+		expect(b().getByText("1〜99 の整数で入れる")).toBeTruthy();
+		expect(blocked(view)).toBe(true);
+		changeValue(b().getByLabelText("ADX のしきい値"), "25");
+		await save(view);
+
+		view = await reopen(view);
+		expect(value(b().getByLabelText("ADX のしきい値"))).toBe("25");
+		expect(value(s().getByLabelText("以上・以下"))).toBe("below");
+	});
+
 	test("一部利確の条件と売り方、トレーリングストップの発動を保存でき、残りが下限を下回る割合は保存できない", async () => {
 		let view = await open(strategiesApi());
 		await createFromTemplate(view, "一部利確", /^トレンド追随/);

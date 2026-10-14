@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { atr, bollinger, ema, rsi } from "./indicators";
+import { adx, atr, bollinger, ema, rsi, trueRange } from "./indicators";
 
 describe("ema", () => {
 	test("最初の period 本の単純平均を起点にする", () => {
@@ -58,24 +58,71 @@ describe("bollinger", () => {
 	});
 });
 
-describe("atr", () => {
-	const bar = (high: number, low: number, close: number) => ({
-		high,
-		low,
-		close,
+const bars = (rows: [number, number, number][]) =>
+	rows.map(([high, low, close]) => ({ high, low, close }));
+
+// 高値・安値・終値
+const ADX_BARS = bars([
+	[10, 8, 9],
+	[12, 9, 11],
+	[13, 10, 12],
+	[12, 9, 10],
+	[11, 8, 9],
+]);
+
+describe("trueRange", () => {
+	test("高値−安値・前の終値との差の大きい方。最初の足は NaN", () => {
+		const out = trueRange(
+			bars([
+				[10, 8, 9],
+				[12, 11, 11.5],
+				[10, 9, 9.5],
+			]),
+		);
+		expect(out[0]).toBeNaN();
+		// 高値 12 − 前の終値 9
+		expect(out[1]).toBe(3);
+		// 前の終値 11.5 − 安値 9
+		expect(out[2]).toBe(2.5);
+	});
+});
+
+describe("adx", () => {
+	test("Wilder 方式の手計算と一致する", () => {
+		// period 2: DX は 100・20・33.33。最初の ADX は (100 + 20) / 2、次は (60 + 33.33) / 2
+		const out = adx(ADX_BARS, 2);
+		expect(out.slice(0, 3).every(Number.isNaN)).toBe(true);
+		expect(out[3]).toBeCloseTo(60, 6);
+		expect(out[4]).toBeCloseTo(46.667, 3);
 	});
 
+	test("値動きが無ければ 0", () => {
+		const flat = bars([
+			[5, 5, 5],
+			[5, 5, 5],
+			[5, 5, 5],
+			[5, 5, 5],
+		]);
+		expect(adx(flat, 2)[3]).toBe(0);
+	});
+
+	test("本数が 2 × period 未満ならすべて NaN", () => {
+		expect(adx(ADX_BARS.slice(0, 3), 2).every(Number.isNaN)).toBe(true);
+	});
+});
+
+describe("atr", () => {
 	test("最初の period 本の TR の平均を起点にし、以降は 1/period で平滑化する", () => {
 		const out = atr(
-			[
-				bar(10, 8, 9),
+			bars([
+				[10, 8, 9],
 				// TR: max(12−9, |12−9|, |9−9|) = 3
-				bar(12, 9, 11),
+				[12, 9, 11],
 				// 前の終値より下に窓を開けた: max(9−8, |9−11|, |8−11|) = 3
-				bar(9, 8, 8.5),
+				[9, 8, 8.5],
 				// 前の終値より上に窓を開けた: max(11−10, |11−8.5|, |10−8.5|) = 2.5
-				bar(11, 10, 10.5),
-			],
+				[11, 10, 10.5],
+			]),
 			2,
 		);
 		expect(out[0]).toBeNaN();
@@ -87,6 +134,14 @@ describe("atr", () => {
 	});
 
 	test("本数が period 以下ならすべて NaN", () => {
-		expect(atr([bar(2, 1, 1), bar(2, 1, 1)], 2).every(Number.isNaN)).toBe(true);
+		expect(
+			atr(
+				bars([
+					[2, 1, 1],
+					[2, 1, 1],
+				]),
+				2,
+			).every(Number.isNaN),
+		).toBe(true);
 	});
 });

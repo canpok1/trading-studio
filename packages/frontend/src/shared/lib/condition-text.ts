@@ -52,6 +52,8 @@ function conditionBody(c: Condition): string {
 			return `EMA${c.period}が${c.bars}本前より${c.percent > 0 ? `${c.percent}%以上` : ""}${c.direction === "up" ? "上向き" : "下向き"}`;
 		case "bollinger":
 			return `BB${c.period}/${c.sigma}σ${c.band === "upper" ? "上限以上" : "下限以下"}`;
+		case "adx":
+			return `ADX${c.period} ${c.threshold}${c.direction === "above" ? "以上" : "以下"}`;
 		case "entryChange":
 			return `${c.direction === "up" ? "+" : "−"}${c.percent}%`;
 		case "trailingStop":
