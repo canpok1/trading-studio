@@ -287,7 +287,8 @@ function watchGroup(g: ConditionGroup, ctx: Ctx): WatchGroup {
 			condition: c,
 			met,
 			detail: detailOf(c, ctx),
-			edge: met === null ? null : edgeOf(c, ctx, met),
+			// ADX は今の価格に対して単調でなく、途中の足の高値・安値を超えるまでほぼ動かないので、発動価格を探さない
+			edge: met === null || c.type === "adx" ? null : edgeOf(c, ctx, met),
 		};
 	});
 	if (conditions.length === 0) {

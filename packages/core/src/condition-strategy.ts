@@ -376,7 +376,7 @@ export const DEFAULT_DAILY_LOSS_LIMIT = 30_000;
 /** 損切り後に買わない本数の既定。これを持たない保存済みの戦略もこの本数（止めない）で読む */
 export const DEFAULT_STOP_LOSS_COOLDOWN_BARS = 0;
 
-/** EMA・RSI を途中から計算しても値がほぼ一致するよう、本数のこの倍の足を渡してもらう */
+/** EMA・RSI・ADX（平滑化を重ねる指標）を途中から計算しても値がほぼ一致するよう、本数のこの倍の足を渡してもらう */
 const EMA_HISTORY_FACTOR = 10;
 
 export type Hit =
@@ -928,22 +928,30 @@ export function candleNeeds(
 	for (const g of allGroups(params)) {
 		for (const c of g.conditions) {
 			if (!needsCandles(c)) continue;
-			const n =
-				c.type === "emaCross"
-					? c.slow * EMA_HISTORY_FACTOR + 1
-					: c.type === "emaPosition" || c.type === "rsi"
-						? c.period * EMA_HISTORY_FACTOR + 1
-						: c.type === "emaSlope" || c.type === "rsiCross"
-							? c.period * EMA_HISTORY_FACTOR + c.bars + 1
-							: c.type === "adx"
-								? 2 * c.period * EMA_HISTORY_FACTOR + 1
-								: c.type === "breakout"
-									? c.lookback + 1
-									: c.period;
+			const n = candleNeed(c);
 			out[c.timeframe] = Math.max(out[c.timeframe] ?? 1, n);
 		}
 	}
 	return out;
+}
+
+function candleNeed(c: CandleCondition): number {
+	switch (c.type) {
+		case "emaCross":
+			return c.slow * EMA_HISTORY_FACTOR + 1;
+		case "emaPosition":
+		case "rsi":
+			return c.period * EMA_HISTORY_FACTOR + 1;
+		case "emaSlope":
+		case "rsiCross":
+			return c.period * EMA_HISTORY_FACTOR + c.bars + 1;
+		case "adx":
+			return 2 * c.period * EMA_HISTORY_FACTOR + 1;
+		case "breakout":
+			return c.lookback + 1;
+		case "bollinger":
+			return c.period;
+	}
 }
 
 /**

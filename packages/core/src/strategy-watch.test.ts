@@ -155,7 +155,7 @@ describe("watchConditionSet", () => {
 		expect(at(t + 1)).toBeGreaterThan(30);
 	});
 
-	test("ADX の条件は今の値を小数1桁で出す", () => {
+	test("ADX の条件は今の値を小数1桁で出し、発動価格は持たない", () => {
 		const w = watchConditionSet(
 			input(
 				params([
@@ -180,6 +180,8 @@ describe("watchConditionSet", () => {
 		expect(w.buys[0]?.buy.conditions[0]).toMatchObject({
 			met: v >= 20,
 			detail: `今 ${v.toFixed(1)}`,
+			// 価格に対して単調でないので発動価格を探さない
+			edge: null,
 		});
 	});
 
