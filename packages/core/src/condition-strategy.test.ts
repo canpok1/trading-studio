@@ -2575,6 +2575,17 @@ describe("予定イベントの前後", () => {
 			evaluateConditionSet(input(candles([100]), allow, { now: fomc + H }))
 				.intents,
 		).toHaveLength(0);
+		// 判定の範囲の一部が暦切れでも、暦にあるイベント（2026-12-18 の日銀会合）に当たれば買わない
+		const wide = buyWith({
+			...ev,
+			beforeHours: 168,
+			afterHours: 168,
+			allowNoCalendar: true,
+		});
+		const now = Date.parse("2026-12-25T00:00:00Z");
+		expect(
+			evaluateConditionSet(input(candles([100]), wide, { now })).intents,
+		).toHaveLength(0);
 	});
 
 	test("取得した暦を合わせると、その種類の暦の期間が延びる", () => {

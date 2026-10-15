@@ -69,7 +69,7 @@ function checkInput(
 	if (name.length > NAME_MAX)
 		return { field: "name", message: `${NAME_MAX} 文字以内にする` };
 	try {
-		const u = new URL(input.url.trim());
+		const u = new URL(normalizeUrl(input.url));
 		if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error();
 	} catch {
 		return { field: "url", message: "http(s) の URL を入れる" };
@@ -82,22 +82,32 @@ function checkInput(
 	return null;
 }
 
+/** 購読用の webcal:// は https:// で取る */
+const normalizeUrl = (url: string) =>
+	url.trim().replace(/^webcals?:\/\//i, "https://");
+
 function normalize(input: EventSourceInput): EventSourceInput {
 	const keywords: EventKeywords = {};
 	for (const t of MARKET_EVENTS) {
 		const w = input.keywords[t]?.trim();
 		if (w) keywords[t] = w;
 	}
-	return { name: input.name.trim(), url: input.url.trim(), keywords };
+	return { name: input.name.trim(), url: normalizeUrl(input.url), keywords };
 }
 
 /** JST の日の 0:00 */
 const jstDayStart = (t: number) =>
 	Math.floor((t + JST_OFFSET_MS) / DAY_MS) * DAY_MS - JST_OFFSET_MS;
 
+/** 取得元に載っている予定のうち、そろっている期間に数えるのは取得した時刻の前後この範囲だけ（繰り返しの予定や遠い過去・先の予定で期間が広がりすぎないように） */
+const LISTED_BEFORE_MS = 7 * DAY_MS;
+const LISTED_AFTER_MS = 366 * DAY_MS;
+
 /**
- * 取得した予定から、語に当たるものを暦にする。日銀会合は時刻が決まっていないので JST の日の 0:00〜24:00 にする。
- * そろっている期間は、載っている最初の予定（か取得した時刻）から最後の予定（か取得した時刻）まで。
+ * 取得した予定から、語に当たるものを暦にする。
+ * 日銀会合は時刻が決まっていないので JST の日の 0:00〜24:00、ほかの種類も終日の予定はその日の 24 時間をイベントの時間にする。
+ * そろっている期間は、載っている最初の予定（取得した時刻の LISTED_BEFORE_MS 前まで）から、
+ * 最後の予定（同じく LISTED_AFTER_MS 後まで）か次の取得の予定時刻の遅いほうまで。
  * 前回の取得が CONTINUOUS_MS 以内なら、その時刻からそろっているとみなす
  */
 export function toCalendar(
@@ -119,26 +129,30 @@ export function toCalendar(
 		for (const type of types) {
 			if (!summary.includes((keywords[type] as string).toLowerCase())) continue;
 			const start = type === "boj" ? jstDayStart(item.start) : item.start;
-			events.push({
-				type,
-				start,
-				end: type === "boj" ? start + DAY_MS : start,
-			});
+			const allDay = type === "boj" || item.allDay;
+			events.push({ type, start, end: allDay ? start + DAY_MS : start });
 		}
 	}
-	const starts = items.map((i) => i.start);
-	// 取得した時刻より後で載っていない予定は、移動か取り消しとみなす。前の予定は今週の分だけを載せる取得元で消えるので残す
+	const starts = items
+		.map((i) => i.start)
+		.filter(
+			(t) =>
+				t >= fetchedAt - LISTED_BEFORE_MS && t <= fetchedAt + LISTED_AFTER_MS,
+		);
+	const first = Math.min(fetchedAt, ...starts);
+	const last = Math.max(fetchedAt, ...starts);
+	// 取得した時刻より後で載っていない予定は、移動か取り消しとみなす。前の予定は今週の分だけを載せる取得元で消えるので残す。
+	// 日銀会合は日の 0:00 にずらして持つので、その分も含める
 	const listed = {
-		from: Math.min(fetchedAt, ...starts),
-		until: Math.max(...starts) + 1,
+		from: Math.min(first, ...events.map((e) => e.start)),
+		until: Math.max(last, ...events.map((e) => e.start)) + 1,
 	};
 	const continuous =
 		prevSuccessAt !== null && fetchedAt - prevSuccessAt <= CONTINUOUS_MS;
 	const range = {
-		from: continuous
-			? (prevSuccessAt as number)
-			: Math.min(fetchedAt, ...starts),
-		until: Math.max(fetchedAt, ...starts) + 1,
+		from: continuous ? (prevSuccessAt as number) : first,
+		// 次の取得までに載る予定は、次の取得で拾う。今週の分だけを載せる取得元で、週の最後の予定の後が暦切れにならないように
+		until: Math.max(last + 1, fetchedAt + FETCH_INTERVAL_MS),
 	};
 	return { events, range, listed, types };
 }

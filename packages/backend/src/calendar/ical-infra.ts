@@ -1,4 +1,5 @@
-// iCal（RFC 5545）から予定を読む。依存を増やさないため、予定（VEVENT）の件名と開始時刻だけを読む
+// iCal（RFC 5545）から予定を読む。依存を増やさないため、予定（VEVENT）の件名・開始時刻・取り消しだけを読む。
+// 繰り返し（RRULE）は展開せず初回だけ、時差は IANA の名前（America/New_York など）だけを読み、時差の定義（VTIMEZONE）は読まない
 
 import type { FetchIcal } from "./calendar-domain";
 import type { IcalEvent } from "./repository-domain";
@@ -67,10 +68,8 @@ function parseStart(
 			time ? Number(m[6]) : 0,
 		);
 	try {
-		if (date) {
-			const wall = wallOf(date, false);
-			return { start: tz ? zonedToUtc(wall, tz) : wall, allDay: true };
-		}
+		// 日付だけの値は時差に依らない日付なので、UTC のその日の 0:00 で持つ
+		if (date) return { start: wallOf(date, false), allDay: true };
 		if (dt) {
 			const wall = wallOf(dt, true);
 			if (dt[7] === "Z" || !tz) return { start: wall, allDay: false };
@@ -95,12 +94,16 @@ export function parseIcal(text: string): IcalEvent[] {
 			?.replace(/^[^:]*:/, "")
 			.trim() || null;
 	const out: IcalEvent[] = [];
-	let cur: { summary: string | null; start: IcalEvent | null } | null = null;
+	let cur: {
+		summary: string | null;
+		start: IcalEvent | null;
+		cancelled: boolean;
+	} | null = null;
 	let depth = 0;
 	for (const raw of lines) {
 		const line = raw.trimEnd();
 		if (/^BEGIN:VEVENT$/i.test(line)) {
-			cur = { summary: null, start: null };
+			cur = { summary: null, start: null, cancelled: false };
 			depth = 0;
 			continue;
 		}
@@ -108,7 +111,7 @@ export function parseIcal(text: string): IcalEvent[] {
 		// 予定の中の VALARM などの値は読まない
 		if (/^BEGIN:/i.test(line)) depth++;
 		else if (/^END:VEVENT$/i.test(line)) {
-			if (cur.summary !== null && cur.start) {
+			if (cur.summary !== null && cur.start && !cur.cancelled) {
 				out.push({ ...cur.start, summary: cur.summary });
 			}
 			cur = null;
@@ -118,6 +121,8 @@ export function parseIcal(text: string): IcalEvent[] {
 			if (!m) continue;
 			const name = (m[1] as string).toUpperCase();
 			if (name === "SUMMARY") cur.summary = unescapeText(m[3] as string).trim();
+			if (name === "STATUS" && /^cancelled$/i.test((m[3] as string).trim()))
+				cur.cancelled = true;
 			if (name === "DTSTART") {
 				const s = parseStart(m[2] as string, (m[3] as string).trim(), calTz);
 				if (s) cur.start = { ...s, summary: "" };

@@ -23,28 +23,43 @@ describe("toCalendar", () => {
 		]);
 	});
 
-	test("そろっている期間は載っている最初の予定から最後の予定まで。取得した時刻がその外なら時刻まで広げる", () => {
+	test("そろっている期間は載っている最初の予定から、最後の予定か次の取得の予定時刻の遅いほうまで", () => {
 		expect(toCalendar(items, { cpi: "CPI" }, T, null).range).toEqual({
 			from: T - 48 * H,
 			until: T + 30 * H + 1,
 		});
 		expect(toCalendar(items, { cpi: "CPI" }, T + 40 * H, null).range).toEqual({
 			from: T - 48 * H,
-			until: T + 40 * H + 1,
+			until: T + 46 * H,
 		});
 	});
 
-	test("置き換えるのは、載っている予定の範囲と取得した時刻から後", () => {
-		expect(toCalendar(items, { cpi: "CPI" }, T + 40 * H, null).listed).toEqual({
+	test("取得した時刻から 7 日より前・366 日より後の予定は、そろっている期間に数えない", () => {
+		const far = [
+			...items,
+			{ summary: "誕生日", start: T - 400 * 24 * H, allDay: true },
+			{ summary: "遠い先", start: T + 800 * 24 * H, allDay: true },
+		];
+		expect(toCalendar(far, { cpi: "CPI" }, T, null).range).toEqual({
 			from: T - 48 * H,
 			until: T + 30 * H + 1,
 		});
+	});
+
+	test("日銀会合以外の終日の予定は、その日の 24 時間をイベントの時間にする", () => {
+		const day = [{ summary: "FOMC", start: T, allDay: true }];
+		expect(toCalendar(day, { fomc: "FOMC" }, T, null).events).toEqual([
+			{ type: "fomc", start: T, end: T + 24 * H },
+		]);
+	});
+
+	test("置き換えるのは、載っている予定（取得した時刻からを含む）の範囲。日の 0:00 にずらした日銀会合も含める", () => {
 		expect(
 			toCalendar(items.slice(0, 4), { cpi: "CPI" }, T, null).listed,
-		).toEqual({
-			from: T,
-			until: T + 30 * H + 1,
-		});
+		).toEqual({ from: T, until: T + 30 * H + 1 });
+		// 日銀会合の当日（JST 10/15 0:00 = T + 15 時間）の後に取得しても、保存した日銀会合を置き換える
+		const boj = toCalendar(items.slice(3, 4), { boj: "BOJ" }, T + 20 * H, null);
+		expect(boj.listed.from).toBe(T + 15 * H);
 	});
 
 	test("前回の取得が1日以内なら、その時刻からそろっているとみなす", () => {

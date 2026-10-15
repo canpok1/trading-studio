@@ -47,7 +47,7 @@ describe("parseIcal", () => {
 		]);
 	});
 
-	test("UTC の時刻・終日の予定・暦の既定の時差・エスケープ", () => {
+	test("UTC の時刻・終日の予定・暦の既定の時差・エスケープ。取り消した予定は捨てる", () => {
 		const events = parseIcal(
 			cal(
 				[
@@ -66,6 +66,11 @@ describe("parseIcal", () => {
 					"BEGIN:VEVENT",
 					"SUMMARY:開始の無い予定",
 					"END:VEVENT",
+					"BEGIN:VEVENT",
+					"SUMMARY:取り消した予定",
+					"STATUS:CANCELLED",
+					"DTSTART:20261031T090000Z",
+					"END:VEVENT",
 					"",
 				].join("\n"),
 				"X-WR-TIMEZONE:Asia/Tokyo\n",
@@ -78,8 +83,9 @@ describe("parseIcal", () => {
 				allDay: false,
 			},
 			{
+				// 日付だけの値は、暦の既定の時差に依らず UTC のその日の 0:00
 				summary: "日銀会合",
-				start: Date.parse("2026-10-30T00:00:00+09:00"),
+				start: Date.parse("2026-10-30T00:00:00Z"),
 				allDay: true,
 			},
 			{

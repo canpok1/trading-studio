@@ -8,7 +8,7 @@ import type { EventSource, EventSourceInput } from "./types-domain";
 /** iCal の予定1件 */
 export type IcalEvent = {
 	summary: string;
-	/** 開始時刻。終日の予定は、その日の 0:00（時差の指定が無ければ UTC） */
+	/** 開始時刻。終日の予定は、UTC のその日の 0:00 */
 	start: number;
 	allDay: boolean;
 };

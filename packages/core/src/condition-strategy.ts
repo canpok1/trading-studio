@@ -925,6 +925,10 @@ function checkOther(c: Exclude<Condition, CandleCondition>, ctx: Ctx): Hit {
 			const to = ctx.now + c.beforeHours * HOUR_MS;
 			const names = c.events.map((e) => MARKET_EVENT_LABELS[e]).join("・");
 			const span = eventSpanText(c.beforeHours, c.afterHours);
+			// 暦切れでも、暦にあるイベントに当たれば不成立
+			if (eventsBetween(ctx.events, c.events, from, to).length > 0) {
+				return { ok: false };
+			}
 			const gap = calendarGap(ctx.events, c.events, from, to);
 			if (gap !== null) {
 				return c.allowNoCalendar
@@ -937,9 +941,7 @@ function checkOther(c: Exclude<Condition, CandleCondition>, ctx: Ctx): Hit {
 							note: "買いを判定しない",
 						};
 			}
-			return eventsBetween(ctx.events, c.events, from, to).length === 0
-				? { ok: true, why: `予定イベント（${names}）の${span}に当たらない` }
-				: { ok: false };
+			return { ok: true, why: `予定イベント（${names}）の${span}に当たらない` };
 		}
 		case "holdingBars": {
 			if (ctx.lot === null) {

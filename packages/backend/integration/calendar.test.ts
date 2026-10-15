@@ -66,6 +66,20 @@ describe("予定イベントの暦の取得元", () => {
 				.status,
 		).toBe(400);
 
+		// 購読用の webcal:// は https:// で取る
+		const webcal = await t.add({
+			name: "購読",
+			url: "webcal://c.example/cal.ics",
+			keywords: { cpi: "CPI" },
+		});
+		expect((webcal.body.source as EventSource).url).toBe(
+			"https://c.example/cal.ics",
+		);
+		await t.send(
+			"DELETE",
+			`/sources/${(webcal.body.source as EventSource).id}`,
+		);
+
 		const put = await t.send("PUT", `/sources/${source.id}`, {
 			name: "改名",
 			url: URL_A,

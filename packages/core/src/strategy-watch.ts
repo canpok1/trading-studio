@@ -326,7 +326,7 @@ function eventWindowDetail(
 		ctx.now - after,
 		ctx.now + before,
 	);
-	if (gap !== null) return `暦切れのため当たらないとみなす（${gap}）`;
+	if (h.ok && gap !== null) return `暦切れのため当たらないとみなす（${gap}）`;
 	const label = (e: ScheduledEvent) => MARKET_EVENT_LABELS[e.type];
 	if (!h.ok) {
 		const hits = eventsBetween(
