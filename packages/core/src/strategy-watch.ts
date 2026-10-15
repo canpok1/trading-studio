@@ -322,7 +322,14 @@ function eventWindowDetail(
 	const label = (e: ScheduledEvent) => MARKET_EVENT_LABELS[e.type];
 	if (!h.ok) {
 		const hits = eventsBetween(c.events, ctx.now - after, ctx.now + before);
-		const until = Math.max(...hits.map((e) => e.end + after));
+		let until = Math.max(...hits.map((e) => e.end + after));
+		// 窓が明ける前に次のイベントの前の時間が始まれば、その分も延ばす
+		for (;;) {
+			const more = eventsBetween(c.events, until - after, until + before);
+			const next = Math.max(until, ...more.map((e) => e.end + after));
+			if (next === until) break;
+			until = next;
+		}
 		return `${[...new Set(hits.map(label))].join("・")} の前後（${jstDateTime(until)} まで）`;
 	}
 	const next = nextEvent(c.events, ctx.now);

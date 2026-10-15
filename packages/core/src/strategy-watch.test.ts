@@ -512,6 +512,31 @@ describe("予定イベントの前後の見張り", () => {
 		expect(c?.edge).toBeNull();
 	});
 
+	test("窓が明ける前に次のイベントの前の時間が始まれば、その窓の終わりまでを出す", () => {
+		// 2026-06-10 21:30 JST の米 CPI と 6/18 3:00 JST の FOMC 声明、6/16 の日銀会合
+		const q = params([
+			rule({
+				buy: {
+					match: "all",
+					conditions: [
+						{
+							...ev,
+							events: ["cpi", "boj", "fomc"],
+							beforeHours: 0,
+							afterHours: 48,
+						},
+					],
+				},
+			}),
+		]);
+		const w = watchConditionSet(
+			input(q, { now: Date.parse("2026-06-16T00:00:00Z") }),
+		);
+		expect(w.buys[0]?.buy.conditions[0]?.detail).toBe(
+			"日銀会合 の前後（6/20 3:00 まで）",
+		);
+	});
+
 	test("当たっていなければ次のイベントを出す", () => {
 		expect(watch(cpi + 25 * H).buys[0]?.buy.conditions[0]?.detail).toBe(
 			"次は 米 CPI 10/14 21:30",
