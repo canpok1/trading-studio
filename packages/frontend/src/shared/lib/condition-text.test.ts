@@ -24,4 +24,15 @@ describe("条件の文字列", () => {
 			}),
 		).toBe("4時間足 ADX14 20以下");
 	});
+
+	test("予定イベントの前後は種類と前後の時間", () => {
+		expect(
+			conditionText({
+				type: "eventWindow",
+				events: ["cpi", "nfp"],
+				beforeHours: 2,
+				afterHours: 12,
+			}),
+		).toBe("米 CPI/米雇用統計の前 2 時間・後 12 時間でない");
+	});
 });

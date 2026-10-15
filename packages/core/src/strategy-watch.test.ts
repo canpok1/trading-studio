@@ -492,3 +492,60 @@ describe("ATR の条件の見張り", () => {
 		expect(g?.triggers).toEqual([10_270_000]);
 	});
 });
+
+describe("予定イベントの前後の見張り", () => {
+	const ev = {
+		type: "eventWindow" as const,
+		events: ["cpi" as const],
+		beforeHours: 0,
+		afterHours: 24,
+	};
+	const p = params([rule({ buy: { match: "all", conditions: [ev] } })]);
+	// 2026-09-11 08:30 ET の米 CPI（JST 21:30）
+	const cpi = Date.parse("2026-09-11T12:30:00Z");
+	const watch = (now: number) => watchConditionSet(input(p, { now }));
+
+	test("当たっている間は、どのイベントでいつまで買わないかを出し、発動価格は持たない", () => {
+		const c = watch(cpi + H).buys[0]?.buy.conditions[0];
+		expect(c?.met).toBe(false);
+		expect(c?.detail).toBe("米 CPI の前後（9/12 21:30 まで）");
+		expect(c?.edge).toBeNull();
+	});
+
+	test("窓が明ける前に次のイベントの前の時間が始まれば、その窓の終わりまでを出す", () => {
+		// 2026-06-10 21:30 JST の米 CPI と 6/18 3:00 JST の FOMC 声明、6/16 の日銀会合
+		const q = params([
+			rule({
+				buy: {
+					match: "all",
+					conditions: [
+						{
+							...ev,
+							events: ["cpi", "boj", "fomc"],
+							beforeHours: 0,
+							afterHours: 48,
+						},
+					],
+				},
+			}),
+		]);
+		const w = watchConditionSet(
+			input(q, { now: Date.parse("2026-06-16T00:00:00Z") }),
+		);
+		expect(w.buys[0]?.buy.conditions[0]?.detail).toBe(
+			"日銀会合 の前後（6/20 3:00 まで）",
+		);
+	});
+
+	test("当たっていなければ次のイベントを出す", () => {
+		expect(watch(cpi + 25 * H).buys[0]?.buy.conditions[0]?.detail).toBe(
+			"次は 米 CPI 10/14 21:30",
+		);
+	});
+
+	test("暦切れは買いの理由を暦切れにする", () => {
+		const b = watch(Date.parse("2027-01-02T00:00:00Z")).buys[0];
+		expect(b?.status.kind).toBe("noCalendar");
+		expect(b?.buy.conditions[0]?.detail).toContain("暦切れ");
+	});
+});

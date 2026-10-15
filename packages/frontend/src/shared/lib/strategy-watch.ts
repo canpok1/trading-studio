@@ -74,6 +74,8 @@ export function buyStatusText(s: WatchBuyStatus): string | null {
 			return "資金が足りず買わない";
 		case "insufficient":
 			return "指標の本数が足りず判定しない";
+		case "noCalendar":
+			return "予定イベントの暦切れで判定しない";
 	}
 }
 

@@ -11,6 +11,7 @@ import type {
 	Judge,
 	JudgmentConditionValue,
 	JudgmentValue,
+	MarketEvent,
 	OrderType,
 	PartialSell,
 	Timeframe,
@@ -34,6 +35,8 @@ import {
 	JUDGMENT_CONDITION_VALUES,
 	JUDGMENT_VALUE_LABELS,
 	LIMITS,
+	MARKET_EVENT_LABELS,
+	MARKET_EVENTS,
 	newBuyRuleId,
 	ORDER_TYPE_LABELS,
 	partialSellQuantity,
@@ -384,6 +387,7 @@ const CONDITION_NAMES: Record<ConditionKind, string> = {
 	entryAtr: "買値からの ATR の倍数",
 	trailingAtr: "買ってからの最高値からの ATR の倍数",
 	holdingBars: "買ってからの本数",
+	eventWindow: "予定イベントの前後でない",
 	"judgment:sentiment": "センチメントが指定のどれか",
 	"judgment:risk": "リスクが指定のどれか",
 };
@@ -421,6 +425,13 @@ const PRICE_KINDS: Record<ConditionGroupKey, ConditionKind[]> = {
 };
 
 const JUDGMENT_KINDS = JUDGES.map((j) => `judgment:${j}` as const);
+
+const EVENT_KINDS: Record<ConditionGroupKey, ConditionKind[]> = {
+	buy: ["eventWindow"],
+	partialTakeProfit: [],
+	takeProfit: [],
+	stopLoss: [],
+};
 
 /** 判定の条件の既定値。売りでは悪い側を選んでおく */
 const JUDGMENT_DEFAULTS: {
@@ -529,6 +540,13 @@ function defaultCondition(
 			};
 		case "holdingBars":
 			return { type: kind, timeframe, bars: 24 };
+		case "eventWindow":
+			return {
+				type: kind,
+				events: [...MARKET_EVENTS],
+				beforeHours: 0,
+				afterHours: 24,
+			};
 		default: {
 			const judge = kind.slice("judgment:".length) as Judge;
 			return {
@@ -538,6 +556,29 @@ function defaultCondition(
 			};
 		}
 	}
+}
+
+/** 丸いチップの形のチェックボックス */
+function ChipCheck({
+	checked,
+	onChange,
+	children,
+}: {
+	checked: boolean;
+	onChange: (on: boolean) => void;
+	children: ReactNode;
+}) {
+	return (
+		<label className="flex h-8 cursor-pointer items-center gap-1 rounded-full border border-line bg-surface px-2.5 text-xs font-semibold has-checked:border-accent has-checked:bg-accent has-checked:text-white has-focus-visible:outline-2 has-focus-visible:outline-accent dark:has-checked:text-accent-ink">
+			<input
+				type="checkbox"
+				className="sr-only"
+				checked={checked}
+				onChange={(e) => onChange(e.target.checked)}
+			/>
+			{children}
+		</label>
+	);
 }
 
 function ConditionRow({
@@ -969,6 +1010,50 @@ function ConditionRow({
 				</>
 			);
 			break;
+		case "eventWindow": {
+			const toggle = (v: MarketEvent, on: boolean) => {
+				const set = new Set<string>(c.events);
+				if (on) set.add(v);
+				else set.delete(v);
+				onChange({ ...c, events: MARKET_EVENTS.filter((x) => set.has(x)) });
+			};
+			body = (
+				<>
+					<span>予定イベント</span>
+					<span className="flex flex-wrap gap-1">
+						{MARKET_EVENTS.map((v) => (
+							<ChipCheck
+								key={v}
+								checked={(c.events as string[]).includes(v)}
+								onChange={(on) => toggle(v, on)}
+							>
+								{MARKET_EVENT_LABELS[v]}
+							</ChipCheck>
+						))}
+					</span>
+					<span>の</span>
+					<NumberInput
+						value={c.beforeHours}
+						onChange={(beforeHours) => onChange({ ...c, beforeHours })}
+						invalid={bad("beforeHours")}
+						inputMode="numeric"
+						aria-label="イベントの何時間前から"
+						className="w-16"
+					/>
+					<span>時間前から</span>
+					<NumberInput
+						value={c.afterHours}
+						onChange={(afterHours) => onChange({ ...c, afterHours })}
+						invalid={bad("afterHours")}
+						inputMode="numeric"
+						aria-label="イベントの何時間後まで"
+						className="w-16"
+					/>
+					<span>時間後までに当たらない</span>
+				</>
+			);
+			break;
+		}
 		case "judgment": {
 			const all = JUDGMENT_CONDITION_VALUES[
 				c.judge
@@ -985,18 +1070,13 @@ function ConditionRow({
 					<span>{JUDGE_LABELS[c.judge]}が</span>
 					<span className="flex flex-wrap gap-1">
 						{all.map((v) => (
-							<label
+							<ChipCheck
 								key={v}
-								className="flex h-8 cursor-pointer items-center gap-1 rounded-full border border-line bg-surface px-2.5 text-xs font-semibold has-checked:border-accent has-checked:bg-accent has-checked:text-white has-focus-visible:outline-2 has-focus-visible:outline-accent dark:has-checked:text-accent-ink"
+								checked={(c.values as string[]).includes(v)}
+								onChange={(on) => toggle(v, on)}
 							>
-								<input
-									type="checkbox"
-									className="sr-only"
-									checked={(c.values as string[]).includes(v)}
-									onChange={(e) => toggle(v, e.target.checked)}
-								/>
 								{JUDGMENT_VALUE_LABELS[v] ?? v}
-							</label>
+							</ChipCheck>
 						))}
 					</span>
 					<span>のどれか</span>
@@ -1417,34 +1497,37 @@ function RuleGroups({
 						[
 							["価格・保有", PRICE_KINDS[adding]],
 							["市場評価", JUDGMENT_KINDS],
+							["予定イベント", EVENT_KINDS[adding]],
 						] as const
-					).map(([title, kinds]) => (
-						<div key={title} className="flex flex-col gap-1.5">
-							<span className="text-xs text-text-2">{title}</span>
-							<div className="overflow-hidden rounded-xl border border-line">
-								{kinds.map((t) => (
-									<button
-										key={t}
-										type="button"
-										className="flex w-full border-b border-line px-4 py-3.5 text-left text-[15px] last:border-b-0 hover:bg-surface-2"
-										onClick={() => {
-											const group = params[adding];
-											setGroup(adding, {
-												...group,
-												conditions: [
-													...group.conditions,
-													defaultCondition(t, adding),
-												],
-											});
-											setAdding(null);
-										}}
-									>
-										{CONDITION_NAMES[t]}
-									</button>
-								))}
+					)
+						.filter(([, kinds]) => kinds.length > 0)
+						.map(([title, kinds]) => (
+							<div key={title} className="flex flex-col gap-1.5">
+								<span className="text-xs text-text-2">{title}</span>
+								<div className="overflow-hidden rounded-xl border border-line">
+									{kinds.map((t) => (
+										<button
+											key={t}
+											type="button"
+											className="flex w-full border-b border-line px-4 py-3.5 text-left text-[15px] last:border-b-0 hover:bg-surface-2"
+											onClick={() => {
+												const group = params[adding];
+												setGroup(adding, {
+													...group,
+													conditions: [
+														...group.conditions,
+														defaultCondition(t, adding),
+													],
+												});
+												setAdding(null);
+											}}
+										>
+											{CONDITION_NAMES[t]}
+										</button>
+									))}
+								</div>
 							</div>
-						</div>
-					))}
+						))}
 					<Button onClick={() => setAdding(null)}>やめる</Button>
 				</Modal>
 			)}

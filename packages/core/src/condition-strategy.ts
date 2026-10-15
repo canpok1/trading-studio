@@ -1,5 +1,15 @@
 // 画面で作る「条件のセット」を実行する汎用の条件戦略
 
+import type { MarketEvent } from "./event-calendar";
+import {
+	EVENT_CALENDAR_RANGE,
+	eventSpanText,
+	eventsBetween,
+	HOUR_MS,
+	isMarketEvent,
+	jstDate,
+	MARKET_EVENT_LABELS,
+} from "./event-calendar";
 import { formatBtc, formatYen } from "./format";
 import { adx, atr, bollinger, ema, rsi } from "./indicators";
 import { limitBuyPriceBelow, notionalYen, SATOSHI_PER_BTC } from "./money";
@@ -145,6 +155,16 @@ export type Condition =
 	  }
 	/** 買ってから timeframe の足で bars 本ぶんの時間が経った。売りのグループだけで使える */
 	| { type: "holdingBars"; timeframe: Timeframe; bars: number }
+	/**
+	 * 判定の時刻 t について、[t − afterHours, t + beforeHours] に events のどれかのイベントが無い
+	 * （イベントの afterHours 時間後までと beforeHours 時間前からは買わない）。買いのグループだけで使える
+	 */
+	| {
+			type: "eventWindow";
+			events: MarketEvent[];
+			beforeHours: number;
+			afterHours: number;
+	  }
 	/** AI の判定が values のどれか。判定がまだ無いときは values に NO_JUDGMENT があれば成立。どのグループでも使える */
 	| { type: "judgment"; judge: Judge; values: JudgmentConditionValue[] };
 
@@ -388,6 +408,8 @@ export const LIMITS = {
 	/** EMA の傾きの %。0.01 刻み */
 	emaSlopePercent: { min: 0, max: 100 },
 	holdingBars: { min: 1, max: 1000 },
+	/** 予定イベントの前後の時間 */
+	eventHours: { min: 0, max: 168 },
 	/** 買い指値を現在値から下げる %。0 以上 100 未満、0.01 刻み */
 	buyBelowPercent: { min: 0, maxExclusive: 100 },
 	buyExpireBars: { min: 1, max: 100 },
@@ -416,10 +438,13 @@ export const DEFAULT_STOP_LOSS_COOLDOWN_BARS = 0;
 /** EMA・RSI・ADX（平滑化を重ねる指標）を途中から計算しても値がほぼ一致するよう、本数のこの倍の足を渡してもらう */
 const EMA_HISTORY_FACTOR = 10;
 
+/** insufficient は判定できない理由。note はその前置き（無ければ指標の本数が足りない） */
 export type Hit =
 	| { ok: true; why: string }
 	| { ok: false }
-	| { insufficient: string };
+	| { insufficient: string; note?: string };
+
+const LACKING_NOTE = "指標の本数が足りないため判定しない";
 
 /** 1つの粒度の足と、その足で計算した指標 */
 export type Series = {
@@ -892,6 +917,22 @@ function checkOther(c: Exclude<Condition, CandleCondition>, ctx: Ctx): Hit {
 					}
 				: { ok: false };
 		}
+		case "eventWindow": {
+			const from = ctx.now - c.afterHours * HOUR_MS;
+			const to = ctx.now + c.beforeHours * HOUR_MS;
+			const cal = EVENT_CALENDAR_RANGE;
+			if (from < cal.from || to >= cal.until) {
+				return {
+					insufficient: `予定イベントの暦切れ。暦は ${jstDate(cal.from)}〜${jstDate(cal.until - 1)} の分だけ`,
+					note: "買いを判定しない",
+				};
+			}
+			const names = c.events.map((e) => MARKET_EVENT_LABELS[e]).join("・");
+			const span = eventSpanText(c.beforeHours, c.afterHours);
+			return eventsBetween(c.events, from, to).length === 0
+				? { ok: true, why: `予定イベント（${names}）の${span}に当たらない` }
+				: { ok: false };
+		}
 		case "holdingBars": {
 			if (ctx.lot === null) {
 				return { ok: false };
@@ -913,7 +954,7 @@ function checkOther(c: Exclude<Condition, CandleCondition>, ctx: Ctx): Hit {
 type GroupResult =
 	| { kind: "hit"; why: string }
 	| { kind: "miss" }
-	| { kind: "insufficient"; why: string };
+	| { kind: "insufficient"; why: string; note: string };
 
 function evaluateGroup(g: ConditionGroup, ctx: Ctx): GroupResult {
 	if (g.conditions.length === 0) {
@@ -921,10 +962,14 @@ function evaluateGroup(g: ConditionGroup, ctx: Ctx): GroupResult {
 	}
 	const hits = g.conditions.map((c) => checkCondition(c, ctx));
 	const lacking = hits.find(
-		(h): h is { insufficient: string } => "insufficient" in h,
+		(h): h is Extract<Hit, { insufficient: string }> => "insufficient" in h,
 	);
 	if (lacking) {
-		return { kind: "insufficient", why: lacking.insufficient };
+		return {
+			kind: "insufficient",
+			why: lacking.insufficient,
+			note: lacking.note ?? LACKING_NOTE,
+		};
 	}
 	const ok = hits.filter(
 		(h): h is { ok: true; why: string } => "ok" in h && h.ok,
@@ -1350,6 +1395,28 @@ function validateBuyRule(
 					}
 					break;
 				}
+				case "eventWindow": {
+					if (g !== "buy") {
+						err(at, "予定イベントの前後は買いの条件だけで使える");
+						break;
+					}
+					if (c.events.length === 0) {
+						err(`${at}.events`, "1つ以上選ぶ");
+					} else if (
+						!c.events.every(isMarketEvent) ||
+						new Set(c.events).size !== c.events.length
+					) {
+						err(`${at}.events`, "選べない値がある");
+					}
+					const r = LIMITS.eventHours;
+					if (!isIntIn(c.beforeHours, r)) {
+						err(`${at}.beforeHours`, `${range(r)} の整数で入れる`);
+					}
+					if (!isIntIn(c.afterHours, r)) {
+						err(`${at}.afterHours`, `${range(r)} の整数で入れる`);
+					}
+					break;
+				}
 				case "holdingBars":
 					if (g === "buy") {
 						err(at, "保有本数は売りの条件だけで使える");
@@ -1671,7 +1738,7 @@ export function evaluateConditionSet(
 					: { kind: "miss" };
 			const short = [sl, tp, ptp].find((r) => r.kind === "insufficient");
 			if (short?.kind === "insufficient") {
-				lacking = short.why;
+				lacking = `${short.note}（${short.why}）`;
 				break;
 			}
 			// 建値ストップ: 一部利確の後、現在値が買値を下回ったら残りを損切りとして売る
@@ -1717,7 +1784,7 @@ export function evaluateConditionSet(
 		if (lacking !== null) {
 			intents.length = 0;
 			stopLossAt = cooldown ? prevStopLossAt(state) : null;
-			notes.push(`指標の本数が足りないため判定しない（${lacking}）`);
+			notes.push(lacking);
 		} else if (targets.length === 0) {
 			notes.push("売り注文の約定待ち");
 		} else if (sells.length === 0) {
@@ -1774,7 +1841,7 @@ export function evaluateConditionSet(
 			const wasHit = buyHits[b.id] ?? null;
 			const r = check();
 			if (r.kind === "insufficient") {
-				say(`指標の本数が足りないため判定しない（${r.why}）`);
+				say(`${r.note}（${r.why}）`);
 			} else if (r.kind === "miss") {
 				say("買いの条件を満たさない");
 			} else if (edge && wasHit === true) {
@@ -2030,6 +2097,20 @@ function parseCondition(
 			};
 		case "holdingBars":
 			return { type: "holdingBars", timeframe, bars: num(v.bars) };
+		case "eventWindow":
+			if (
+				!Array.isArray(v.events) ||
+				!v.events.every((x) => typeof x === "string")
+			) {
+				return null;
+			}
+			return {
+				type: "eventWindow",
+				// 知らない種類も残し、入力検証で弾く
+				events: v.events as MarketEvent[],
+				beforeHours: num(v.beforeHours),
+				afterHours: num(v.afterHours),
+			};
 		default:
 			return null;
 	}
