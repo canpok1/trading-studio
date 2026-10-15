@@ -10,9 +10,11 @@ import type {
 	Timeframe,
 } from "@trading-studio/core";
 import {
+	eventSpanText,
 	FREQUENCY_UNIT_LABELS,
 	hasTimeframe,
 	JUDGMENT_VALUE_LABELS,
+	MARKET_EVENT_LABELS,
 	ORDER_TYPE_LABELS,
 	TIMEFRAME_LABELS,
 } from "@trading-studio/core";
@@ -64,6 +66,8 @@ function conditionBody(c: Condition): string {
 			return `最高値−ATR${c.period}×${c.multiple}${c.activateMultiple > 0 ? `（+ATR×${c.activateMultiple}で発動）` : ""}`;
 		case "holdingBars":
 			return `${c.bars}本保有`;
+		case "eventWindow":
+			return `${c.events.map((e) => MARKET_EVENT_LABELS[e] ?? e).join("/")}の${eventSpanText(c.beforeHours, c.afterHours)}でない`;
 		case "judgment":
 			return `${JUDGE_SHORT[c.judge]} ${c.values.map((v) => JUDGMENT_VALUE_LABELS[v] ?? v).join("/")}`;
 	}

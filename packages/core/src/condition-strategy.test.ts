@@ -2498,3 +2498,96 @@ describe("ATR の条件", () => {
 		).toEqual(trail);
 	});
 });
+
+describe("予定イベントの前後", () => {
+	const ev: Condition = {
+		type: "eventWindow",
+		events: ["fomc", "boj"],
+		beforeHours: 2,
+		afterHours: 24,
+	};
+	const p = buyWith(ev);
+	// 2026-06-17 14:00 ET（夏時間）の FOMC 声明。前日に日銀会合がある
+	const fomc = Date.parse("2026-06-17T18:00:00Z");
+	const at = (now: number) =>
+		evaluateConditionSet(input(candles([100]), p, { now }));
+
+	test("イベントの afterHours 時間後までと beforeHours 時間前からは買わない", () => {
+		expect(at(fomc - 2 * H - 1).intents).toHaveLength(1);
+		expect(at(fomc - 2 * H).intents).toHaveLength(0);
+		expect(at(fomc + 24 * H).intents).toHaveLength(0);
+		const out = at(fomc + 24 * H + 1);
+		expect(out.intents).toHaveLength(1);
+		expect(out.note).toContain(
+			"予定イベント（FOMC 声明・日銀会合）の前 2 時間・後 24 時間に当たらない",
+		);
+	});
+
+	test("選んでいない種類のイベントは見ない", () => {
+		// 2026-09-11 08:30 ET の米 CPI
+		const cpi = Date.parse("2026-09-11T12:30:00Z");
+		expect(at(cpi + H).intents).toHaveLength(1);
+	});
+
+	test("時刻が決まっていない日銀会合は JST の日の 0:00〜24:00 をイベントの時間とする", () => {
+		// 2026-09-18 の日銀会合。JST 0:00 = 前日 15:00 UTC
+		const day = Date.parse("2026-09-17T15:00:00Z");
+		const boj = buyWith({
+			...ev,
+			events: ["boj"],
+			beforeHours: 0,
+			afterHours: 0,
+		});
+		const b = (now: number) =>
+			evaluateConditionSet(input(candles([100]), boj, { now }));
+		expect(b(day - 1).intents).toHaveLength(1);
+		expect(b(day).intents).toHaveLength(0);
+		expect(b(day + 24 * H).intents).toHaveLength(0);
+		expect(b(day + 24 * H + 1).intents).toHaveLength(1);
+	});
+
+	test("暦の無い期間に掛かる判定は、買いを判定しない（暦切れ）", () => {
+		const out = at(Date.parse("2026-12-31T14:00:00Z"));
+		expect(out.intents).toHaveLength(0);
+		expect(out.note).toBe(
+			"買いを判定しない（予定イベントの暦切れ。暦は 2022-01-01〜2026-12-31 の分だけ）",
+		);
+		expect(at(Date.parse("2022-01-01T10:00:00Z")).note).toContain("暦切れ");
+	});
+
+	test("買いのグループだけで使え、種類は1つ以上・重ならず、時間は 0〜168 の整数。JSON から読み戻せる", () => {
+		const errs = validateConditionSet(
+			params({
+				buy: {
+					match: "all",
+					conditions: [
+						{ ...ev, events: [] },
+						{
+							...ev,
+							events: ["fomc", "fomc"],
+							beforeHours: 169,
+							afterHours: 1.5,
+						},
+						{ ...ev, events: ["x" as never] },
+					],
+				},
+				stopLoss: { match: "any", conditions: [ev] },
+			}),
+		);
+		expect(errs.map((e) => e.path)).toEqual([
+			"buy.conditions.0.events",
+			"buy.conditions.1.events",
+			"buy.conditions.1.beforeHours",
+			"buy.conditions.1.afterHours",
+			"buy.conditions.2.events",
+			"stopLoss.conditions.0",
+		]);
+		expect(parseConditionSet(JSON.parse(JSON.stringify(p)))?.buy).toEqual(
+			p.buy,
+		);
+	});
+
+	test("同じ入力なら同じ結果", () => {
+		expect(at(fomc + H)).toEqual(at(fomc + H));
+	});
+});

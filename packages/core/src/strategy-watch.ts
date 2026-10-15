@@ -31,6 +31,14 @@ import {
 	usesAtr,
 	usesPeaks,
 } from "./condition-strategy";
+import type { ScheduledEvent } from "./event-calendar";
+import {
+	eventsBetween,
+	HOUR_MS,
+	jstDateTime,
+	MARKET_EVENT_LABELS,
+	nextEvent,
+} from "./event-calendar";
 import { formatYen } from "./format";
 import { bollinger } from "./indicators";
 import { limitBuyPriceBelow, notionalYen } from "./money";
@@ -77,7 +85,8 @@ export type WatchBuyStatus =
 	| { kind: "continuing" }
 	| { kind: "blocked"; reason: string }
 	| { kind: "noCash" }
-	| { kind: "insufficient"; reason: string };
+	| { kind: "insufficient"; reason: string }
+	| { kind: "noCalendar"; reason: string };
 
 export type WatchLot = {
 	id: string;
@@ -249,6 +258,7 @@ function detailOf(c: Condition, ctx: Ctx): string {
 		);
 		return `${bars} 本経過`;
 	}
+	if (c.type === "eventWindow") return eventWindowDetail(c, ctx);
 	if (!needsCandles(c)) return "";
 	const sr = ctx.series(c.timeframe);
 	const n = sr.candles.length;
@@ -298,6 +308,27 @@ function detailOf(c: Condition, ctx: Ctx): string {
 			return `${atr} ・ 基準 ${formatYen(t.line)} 円`;
 		}
 	}
+}
+
+/** 当たっているイベントと買えるようになる時刻、当たっていなければ次のイベント */
+function eventWindowDetail(
+	c: Extract<Condition, { type: "eventWindow" }>,
+	ctx: Ctx,
+): string {
+	const h = checkCondition(c, ctx);
+	if ("insufficient" in h) return h.insufficient;
+	const after = c.afterHours * HOUR_MS;
+	const before = c.beforeHours * HOUR_MS;
+	const label = (e: ScheduledEvent) => MARKET_EVENT_LABELS[e.type];
+	if (!h.ok) {
+		const hits = eventsBetween(c.events, ctx.now - after, ctx.now + before);
+		const until = Math.max(...hits.map((e) => e.end + after));
+		return `${[...new Set(hits.map(label))].join("・")} の前後（${jstDateTime(until)} まで）`;
+	}
+	const next = nextEvent(c.events, ctx.now);
+	return next
+		? `次は ${label(next)} ${jstDateTime(next.start)}`
+		: "暦にこの先のイベントなし";
 }
 
 function watchGroup(g: ConditionGroup, ctx: Ctx): WatchGroup {
@@ -370,8 +401,11 @@ function buyStatus(
 		return { kind: "blocked", reason: input.buyBlocked };
 	}
 	if (group.met === null) {
-		const why = group.conditions.find((c) => c.met === null)?.detail ?? "";
-		return { kind: "insufficient", reason: why };
+		const lacking = group.conditions.find((c) => c.met === null);
+		const reason = lacking?.detail ?? "";
+		return lacking?.condition.type === "eventWindow"
+			? { kind: "noCalendar", reason }
+			: { kind: "insufficient", reason };
 	}
 	// 最大ロット数が 2 以上の買いは、前回の判定で成立していたら一度外れるまで買わない
 	// （今外れていれば次の判定で外れたと記録されるので、その後に価格が届けば買う）

@@ -154,4 +154,15 @@ describe("条件の文言", () => {
 			}),
 		).toBe("1時間足で ADX 14 本が 20 以上");
 	});
+
+	test("予定イベントの前後は種類と前後の時間で書く", () => {
+		expect(
+			conditionScreenText({
+				type: "eventWindow",
+				events: ["fomc", "boj"],
+				beforeHours: 0,
+				afterHours: 24,
+			}),
+		).toBe("予定イベント（FOMC 声明・日銀会合）の後 24 時間でない");
+	});
 });

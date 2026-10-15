@@ -7,6 +7,8 @@ import {
 	conditionSetChanges,
 	JUDGES,
 	JUDGMENT_CONDITION_VALUES,
+	MARKET_EVENT_LABELS,
+	MARKET_EVENTS,
 	parseConditionSet,
 	SATOSHI_PER_BTC,
 	TIMEFRAME_LABELS,
@@ -54,6 +56,7 @@ const CONDITION: ResponseSchema = {
 				"entryAtr=買値から、買った時点の timeframe の足の ATR period 本の multiple 倍 上がった(direction=up)/下がった(down)。売りの条件だけ。",
 				"trailingAtr=買ってからの最高値から、買った時点の timeframe の足の ATR period 本の multiple 倍 下がった。最高値が買値から ATR の activateMultiple 倍以上になってから発動（0 は買った直後から）。売りの条件だけ。",
 				"holdingBars=買ってから timeframe の足で bars 本経った。売りの条件だけ。",
+				"eventWindow=events のどれかの予定イベントの beforeHours 時間前から afterHours 時間後までに当たらない。買いの条件だけ。",
 				"judgment=judge の判定が values のどれか",
 			].join(""),
 			[
@@ -70,6 +73,7 @@ const CONDITION: ResponseSchema = {
 				"entryAtr",
 				"trailingAtr",
 				"holdingBars",
+				"eventWindow",
 				"judgment",
 			],
 		),
@@ -104,6 +108,13 @@ const CONDITION: ResponseSchema = {
 		direction: opt(
 			str("向き", ["up", "down", "high", "low", "above", "below"]),
 		),
+		events: opt({
+			type: "ARRAY",
+			description: `eventWindow の予定イベント。${MARKET_EVENTS.map((e) => `${e}=${MARKET_EVENT_LABELS[e]}`).join("・")}`,
+			items: { type: "STRING", enum: [...MARKET_EVENTS] },
+		}),
+		beforeHours: opt(int("eventWindow でイベントの何時間前から買わないか")),
+		afterHours: opt(int("eventWindow でイベントの何時間後まで買わないか")),
 		judge: opt(str("判定。sentiment=センチメント・risk=リスク", JUDGES)),
 		values: opt({
 			type: "ARRAY",
