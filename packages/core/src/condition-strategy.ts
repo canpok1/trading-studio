@@ -1,13 +1,12 @@
 // 画面で作る「条件のセット」を実行する汎用の条件戦略
 
-import type { MarketEvent } from "./event-calendar";
+import type { EventCalendar, MarketEvent } from "./event-calendar";
 import {
-	EVENT_CALENDAR_RANGE,
+	calendarGap,
 	eventSpanText,
 	eventsBetween,
 	HOUR_MS,
 	isMarketEvent,
-	jstDate,
 	MARKET_EVENT_LABELS,
 } from "./event-calendar";
 import { formatBtc, formatYen } from "./format";
@@ -157,13 +156,15 @@ export type Condition =
 	| { type: "holdingBars"; timeframe: Timeframe; bars: number }
 	/**
 	 * 判定の時刻 t について、[t − afterHours, t + beforeHours] に events のどれかのイベントが無い
-	 * （イベントの afterHours 時間後までと beforeHours 時間前からは買わない）。買いのグループだけで使える
+	 * （イベントの afterHours 時間後までと beforeHours 時間前からは買わない）。買いのグループだけで使える。
+	 * 暦がそろっていない（暦切れ）ときは allowNoCalendar なら成立、そうでなければ買いを判定しない
 	 */
 	| {
 			type: "eventWindow";
 			events: MarketEvent[];
 			beforeHours: number;
 			afterHours: number;
+			allowNoCalendar: boolean;
 	  }
 	/** AI の判定が values のどれか。判定がまだ無いときは values に NO_JUDGMENT があれば成立。どのグループでも使える */
 	| { type: "judgment"; judge: Judge; values: JudgmentConditionValue[] };
@@ -465,6 +466,8 @@ export type Ctx = {
 	series: (timeframe: Timeframe) => Series;
 	/** 判定器ごとの今の判定。まだ無ければ入らない */
 	judgments: Partial<Record<Judge, JudgmentValue>>;
+	/** 予定イベントの暦 */
+	events: EventCalendar;
 	price: number;
 	now: number;
 	/** 売りの判定中のロット。買いの判定では null */
@@ -920,16 +923,21 @@ function checkOther(c: Exclude<Condition, CandleCondition>, ctx: Ctx): Hit {
 		case "eventWindow": {
 			const from = ctx.now - c.afterHours * HOUR_MS;
 			const to = ctx.now + c.beforeHours * HOUR_MS;
-			const cal = EVENT_CALENDAR_RANGE;
-			if (from < cal.from || to >= cal.until) {
-				return {
-					insufficient: `予定イベントの暦切れ。暦は ${jstDate(cal.from)}〜${jstDate(cal.until - 1)} の分だけ`,
-					note: "買いを判定しない",
-				};
-			}
 			const names = c.events.map((e) => MARKET_EVENT_LABELS[e]).join("・");
 			const span = eventSpanText(c.beforeHours, c.afterHours);
-			return eventsBetween(c.events, from, to).length === 0
+			const gap = calendarGap(ctx.events, c.events, from, to);
+			if (gap !== null) {
+				return c.allowNoCalendar
+					? {
+							ok: true,
+							why: `予定イベント（${names}）は暦切れのため当たらないとみなす。${gap}`,
+						}
+					: {
+							insufficient: `予定イベントの暦切れ。${gap}`,
+							note: "買いを判定しない",
+						};
+			}
+			return eventsBetween(ctx.events, c.events, from, to).length === 0
 				? { ok: true, why: `予定イベント（${names}）の${span}に当たらない` }
 				: { ok: false };
 		}
@@ -1415,6 +1423,9 @@ function validateBuyRule(
 					if (!isIntIn(c.afterHours, r)) {
 						err(`${at}.afterHours`, `${range(r)} の整数で入れる`);
 					}
+					if (typeof c.allowNoCalendar !== "boolean") {
+						err(`${at}.allowNoCalendar`, "true か false で入れる");
+					}
 					break;
 				}
 				case "holdingBars":
@@ -1691,6 +1702,7 @@ export function evaluateConditionSet(
 		now,
 		lot: null,
 		judgments: latestJudgments(judgments),
+		events: input.events,
 	};
 	// 買いが1つなら、理由に買いの名前を出さない（買いを複数持つ前と同じ文）
 	const multi = p.buys.length >= 2;
@@ -2110,6 +2122,8 @@ function parseCondition(
 				events: v.events as MarketEvent[],
 				beforeHours: num(v.beforeHours),
 				afterHours: num(v.afterHours),
+				// 選べるようにする前に作った条件は、暦切れで買いを判定しない
+				allowNoCalendar: v.allowNoCalendar === true,
 			};
 		default:
 			return null;

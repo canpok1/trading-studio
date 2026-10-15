@@ -9,6 +9,7 @@ import { AccuracySetting } from "../../features/settings/components/AccuracySett
 import { AdviceSettings } from "../../features/settings/components/AdviceSettings";
 import { ApiKeySetting } from "../../features/settings/components/ApiKeySetting";
 import { CompatibleSetting } from "../../features/settings/components/CompatibleSetting";
+import { EventCalendarSetting } from "../../features/settings/components/EventCalendarSetting";
 import { PromptTab } from "../../features/settings/components/PromptTab";
 import { RetentionSetting } from "../../features/settings/components/RetentionSetting";
 import { RuleTab } from "../../features/settings/components/RuleTab";
@@ -74,6 +75,7 @@ export function SettingsPage() {
 					<ThemeSetting />
 					<ApiKeySetting />
 					<CompatibleSetting />
+					<EventCalendarSetting />
 					<RetentionSetting />
 				</div>
 			)}

@@ -412,3 +412,50 @@ export const backtestAdvice = sqliteTable("backtest_advice", {
 	finishedAt: integer("finished_at"),
 	error: text("error"),
 });
+
+/** 予定イベントの暦の取得元（iCal） */
+export const eventSources = sqliteTable("event_sources", {
+	id: integer("id").primaryKey({ autoIncrement: true }),
+	name: text("name").notNull(),
+	url: text("url").notNull().unique(),
+	/** 種類ごとの件名で拾う語（JSON） */
+	keywords: text("keywords").notNull(),
+	createdAt: integer("created_at").notNull(),
+	/** 最初に取得できた時刻。URL か語を変えたら null に戻す */
+	firstSuccessAt: integer("first_success_at"),
+	lastSuccessAt: integer("last_success_at"),
+	/** 直近の取得の失敗理由。成功したら null に戻す */
+	lastError: text("last_error"),
+	/** 失敗が続いている最初の時刻 */
+	errorSince: integer("error_since"),
+});
+
+/** 取得した予定イベント。バックテストで使うので消さない */
+export const calendarEvents = sqliteTable(
+	"calendar_events",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		sourceId: integer("source_id")
+			.notNull()
+			.references(() => eventSources.id, { onDelete: "cascade" }),
+		type: text("type").notNull(),
+		start: integer("start").notNull(),
+		end: integer("end").notNull(),
+	},
+	(t) => [index("calendar_events_source_start").on(t.sourceId, t.start)],
+);
+
+/** 取得した暦が全件そろっている期間。取得元・種類ごとに、重なる期間はまとめて持つ */
+export const calendarCoverage = sqliteTable(
+	"calendar_coverage",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		sourceId: integer("source_id")
+			.notNull()
+			.references(() => eventSources.id, { onDelete: "cascade" }),
+		type: text("type").notNull(),
+		from: integer("from").notNull(),
+		until: integer("until").notNull(),
+	},
+	(t) => [index("calendar_coverage_source").on(t.sourceId, t.type)],
+);

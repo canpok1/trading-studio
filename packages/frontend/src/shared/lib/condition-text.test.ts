@@ -32,7 +32,17 @@ describe("条件の文字列", () => {
 				events: ["cpi", "nfp"],
 				beforeHours: 2,
 				afterHours: 12,
+				allowNoCalendar: false,
 			}),
 		).toBe("米 CPI/米雇用統計の前 2 時間・後 12 時間でない");
+		expect(
+			conditionText({
+				type: "eventWindow",
+				events: ["cpi"],
+				beforeHours: 0,
+				afterHours: 24,
+				allowNoCalendar: true,
+			}),
+		).toBe("米 CPIの後 24 時間でない（暦切れは成立）");
 	});
 });

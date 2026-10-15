@@ -8,6 +8,7 @@ import {
 	DEFAULT_PARTIAL_SELL,
 	singleBuy,
 } from "./condition-strategy";
+import { BUNDLED_EVENT_CALENDAR } from "./event-calendar";
 import { DEFAULT_AGGREGATION_RULE } from "./news-judgment";
 import type { Strategy } from "./strategy";
 import { strategyTemplate } from "./templates";
@@ -95,6 +96,7 @@ function config(
 ): BacktestConfig<Script> {
 	return {
 		strategy: scripted,
+		events: BUNDLED_EVENT_CALENDAR,
 		params,
 		candles: { "1h": candles },
 		stepCandles: candles,
@@ -299,6 +301,7 @@ describe("期間と指標", () => {
 		const r = runBacktest({
 			...config(bars([flat, flat, flat, flat]), { buyPrice: 1 }),
 			strategy: spy,
+			events: BUNDLED_EVENT_CALENDAR,
 			from: 2 * H,
 		});
 		expect(seen).toEqual([3, 3]);
@@ -339,6 +342,7 @@ describe("複数の足", () => {
 		runBacktest({
 			...config(hours, { buyPrice: 1 }),
 			strategy: spy,
+			events: BUNDLED_EVENT_CALENDAR,
 			candles: { "1h": hours, "4h": fours },
 			from: T + 4 * H,
 			to: T + 8 * H,
@@ -432,6 +436,7 @@ describe("判定頻度が条件の足より短い", () => {
 	}
 	const base = {
 		strategy: conditionStrategy,
+		events: BUNDLED_EVENT_CALENDAR,
 		params,
 		candles: { "1h": hours },
 		dataTimeframe: "15m" as const,
@@ -510,6 +515,7 @@ describe("決定論", () => {
 		const run = () =>
 			runBacktest({
 				strategy: conditionStrategy,
+				events: BUNDLED_EVENT_CALENDAR,
 				params,
 				candles: { "1h": candles },
 				stepCandles: candles,
@@ -555,6 +561,7 @@ describe("AI 判定", () => {
 	const run = (judgments?: BacktestConfig<ConditionSet>["judgments"]) =>
 		runBacktest({
 			strategy: conditionStrategy,
+			events: BUNDLED_EVENT_CALENDAR,
 			params,
 			candles: { "1h": flat },
 			stepCandles: flat,
@@ -635,6 +642,7 @@ describe("1日の損失上限", () => {
 		});
 		const r = runBacktest({
 			strategy: churn,
+			events: BUNDLED_EVENT_CALENDAR,
 			params: null,
 			candles: { "1h": candles },
 			stepCandles: candles,
@@ -703,6 +711,7 @@ describe("複数ポジション", () => {
 	test("階段の指値がそれぞれロットになり、ロットごとに売って往復を数える", () => {
 		const r = runBacktest({
 			strategy: conditionStrategy,
+			events: BUNDLED_EVENT_CALENDAR,
 			params,
 			candles: { "1h": list },
 			stepCandles: list,

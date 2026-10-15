@@ -23,6 +23,8 @@ import {
 	singleBuy,
 	validateConditionSet as validateConditionSetOf,
 } from "./condition-strategy";
+import type { EventCalendar } from "./event-calendar";
+import { BUNDLED_EVENT_CALENDAR, combineCalendars } from "./event-calendar";
 import type { StrategyInput } from "./strategy";
 import type { TemplateId } from "./templates";
 import {
@@ -122,6 +124,7 @@ function input(
 	return {
 		now: ((cs.at(-1)?.time ?? 0) as number) + H,
 		price: cs.at(-1)?.close ?? 0,
+		events: BUNDLED_EVENT_CALENDAR,
 		candles: { "1h": cs },
 		recent: { timeframeMs: H, candles: cs },
 		judgments: {},
@@ -2505,6 +2508,7 @@ describe("予定イベントの前後", () => {
 		events: ["fomc", "boj"],
 		beforeHours: 2,
 		afterHours: 24,
+		allowNoCalendar: false,
 	};
 	const p = buyWith(ev);
 	// 2026-06-17 14:00 ET（夏時間）の FOMC 声明。前日に日銀会合がある
@@ -2550,9 +2554,60 @@ describe("予定イベントの前後", () => {
 		const out = at(Date.parse("2026-12-31T14:00:00Z"));
 		expect(out.intents).toHaveLength(0);
 		expect(out.note).toBe(
-			"買いを判定しない（予定イベントの暦切れ。暦は 2022-01-01〜2026-12-31 の分だけ）",
+			"買いを判定しない（予定イベントの暦切れ。FOMC 声明 の暦は 2027-01-01 0:00 まで）",
 		);
-		expect(at(Date.parse("2022-01-01T10:00:00Z")).note).toContain("暦切れ");
+		expect(at(Date.parse("2022-01-01T10:00:00Z")).note).toContain(
+			"FOMC 声明 の暦は 2022-01-01 0:00 から",
+		);
+	});
+
+	test("暦切れを成立とみなす条件なら、暦切れでも買う", () => {
+		const allow = buyWith({ ...ev, allowNoCalendar: true });
+		const out = evaluateConditionSet(
+			input(candles([100]), allow, { now: Date.parse("2026-12-31T14:00:00Z") }),
+		);
+		expect(out.intents).toHaveLength(1);
+		expect(out.note).toContain(
+			"予定イベント（FOMC 声明・日銀会合）は暦切れのため当たらないとみなす。FOMC 声明 の暦は 2027-01-01 0:00 まで",
+		);
+		// 暦があるところでは、イベントの前後は買わないまま
+		expect(
+			evaluateConditionSet(input(candles([100]), allow, { now: fomc + H }))
+				.intents,
+		).toHaveLength(0);
+	});
+
+	test("取得した暦を合わせると、その種類の暦の期間が延びる", () => {
+		const t = Date.parse("2027-01-20T00:00:00Z");
+		const range = {
+			from: Date.parse("2026-12-01T00:00:00Z"),
+			until: t + 30 * 24 * H,
+		};
+		const fetched: EventCalendar = {
+			events: [{ type: "fomc", start: t, end: t }],
+			covered: {
+				fomc: [range],
+				fomcMinutes: [],
+				cpi: [],
+				nfp: [],
+				boj: [range],
+			},
+		};
+		const events = combineCalendars([BUNDLED_EVENT_CALENDAR, fetched]);
+		const b = (now: number) =>
+			evaluateConditionSet(input(candles([100]), p, { now, events }));
+		expect(b(t + H).intents).toHaveLength(0);
+		expect(b(t + 25 * H).intents).toHaveLength(1);
+		// 日銀会合だけ暦が延びていなければ暦切れ
+		const fomcOnly = combineCalendars([
+			BUNDLED_EVENT_CALENDAR,
+			{ ...fetched, covered: { ...fetched.covered, boj: [] } },
+		]);
+		expect(
+			evaluateConditionSet(
+				input(candles([100]), p, { now: t + 25 * H, events: fomcOnly }),
+			).note,
+		).toContain("日銀会合 の暦は 2027-01-01 0:00 まで");
 	});
 
 	test("買いのグループだけで使え、種類は1つ以上・重ならず、時間は 0〜168 の整数。JSON から読み戻せる", () => {
@@ -2569,6 +2624,7 @@ describe("予定イベントの前後", () => {
 							afterHours: 1.5,
 						},
 						{ ...ev, events: ["x" as never] },
+						{ ...ev, allowNoCalendar: "yes" as never },
 					],
 				},
 				stopLoss: { match: "any", conditions: [ev] },
@@ -2580,11 +2636,21 @@ describe("予定イベントの前後", () => {
 			"buy.conditions.1.beforeHours",
 			"buy.conditions.1.afterHours",
 			"buy.conditions.2.events",
+			"buy.conditions.3.allowNoCalendar",
 			"stopLoss.conditions.0",
 		]);
 		expect(parseConditionSet(JSON.parse(JSON.stringify(p)))?.buy).toEqual(
 			p.buy,
 		);
+		// 選べるようにする前に保存した条件は、暦切れで買いを判定しない
+		const { allowNoCalendar: _, ...old } = ev as Extract<
+			Condition,
+			{ type: "eventWindow" }
+		>;
+		expect(
+			parseConditionSet(JSON.parse(JSON.stringify(buyWith(old as Condition))))
+				?.buy.conditions[0],
+		).toEqual(ev);
 	});
 
 	test("同じ入力なら同じ結果", () => {

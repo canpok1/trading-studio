@@ -7,6 +7,8 @@ import { exportRoutes } from "./analysis-export/analysis-export-app";
 import type { AnalysisExportService } from "./analysis-export/types-domain";
 import { backtestRoutes } from "./backtests/backtests-app";
 import type { BacktestService } from "./backtests/types-domain";
+import { calendarRoutes } from "./calendar/calendar-app";
+import type { CalendarService } from "./calendar/types-domain";
 import { datasetRoutes, datasetRunRoutes } from "./datasets/datasets-app";
 import type { DatasetService } from "./datasets/types-domain";
 import { judgmentRoutes } from "./judgments/judgments-app";
@@ -47,6 +49,7 @@ export type AppDeps = {
 	segments: SegmentService;
 	datasets: DatasetService;
 	compatible: CompatibleService;
+	calendar: CalendarService;
 };
 
 // frontend は Hono RPC でこの型を使う。Bun 固有の API はここに持ち込まない（frontend の型チェックに Bun の型を入れないため）
@@ -68,6 +71,7 @@ export function createApp({
 	segments,
 	datasets,
 	compatible,
+	calendar,
 }: AppDeps) {
 	const api = new Hono()
 		.get("/health", (c) =>
@@ -90,6 +94,7 @@ export function createApp({
 		.route("/advice", adviceRoutes(advice))
 		.route("/ai", aiRoutes(compatible))
 		.route("/news", newsRoutes(news))
+		.route("/calendar", calendarRoutes(calendar))
 		.route("/scoring", scoringRoutes(scoring, accuracy))
 		.route("/judgments", judgmentRoutes(judgments))
 		.route("/trading", tradingRoutes(trading))

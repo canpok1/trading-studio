@@ -430,17 +430,24 @@ describe("戦略の編集", () => {
 		}
 		expect(value(ev().getByLabelText("イベントの何時間前から"))).toBe("0");
 		expect(value(ev().getByLabelText("イベントの何時間後まで"))).toBe("24");
+		expect(checked(ev().getByLabelText("暦切れのときも成立とみなす"))).toBe(
+			false,
+		);
 
 		changeValue(ev().getByLabelText("イベントの何時間後まで"), "169");
 		expect(ev().getByText("0〜168 の整数で入れる")).toBeTruthy();
 		expect(blocked(view)).toBe(true);
 		changeValue(ev().getByLabelText("イベントの何時間後まで"), "48");
 		fireEvent.click(ev().getByLabelText("日銀会合"));
+		fireEvent.click(ev().getByLabelText("暦切れのときも成立とみなす"));
 		await save(view);
 
 		view = await reopen(view);
 		expect(value(ev().getByLabelText("イベントの何時間後まで"))).toBe("48");
 		expect(checked(ev().getByLabelText("日銀会合"))).toBe(false);
+		expect(checked(ev().getByLabelText("暦切れのときも成立とみなす"))).toBe(
+			true,
+		);
 	});
 
 	test("一部利確の条件と売り方、トレーリングストップの発動を保存でき、残りが下限を下回る割合は保存できない", async () => {

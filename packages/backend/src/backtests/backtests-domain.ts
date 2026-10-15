@@ -15,6 +15,7 @@ import {
 	validateConditionSet,
 	withSellDetails,
 } from "@trading-studio/core";
+import type { CalendarService } from "../calendar/types-domain";
 import type { JudgmentService } from "../judgments/types-domain";
 import { MAX_CHART_BARS } from "../market/market-domain";
 import type { MarketDataRepository } from "../market-data/repository-domain";
@@ -110,6 +111,7 @@ export type BacktestServiceDeps = {
 	>;
 	scoring: Pick<ScoringService, "rescoreCoverage">;
 	segments: Pick<SegmentService, "get">;
+	calendar: Pick<CalendarService, "calendar">;
 	now?: () => number;
 };
 
@@ -174,6 +176,7 @@ export function createBacktestService({
 	judgments,
 	scoring,
 	segments,
+	calendar,
 	now = Date.now,
 }: BacktestServiceDeps): BacktestService & { running(): Promise<void> | null } {
 	let current: { id: number; job: RunningJob; done: Promise<void> } | null =
@@ -401,6 +404,7 @@ export function createBacktestService({
 								since: firstScoredAt,
 							}
 						: null,
+					events: calendar.calendar(),
 				});
 			} catch (e) {
 				console.error("backtest failed to start", e);

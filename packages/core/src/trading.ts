@@ -1,6 +1,7 @@
 // 売買の1ステップ。バックテストとデモ（のちにリアル）で同じ関数を使い、同じ戦略がどのモードでも同じ動きをするようにする。
 // 1ステップは「約定の反映 → 期限切れの指値の取消 → 戦略の評価 → 注文の作成」。約定の判定（足か約定データか）だけ呼び出し側が差し替える
 
+import type { EventCalendar } from "./event-calendar";
 import { formatBtc, formatDuration, formatYen } from "./format";
 import { feeYen, notionalYen } from "./money";
 import type { Strategy, StrategyInput, StrategyOutput } from "./strategy";
@@ -491,6 +492,8 @@ export type DecideInput<P> = {
 	recent: StrategyInput<P>["recent"];
 	/** 判定器ごとの AI 判定。評価時点で今の集計ルールで計算したもの */
 	judgments: Readonly<Record<string, readonly Judgment[]>>;
+	/** 予定イベントの暦 */
+	events: EventCalendar;
 	account: Account;
 	state: JsonValue;
 	fees: FeeRates;
@@ -527,6 +530,7 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 		candles: input.candles,
 		recent: input.recent,
 		judgments: input.judgments,
+		events: input.events,
 		position,
 		lots: publicLots(lots),
 		cash,

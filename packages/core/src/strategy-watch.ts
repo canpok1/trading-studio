@@ -33,6 +33,7 @@ import {
 } from "./condition-strategy";
 import type { ScheduledEvent } from "./event-calendar";
 import {
+	calendarGap,
 	eventsBetween,
 	HOUR_MS,
 	jstDateTime,
@@ -319,20 +320,37 @@ function eventWindowDetail(
 	if ("insufficient" in h) return h.insufficient;
 	const after = c.afterHours * HOUR_MS;
 	const before = c.beforeHours * HOUR_MS;
+	const gap = calendarGap(
+		ctx.events,
+		c.events,
+		ctx.now - after,
+		ctx.now + before,
+	);
+	if (gap !== null) return `暦切れのため当たらないとみなす（${gap}）`;
 	const label = (e: ScheduledEvent) => MARKET_EVENT_LABELS[e.type];
 	if (!h.ok) {
-		const hits = eventsBetween(c.events, ctx.now - after, ctx.now + before);
+		const hits = eventsBetween(
+			ctx.events,
+			c.events,
+			ctx.now - after,
+			ctx.now + before,
+		);
 		let until = Math.max(...hits.map((e) => e.end + after));
 		// 窓が明ける前に次のイベントの前の時間が始まれば、その分も延ばす
 		for (;;) {
-			const more = eventsBetween(c.events, until - after, until + before);
+			const more = eventsBetween(
+				ctx.events,
+				c.events,
+				until - after,
+				until + before,
+			);
 			const next = Math.max(until, ...more.map((e) => e.end + after));
 			if (next === until) break;
 			until = next;
 		}
 		return `${[...new Set(hits.map(label))].join("・")} の前後（${jstDateTime(until)} まで）`;
 	}
-	const next = nextEvent(c.events, ctx.now);
+	const next = nextEvent(ctx.events, c.events, ctx.now);
 	return next
 		? `次は ${label(next)} ${jstDateTime(next.start)}`
 		: "暦にこの先のイベントなし";
@@ -458,6 +476,7 @@ export function watchConditionSet(input: WatchInput): StrategyWatch {
 		now,
 		lot: null,
 		judgments: latestJudgments(input.judgments),
+		events: input.events,
 	};
 	const peaks = usesPeaks(p) ? lotPeaks(lots, input.recent, state) : null;
 	const entryAtrs = usesAtr(p)

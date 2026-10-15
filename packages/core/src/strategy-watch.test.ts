@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { BuyRule, ConditionSet } from "./condition-strategy";
 import { DEFAULT_BUY_ORDER, DEFAULT_PARTIAL_SELL } from "./condition-strategy";
+import { BUNDLED_EVENT_CALENDAR } from "./event-calendar";
 import { adx, rsi } from "./indicators";
 import type { StrategyWatch, WatchAction, WatchInput } from "./strategy-watch";
 import { nextMoves, watchConditionSet } from "./strategy-watch";
@@ -63,6 +64,7 @@ function input(p: ConditionSet, over: Partial<WatchInput> = {}): WatchInput {
 	return {
 		now: closes.length * H,
 		price,
+		events: BUNDLED_EVENT_CALENDAR,
 		candles: { "1h": candles(closes) },
 		recent: { timeframeMs: TIMEFRAME_MS["1m"], candles: [] },
 		judgments: {},
@@ -499,6 +501,7 @@ describe("予定イベントの前後の見張り", () => {
 		events: ["cpi" as const],
 		beforeHours: 0,
 		afterHours: 24,
+		allowNoCalendar: false,
 	};
 	const p = params([rule({ buy: { match: "all", conditions: [ev] } })]);
 	// 2026-09-11 08:30 ET の米 CPI（JST 21:30）
@@ -547,5 +550,21 @@ describe("予定イベントの前後の見張り", () => {
 		const b = watch(Date.parse("2027-01-02T00:00:00Z")).buys[0];
 		expect(b?.status.kind).toBe("noCalendar");
 		expect(b?.buy.conditions[0]?.detail).toContain("暦切れ");
+	});
+
+	test("暦切れを成立とみなす条件なら、そう出して買いを止めない", () => {
+		const q = params([
+			rule({
+				buy: { match: "all", conditions: [{ ...ev, allowNoCalendar: true }] },
+			}),
+		]);
+		const b = watchConditionSet(
+			input(q, { now: Date.parse("2027-01-02T00:00:00Z") }),
+		).buys[0];
+		expect(b?.status.kind).not.toBe("noCalendar");
+		expect(b?.buy.conditions[0]?.met).toBe(true);
+		expect(b?.buy.conditions[0]?.detail).toBe(
+			"暦切れのため当たらないとみなす（米 CPI の暦は 2027-01-01 0:00 まで）",
+		);
 	});
 });

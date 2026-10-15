@@ -21,6 +21,9 @@ import { createApp } from "./app";
 import { createBacktestService } from "./backtests/backtests-domain";
 import { SqliteBacktestRepository } from "./backtests/repository-infra";
 import { workerRunner } from "./backtests/worker-runner-infra";
+import { createCalendarService } from "./calendar/calendar-domain";
+import { icalFeed } from "./calendar/ical-infra";
+import { SqliteCalendarRepository } from "./calendar/repository-infra";
 import { coincheckFeed } from "./collector/coincheck-infra";
 import { createCollector } from "./collector/collector-domain";
 import { demoFeed } from "./collector/fake-feed-infra";
@@ -116,6 +119,14 @@ const newsCollector = createNewsCollector({
 const newsTimer = setInterval(() => newsCollector.tick(), 1_000);
 newsCollector.tick();
 
+// 取得元の既定は持たない。利用者が設定するまで、リポジトリに持つ暦だけを使う
+const calendar = createCalendarService({
+	repo: new SqliteCalendarRepository(db),
+	fetchIcal: icalFeed(httpFetchText),
+});
+const calendarTimer = setInterval(() => calendar.tick(), 60_000);
+calendar.tick();
+
 const scoreRepo = new SqliteScoreRepository(db);
 scoreRepo.seedCriteria(DEFAULT_CRITERIA, Date.now());
 const compatibleRepo = new SqliteCompatibleRepository(db);
@@ -148,6 +159,7 @@ const tradingEngine = createTradingService({
 	repo: new SqliteTradingRepository(db),
 	strategies,
 	judgments,
+	calendar,
 	marketData: marketDataRepo,
 	market: () => collector.live(),
 });
@@ -200,6 +212,7 @@ const backtests = createBacktestService({
 	judgments,
 	scoring,
 	segments,
+	calendar,
 });
 const datasetRepo = new SqliteDatasetRepository(db, backtestRepo);
 datasetRepo.failInterrupted(Date.now());
@@ -285,6 +298,7 @@ const server = new Hono()
 			segments,
 			datasets,
 			compatible,
+			calendar,
 		}),
 	);
 serveFrontend(server, distDir);
@@ -310,6 +324,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
 	process.on(signal, async () => {
 		clearInterval(collectorTimer);
 		clearInterval(newsTimer);
+		clearInterval(calendarTimer);
 		clearInterval(scorerTimer);
 		clearInterval(tradingTimer);
 		clearInterval(retentionTimer);

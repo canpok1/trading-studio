@@ -1,5 +1,5 @@
 // 予定イベント（米国の金融政策・経済指標の発表、日銀会合）の暦。買いの条件「予定イベントの前後でない」に使う。
-// 暦をリポジトリに持つ理由と更新の手順は docs/adr/0029-event-calendar-in-repo.md
+// リポジトリに持つ 2022〜2026 年の分と、設定の取得元（iCal）から取得した分を合わせて使う（docs/adr/0029-event-calendar-from-ical.md）
 
 import { JST_OFFSET_MS } from "./timeframe";
 
@@ -42,10 +42,7 @@ export function jstDateTime(t: number): string {
 	return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${d.getUTCHours()}:${mm}`;
 }
 
-/**
- * 暦が全件を持っている期間（UTC エポックミリ秒、from 以上 until 未満）。この外を含む判定は、イベントが無いと言えない。
- * 暦を足したら until を延ばす
- */
+/** リポジトリに持つ暦が全件を持っている期間（UTC エポックミリ秒、from 以上 until 未満） */
 export const EVENT_CALENDAR_RANGE = {
 	from: 1640962800000, // 2022-01-01 00:00 JST
 	until: 1798729200000, // 2027-01-01 00:00 JST
@@ -301,27 +298,120 @@ export const SCHEDULED_EVENTS: readonly ScheduledEvent[] = ROWS.map(
 	}),
 );
 
+/** 暦が全件を持っている期間。from 以上 until 未満 */
+export type CalendarRange = { from: number; until: number };
+
+/**
+ * 判定に使う暦。covered は種類ごとの、全件を持っている期間（重ならず時刻の順）。
+ * この外を含む判定は、イベントが無いと言えない
+ */
+export type EventCalendar = {
+	/** 時刻の順 */
+	events: readonly ScheduledEvent[];
+	covered: Readonly<Record<MarketEvent, readonly CalendarRange[]>>;
+};
+
+/** 重なるか接する期間をまとめる（時刻の順） */
+export function mergeRanges(ranges: readonly CalendarRange[]): CalendarRange[] {
+	const out: CalendarRange[] = [];
+	for (const r of [...ranges].sort((a, b) => a.from - b.from)) {
+		if (r.until <= r.from) continue;
+		const last = out.at(-1);
+		if (last && r.from <= last.until)
+			last.until = Math.max(last.until, r.until);
+		else out.push({ ...r });
+	}
+	return out;
+}
+
+/** 暦を合わせる。同じ種類・同じ時刻のイベントは1件にする */
+export function combineCalendars(
+	calendars: readonly EventCalendar[],
+): EventCalendar {
+	const seen = new Set<string>();
+	const events: ScheduledEvent[] = [];
+	for (const e of calendars
+		.flatMap((c) => c.events)
+		.sort((a, b) => a.start - b.start || a.end - b.end)) {
+		const key = `${e.type}:${e.start}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		events.push(e);
+	}
+	const covered = Object.fromEntries(
+		MARKET_EVENTS.map((t) => [
+			t,
+			mergeRanges(calendars.flatMap((c) => c.covered[t])),
+		]),
+	) as Record<MarketEvent, CalendarRange[]>;
+	return { events, covered };
+}
+
+/** リポジトリに持つ暦 */
+export const BUNDLED_EVENT_CALENDAR: EventCalendar = {
+	events: SCHEDULED_EVENTS,
+	covered: Object.fromEntries(
+		MARKET_EVENTS.map((t) => [t, [EVENT_CALENDAR_RANGE]]),
+	) as Record<MarketEvent, CalendarRange[]>,
+};
+
+/** JST の年月日と時刻。例: 「2026-12-31 23:00」 */
+export function jstDateTimeFull(t: number): string {
+	const d = new Date(t + JST_OFFSET_MS);
+	const mm = String(d.getUTCMinutes()).padStart(2, "0");
+	return `${jstDate(t)} ${d.getUTCHours()}:${mm}`;
+}
+
+/**
+ * [from, to] の types の暦が全件そろっていなければ、その理由（暦切れ）。そろっていれば null。
+ * 例: 「米 CPI の暦は 2027-01-01 0:00 まで」
+ */
+export function calendarGap(
+	cal: EventCalendar,
+	types: readonly MarketEvent[],
+	from: number,
+	to: number,
+): string | null {
+	for (const t of types) {
+		const ranges = cal.covered[t];
+		if (ranges.some((r) => r.from <= from && to < r.until)) continue;
+		const label = MARKET_EVENT_LABELS[t];
+		// 判定の期間の始まりを含む期間か、無ければその次・その前の期間で書く
+		const around = ranges.find((r) => r.from <= from && from < r.until);
+		if (around) return `${label} の暦は ${jstDateTimeFull(around.until)} まで`;
+		const after = ranges.find((r) => r.from > from);
+		if (after) return `${label} の暦は ${jstDateTimeFull(after.from)} から`;
+		const before = ranges.at(-1);
+		return before
+			? `${label} の暦は ${jstDateTimeFull(before.until)} まで`
+			: `${label} の暦が無い`;
+	}
+	return null;
+}
+
 /** イベントの時間 [start, end] が [from, to] に掛かるか */
 const covers = (e: ScheduledEvent, from: number, to: number) =>
 	e.start <= to && e.end >= from;
 
 /** [from, to] に掛かる、types のどれかのイベント（時刻の順） */
 export function eventsBetween(
+	cal: EventCalendar,
 	types: readonly MarketEvent[],
 	from: number,
 	to: number,
-	events: readonly ScheduledEvent[] = SCHEDULED_EVENTS,
 ): ScheduledEvent[] {
-	return events.filter((e) => types.includes(e.type) && covers(e, from, to));
+	return cal.events.filter(
+		(e) => types.includes(e.type) && covers(e, from, to),
+	);
 }
 
 /** t より後に始まる、types のどれかの最初のイベント。暦に無ければ null */
 export function nextEvent(
+	cal: EventCalendar,
 	types: readonly MarketEvent[],
 	t: number,
-	events: readonly ScheduledEvent[] = SCHEDULED_EVENTS,
 ): ScheduledEvent | null {
-	return events.find((e) => types.includes(e.type) && e.start > t) ?? null;
+	return cal.events.find((e) => types.includes(e.type) && e.start > t) ?? null;
 }
 
 /** イベントの前後の時間の文言。例: 「前 2 時間・後 24 時間」、どちらも 0 なら「発表の時刻」 */

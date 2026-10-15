@@ -419,6 +419,7 @@ describe("止まっていた間と再起動", () => {
 					throw new Error("約定だけなので判定は使わない");
 				},
 			},
+			calendar: t.calendar,
 			marketData: t.marketDataRepo,
 			market: () => t.live.current,
 			fees: TEST_FEE_RATES,

@@ -64,7 +64,7 @@ function conditionBody(c: Condition): string {
 		case "holdingBars":
 			return `買ってから ${c.bars} 本経った`;
 		case "eventWindow":
-			return `予定イベント（${c.events.map((e) => MARKET_EVENT_LABELS[e] ?? e).join("・")}）の${eventSpanText(c.beforeHours, c.afterHours)}でない`;
+			return `予定イベント（${c.events.map((e) => MARKET_EVENT_LABELS[e] ?? e).join("・")}）の${eventSpanText(c.beforeHours, c.afterHours)}でない${c.allowNoCalendar ? "（暦切れのときは成立とみなす）" : ""}`;
 		case "judgment":
 			return `${JUDGE_LABELS[c.judge]}が ${c.values.map((v) => JUDGMENT_VALUE_LABELS[v] ?? v).join("・")} のどれか`;
 	}

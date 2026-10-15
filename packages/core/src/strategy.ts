@@ -1,6 +1,7 @@
 // 戦略のインターフェース。戦略は純関数で、現在時刻・乱数・外部アクセスを使わない。
 // 状態は変数に持たず、入出力の state で受け渡す（再起動やバックテストで結果が変わらないようにするため）
 
+import type { EventCalendar } from "./event-calendar";
 import type { Timeframe } from "./timeframe";
 import type {
 	Candle,
@@ -26,6 +27,8 @@ export type StrategyInput<P> = {
 	recent: { timeframeMs: number; candles: readonly Candle[] };
 	/** 判定器ごとの、その時点で得られていた AI 判定 */
 	judgments: Readonly<Record<string, readonly Judgment[]>>;
+	/** 予定イベントの暦 */
+	events: EventCalendar;
 	/** 保有の合計 */
 	position: Position;
 	/** 保有中のロット（買いの約定順） */

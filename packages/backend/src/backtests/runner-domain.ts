@@ -5,6 +5,7 @@ import type {
 	BacktestSummary,
 	Candle,
 	ConditionSet,
+	EventCalendar,
 	FeeRates,
 	ScoredNews,
 	Timeframe,
@@ -28,6 +29,8 @@ export type RunnerJob = {
 		rule: AggregationRule;
 		since: number | null;
 	} | null;
+	/** 予定イベントの暦 */
+	events: EventCalendar;
 };
 
 /** 保存する結果。中身は gzip した JSON */

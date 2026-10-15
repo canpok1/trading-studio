@@ -115,6 +115,11 @@ const CONDITION: ResponseSchema = {
 		}),
 		beforeHours: opt(int("eventWindow でイベントの何時間前から買わないか")),
 		afterHours: opt(int("eventWindow でイベントの何時間後まで買わないか")),
+		allowNoCalendar: opt({
+			type: "BOOLEAN",
+			description:
+				"eventWindow で、予定イベントの暦がそろっていない（暦切れ）ときに成立とみなすか。false なら暦切れのあいだ買いを判定しない",
+		}),
 		judge: opt(str("判定。sentiment=センチメント・risk=リスク", JUDGES)),
 		values: opt({
 			type: "ARRAY",
