@@ -9,7 +9,7 @@ import { errorMessage, readJson } from "../../../shared/lib/useAsync";
 const POLL_MS = 5_000;
 const PER_EVENT_MS = 5_000;
 
-/** 版の判断がそろっていて実行できるか。失敗して止まった予定は除いて実行する */
+/** 版の判断がそろっていて実行できるか。失敗して止まった予定は重要度が無いまま実行する（その前後は暦切れ） */
 export const judgmentsReady = (c: JudgmentCoverage) =>
 	c.done + c.failed >= c.total;
 
@@ -104,7 +104,7 @@ export function EventJudgmentStatus({
 	const failedNote = c.failed > 0 && (
 		<span className="flex flex-wrap items-center gap-x-2 text-xs text-text-2">
 			<span className="num">
-				{formatInt(c.failed)} 件は判断に失敗したため除いて実行する
+				{formatInt(c.failed)} 件は判断に失敗した。その前後は暦切れとして実行する
 			</span>
 			<Button variant="link" disabled={busy} onClick={request}>
 				失敗した予定を判断し直す

@@ -54,6 +54,7 @@ function setup(
 			lastRunAt: null,
 			nextRunAt: null,
 			unjudged: 0,
+			failed: 0,
 			...status,
 		}))
 		.on(routes.api.calendar.sources, "$post", (req, reply) => {
@@ -120,7 +121,7 @@ test("設定の「ニュース」→「予定」に暦の期間・未判断の�
 				lastError: "取得できない: HTTP 403",
 			}),
 		],
-		{ unjudged: 12 },
+		{ unjudged: 12, failed: 2 },
 	);
 	const c = await card(view, "予定の取得元");
 	await c.findByText("週次");
@@ -129,6 +130,9 @@ test("設定の「ニュース」→「予定」に暦の期間・未判断の�
 	);
 	expect(c.getByTestId("calendar-unjudged").textContent).toBe(
 		"重要度を未判断の予定 12 件（順に判断中）",
+	);
+	expect(c.getByTestId("calendar-failed").textContent).toContain(
+		"重要度の判断に失敗した予定 2 件",
 	);
 	expect(c.getByText("取得できない: HTTP 403")).toBeTruthy();
 });

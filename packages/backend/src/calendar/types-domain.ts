@@ -43,6 +43,8 @@ export type CalendarStatus = {
 	nextRunAt: number | null;
 	/** 使用中の版で重要度をまだ判断していない予定の件数（再試行待ちを含む） */
 	unjudged: number;
+	/** 使用中の版で判断に失敗して止めた予定の件数。1時間ごとに判断し直す */
+	failed: number;
 };
 
 /** 期間の予定のうち、ある版で重要度を判断済みのものの件数 */

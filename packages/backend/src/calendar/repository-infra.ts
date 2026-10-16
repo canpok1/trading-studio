@@ -77,9 +77,13 @@ const toTarget = (r: TargetRow, criteriaVersion: number): JudgeTarget => ({
 const TARGET_COLUMNS = `e.id as eventId, j.attempts as attempts, s.name as sourceName,
 	e.title as title, e.description as description, e.start as start, e.all_day as allDay`;
 
-/** 判断がまだ無いか、再試行の時刻が来たもの（?2 が今の時刻） */
-const UNJUDGED = `(j.event_id is null or (j.status in ('pending', 'retry')
+/** 判断がまだ無いか、再試行の時刻が来たもの（?2 が今の時刻）。失敗して止めたものも判断し直す時刻が来れば含める */
+const UNJUDGED = `(j.event_id is null or (j.status in ('pending', 'retry', 'failed')
 	and (j.next_attempt_at is null or j.next_attempt_at <= ?2)))`;
+
+/** 予定が消えておらず、件名が判断を始めたときのままか（?1 が予定、?9 が件名） */
+const SAME_EVENT =
+	"exists (select 1 from scheduled_events where id = ?1 and title = ?9)";
 
 export class SqliteCalendarRepository implements CalendarRepository {
 	constructor(private readonly db: Db) {}
@@ -212,8 +216,9 @@ export class SqliteCalendarRepository implements CalendarRepository {
 					e.allDay ? 1 : 0,
 					prev.id,
 				);
-				// 中身が変われば重要度も変わりうるので判断し直す
-				if (prev.title !== e.title || prev.description !== e.description) {
+				// 件名が変われば重要度も変わりうるので判断し直す。説明は発表後に結果を書き足す取得元があり、
+				// そのたびに判断し直すと判断が済むまで暦切れになるので見ない
+				if (prev.title !== e.title) {
 					forget.run(prev.id);
 				}
 			}
@@ -367,19 +372,19 @@ export class SqliteCalendarRepository implements CalendarRepository {
 
 	nextUnjudged(
 		version: number,
-		since: number,
-		upcoming: boolean,
+		range: CalendarRange,
+		order: "asc" | "desc",
 		now: number,
 	): JudgeTarget | null {
 		const r = this.sql
-			.query<TargetRow, [number, number, number]>(
+			.query<TargetRow, [number, number, number, number]>(
 				`select ${TARGET_COLUMNS} from scheduled_events e
 				 left join event_sources s on s.id = e.source_id
 				 left join event_judgments j on j.event_id = e.id and j.criteria_version = ?1
-				 where ${UNJUDGED} and ${upcoming ? "e.end >= ?3" : "e.end < ?3"}
-				 order by ${upcoming ? "e.start asc" : "e.start desc"}, e.id limit 1`,
+				 where ${UNJUDGED} and e.end >= ?3 and e.start < ?4
+				 order by e.start ${order}, e.id limit 1`,
 			)
-			.get(version, now, since);
+			.get(version, now, range.from, range.until);
 		return r ? toTarget(r, version) : null;
 	}
 
@@ -399,8 +404,7 @@ export class SqliteCalendarRepository implements CalendarRepository {
 	}
 
 	saveJudgment(
-		eventId: number,
-		version: number,
+		t: JudgeTarget,
 		r: { importance: EventImportance; reason: string },
 		meta: {
 			judgedAt: number;
@@ -413,47 +417,50 @@ export class SqliteCalendarRepository implements CalendarRepository {
 			.query(
 				`insert into event_judgments (event_id, criteria_version, status, importance, reason,
 				 judged_at, model, app_built_at, attempts, error, next_attempt_at, requested_at)
-				 values (?1, ?2, 'done', ?3, ?4, ?5, ?6, ?7, ?8, null, null, ?5)
+				 select ?1, ?2, 'done', ?3, ?4, ?5, ?6, ?7, ?8, null, null, ?5 where ${SAME_EVENT}
 				 on conflict (event_id, criteria_version) do update set status = 'done',
 				 importance = ?3, reason = ?4, judged_at = ?5, model = ?6, app_built_at = ?7,
 				 attempts = ?8, error = null, next_attempt_at = null`,
 			)
 			.run(
-				eventId,
-				version,
+				t.eventId,
+				t.criteriaVersion,
 				r.importance,
 				r.reason,
 				meta.judgedAt,
 				meta.model,
 				meta.appBuiltAt,
 				meta.attempts,
+				t.title,
 			);
 	}
 
 	saveJudgmentFailure(
-		eventId: number,
-		version: number,
+		t: JudgeTarget,
 		error: string,
 		attempts: number,
-		nextAttemptAt: number | null,
+		stopped: boolean,
+		nextAttemptAt: number,
 		now: number,
 	): void {
 		this.sql
 			.query(
 				`insert into event_judgments (event_id, criteria_version, status, attempts, error,
 				 next_attempt_at, requested_at)
-				 values (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+				 select ?1, ?2, ?3, ?4, ?5, ?6, ?7 where ${SAME_EVENT}
 				 on conflict (event_id, criteria_version) do update set status = ?3,
 				 attempts = ?4, error = ?5, next_attempt_at = ?6, importance = null, reason = null`,
 			)
 			.run(
-				eventId,
-				version,
-				nextAttemptAt === null ? "failed" : "retry",
+				t.eventId,
+				t.criteriaVersion,
+				stopped ? "failed" : "retry",
 				attempts,
 				error,
 				nextAttemptAt,
 				now,
+				null,
+				t.title,
 			);
 	}
 
@@ -505,6 +512,16 @@ export class SqliteCalendarRepository implements CalendarRepository {
 				`select count(*) as n from scheduled_events e
 				 left join event_judgments j on j.event_id = e.id and j.criteria_version = ?
 				 where j.event_id is null or j.status in ('pending', 'retry')`,
+			)
+			.get(version);
+		return r?.n ?? 0;
+	}
+
+	failedCount(version: number): number {
+		const r = this.sql
+			.query<{ n: number }, [number]>(
+				`select count(*) as n from event_judgments
+				 where criteria_version = ? and status = 'failed'`,
 			)
 			.get(version);
 		return r?.n ?? 0;

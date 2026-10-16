@@ -2,6 +2,7 @@
 
 import type { DatasetMember } from "@trading-studio/core";
 import {
+	eventWindowHours,
 	MAX_DATASET_SEGMENTS,
 	summarizeDataset,
 	validateConditionSet,
@@ -13,6 +14,7 @@ import type {
 	BacktestService,
 	StartBacktestFailure,
 } from "../backtests/types-domain";
+import type { CalendarService } from "../calendar/types-domain";
 import type { Segment, SegmentService } from "../segments/types-domain";
 import { checkName } from "../strategies/strategies-domain";
 import type { DatasetRepository, StoredDataset } from "./repository-domain";
@@ -33,6 +35,7 @@ export type DatasetServiceDeps = {
 	backtestRepo: Pick<BacktestRepository, "get" | "trades">;
 	backtests: BacktestService;
 	segments: Pick<SegmentService, "get">;
+	calendar: Pick<CalendarService, "activeVersion">;
 	now?: () => number;
 };
 
@@ -68,6 +71,7 @@ export function createDatasetService({
 	backtestRepo,
 	backtests,
 	segments,
+	calendar,
 	now = Date.now,
 }: DatasetServiceDeps): DatasetService & { running(): Promise<void> | null } {
 	/** 実行中のまとめた実行。index は実行中の相場データの位置 */
@@ -294,11 +298,16 @@ export function createDatasetService({
 			}
 			const errors = validateConditionSet(input.params);
 			if (errors.length > 0) return fail({ kind: "invalid_params", errors });
+			// 実行の途中で使用中の版を切り替えても相場データごとに版が混ざらないよう、始めるときに決める
+			const eventCriteriaVersion =
+				input.eventCriteriaVersion ??
+				(eventWindowHours(input.params) ? calendar.activeVersion() : null);
 			// 一部だけ実行すると、組ごとに成績を比べられなくなるので、実行できない相場データがあれば全体を実行しない
 			const blockers: DatasetBlocker[] = [];
 			for (const segment of list) {
 				const error = backtests.check({
 					...input,
+					eventCriteriaVersion,
 					from: 0,
 					to: 0,
 					segmentId: segment.id,
@@ -321,7 +330,7 @@ export function createDatasetService({
 					fees: input.fees,
 					skipGaps: input.skipGaps,
 					criteriaVersion: input.criteriaVersion,
-					eventCriteriaVersion: input.eventCriteriaVersion,
+					eventCriteriaVersion,
 				},
 				startedAt: now(),
 			});

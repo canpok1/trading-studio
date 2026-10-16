@@ -166,6 +166,7 @@ export function createTestApp(
 		backtestRepo,
 		backtests,
 		segments,
+		calendar,
 		now: () => 3_000,
 	});
 	const adviceRepo = new SqliteAdviceRepository(db);

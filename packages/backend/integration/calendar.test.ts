@@ -194,7 +194,7 @@ describe("予定の取得元", () => {
 		expect(cal.covered.at(-1)).toEqual({ from: w1, until: w1 + 9 * D + 1 });
 	});
 
-	test("件名か説明が変わった予定は判断し直す", async () => {
+	test("件名が変わった予定は判断し直し、説明だけの変更では判断を残す", async () => {
 		const t = setup();
 		await t.add({ name: "週次", url: URL_A });
 		const at = END + 3 * D;
@@ -211,6 +211,45 @@ describe("予定の取得元", () => {
 		expect(
 			t.calendar.calendar().events.find((e) => e.start === at)?.importance,
 		).toBe("medium");
+		t.icalFeeds.set(URL_A, [ev("US PPI", at, "1", "Actual: 0.3%")]);
+		await t.calendar.run();
+		expect(
+			t.calendar.calendar().events.find((e) => e.start === at)?.importance,
+		).toBe("medium");
+	});
+
+	test("判断の間に件名が変わるか予定が消えたら、その判断は残さない", async () => {
+		const t = setup();
+		await t.add({ name: "週次", url: URL_A });
+		const at = END + 3 * D;
+		t.icalFeeds.set(URL_A, [ev("US CPI", at, "1")]);
+		t.clock.now = END;
+		await t.calendar.run();
+		const slow = async (change: () => Promise<void>): ReturnType<AskModel> => {
+			await change();
+			return { value: { importance: "high", reason: "r" }, model: "m" };
+		};
+		const job = t.calendar.jobs.urgent(t.clock.now);
+		await job?.(() =>
+			slow(async () => {
+				t.icalFeeds.set(URL_A, [ev("US PPI", at, "1")]);
+				await t.calendar.run();
+			}),
+		);
+		expect(
+			t.calendar.calendar().events.find((e) => e.start === at)?.importance,
+		).toBeNull();
+		// 予定が消えても例外にしない
+		const again = t.calendar.jobs.urgent(t.clock.now);
+		await again?.(() =>
+			slow(async () => {
+				t.icalFeeds.set(URL_A, [ev("US GDP", at + D, "2")]);
+				await t.calendar.run();
+			}),
+		);
+		expect(t.calendar.calendar().events.some((e) => e.start === at)).toBe(
+			false,
+		);
 	});
 
 	test("前回の取得の後に載っていた予定は、次の取得に載っていなくても残す", async () => {
@@ -327,10 +366,19 @@ describe("予定の重要度の判断", () => {
 		await next()?.(broken);
 		t.clock.now += 600_000;
 		await next()?.(broken);
-		t.clock.now += 3_600_000;
+		t.clock.now += 3_600_000 - 1;
 		expect(next()).toBeNull();
 		const cov = t.calendar.judgmentCoverage(at, at, 1) as JudgmentCoverage;
 		expect(cov).toEqual({ total: 1, done: 0, pending: 0, failed: 1 });
+		expect(t.calendar.status().failed).toBe(1);
+		// 失敗して止めた予定は重要度が無いまま暦に残り、前後は暦切れになる
+		expect(
+			t.calendar.calendar().events.find((e) => e.title === "US CPI")
+				?.importance,
+		).toBeNull();
+		// 使用中の版では1時間後に判断し直す
+		t.clock.now += 1;
+		expect(next()).not.toBeNull();
 		// 失敗して止めた予定は、頼み直すと過去の予定より先に判断する
 		t.calendar.requestJudgments(at, at, 1);
 		await t.calendar.jobs.background(t.clock.now)?.(demoAsk);

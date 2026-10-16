@@ -38,6 +38,14 @@ export const FETCH_INTERVAL_MS = 6 * HOUR_MS;
 const CONTINUOUS_MS = DAY_MS;
 /** 運用で使う予定として先に判断する範囲。予定の前後の条件で見る一番長い時間（168 時間）だけ前に終わった予定から */
 const LIVE_LOOKBACK_MS = 7 * DAY_MS;
+/** 同じく、これから始まる予定はこの時間先まで（168 時間に、判断が済むまでの余裕を足す） */
+const LIVE_AHEAD_MS = 8 * DAY_MS;
+/** 再試行の回数を超えて失敗した予定を、使用中の版で判断し直すまでの間。AI が長く止まっても、戻れば判断が進むように */
+const FAILED_RETRY_MS = HOUR_MS;
+const ALL: CalendarRange = {
+	from: Number.MIN_SAFE_INTEGER,
+	until: Number.MAX_SAFE_INTEGER,
+};
 const NAME_MAX = 40;
 const CRITERIA_MAX = 5000;
 const NOTE_MAX = 100;
@@ -220,13 +228,14 @@ export function createCalendarService({
 			const criteria = repo.getCriteria(t.criteriaVersion);
 			if (!criteria) {
 				repo.saveJudgmentFailure(
-					t.eventId,
-					t.criteriaVersion,
+					t,
 					"評価基準の版が無い",
 					t.attempts + 1,
-					null,
+					true,
+					now() + FAILED_RETRY_MS,
 					now(),
 				);
+				invalidate();
 				return;
 			}
 			try {
@@ -239,7 +248,7 @@ export function createCalendarService({
 				);
 				const r = parseEventResponse(value);
 				if (typeof r === "string") throw new Error(`応答の形が違う: ${r}`);
-				repo.saveJudgment(t.eventId, t.criteriaVersion, r, {
+				repo.saveJudgment(t, r, {
 					judgedAt: now(),
 					model,
 					appBuiltAt,
@@ -249,11 +258,11 @@ export function createCalendarService({
 				const attempts = t.attempts + 1;
 				const delay = retryDelaysMs[attempts - 1];
 				repo.saveJudgmentFailure(
-					t.eventId,
-					t.criteriaVersion,
+					t,
 					e instanceof Error ? e.message : String(e),
 					attempts,
-					delay === undefined ? null : now() + delay,
+					delay === undefined,
+					now() + (delay ?? FAILED_RETRY_MS),
 					now(),
 				);
 			} finally {
@@ -266,17 +275,28 @@ export function createCalendarService({
 		urgent(t) {
 			const v = repo.activeCriteriaVersion();
 			if (v === null) return null;
-			const next = repo.nextUnjudged(v, t - LIVE_LOOKBACK_MS, true, t);
+			const next = repo.nextUnjudged(
+				v,
+				{ from: t - LIVE_LOOKBACK_MS, until: t + LIVE_AHEAD_MS },
+				"asc",
+				t,
+			);
 			return next ? judgeJob(next) : null;
 		},
-		// 頼まれた判断を頼んだ順に、その後で使用中の版の過去の予定を新しい順に
+		// 頼まれた判断を頼んだ順に、その後で使用中の版の過去の予定を新しい順に、残り（先の予定）を早い順に
 		background(t) {
 			const requested = repo.nextRequested(t);
 			if (requested) return judgeJob(requested);
 			const v = repo.activeCriteriaVersion();
 			if (v === null) return null;
-			const past = repo.nextUnjudged(v, t - LIVE_LOOKBACK_MS, false, t);
-			return past ? judgeJob(past) : null;
+			const next =
+				repo.nextUnjudged(
+					v,
+					{ from: ALL.from, until: t - LIVE_LOOKBACK_MS },
+					"desc",
+					t,
+				) ?? repo.nextUnjudged(v, ALL, "asc", t);
+			return next ? judgeJob(next) : null;
 		},
 	};
 
@@ -299,6 +319,7 @@ export function createCalendarService({
 				lastRunAt,
 				nextRunAt: nextRunAt(),
 				unjudged: active === null ? 0 : repo.unjudgedCount(active),
+				failed: active === null ? 0 : repo.failedCount(active),
 			};
 		},
 		criteria: () => ({

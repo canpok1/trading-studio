@@ -113,6 +113,15 @@ function Coverage({ status }: { status: CalendarStatus }) {
 					? "すべての予定の重要度を判断済み"
 					: `重要度を未判断の予定 ${status.unjudged} 件（順に判断中）`}
 			</span>
+			{status.failed > 0 && (
+				<span
+					data-testid="calendar-failed"
+					className="num font-semibold text-loss"
+				>
+					重要度の判断に失敗した予定 {status.failed}{" "}
+					件。その前後は暦切れになる（1 時間ごとに判断し直す）
+				</span>
+			)}
 		</div>
 	);
 }

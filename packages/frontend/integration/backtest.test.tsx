@@ -451,12 +451,7 @@ describe("予定の評価基準の版", () => {
 			to: number;
 			version: number;
 		};
-		const get = api.requests.findLast(
-			(r) => r.method === "GET" && r.path === "/api/calendar/judgments",
-		);
 		expect(body.version).toBe(1);
-		expect(get?.query.get("from")).toBe(String(body.from));
-		expect(get?.query.get("to")).toBe(String(body.to));
 		expect(body.to - body.from).toBe((22 + 1) * 24 * H + (2 + 24) * H);
 		expect(runButton(view).disabled).toBe(true);
 	});
@@ -478,7 +473,7 @@ describe("予定の評価基準の版", () => {
 		});
 		expect(await view.findByText("v1 の重要度の判断: 3 / 4 件")).toBeTruthy();
 		expect(
-			view.getByText(/1 件は判断に失敗したため除いて実行する/),
+			view.getByText(/1 件は判断に失敗した。その前後は暦切れとして実行する/),
 		).toBeTruthy();
 		fireEvent.click(runButton(view));
 		const more = await view.findByRole(

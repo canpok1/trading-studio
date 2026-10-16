@@ -226,6 +226,7 @@ const datasets = createDatasetService({
 	backtestRepo,
 	backtests,
 	segments,
+	calendar,
 });
 const adviceRepo = new SqliteAdviceRepository(db);
 adviceRepo.failInterrupted();

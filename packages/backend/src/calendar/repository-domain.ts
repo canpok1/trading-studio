@@ -81,20 +81,20 @@ export interface CalendarRepository {
 	/** 予定（時刻の順）。importance は version で判断済みのもの */
 	events(version: number | null): ScheduledEvent[];
 	/**
-	 * version で判断していない（再試行の時刻が来たものを含む）予定のうち、次に判断するもの。
-	 * upcoming なら終わりが since 以降のものを早い順、そうでなければ since より前に終わったものを新しい順
+	 * version で判断していない（再試行の時刻が来たもの・失敗して止めたあと判断し直す時刻が来たものを含む）予定のうち、
+	 * range に掛かる（終わりが from 以降・始まりが until より前）次の1件。order は始まりの順
 	 */
 	nextUnjudged(
 		version: number,
-		since: number,
-		upcoming: boolean,
+		range: CalendarRange,
+		order: "asc" | "desc",
 		now: number,
 	): JudgeTarget | null;
 	/** 頼まれた判断（使用中でない版を含む）のうち次のもの。頼んだ順、同じ頼みの中は予定の早い順 */
 	nextRequested(now: number): JudgeTarget | null;
+	/** 判断した予定の件名が判断の間に変わったか、予定が消えていれば何もしない（古い中身での判断を残さないため） */
 	saveJudgment(
-		eventId: number,
-		version: number,
+		target: JudgeTarget,
 		r: EventJudgeResponse,
 		meta: {
 			judgedAt: number;
@@ -103,13 +103,16 @@ export interface CalendarRepository {
 			attempts: number;
 		},
 	): void;
-	/** 失敗を記録する。nextAttemptAt が null なら「失敗」で止める */
+	/**
+	 * 失敗を記録する。stopped なら「失敗」にする（バックテストは除いて実行できる）。
+	 * どちらも nextAttemptAt に判断し直す。saveJudgment と同じく、件名が変わったか予定が消えていれば何もしない
+	 */
 	saveJudgmentFailure(
-		eventId: number,
-		version: number,
+		target: JudgeTarget,
 		error: string,
 		attempts: number,
-		nextAttemptAt: number | null,
+		stopped: boolean,
+		nextAttemptAt: number,
 		now: number,
 	): void;
 	/** [from, to] に掛かる予定の、version での判断の件数 */
@@ -123,4 +126,6 @@ export interface CalendarRepository {
 	): void;
 	/** version で判断済み（失敗して止めたものを含む）でない予定の件数 */
 	unjudgedCount(version: number): number;
+	/** version で判断に失敗して止めた予定の件数 */
+	failedCount(version: number): number;
 }
