@@ -8,6 +8,8 @@ import {
 	checkDataResolution,
 	chooseStepTimeframe,
 	conditionStrategy,
+	eventWindowHours,
+	HOUR_MS,
 	isTimeframe,
 	maxWindowMs,
 	parseConditionSet,
@@ -63,6 +65,10 @@ export function parseRunConditions(v: unknown) {
 				v.criteriaVersion === undefined || v.criteriaVersion === null
 					? null
 					: num(v.criteriaVersion),
+			eventCriteriaVersion:
+				v.eventCriteriaVersion === undefined || v.eventCriteriaVersion === null
+					? null
+					: num(v.eventCriteriaVersion),
 		},
 	};
 }
@@ -111,7 +117,10 @@ export type BacktestServiceDeps = {
 	>;
 	scoring: Pick<ScoringService, "rescoreCoverage">;
 	segments: Pick<SegmentService, "get">;
-	calendar: Pick<CalendarService, "calendar">;
+	calendar: Pick<
+		CalendarService,
+		"calendar" | "activeVersion" | "judgmentCoverage"
+	>;
 	now?: () => number;
 };
 
@@ -131,6 +140,8 @@ type Plan = {
 	criteriaVersion: number | null;
 	newsDelayMs: number | null;
 	newsFrom: number;
+	/** 予定の前後の条件に使う評価基準の版。予定の前後の条件が無ければ null */
+	eventCriteriaVersion: number | null;
 };
 
 type Planned =
@@ -277,6 +288,37 @@ export function createBacktestService({
 				});
 			}
 		}
+		// 予定の前後の条件は、見る予定がすべてその版で判断済み（失敗して止めたものを除く）のときだけ実行する。
+		// 未判断の予定は暦切れとして扱われ、成績の差が版の違いによるのか判断の進み具合によるのか分からないため
+		const span = eventWindowHours(params);
+		let eventCriteriaVersion: number | null = null;
+		if (span) {
+			const version = input.eventCriteriaVersion ?? calendar.activeVersion();
+			const c =
+				version === null
+					? null
+					: calendar.judgmentCoverage(
+							from - span.afterHours * HOUR_MS,
+							to + span.beforeHours * HOUR_MS,
+							version,
+						);
+			if (version === null || c === null) {
+				return planFail({
+					kind: "invalid_input",
+					field: "eventCriteriaVersion",
+					message: "予定の評価基準の版が見つからない。選び直す",
+				});
+			}
+			if (c.done + c.failed < c.total) {
+				return planFail({
+					kind: "missing_event_judgments",
+					version,
+					coverage: c,
+					message: `予定の前後の条件で見る予定のうち ${c.total - c.done - c.failed} 件に v${version} の重要度の判断が無いため実行できない。判断がそろうと実行できる`,
+				});
+			}
+			eventCriteriaVersion = version;
+		}
 		// 判定頻度が戦略の粒度より短ければ、細かい足で判定する
 		const step = chooseStepTimeframe(params, finest);
 		const gaps = marketData.gaps(step.timeframe, from, to);
@@ -308,6 +350,7 @@ export function createBacktestService({
 				criteriaVersion,
 				newsDelayMs,
 				newsFrom,
+				eventCriteriaVersion,
 			},
 		};
 	}
@@ -335,6 +378,7 @@ export function createBacktestService({
 				criteriaVersion,
 				newsDelayMs,
 				newsFrom,
+				eventCriteriaVersion,
 			} = planned.plan;
 			const { params, from, to } = input;
 			const needed = candleTimeframes(params);
@@ -365,6 +409,7 @@ export function createBacktestService({
 				stepLimited: step.limited,
 				aggregationRule: rule,
 				criteriaVersion,
+				eventCriteriaVersion,
 				newsDelayMs,
 				newsDataVersion:
 					newsDelayMs === null
@@ -404,7 +449,8 @@ export function createBacktestService({
 								since: firstScoredAt,
 							}
 						: null,
-					events: calendar.calendar(),
+					// 予定の前後の条件が無ければ暦は見ない
+					events: calendar.calendar(eventCriteriaVersion ?? undefined),
 				});
 			} catch (e) {
 				console.error("backtest failed to start", e);

@@ -97,6 +97,7 @@ function addBacktest(t: T, startedAt: number): number {
 		fees: { limitPpm: 0, marketPpm: 1000 },
 		skipGaps: false,
 		criteriaVersion: null,
+		eventCriteriaVersion: null,
 		newsDelayMs: null,
 		newsDataVersion: null,
 		segment: null,

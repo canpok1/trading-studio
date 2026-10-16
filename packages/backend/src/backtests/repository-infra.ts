@@ -45,6 +45,7 @@ type RunRow = {
 	error: string | null;
 	aggregation_rule: string | null;
 	criteria_version: number | null;
+	event_criteria_version: number | null;
 	news_delay_ms: number | null;
 	news_data_version: number | null;
 	segment_id: number | null;
@@ -80,6 +81,7 @@ function toRun(r: RunRow): BacktestRun {
 			? parseAggregationRule(JSON.parse(r.aggregation_rule))
 			: null,
 		criteriaVersion: r.criteria_version,
+		eventCriteriaVersion: r.event_criteria_version,
 		newsDelayMs: r.news_delay_ms,
 		newsDataVersion: r.news_data_version,
 		segment:
@@ -120,9 +122,9 @@ export class SqliteBacktestRepository implements BacktestRepository {
 			this.sql.run(
 				`insert into backtest_runs (strategy_name, params, timeframe, from_time, to_time,
 				 initial_cash, fee_limit_ppm, fee_market_ppm, skip_gaps, status, started_at, bar_count,
-				 step_timeframe, step_limited, aggregation_rule, criteria_version, news_delay_ms, news_data_version,
-				 segment_id, segment_regime, dataset_run_id)
-				 values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				 step_timeframe, step_limited, aggregation_rule, criteria_version, event_criteria_version,
+				 news_delay_ms, news_data_version, segment_id, segment_regime, dataset_run_id)
+				 values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					run.name,
 					JSON.stringify(run.params),
@@ -141,6 +143,7 @@ export class SqliteBacktestRepository implements BacktestRepository {
 						? null
 						: JSON.stringify(run.aggregationRule),
 					run.criteriaVersion,
+					run.eventCriteriaVersion,
 					run.newsDelayMs,
 					run.newsDataVersion,
 					run.segment?.id ?? null,

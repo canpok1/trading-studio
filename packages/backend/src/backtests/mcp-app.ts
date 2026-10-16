@@ -38,6 +38,11 @@ function startFailure(e: StartBacktestFailure) {
 				`${e.message}。rescore_news で採点し直し、終わってから実行する`,
 				{ coverage: e.coverage },
 			);
+		case "missing_event_judgments":
+			return fail(
+				`${e.message}。使用中の版の判断は自動で進む。判断がそろってから実行する`,
+				{ coverage: e.coverage },
+			);
 		case "gaps":
 			return fail(
 				"期間内にデータの欠損がある。承知で進めるなら skipGaps: true で実行し直す",
@@ -169,6 +174,13 @@ export function registerBacktestTools(
 					.describe(
 						"市場評価に使う採点の基準の版。省けば運用どおり（記事ごとに運用で採点した版）。指定すると期間の記事がすべてその版で採点されている必要がある（rescore_news）",
 					),
+				eventCriteriaVersion: z
+					.number()
+					.int()
+					.optional()
+					.describe(
+						"予定の前後の条件に使う、予定の評価基準の版。省けば使用中の版。期間の判定で見る予定がすべてその版で重要度を判断済みである必要がある",
+					),
 			},
 			annotations: { destructiveHint: false, openWorldHint: false },
 		},
@@ -206,6 +218,7 @@ export function registerBacktestTools(
 				fees: { limitPpm: a.limitFeePpm, marketPpm: a.marketFeePpm },
 				skipGaps: a.skipGaps,
 				criteriaVersion: a.criteriaVersion ?? null,
+				eventCriteriaVersion: a.eventCriteriaVersion ?? null,
 				segmentId,
 			});
 			if (!started.ok) return startFailure(started.error);

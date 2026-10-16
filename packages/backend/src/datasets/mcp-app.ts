@@ -96,6 +96,13 @@ export function registerDatasetTools(
 					.int()
 					.optional()
 					.describe("市場評価に使う採点の基準の版。run_backtest と同じ"),
+				eventCriteriaVersion: z
+					.number()
+					.int()
+					.optional()
+					.describe(
+						"予定の前後の条件に使う、予定の評価基準の版。run_backtest と同じ",
+					),
 			},
 			annotations: { destructiveHint: false, openWorldHint: false },
 		},
@@ -121,6 +128,7 @@ export function registerDatasetTools(
 				fees: { limitPpm: a.limitFeePpm, marketPpm: a.marketFeePpm },
 				skipGaps: a.skipGaps,
 				criteriaVersion: a.criteriaVersion ?? null,
+				eventCriteriaVersion: a.eventCriteriaVersion ?? null,
 			});
 			if (!started.ok) return datasetFailure(started.error);
 			const id = started.run.id;

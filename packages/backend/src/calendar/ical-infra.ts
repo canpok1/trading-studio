@@ -1,8 +1,10 @@
-// iCal（RFC 5545）から予定を読む。依存を増やさないため、予定（VEVENT）の件名・開始時刻・取り消しだけを読む。
+// iCal（RFC 5545）から予定を読む。依存を増やさないため、予定（VEVENT）の UID・件名・説明・開始時刻・取り消しだけを読む。
 // 繰り返し（RRULE）は展開せず初回だけ、時差は IANA の名前（America/New_York など）だけを読み、時差の定義（VTIMEZONE）は読まない
 
 import type { FetchIcal } from "./calendar-domain";
 import type { IcalEvent } from "./repository-domain";
+
+const JST_MS = 9 * 3_600_000;
 
 /** 折り返された行（空白で始まる行）を前の行へつなぐ */
 function unfold(text: string): string[] {
@@ -68,8 +70,8 @@ function parseStart(
 			time ? Number(m[6]) : 0,
 		);
 	try {
-		// 日付だけの値は時差に依らない日付なので、UTC のその日の 0:00 で持つ
-		if (date) return { start: wallOf(date, false), allDay: true };
+		// 日付だけの値は時差に依らない日付なので、JST のその日の 0:00 で持つ（日本の取引で使うため）
+		if (date) return { start: wallOf(date, false) - JST_MS, allDay: true };
 		if (dt) {
 			const wall = wallOf(dt, true);
 			if (dt[7] === "Z" || !tz) return { start: wall, allDay: false };
@@ -95,15 +97,23 @@ export function parseIcal(text: string): IcalEvent[] {
 			.trim() || null;
 	const out: IcalEvent[] = [];
 	let cur: {
+		uid: string | null;
 		summary: string | null;
-		start: IcalEvent | null;
+		description: string | null;
+		start: { start: number; allDay: boolean } | null;
 		cancelled: boolean;
 	} | null = null;
 	let depth = 0;
 	for (const raw of lines) {
 		const line = raw.trimEnd();
 		if (/^BEGIN:VEVENT$/i.test(line)) {
-			cur = { summary: null, start: null, cancelled: false };
+			cur = {
+				uid: null,
+				summary: null,
+				description: null,
+				start: null,
+				cancelled: false,
+			};
 			depth = 0;
 			continue;
 		}
@@ -112,7 +122,12 @@ export function parseIcal(text: string): IcalEvent[] {
 		if (/^BEGIN:/i.test(line)) depth++;
 		else if (/^END:VEVENT$/i.test(line)) {
 			if (cur.summary !== null && cur.start && !cur.cancelled) {
-				out.push({ ...cur.start, summary: cur.summary });
+				out.push({
+					...cur.start,
+					uid: cur.uid,
+					summary: cur.summary,
+					description: cur.description,
+				});
 			}
 			cur = null;
 		} else if (/^END:/i.test(line)) depth--;
@@ -120,12 +135,16 @@ export function parseIcal(text: string): IcalEvent[] {
 			const m = /^([A-Z-]+)((?:;[^:]*)?):(.*)$/i.exec(line);
 			if (!m) continue;
 			const name = (m[1] as string).toUpperCase();
-			if (name === "SUMMARY") cur.summary = unescapeText(m[3] as string).trim();
+			const value = m[3] as string;
+			if (name === "UID") cur.uid = value.trim() || null;
+			if (name === "SUMMARY") cur.summary = unescapeText(value).trim();
+			if (name === "DESCRIPTION")
+				cur.description = unescapeText(value).trim() || null;
 			if (name === "STATUS" && /^cancelled$/i.test((m[3] as string).trim()))
 				cur.cancelled = true;
 			if (name === "DTSTART") {
 				const s = parseStart(m[2] as string, (m[3] as string).trim(), calTz);
-				if (s) cur.start = { ...s, summary: "" };
+				if (s) cur.start = s;
 			}
 		}
 	}

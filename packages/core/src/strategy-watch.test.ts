@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { BuyRule, ConditionSet } from "./condition-strategy";
 import { DEFAULT_BUY_ORDER, DEFAULT_PARTIAL_SELL } from "./condition-strategy";
-import { BUNDLED_EVENT_CALENDAR } from "./event-calendar";
+import type { EventCalendar } from "./event-calendar";
 import { adx, rsi } from "./indicators";
 import type { StrategyWatch, WatchAction, WatchInput } from "./strategy-watch";
 import { nextMoves, watchConditionSet } from "./strategy-watch";
@@ -64,7 +64,7 @@ function input(p: ConditionSet, over: Partial<WatchInput> = {}): WatchInput {
 	return {
 		now: closes.length * H,
 		price,
-		events: BUNDLED_EVENT_CALENDAR,
+		events: { events: [], covered: [] },
 		candles: { "1h": candles(closes) },
 		recent: { timeframeMs: TIMEFRAME_MS["1m"], candles: [] },
 		judgments: {},
@@ -495,59 +495,75 @@ describe("ATR の条件の見張り", () => {
 	});
 });
 
-describe("予定イベントの前後の見張り", () => {
+describe("予定の前後の見張り", () => {
 	const ev = {
 		type: "eventWindow" as const,
-		events: ["cpi" as const],
+		minImportance: "high" as const,
 		beforeHours: 0,
 		afterHours: 24,
 		allowNoCalendar: false,
 	};
 	const p = params([rule({ buy: { match: "all", conditions: [ev] } })]);
-	// 2026-09-11 08:30 ET の米 CPI（JST 21:30）
 	const cpi = Date.parse("2026-09-11T12:30:00Z");
-	const watch = (now: number) => watchConditionSet(input(p, { now }));
+	const nextCpi = Date.parse("2026-10-14T12:30:00Z");
+	const until = Date.parse("2027-01-01T00:00:00Z");
+	const events: EventCalendar = {
+		events: [
+			// 2026-06-10 21:30 JST・6/16 の終日・6/18 3:00 JST
+			{
+				title: "US CPI",
+				start: Date.parse("2026-06-10T12:30:00Z"),
+				end: Date.parse("2026-06-10T12:30:00Z"),
+				importance: "high",
+			},
+			{
+				title: "BOJ",
+				start: Date.parse("2026-06-15T15:00:00Z"),
+				end: Date.parse("2026-06-16T15:00:00Z"),
+				importance: "high",
+			},
+			{
+				title: "FOMC",
+				start: Date.parse("2026-06-17T18:00:00Z"),
+				end: Date.parse("2026-06-17T18:00:00Z"),
+				importance: "high",
+			},
+			{ title: "US CPI", start: cpi, end: cpi, importance: "high" },
+			{ title: "US PPI", start: cpi + H, end: cpi + H, importance: "low" },
+			{ title: "US CPI", start: nextCpi, end: nextCpi, importance: "high" },
+		],
+		covered: [{ from: Date.parse("2026-01-01T00:00:00Z"), until }],
+	};
+	const watch = (now: number, q = p) =>
+		watchConditionSet(input(q, { now, events }));
 
-	test("当たっている間は、どのイベントでいつまで買わないかを出し、発動価格は持たない", () => {
+	test("当たっている間は、どの予定でいつまで買わないかを出し、発動価格は持たない", () => {
 		const c = watch(cpi + H).buys[0]?.buy.conditions[0];
 		expect(c?.met).toBe(false);
-		expect(c?.detail).toBe("米 CPI の前後（9/12 21:30 まで）");
+		expect(c?.detail).toBe("「US CPI」の前後（9/12 21:30 まで）");
 		expect(c?.edge).toBeNull();
 	});
 
-	test("窓が明ける前に次のイベントの前の時間が始まれば、その窓の終わりまでを出す", () => {
-		// 2026-06-10 21:30 JST の米 CPI と 6/18 3:00 JST の FOMC 声明、6/16 の日銀会合
+	test("窓が明ける前に次の予定の前の時間が始まれば、その窓の終わりまでを出す", () => {
 		const q = params([
 			rule({
-				buy: {
-					match: "all",
-					conditions: [
-						{
-							...ev,
-							events: ["cpi", "boj", "fomc"],
-							beforeHours: 0,
-							afterHours: 48,
-						},
-					],
-				},
+				buy: { match: "all", conditions: [{ ...ev, afterHours: 48 }] },
 			}),
 		]);
-		const w = watchConditionSet(
-			input(q, { now: Date.parse("2026-06-16T00:00:00Z") }),
-		);
-		expect(w.buys[0]?.buy.conditions[0]?.detail).toBe(
-			"日銀会合 の前後（6/20 3:00 まで）",
-		);
+		expect(
+			watch(Date.parse("2026-06-16T00:00:00Z"), q).buys[0]?.buy.conditions[0]
+				?.detail,
+		).toBe("「BOJ」の前後（6/20 3:00 まで）");
 	});
 
-	test("当たっていなければ次のイベントを出す", () => {
+	test("当たっていなければ、重要度が下限以上の次の予定を出す", () => {
 		expect(watch(cpi + 25 * H).buys[0]?.buy.conditions[0]?.detail).toBe(
-			"次は 米 CPI 10/14 21:30",
+			"次は「US CPI」 10/14 21:30",
 		);
 	});
 
 	test("暦切れは買いの理由を暦切れにする", () => {
-		const b = watch(Date.parse("2027-01-02T00:00:00Z")).buys[0];
+		const b = watch(until + H).buys[0];
 		expect(b?.status.kind).toBe("noCalendar");
 		expect(b?.buy.conditions[0]?.detail).toContain("暦切れ");
 	});
@@ -558,13 +574,11 @@ describe("予定イベントの前後の見張り", () => {
 				buy: { match: "all", conditions: [{ ...ev, allowNoCalendar: true }] },
 			}),
 		]);
-		const b = watchConditionSet(
-			input(q, { now: Date.parse("2027-01-02T00:00:00Z") }),
-		).buys[0];
+		const b = watch(until + H, q).buys[0];
 		expect(b?.status.kind).not.toBe("noCalendar");
 		expect(b?.buy.conditions[0]?.met).toBe(true);
 		expect(b?.buy.conditions[0]?.detail).toBe(
-			"暦切れのため当たらないとみなす（米 CPI の暦は 2027-01-01 0:00 まで）",
+			"暦切れのため当たらないとみなす（暦は 2027-01-01 9:00 まで）",
 		);
 	});
 });

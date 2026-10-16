@@ -1,7 +1,9 @@
-// ニュースの採点の常駐処理。新着を1件ずつ Gemini で採点し、点数を記録する。新着が無いときは頼まれた採点し直しを進める
+// ニュースの採点の常駐処理。新着を1件ずつ Gemini で採点し、点数を記録する。新着が無いときは頼まれた採点し直しを進める。
+// ほかの機能の AI への問い合わせ（予定の重要度の判断）も、問い合わせの間隔を共有してここで進める
 
 import type { AggregationRule } from "@trading-studio/core";
 import { maxWindowMs } from "@trading-studio/core";
+import type { AiJob, AiJobSource } from "../ai/job-domain";
 import type { ScoreModel } from "../ai/model-domain";
 import { DEFAULT_SCORING_MODEL } from "../ai/model-domain";
 import type { PromptNews, ScoreResponse } from "./prompt-domain";
@@ -47,6 +49,7 @@ export function createScorer({
 	minIntervalMs = MIN_INTERVAL_MS,
 	retryDelaysMs = RETRY_DELAYS_MS,
 	sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+	jobs = null,
 }: {
 	repo: ScoreRepository;
 	model: ScoreModel;
@@ -60,6 +63,8 @@ export function createScorer({
 	/** 自動の再試行の間隔。回数はこの長さ */
 	retryDelaysMs?: readonly number[];
 	sleep?: (ms: number) => Promise<void>;
+	/** 採点の合間に進める、ほかの機能の問い合わせ。順番は 新着の採点 → urgent → 採点し直し → background */
+	jobs?: AiJobSource | null;
 }): Scorer {
 	let running: Promise<void> | null = null;
 	/** 直近の採点が続けて失敗している間の、最初の失敗 */
@@ -80,11 +85,27 @@ export function createScorer({
 		return parsed;
 	}
 
+	async function runJob(job: AiJob) {
+		const modelId = repo.model(DEFAULT_SCORING_MODEL);
+		lastAskedAt = now();
+		await job(async (prompt, schema) => ({
+			value: await model.generate(modelId, prompt, schema),
+			model: modelId,
+		}));
+	}
+
 	async function scoreNext() {
 		repo.skipOlderThan(now() - maxWindowMs(rule()));
-		// 新着を先に採点する。採点し直しは新着が無いときだけ
+		// 新着を先に採点する。採点し直しは新着も急ぎの仕事も無いときだけ
 		const next = repo.nextToScore(now());
-		if (!next) return rescoreNext();
+		if (!next) {
+			const urgent = jobs?.urgent(now());
+			if (urgent) return runJob(urgent);
+			if (await rescoreNext()) return;
+			const background = jobs?.background(now());
+			if (background) return runJob(background);
+			return;
+		}
 		const version = repo.activeCriteriaVersion();
 		const criteria = version === null ? null : repo.getCriteria(version);
 		if (!criteria) throw new Error("使用中の採点の基準が無い");
@@ -115,9 +136,9 @@ export function createScorer({
 	}
 
 	/** 過去のニュースを、頼まれた版の基準で採点し直す。失敗は運用の採点と同じく再試行する */
-	async function rescoreNext() {
+	async function rescoreNext(): Promise<boolean> {
 		const next = repo.nextToRescore(now());
-		if (!next) return;
+		if (!next) return false;
 		const criteria = repo.getCriteria(next.criteriaVersion);
 		if (!criteria) {
 			repo.saveRescoreFailure(
@@ -127,7 +148,7 @@ export function createScorer({
 				next.attempts + 1,
 				null,
 			);
-			return;
+			return true;
 		}
 		const modelId = repo.model(DEFAULT_SCORING_MODEL);
 		lastAskedAt = now();
@@ -156,6 +177,7 @@ export function createScorer({
 		} finally {
 			rescoring = null;
 		}
+		return true;
 	}
 
 	return {

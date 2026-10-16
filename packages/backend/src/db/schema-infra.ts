@@ -125,6 +125,8 @@ export const backtestRuns = sqliteTable("backtest_runs", {
 	aggregationRule: text("aggregation_rule"),
 	/** 市場評価に使った採点の基準の版。null は運用どおり（記事ごとに運用で採点した版） */
 	criteriaVersion: integer("criteria_version"),
+	/** 予定の前後の条件で使った、予定の評価基準の版。予定の前後の条件が無い実行・この列を足す前の実行は null */
+	eventCriteriaVersion: integer("event_criteria_version"),
 	/** 記事を公開から何ミリ秒遅れて使ったか。市場評価の条件が無い実行と、この列を足す前の実行（運用の採点時刻から使っていた）は null */
 	newsDelayMs: integer("news_delay_ms"),
 	/** 使ったニュースのデータの版（記事の取得・採点・採点し直し・置き換えのうち最新の時刻）。記事が無い・この列を足す前の実行は null */
@@ -413,13 +415,11 @@ export const backtestAdvice = sqliteTable("backtest_advice", {
 	error: text("error"),
 });
 
-/** 予定イベントの暦の取得元（iCal） */
+/** 予定の取得元（iCal） */
 export const eventSources = sqliteTable("event_sources", {
 	id: integer("id").primaryKey({ autoIncrement: true }),
 	name: text("name").notNull(),
 	url: text("url").notNull().unique(),
-	/** 種類ごとの件名で拾う語（JSON） */
-	keywords: text("keywords").notNull(),
 	createdAt: integer("created_at").notNull(),
 	/** 最初に取得できた時刻。URL か語を変えたら null に戻す */
 	firstSuccessAt: integer("first_success_at"),
@@ -430,32 +430,76 @@ export const eventSources = sqliteTable("event_sources", {
 	errorSince: integer("error_since"),
 });
 
-/** 取得した予定イベント。バックテストで使うので消さない */
-export const calendarEvents = sqliteTable(
-	"calendar_events",
+/**
+ * 予定。取得元の iCal から取得したものと、アプリが持つ過去の分（source_id が null）。
+ * バックテストで使うので、取得元から消えた過去の予定も消さない
+ */
+export const scheduledEvents = sqliteTable(
+	"scheduled_events",
 	{
 		id: integer("id").primaryKey({ autoIncrement: true }),
-		sourceId: integer("source_id")
-			.notNull()
-			.references(() => eventSources.id, { onDelete: "cascade" }),
-		type: text("type").notNull(),
+		sourceId: integer("source_id").references(() => eventSources.id, {
+			onDelete: "cascade",
+		}),
+		/** 取得元の中で予定を見分ける値（iCal の UID。無ければ件名と時刻から作る） */
+		uid: text("uid").notNull(),
+		title: text("title").notNull(),
+		description: text("description"),
 		start: integer("start").notNull(),
 		end: integer("end").notNull(),
+		allDay: integer("all_day", { mode: "boolean" }).notNull(),
 	},
-	(t) => [index("calendar_events_source_start").on(t.sourceId, t.start)],
+	(t) => [
+		index("scheduled_events_start").on(t.start),
+		index("scheduled_events_source_uid").on(t.sourceId, t.uid),
+	],
 );
 
-/** 取得した暦が全件そろっている期間。取得元・種類ごとに、重なる期間はまとめて持つ */
-export const calendarCoverage = sqliteTable(
-	"calendar_coverage",
+/** 取得した予定が全件そろっている期間。取得元ごとに、重なる期間はまとめて持つ */
+export const eventCoverage = sqliteTable(
+	"event_coverage",
 	{
 		id: integer("id").primaryKey({ autoIncrement: true }),
 		sourceId: integer("source_id")
 			.notNull()
 			.references(() => eventSources.id, { onDelete: "cascade" }),
-		type: text("type").notNull(),
 		from: integer("from").notNull(),
 		until: integer("until").notNull(),
 	},
-	(t) => [index("calendar_coverage_source").on(t.sourceId, t.type)],
+	(t) => [index("event_coverage_source").on(t.sourceId)],
+);
+
+/** 予定の評価基準（重要度を判断するプロンプトの、編集できる部分）の版。上書きせず、版を足していく */
+export const eventCriteria = sqliteTable("event_criteria", {
+	version: integer("version").primaryKey({ autoIncrement: true }),
+	text: text("text").notNull(),
+	note: text("note").notNull(),
+	createdAt: integer("created_at").notNull(),
+});
+
+/** 予定の重要度の判断。予定×評価基準の版ごとに1行。判断を頼んだだけの行（pending）も持つ */
+export const eventJudgments = sqliteTable(
+	"event_judgments",
+	{
+		eventId: integer("event_id")
+			.notNull()
+			.references(() => scheduledEvents.id, { onDelete: "cascade" }),
+		criteriaVersion: integer("criteria_version").notNull(),
+		/** pending（頼んだ）/ done / retry（再試行待ち）/ failed（止めた） */
+		status: text("status").notNull(),
+		/** high / medium / low。done のときだけ */
+		importance: text("importance"),
+		reason: text("reason"),
+		judgedAt: integer("judged_at"),
+		model: text("model"),
+		appBuiltAt: integer("app_built_at"),
+		attempts: integer("attempts").notNull().default(0),
+		error: text("error"),
+		nextAttemptAt: integer("next_attempt_at"),
+		requestedAt: integer("requested_at").notNull(),
+	},
+	(t) => [
+		primaryKey({ columns: [t.eventId, t.criteriaVersion] }),
+		index("event_judgments_status").on(t.status),
+	],
 );

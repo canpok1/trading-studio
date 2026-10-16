@@ -119,10 +119,14 @@ const newsCollector = createNewsCollector({
 const newsTimer = setInterval(() => newsCollector.tick(), 1_000);
 newsCollector.tick();
 
-// 取得元の既定は持たない。利用者が設定するまで、リポジトリに持つ暦だけを使う
+// 取得元の既定は持たない。利用者が設定するまで、アプリが持つ過去の予定だけを使う
 const calendar = createCalendarService({
 	repo: new SqliteCalendarRepository(db),
 	fetchIcal: icalFeed(httpFetchText),
+	appBuiltAt,
+	...(process.env.SCORING_MODEL === "demo"
+		? { retryDelaysMs: [1_000, 1_000, 1_000] }
+		: {}),
 });
 const calendarTimer = setInterval(() => calendar.tick(), 60_000);
 calendar.tick();
@@ -143,6 +147,7 @@ const scorer = createScorer({
 		process.env.SCORING_MODEL === "demo" ? demoScoreModel() : aiModel(60_000),
 	rule: () => scoreRepo.aggregationRule(),
 	appBuiltAt,
+	jobs: calendar.jobs,
 	// E2E では再試行を待ちきれないので短くする
 	...(process.env.SCORING_MODEL === "demo"
 		? { minIntervalMs: 0, retryDelaysMs: [1_000, 1_000, 1_000] }

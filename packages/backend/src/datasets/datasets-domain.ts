@@ -195,6 +195,7 @@ export function createDatasetService({
 					fees: run.fees,
 					skipGaps: run.skipGaps,
 					criteriaVersion: run.criteriaVersion,
+					eventCriteriaVersion: run.eventCriteriaVersion,
 					segmentId,
 				},
 				{
@@ -320,6 +321,7 @@ export function createDatasetService({
 					fees: input.fees,
 					skipGaps: input.skipGaps,
 					criteriaVersion: input.criteriaVersion,
+					eventCriteriaVersion: input.eventCriteriaVersion,
 				},
 				startedAt: now(),
 			});

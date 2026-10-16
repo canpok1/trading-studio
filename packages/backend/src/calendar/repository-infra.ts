@@ -1,20 +1,29 @@
 import type {
 	CalendarRange,
-	MarketEvent,
+	EventImportance,
 	ScheduledEvent,
 } from "@trading-studio/core";
 import { mergeRanges } from "@trading-studio/core";
 import type { Db } from "../db/open-infra";
-import type { CalendarRepository, EventSourceRow } from "./repository-domain";
-import type { EventKeywords, EventSourceInput } from "./types-domain";
+import type {
+	CalendarRepository,
+	EventRow,
+	EventSourceRow,
+	JudgeTarget,
+} from "./repository-domain";
+import type {
+	EventCriteriaVersion,
+	EventSourceInput,
+	JudgmentCoverage,
+} from "./types-domain";
+
+const ACTIVE_CRITERIA_KEY = "event_criteria_version";
 
 type SourceRow = {
 	id: number;
 	name: string;
 	url: string;
-	keywords: string;
 	created_at: number;
-	first_success_at: number | null;
 	last_success_at: number | null;
 	last_error: string | null;
 	error_since: number | null;
@@ -24,13 +33,53 @@ const toSource = (r: SourceRow): EventSourceRow => ({
 	id: r.id,
 	name: r.name,
 	url: r.url,
-	keywords: JSON.parse(r.keywords) as EventKeywords,
 	createdAt: r.created_at,
-	firstSuccessAt: r.first_success_at,
 	lastSuccessAt: r.last_success_at,
 	lastError: r.last_error,
 	errorSince: r.error_since,
 });
+
+type CriteriaRow = {
+	version: number;
+	text: string;
+	note: string;
+	created_at: number;
+};
+
+const toCriteria = (r: CriteriaRow): EventCriteriaVersion => ({
+	version: r.version,
+	text: r.text,
+	note: r.note,
+	createdAt: r.created_at,
+});
+
+type TargetRow = {
+	eventId: number;
+	attempts: number | null;
+	sourceName: string | null;
+	title: string;
+	description: string | null;
+	start: number;
+	allDay: number;
+};
+
+const toTarget = (r: TargetRow, criteriaVersion: number): JudgeTarget => ({
+	eventId: r.eventId,
+	criteriaVersion,
+	attempts: r.attempts ?? 0,
+	sourceName: r.sourceName,
+	title: r.title,
+	description: r.description,
+	start: r.start,
+	allDay: r.allDay === 1,
+});
+
+const TARGET_COLUMNS = `e.id as eventId, j.attempts as attempts, s.name as sourceName,
+	e.title as title, e.description as description, e.start as start, e.all_day as allDay`;
+
+/** 判断がまだ無いか、再試行の時刻が来たもの（?2 が今の時刻） */
+const UNJUDGED = `(j.event_id is null or (j.status in ('pending', 'retry')
+	and (j.next_attempt_at is null or j.next_attempt_at <= ?2)))`;
 
 export class SqliteCalendarRepository implements CalendarRepository {
 	constructor(private readonly db: Db) {}
@@ -62,32 +111,21 @@ export class SqliteCalendarRepository implements CalendarRepository {
 
 	insertSource(input: EventSourceInput, createdAt: number): EventSourceRow {
 		const r = this.sql
-			.query<SourceRow, [string, string, string, number]>(
-				`insert into event_sources (name, url, keywords, created_at)
-				 values (?, ?, ?, ?) returning *`,
+			.query<SourceRow, [string, string, number]>(
+				`insert into event_sources (name, url, created_at) values (?, ?, ?) returning *`,
 			)
-			.get(
-				input.name,
-				input.url,
-				JSON.stringify(input.keywords),
-				createdAt,
-			) as SourceRow;
+			.get(input.name, input.url, createdAt) as SourceRow;
 		return toSource(r);
 	}
 
 	updateSource(id: number, input: EventSourceInput): void {
 		const prev = this.getSource(id);
 		if (!prev) return;
-		const keywords = JSON.stringify(input.keywords);
-		const reset =
-			prev.url !== input.url || JSON.stringify(prev.keywords) !== keywords;
 		this.sql.transaction(() => {
 			this.sql
-				.query(
-					"update event_sources set name = ?, url = ?, keywords = ? where id = ?",
-				)
-				.run(input.name, input.url, keywords, id);
-			if (!reset) return;
+				.query("update event_sources set name = ?, url = ? where id = ?")
+				.run(input.name, input.url, id);
+			if (prev.url === input.url) return;
 			this.clear(id);
 			this.sql
 				.query(
@@ -99,8 +137,9 @@ export class SqliteCalendarRepository implements CalendarRepository {
 	}
 
 	private clear(id: number) {
-		this.sql.query("delete from calendar_events where source_id = ?").run(id);
-		this.sql.query("delete from calendar_coverage where source_id = ?").run(id);
+		// 判断は予定と一緒に消える（外部キーの cascade）
+		this.sql.query("delete from scheduled_events where source_id = ?").run(id);
+		this.sql.query("delete from event_coverage where source_id = ?").run(id);
 	}
 
 	removeSource(id: number): boolean {
@@ -115,42 +154,92 @@ export class SqliteCalendarRepository implements CalendarRepository {
 
 	saveFetched(
 		sourceId: number,
-		types: readonly MarketEvent[],
-		events: readonly ScheduledEvent[],
+		events: readonly EventRow[],
 		range: CalendarRange,
 		listed: CalendarRange,
 		at: number,
 	): void {
 		this.sql.transaction(() => {
-			for (const type of types) {
+			const existing = new Map(
 				this.sql
-					.query(
-						`delete from calendar_events where source_id = ? and type = ?
-						 and start >= ? and start < ?`,
+					.query<
+						{
+							id: number;
+							uid: string;
+							title: string;
+							description: string | null;
+						},
+						[number]
+					>(
+						"select id, uid, title, description from scheduled_events where source_id = ?",
 					)
-					.run(sourceId, type, listed.from, listed.until);
-				const kept = this.sql
-					.query<{ from: number; until: number }, [number, string]>(
-						`select "from", until from calendar_coverage where source_id = ? and type = ?`,
-					)
-					.all(sourceId, type);
-				this.sql
-					.query(
-						"delete from calendar_coverage where source_id = ? and type = ?",
-					)
-					.run(sourceId, type);
-				for (const r of mergeRanges([...kept, range])) {
-					this.sql
-						.query(
-							`insert into calendar_coverage (source_id, type, "from", until) values (?, ?, ?, ?)`,
-						)
-						.run(sourceId, type, r.from, r.until);
+					.all(sourceId)
+					.map((r) => [r.uid, r]),
+			);
+			const insert = this.sql.query(
+				`insert into scheduled_events (source_id, uid, title, description, start, end, all_day)
+				 values (?, ?, ?, ?, ?, ?, ?)`,
+			);
+			const update = this.sql.query(
+				`update scheduled_events set title = ?, description = ?, start = ?, end = ?, all_day = ?
+				 where id = ?`,
+			);
+			const forget = this.sql.query(
+				"delete from event_judgments where event_id = ?",
+			);
+			const seen = new Set<string>();
+			for (const e of events) {
+				if (seen.has(e.uid)) continue;
+				seen.add(e.uid);
+				const prev = existing.get(e.uid);
+				if (!prev) {
+					insert.run(
+						sourceId,
+						e.uid,
+						e.title,
+						e.description,
+						e.start,
+						e.end,
+						e.allDay ? 1 : 0,
+					);
+					continue;
+				}
+				update.run(
+					e.title,
+					e.description,
+					e.start,
+					e.end,
+					e.allDay ? 1 : 0,
+					prev.id,
+				);
+				// 中身が変われば重要度も変わりうるので判断し直す
+				if (prev.title !== e.title || prev.description !== e.description) {
+					forget.run(prev.id);
 				}
 			}
-			const insert = this.sql.query(
-				"insert into calendar_events (source_id, type, start, end) values (?, ?, ?, ?)",
-			);
-			for (const e of events) insert.run(sourceId, e.type, e.start, e.end);
+			const gone = this.sql.query("delete from scheduled_events where id = ?");
+			for (const r of this.sql
+				.query<{ id: number; uid: string }, [number, number, number]>(
+					`select id, uid from scheduled_events where source_id = ? and start >= ? and start < ?`,
+				)
+				.all(sourceId, listed.from, listed.until)) {
+				if (!seen.has(r.uid)) gone.run(r.id);
+			}
+			const kept = this.sql
+				.query<{ from: number; until: number }, [number]>(
+					`select "from", until from event_coverage where source_id = ?`,
+				)
+				.all(sourceId);
+			this.sql
+				.query("delete from event_coverage where source_id = ?")
+				.run(sourceId);
+			for (const r of mergeRanges([...kept, range])) {
+				this.sql
+					.query(
+						`insert into event_coverage (source_id, "from", until) values (?, ?, ?)`,
+					)
+					.run(sourceId, r.from, r.until);
+			}
 			this.sql
 				.query(
 					`update event_sources set last_success_at = ?1,
@@ -170,29 +259,254 @@ export class SqliteCalendarRepository implements CalendarRepository {
 			.run(error, at, sourceId);
 	}
 
-	events(): ScheduledEvent[] {
+	seedBundled(events: readonly EventRow[]): void {
+		const have = new Set(
+			this.sql
+				.query<{ uid: string }, []>(
+					"select uid from scheduled_events where source_id is null",
+				)
+				.all()
+				.map((r) => r.uid),
+		);
+		const insert = this.sql.query(
+			`insert into scheduled_events (source_id, uid, title, description, start, end, all_day)
+			 values (null, ?, ?, ?, ?, ?, ?)`,
+		);
+		this.sql.transaction(() => {
+			for (const e of events) {
+				if (have.has(e.uid)) continue;
+				insert.run(
+					e.uid,
+					e.title,
+					e.description,
+					e.start,
+					e.end,
+					e.allDay ? 1 : 0,
+				);
+			}
+		})();
+	}
+
+	coverage(): CalendarRange[] {
 		return this.sql
-			.query<ScheduledEvent, []>(
-				"select type, start, end from calendar_events order by start, end",
+			.query<{ from: number; until: number }, []>(
+				`select "from", until from event_coverage order by "from"`,
 			)
 			.all();
 	}
 
-	coverage(): { type: MarketEvent; range: CalendarRange }[] {
+	seedCriteria(text: string, now: number) {
+		this.sql.transaction(() => {
+			if (this.listCriteria().length > 0) return;
+			const v = this.addCriteria(text, "初版", now);
+			this.setActiveCriteria(v.version);
+		})();
+	}
+
+	listCriteria(): EventCriteriaVersion[] {
 		return this.sql
-			.query<{ type: MarketEvent; from: number; until: number }, []>(
-				`select type, "from", until from calendar_coverage order by "from"`,
-			)
+			.query<CriteriaRow, []>("select * from event_criteria order by version")
 			.all()
-			.map((r) => ({ type: r.type, range: { from: r.from, until: r.until } }));
+			.map(toCriteria);
 	}
 
-	lastEventAt(): { sourceId: number; type: MarketEvent; start: number }[] {
-		return this.sql
-			.query<{ sourceId: number; type: MarketEvent; start: number }, []>(
-				`select source_id as sourceId, type, max(start) as start from calendar_events
-				 group by source_id, type`,
+	getCriteria(version: number): EventCriteriaVersion | null {
+		const r = this.sql
+			.query<CriteriaRow, [number]>(
+				"select * from event_criteria where version = ?",
 			)
-			.all();
+			.get(version);
+		return r ? toCriteria(r) : null;
+	}
+
+	addCriteria(text: string, note: string, now: number): EventCriteriaVersion {
+		const r = this.sql
+			.query<CriteriaRow, [string, string, number]>(
+				"insert into event_criteria (text, note, created_at) values (?, ?, ?) returning *",
+			)
+			.get(text, note, now) as CriteriaRow;
+		return toCriteria(r);
+	}
+
+	activeCriteriaVersion(): number | null {
+		const r = this.sql
+			.query<{ value: string }, [string]>(
+				"select value from settings where key = ?",
+			)
+			.get(ACTIVE_CRITERIA_KEY);
+		return r ? Number(r.value) : null;
+	}
+
+	setActiveCriteria(version: number): void {
+		this.sql
+			.query(
+				`insert into settings (key, value) values (?, ?)
+				 on conflict (key) do update set value = excluded.value`,
+			)
+			.run(ACTIVE_CRITERIA_KEY, String(version));
+	}
+
+	events(version: number | null): ScheduledEvent[] {
+		return this.sql
+			.query<
+				{
+					title: string;
+					start: number;
+					end: number;
+					importance: EventImportance | null;
+				},
+				[number]
+			>(
+				`select e.title, e.start, e.end, j.importance from scheduled_events e
+				 left join event_judgments j on j.event_id = e.id and j.criteria_version = ?
+				 and j.status = 'done'
+				 order by e.start, e.end, e.id`,
+			)
+			.all(version ?? -1);
+	}
+
+	nextUnjudged(
+		version: number,
+		since: number,
+		upcoming: boolean,
+		now: number,
+	): JudgeTarget | null {
+		const r = this.sql
+			.query<TargetRow, [number, number, number]>(
+				`select ${TARGET_COLUMNS} from scheduled_events e
+				 left join event_sources s on s.id = e.source_id
+				 left join event_judgments j on j.event_id = e.id and j.criteria_version = ?1
+				 where ${UNJUDGED} and ${upcoming ? "e.end >= ?3" : "e.end < ?3"}
+				 order by ${upcoming ? "e.start asc" : "e.start desc"}, e.id limit 1`,
+			)
+			.get(version, now, since);
+		return r ? toTarget(r, version) : null;
+	}
+
+	nextRequested(now: number): JudgeTarget | null {
+		const r = this.sql
+			.query<TargetRow & { criteriaVersion: number }, [number]>(
+				`select ${TARGET_COLUMNS}, j.criteria_version as criteriaVersion
+				 from event_judgments j
+				 join scheduled_events e on e.id = j.event_id
+				 left join event_sources s on s.id = e.source_id
+				 where j.status in ('pending', 'retry')
+				 and (j.next_attempt_at is null or j.next_attempt_at <= ?1)
+				 order by j.requested_at, e.start, e.id limit 1`,
+			)
+			.get(now);
+		return r ? toTarget(r, r.criteriaVersion) : null;
+	}
+
+	saveJudgment(
+		eventId: number,
+		version: number,
+		r: { importance: EventImportance; reason: string },
+		meta: {
+			judgedAt: number;
+			model: string;
+			appBuiltAt: number | null;
+			attempts: number;
+		},
+	): void {
+		this.sql
+			.query(
+				`insert into event_judgments (event_id, criteria_version, status, importance, reason,
+				 judged_at, model, app_built_at, attempts, error, next_attempt_at, requested_at)
+				 values (?1, ?2, 'done', ?3, ?4, ?5, ?6, ?7, ?8, null, null, ?5)
+				 on conflict (event_id, criteria_version) do update set status = 'done',
+				 importance = ?3, reason = ?4, judged_at = ?5, model = ?6, app_built_at = ?7,
+				 attempts = ?8, error = null, next_attempt_at = null`,
+			)
+			.run(
+				eventId,
+				version,
+				r.importance,
+				r.reason,
+				meta.judgedAt,
+				meta.model,
+				meta.appBuiltAt,
+				meta.attempts,
+			);
+	}
+
+	saveJudgmentFailure(
+		eventId: number,
+		version: number,
+		error: string,
+		attempts: number,
+		nextAttemptAt: number | null,
+		now: number,
+	): void {
+		this.sql
+			.query(
+				`insert into event_judgments (event_id, criteria_version, status, attempts, error,
+				 next_attempt_at, requested_at)
+				 values (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+				 on conflict (event_id, criteria_version) do update set status = ?3,
+				 attempts = ?4, error = ?5, next_attempt_at = ?6, importance = null, reason = null`,
+			)
+			.run(
+				eventId,
+				version,
+				nextAttemptAt === null ? "failed" : "retry",
+				attempts,
+				error,
+				nextAttemptAt,
+				now,
+			);
+	}
+
+	judgmentCoverage(
+		from: number,
+		to: number,
+		version: number,
+	): JudgmentCoverage {
+		const r = this.sql
+			.query<
+				{ total: number; done: number; pending: number; failed: number },
+				[number, number, number]
+			>(
+				`select count(*) as total,
+				 coalesce(sum(j.status = 'done'), 0) as done,
+				 coalesce(sum(j.status in ('pending', 'retry')), 0) as pending,
+				 coalesce(sum(j.status = 'failed'), 0) as failed
+				 from scheduled_events e
+				 left join event_judgments j on j.event_id = e.id and j.criteria_version = ?3
+				 where e.start <= ?2 and e.end >= ?1`,
+			)
+			.get(from, to, version);
+		return r ?? { total: 0, done: 0, pending: 0, failed: 0 };
+	}
+
+	requestJudgments(
+		from: number,
+		to: number,
+		version: number,
+		now: number,
+	): void {
+		this.sql.transaction(() => {
+			this.sql
+				.query(
+					`insert into event_judgments (event_id, criteria_version, status, attempts, requested_at)
+					 select e.id, ?3, 'pending', 0, ?4 from scheduled_events e
+					 where e.start <= ?2 and e.end >= ?1
+					 on conflict (event_id, criteria_version) do update set status = 'pending',
+					 attempts = 0, error = null, next_attempt_at = null, requested_at = ?4
+					 where event_judgments.status = 'failed'`,
+				)
+				.run(from, to, version, now);
+		})();
+	}
+
+	unjudgedCount(version: number): number {
+		const r = this.sql
+			.query<{ n: number }, [number]>(
+				`select count(*) as n from scheduled_events e
+				 left join event_judgments j on j.event_id = e.id and j.criteria_version = ?
+				 where j.event_id is null or j.status in ('pending', 'retry')`,
+			)
+			.get(version);
+		return r?.n ?? 0;
 	}
 }

@@ -37,7 +37,6 @@ import {
 	eventsBetween,
 	HOUR_MS,
 	jstDateTime,
-	MARKET_EVENT_LABELS,
 	nextEvent,
 } from "./event-calendar";
 import { formatYen } from "./format";
@@ -311,7 +310,7 @@ function detailOf(c: Condition, ctx: Ctx): string {
 	}
 }
 
-/** 当たっているイベントと買えるようになる時刻、当たっていなければ次のイベント */
+/** 当たっている予定と買えるようになる時刻、当たっていなければ次の予定 */
 function eventWindowDetail(
 	c: Extract<Condition, { type: "eventWindow" }>,
 	ctx: Ctx,
@@ -320,27 +319,22 @@ function eventWindowDetail(
 	if ("insufficient" in h) return h.insufficient;
 	const after = c.afterHours * HOUR_MS;
 	const before = c.beforeHours * HOUR_MS;
-	const gap = calendarGap(
-		ctx.events,
-		c.events,
-		ctx.now - after,
-		ctx.now + before,
-	);
+	const gap = calendarGap(ctx.events, ctx.now - after, ctx.now + before);
 	if (h.ok && gap !== null) return `暦切れのため当たらないとみなす（${gap}）`;
-	const label = (e: ScheduledEvent) => MARKET_EVENT_LABELS[e.type];
+	const label = (e: ScheduledEvent) => `「${e.title}」`;
 	if (!h.ok) {
 		const hits = eventsBetween(
 			ctx.events,
-			c.events,
+			c.minImportance,
 			ctx.now - after,
 			ctx.now + before,
 		);
 		let until = Math.max(...hits.map((e) => e.end + after));
-		// 窓が明ける前に次のイベントの前の時間が始まれば、その分も延ばす
+		// 窓が明ける前に次の予定の前の時間が始まれば、その分も延ばす
 		for (;;) {
 			const more = eventsBetween(
 				ctx.events,
-				c.events,
+				c.minImportance,
 				until - after,
 				until + before,
 			);
@@ -348,12 +342,12 @@ function eventWindowDetail(
 			if (next === until) break;
 			until = next;
 		}
-		return `${[...new Set(hits.map(label))].join("・")} の前後（${jstDateTime(until)} まで）`;
+		return `${[...new Set(hits.map(label))].join("・")}の前後（${jstDateTime(until)} まで）`;
 	}
-	const next = nextEvent(ctx.events, c.events, ctx.now);
+	const next = nextEvent(ctx.events, c.minImportance, ctx.now);
 	return next
-		? `次は ${label(next)} ${jstDateTime(next.start)}`
-		: "暦にこの先のイベントなし";
+		? `次は${label(next)} ${jstDateTime(next.start)}`
+		: "暦にこの先の予定なし";
 }
 
 function watchGroup(g: ConditionGroup, ctx: Ctx): WatchGroup {

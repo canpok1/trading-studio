@@ -104,6 +104,16 @@ export function backtestRoutes(
 								},
 								409,
 							);
+						case "missing_event_judgments":
+							return c.json(
+								{
+									kind: e.kind,
+									message: e.message,
+									version: e.version,
+									coverage: e.coverage,
+								},
+								409,
+							);
 						case "gaps":
 							return c.json(
 								{

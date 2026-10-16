@@ -34,13 +34,18 @@ describe("parseIcal", () => {
 		expect(events).toEqual([
 			// 夏時間（-04:00）
 			{
+				uid: "1",
 				summary: "⁂ US CPI m/m",
+				description:
+					"Impact: High  View Event: https://www.forexfactory.com/calendar/1",
 				start: Date.parse("2026-10-14T12:30:00Z"),
 				allDay: false,
 			},
 			// 冬時間（-05:00）
 			{
+				uid: null,
 				summary: "⁂ US Non-Farm Employment Change",
+				description: null,
 				start: Date.parse("2026-12-04T13:30:00Z"),
 				allDay: false,
 			},
@@ -78,18 +83,24 @@ describe("parseIcal", () => {
 		);
 		expect(events).toEqual([
 			{
+				uid: null,
 				summary: "FOMC, statement",
+				description: null,
 				start: Date.parse("2026-10-28T18:00:00Z"),
 				allDay: false,
 			},
 			{
-				// 日付だけの値は、暦の既定の時差に依らず UTC のその日の 0:00
+				// 日付だけの値は、暦の既定の時差に依らず JST のその日の 0:00
+				uid: null,
 				summary: "日銀会合",
-				start: Date.parse("2026-10-30T00:00:00Z"),
+				description: null,
+				start: Date.parse("2026-10-30T00:00:00+09:00"),
 				allDay: true,
 			},
 			{
+				uid: null,
 				summary: "時刻だけ",
+				description: null,
 				start: Date.parse("2026-10-30T09:00:00+09:00"),
 				allDay: false,
 			},

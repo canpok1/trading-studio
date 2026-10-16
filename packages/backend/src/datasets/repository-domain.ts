@@ -51,4 +51,6 @@ export type StoredDatasetInput = {
 	fees: FeeRates;
 	skipGaps: boolean;
 	criteriaVersion: number | null;
+	/** 足す前に保存した実行には無い */
+	eventCriteriaVersion?: number | null;
 };
