@@ -32,7 +32,13 @@ const KIND_BADGE: Record<WatchActionKind, string> = {
 	stopLoss: "bg-stop-loss-bg text-stop-loss",
 };
 
-function KindBadge({ action, multi }: { action: WatchAction; multi: boolean }) {
+export function KindBadge({
+	action,
+	multi,
+}: {
+	action: WatchAction;
+	multi: boolean;
+}) {
 	return (
 		<span
 			className={`rounded px-1.5 py-px text-[11px] font-semibold whitespace-nowrap ${KIND_BADGE[action.kind]}`}

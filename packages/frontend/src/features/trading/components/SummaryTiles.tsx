@@ -179,3 +179,49 @@ export function MarketEvalTile({
 		</Link>
 	);
 }
+
+/** 今の市場評価を1行で。チャートの見出しの横に置く（ホーム）。押すとニュース画面へ */
+export function MarketEvalInline({
+	current,
+}: {
+	current: CurrentJudgment | null;
+}) {
+	return (
+		<Link
+			to="/news"
+			aria-label="市場評価（ニュースへ）"
+			className="flex items-center gap-1.5 rounded-full hover:opacity-80"
+		>
+			{JUDGES.map((j) => {
+				const r = current?.results[j];
+				return (
+					<span
+						key={j}
+						data-testid={`home-judge-${j}`}
+						className="flex items-center gap-1 text-xs text-text-2"
+					>
+						{SHORT_JUDGE_LABELS[j]}
+						{r === undefined ? (
+							<Skeleton className="h-5 w-12" />
+						) : (
+							// 点数は幅のある PC だけ添える
+							<>
+								<span className="lg:hidden">
+									<JudgmentBadge judge={j} value={r.value} small />
+								</span>
+								<span className="hidden lg:inline">
+									<JudgmentBadge
+										judge={j}
+										value={r.value}
+										score={r.average}
+										small
+									/>
+								</span>
+							</>
+						)}
+					</span>
+				);
+			})}
+		</Link>
+	);
+}
