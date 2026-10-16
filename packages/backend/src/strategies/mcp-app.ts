@@ -25,8 +25,9 @@ function strategyFailure(
 
 export function registerStrategyTools(
 	server: McpServer,
-	{ strategies, inUse }: ToolDeps,
+	{ strategies, trading }: ToolDeps,
 ) {
+	const lock = (id: number) => trading.strategyLock(id);
 	server.registerTool(
 		"get_guide",
 		{
@@ -41,13 +42,13 @@ export function registerStrategyTools(
 		"list_strategies",
 		{
 			description:
-				"保存済みの戦略の一覧。active はホームのタブのどれかが運用する戦略（自動取引で使う）に選んでいる戦略で、条件を変えられない",
+				"保存済みの戦略の一覧（作った順）。lock は条件を変えられない理由（running=自動取引がオン、holding=保有か未約定の注文がある）で、変えられれば null。自動取引の状態は list_auto_trading",
 			annotations: readOnly,
 		},
 		() => {
 			return text(
 				strategies.list().map((s) => {
-					const { params: _, ...rest } = strategyView(s, inUse);
+					const { params: _, ...rest } = strategyView(s, lock);
 					return rest;
 				}),
 			);
@@ -63,7 +64,7 @@ export function registerStrategyTools(
 		},
 		({ id }) => {
 			const s = strategies.get(id);
-			return s ? text(strategyView(s, inUse)) : fail("戦略が見つからない");
+			return s ? text(strategyView(s, lock)) : fail("戦略が見つからない");
 		},
 	);
 
@@ -80,7 +81,7 @@ export function registerStrategyTools(
 			if (!p) return fail("条件セットの形が違う。get_guide を参照");
 			const r = strategies.create({ name, from: { params: p } });
 			if (!r.ok) return strategyFailure(r.error);
-			return text(strategyView(r.strategy, inUse));
+			return text(strategyView(r.strategy, lock));
 		},
 	);
 
@@ -88,7 +89,7 @@ export function registerStrategyTools(
 		"update_strategy",
 		{
 			description:
-				"戦略の条件を置き換える。運用する戦略（active）は変えられない。残したい元の条件があるなら create_strategy で別に作る",
+				"戦略の条件を置き換える。lock がある戦略（自動取引がオンか、保有か未約定の注文がある）は変えられない。残したい元の条件があるなら create_strategy で別に作る",
 			inputSchema: { id: z.number().int(), params: paramsSchema },
 			annotations: {
 				destructiveHint: true,
@@ -97,16 +98,16 @@ export function registerStrategyTools(
 			},
 		},
 		({ id, params }) => {
-			if (inUse(id)) {
+			if (trading.strategyLock(id)) {
 				return fail(
-					"運用する戦略は変えられない。create_strategy で新しい戦略として作る",
+					"自動取引がオンか、保有か未約定の注文がある戦略は変えられない。create_strategy で新しい戦略として作る",
 				);
 			}
 			const p = parseParamsInput({ params });
 			if (!p) return fail("条件セットの形が違う。get_guide を参照");
 			const r = strategies.updateParams(id, p);
 			if (!r.ok) return strategyFailure(r.error);
-			return text(strategyView(r.strategy, inUse));
+			return text(strategyView(r.strategy, lock));
 		},
 	);
 }

@@ -1,5 +1,5 @@
 // ホームの「次の動き」（チャートの上）と「戦略の見張り」（チャートの下）。
-// 運用する戦略を今の価格で試算し、価格がいくらになれば何が起きるかと、条件ごとの今の値を出す
+// 戦略を今の価格で試算し、価格がいくらになれば何が起きるかと、条件ごとの今の値を出す
 
 import type {
 	StrategyWatch,
@@ -59,7 +59,7 @@ export function NextMovesCard({
 				<h2 className="text-[15px] font-bold">次の動き</h2>
 				<Help label="次の動き">
 					<p>
-						運用する戦略を今の価格で試算し、今の価格からどれだけ動けば何をするかを出す。上側・下側で一番近いものだけ。発動する価格そのものはチャートの札と「戦略の見張り」で見る。
+						戦略を今の価格で試算し、今の価格からどれだけ動けば何をするかを出す。上側・下側で一番近いものだけ。発動する価格そのものはチャートの札と「戦略の見張り」で見る。
 					</p>
 					<p>
 						実際に注文するのは次の判定のとき。価格以外の条件（市場評価など）が変われば動きも変わる。全部の条件はチャートの下の「戦略の見張り」で見る。
@@ -259,14 +259,14 @@ function GroupRow({
 }
 
 function LotBlock({
-	runId,
+	strategyId,
 	buyId,
 	lot,
 	price,
 	open,
 	onToggle,
 }: {
-	runId: number;
+	strategyId: number;
 	buyId: string;
 	lot: WatchLot;
 	price: number;
@@ -274,7 +274,7 @@ function LotBlock({
 	onToggle: (id: string, open: boolean) => void;
 }) {
 	const change = (price / lot.entryPrice - 1) * 100;
-	const key = (g: string) => `${runId}:${buyId}:${lot.id}:${g}`;
+	const key = (g: string) => `${strategyId}:${buyId}:${lot.id}:${g}`;
 	return (
 		<div className="mt-1 border-t border-line pt-1.5">
 			<p className="num text-xs text-text-2">
@@ -316,13 +316,13 @@ function LotBlock({
 }
 
 function BuyBlock({
-	runId,
+	strategyId,
 	buy,
 	price,
 	open,
 	onToggle,
 }: {
-	runId: number;
+	strategyId: number;
 	buy: WatchBuy;
 	price: number;
 	open: Set<string>;
@@ -330,7 +330,7 @@ function BuyBlock({
 }) {
 	const why = buyStatusText(buy.status);
 	const willBuy = buy.status.kind === "ready" && buy.buy.met === true;
-	const key = `${runId}:${buy.id}::buy`;
+	const key = `${strategyId}:${buy.id}::buy`;
 	return (
 		<section
 			aria-label={`買い ${buy.name}`}
@@ -360,7 +360,7 @@ function BuyBlock({
 			{buy.lots.map((lot) => (
 				<LotBlock
 					key={lot.id}
-					runId={runId}
+					strategyId={strategyId}
 					buyId={buy.id}
 					lot={lot}
 					price={price}
@@ -374,10 +374,10 @@ function BuyBlock({
 
 /** チャートの下に置く、買いごと・グループごとの条件の一覧。グループは畳める */
 export function StrategyWatchPanel({
-	runId,
+	strategyId,
 	watch,
 }: {
-	runId: number;
+	strategyId: number;
 	watch: StrategyWatch;
 }) {
 	const [open, setOpen] = useOpenGroups();
@@ -390,7 +390,7 @@ export function StrategyWatchPanel({
 				<h2 className="text-[15px] font-bold">戦略の見張り</h2>
 				<Help label="戦略の見張り">
 					<p>
-						運用する戦略の条件を、今の価格（{formatInt(watch.price)}{" "}
+						戦略の条件を、今の価格（{formatInt(watch.price)}{" "}
 						円）で試算した結果。✓ は成立、○ は不成立。
 					</p>
 					<p>
@@ -402,7 +402,7 @@ export function StrategyWatchPanel({
 			{watch.buys.map((b) => (
 				<BuyBlock
 					key={b.id}
-					runId={runId}
+					strategyId={strategyId}
 					buy={b}
 					price={watch.price}
 					open={open}

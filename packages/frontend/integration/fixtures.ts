@@ -44,7 +44,6 @@ export function tradingRun(
 	return {
 		enabled: false,
 		mode: "paper",
-		strategy: null,
 		nextEvalAt: null,
 		startedAt: null,
 		waitingForMarket: false,

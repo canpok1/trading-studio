@@ -83,11 +83,10 @@ function setup(params: ConditionSet = always()) {
 	t.live.current = { ...t.live.current, latestTrade: trade(P) };
 	const s = t.strategies.create({ name: "常に買う", from: { params } });
 	if (!s.ok) throw new Error(JSON.stringify(s.error));
-	t.trading.update(1, { strategyId: s.strategy.id });
-	/** 最初のタブ（id 1）の操作は /start のように書ける */
+	/** この戦略の操作は /start のように書ける */
 	const call = async (method: string, path: string, body?: unknown) => {
-		const url = /^\/(start|stop|reset|performance)/.test(path)
-			? `/runs/1${path}`
+		const url = /^\/(start|stop|reset|performance|watch)/.test(path)
+			? `/strategies/${s.strategy.id}${path}`
 			: path;
 		const res = await t.app.request(`/api/trading${url}`, {
 			method,
@@ -122,7 +121,7 @@ function setup(params: ConditionSet = always()) {
 	};
 	const orders = () =>
 		t.trading.orders({}).sort((a, b) => a.placedAt - b.placedAt);
-	const status = () => t.trading.run(1) as AutoTradingStatus;
+	const status = () => t.trading.run(s.strategy.id) as AutoTradingStatus;
 	return { ...t, strategy: s.strategy, call, at, fill, orders, status };
 }
 
@@ -166,7 +165,7 @@ describe("自動取引のオンオフ", () => {
 		expect(started.status).toBe(200);
 		const st = started.body.status as AutoTradingStatus;
 		expect(st.enabled).toBe(true);
-		expect(st.strategy?.name).toBe("常に買う");
+		expect(st.name).toBe("常に買う");
 		expect(st.nextEvalAt).toBe(T0 + M);
 
 		t.at(T0 + M - 1);
@@ -189,7 +188,7 @@ describe("自動取引のオンオフ", () => {
 		expect(detail?.decision?.decision.time).toBe(T0 + M);
 		const api = await t.call("GET", "/orders/1/p1");
 		expect(api.body).toMatchObject({
-			order: { id: "p1", runId: 1, mode: "paper" },
+			order: { id: "p1", strategyId: 1, mode: "paper" },
 			judgments: { sentiment: "0" },
 		});
 		expect((await t.call("GET", "/orders/1/p9")).status).toBe(404);
@@ -212,29 +211,20 @@ describe("自動取引のオンオフ", () => {
 		expect(t.trading.order(1, "p1")?.decision?.judgments).toEqual({});
 	});
 
-	test("リアルは動かせず、運用する戦略が無いか条件が足りなければオンにできない", async () => {
+	test("リアルの口座は動かせず、条件が足りなければオンにできない", async () => {
 		const t = setup();
-		const live = t.trading.create({
-			name: "リアル",
-			mode: "live",
-			strategyId: t.strategy.id,
-		});
-		if (!live.ok) throw new Error();
-		expect(
-			(await t.call("POST", `/runs/${live.status.id}/start`)).body.kind,
-		).toBe("unsupported_mode");
-		t.strategies.updateParams(t.strategy.id, always());
+		t.status();
+		t.db.$client.run("update trading_runs set mode = 'live'");
+		expect((await t.call("POST", "/start")).body.kind).toBe("unsupported_mode");
 		const blank = t.strategies.create({
 			name: "空",
 			from: { template: "blank" },
 		});
 		if (!blank.ok) throw new Error();
-		t.trading.update(1, { strategyId: blank.strategy.id });
-		const r = await t.call("POST", "/start");
+		const r = await t.call("POST", `/strategies/${blank.strategy.id}/start`);
 		expect(r.status).toBe(400);
 		expect(r.body.kind).toBe("invalid_strategy");
-		t.trading.update(1, { strategyId: null });
-		expect((await t.call("POST", "/start")).body.kind).toBe("no_strategy");
+		expect((await t.call("POST", "/strategies/99/start")).status).toBe(404);
 	});
 
 	test("オフにすると新しい注文を出さず、未約定の注文は残る", async () => {
@@ -298,10 +288,10 @@ describe("仮想の約定", () => {
 			(
 				(await t.call("GET", `/orders?${query}`)).body.orders as StoredOrder[]
 			).map((o) => o.id);
-		expect(await ids("run=1")).toEqual(["p2", "p1"]);
-		expect(await ids("run=1&limit=1")).toEqual(["p2"]);
+		expect(await ids("strategy=1")).toEqual(["p2", "p1"]);
+		expect(await ids("strategy=1&limit=1")).toEqual(["p2"]);
 		expect(await ids("side=buy&status=filled")).toEqual(["p1"]);
-		expect(await ids("run=2")).toEqual([]);
+		expect(await ids("strategy=2")).toEqual([]);
 		// 件数と損益の合計は件数の指定で切らない
 		expect((await t.call("GET", "/orders?limit=1")).body).toMatchObject({
 			count: 2,
@@ -425,7 +415,7 @@ describe("止まっていた間と再起動", () => {
 			fees: TEST_FEE_RATES,
 			now: () => t.clock.now,
 		});
-		expect(restarted.run(1)).toEqual(before);
+		expect(restarted.run(t.strategy.id)).toEqual(before);
 		const tr: MarketTrade = {
 			id: 99,
 			time: t.clock.now,
@@ -514,18 +504,15 @@ describe("1日の損失上限", () => {
 });
 
 describe("オン中の制限", () => {
-	test("オン中は運用する戦略を変えられず、動かしている戦略が消えたら止まる", async () => {
+	test("動かしている戦略が消えたら止まる", async () => {
 		const t = setup();
 		await t.call("POST", "/start");
-		expect(
-			(await t.call("PATCH", "/runs/1", { strategyId: null })).status,
-		).toBe(409);
 		t.strategies.remove(t.strategy.id);
 		t.at(T0 + M);
-		expect(t.status().enabled).toBe(false);
+		expect(t.tradingRepo.runs()[0]?.enabled).toBe(false);
 	});
 
-	test("オン中と保有がある間は、運用する戦略の切り替え・条件の変更・削除ができない。ほかの戦略は変えられる", async () => {
+	test("オン中と保有がある間は条件の変更ができず、オン中は削除もできない。名前とほかの戦略は変えられる", async () => {
 		const t = setup();
 		const req = async (method: string, path: string, body?: unknown) =>
 			(
@@ -536,13 +523,6 @@ describe("オン中の制限", () => {
 				})
 			).status;
 		const id = t.strategy.id;
-		const blocked = async () => {
-			expect(
-				(await t.call("PATCH", "/runs/1", { strategyId: null })).status,
-			).toBe(409);
-			expect(await req("PUT", `/${id}/params`, { params: always() })).toBe(409);
-			expect(await req("DELETE", `/${id}`)).toBe(409);
-		};
 		const other = t.strategies.create({
 			name: "別",
 			from: { params: always() },
@@ -551,9 +531,10 @@ describe("オン中の制限", () => {
 
 		await t.call("POST", "/start");
 		expect(t.status().strategyLock).toBe("running");
-		await blocked();
-		// 名前の変更とほかの戦略の変更はできる
+		expect(await req("PUT", `/${id}/params`, { params: always() })).toBe(409);
+		expect(await req("DELETE", `/${id}`)).toBe(409);
 		expect(await req("PUT", `/${id}/name`, { name: "改名" })).toBe(200);
+		expect(t.status().name).toBe("改名");
 		expect(
 			await req("PUT", `/${other.strategy.id}/params`, { params: always() }),
 		).toBe(200);
@@ -562,17 +543,13 @@ describe("オン中の制限", () => {
 		t.fill(P);
 		await t.call("POST", "/stop");
 		expect(t.status().strategyLock).toBe("holding");
-		await blocked();
+		expect(await req("PUT", `/${id}/params`, { params: always() })).toBe(409);
 
 		expect(
 			(await t.call("POST", "/reset", { initialCash: 100_000_000 })).status,
 		).toBe(200);
 		expect(t.status().strategyLock).toBe(null);
 		expect(await req("PUT", `/${id}/params`, { params: always() })).toBe(200);
-		expect(
-			(await t.call("PATCH", "/runs/1", { strategyId: other.strategy.id }))
-				.status,
-		).toBe(200);
 	});
 });
 
@@ -625,7 +602,7 @@ describe("成績", () => {
 			winRate: null,
 			maxDrawdownPercent: 0,
 		});
-		expect((await t.call("GET", "/runs/9/performance")).status).toBe(404);
+		expect((await t.call("GET", "/strategies/9/performance")).status).toBe(404);
 	});
 });
 
@@ -711,16 +688,20 @@ describe("複数ポジション", () => {
 
 	test("ロットを持つ前に保存した口座は、保有を1ロットとして読む", () => {
 		const t = setup();
-		t.db.$client.run("update trading_runs set account = ? where id = ?", [
-			JSON.stringify({
-				cash: 900_000,
-				position: { quantity: 1_000_000, entryPrice: P, openedAt: T0 },
-				entry: { record: { id: "p1" }, time: T0, cost: 100_100 },
-				openOrders: [],
-				seq: 1,
-			}),
-			1,
-		]);
+		t.status();
+		t.db.$client.run(
+			"update trading_runs set account = ? where strategy_id = ?",
+			[
+				JSON.stringify({
+					cash: 900_000,
+					position: { quantity: 1_000_000, entryPrice: P, openedAt: T0 },
+					entry: { record: { id: "p1" }, time: T0, cost: 100_100 },
+					openOrders: [],
+					seq: 1,
+				}),
+				1,
+			],
+		);
 		expect(t.status().account.lots).toEqual([
 			{
 				id: "p1",
@@ -734,30 +715,50 @@ describe("複数ポジション", () => {
 	});
 });
 
-describe("複数のタブ", () => {
-	test("タブごとに口座・注文・オンオフを持ち、別々に動く", async () => {
-		const t = setup();
-		const r = await t.call("POST", "/runs", {
-			name: "比較用",
-			mode: "paper",
-			strategyId: t.strategy.id,
+describe("複数の戦略", () => {
+	const create = async (
+		t: ReturnType<typeof setup>,
+		name: string,
+		params: ConditionSet = always(),
+	) => {
+		const res = await t.app.request("/api/strategies", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ name, from: { params } }),
 		});
-		expect(r.status).toBe(201);
-		const second = (r.body.status as AutoTradingStatus).id;
-		await t.call("POST", `/runs/${second}/reset`, { initialCash: 500_000 });
+		expect(res.status).toBe(201);
+		return ((await res.json()) as { strategy: { id: number } }).strategy.id;
+	};
+
+	test("戦略ごとに口座・注文・オンオフを持ち、別々に動く", async () => {
+		const t = setup();
+		const second = await create(t, "比較用");
+		await t.call("POST", `/strategies/${second}/reset`, {
+			initialCash: 500_000,
+		});
 		await t.call("POST", "/start");
-		await t.call("POST", `/runs/${second}/start`);
+		await t.call("POST", `/strategies/${second}/start`);
 		t.at(T0 + M);
 		t.fill(P);
-		// どちらのタブも買い、注文の id はタブの中で振る
-		expect(t.orders().map((o) => [o.runId, o.id, o.status])).toEqual([
-			[1, "p1", "filled"],
-			[second, "p1", "filled"],
+		// どちらも買い、注文の id は口座の中で振る
+		expect(
+			t
+				.orders()
+				.map((o) => [o.strategyName, o.id, o.status])
+				.sort(),
+		).toEqual([
+			["常に買う", "p1", "filled"],
+			["比較用", "p1", "filled"],
 		]);
 		expect(t.trading.run(second)?.account.cash).toBe(500_000 - 100_100);
 		expect(t.status().account.cash).toBe(1_000_000 - 100_100);
-		expect((await t.call("GET", `/orders?run=${second}`)).body.count).toBe(1);
-		expect(t.trading.order(second, "p1")?.order.runId).toBe(second);
+		expect((await t.call("GET", `/orders?strategy=${second}`)).body.count).toBe(
+			1,
+		);
+		expect((await t.call("GET", "/orders?strategy=99")).body.count).toBe(0);
+		expect((await t.call("GET", `/orders/${second}/p1`)).body).toMatchObject({
+			order: { strategyName: "比較用" },
+		});
 
 		// 片方を止めても、もう片方は動き続ける
 		await t.call("POST", "/stop");
@@ -767,56 +768,50 @@ describe("複数のタブ", () => {
 		expect(t.trading.run(second)?.account.lots).toEqual([]);
 		expect(t.status().account.lots).toHaveLength(1);
 		expect(
-			(await t.call("GET", "/runs")).body.runs as AutoTradingStatus[],
+			(await t.call("GET", "/strategies")).body
+				.strategies as AutoTradingStatus[],
 		).toMatchObject([
-			{ id: 1, name: "デモ", enabled: false },
-			{ id: second, name: "比較用", enabled: true },
+			{ id: t.strategy.id, name: "常に買う", enabled: false, mode: "paper" },
+			{ id: second, name: "比較用", enabled: true, mode: "paper" },
 		]);
 	});
 
-	test("1つのタブの口座が読めなくても、ほかのタブは約定・評価を続ける", async () => {
+	test("1つの口座が読めなくても、ほかの戦略は約定・評価を続ける", async () => {
 		const t = setup();
-		const broken = t.trading.create({
-			name: "壊れた",
-			mode: "paper",
-			strategyId: t.strategy.id,
-		});
-		if (!broken.ok) throw new Error();
-		t.db.$client.run("update trading_runs set account = '{' where id = ?", [
-			broken.status.id,
-		]);
+		const broken = await create(t, "壊れた");
+		t.trading.run(broken);
+		t.db.$client.run(
+			"update trading_runs set account = '{' where strategy_id = ?",
+			[broken],
+		);
 		await t.call("POST", "/start");
 		t.at(T0 + M);
 		t.fill(P);
-		expect(t.orders().map((o) => [o.runId, o.status])).toEqual([[1, "filled"]]);
+		expect(t.orders().map((o) => [o.strategyName, o.status])).toEqual([
+			["常に買う", "filled"],
+		]);
 	});
 
-	test("タブは5つまで、リアルは1つまで。名前は必須", async () => {
+	test("同時にオンにできるのは5つまで", async () => {
 		const t = setup();
-		const add = (mode: "paper" | "live", name = "x") =>
-			t.trading.create({ name, mode, strategyId: null });
-		expect(add("paper", " ")).toMatchObject({
-			ok: false,
-			error: { kind: "invalid_name" },
-		});
-		expect(add("live").ok).toBe(true);
-		expect(add("live")).toMatchObject({ ok: false, error: { kind: "limit" } });
-		expect(add("paper").ok).toBe(true);
-		expect(add("paper").ok).toBe(true);
-		expect(add("paper").ok).toBe(true);
-		expect(t.trading.runs()).toHaveLength(5);
-		expect(
-			(
-				await t.call("POST", "/runs", {
-					name: "x",
-					mode: "paper",
-					strategyId: null,
-				})
-			).status,
-		).toBe(409);
+		await t.call("POST", "/start");
+		for (const name of ["a", "b", "c", "d"]) {
+			const id = await create(t, name);
+			expect((await t.call("POST", `/strategies/${id}/start`)).status).toBe(
+				200,
+			);
+		}
+		const sixth = await create(t, "e");
+		const r = await t.call("POST", `/strategies/${sixth}/start`);
+		expect(r.status).toBe(409);
+		expect(r.body.kind).toBe("limit");
+		await t.call("POST", "/stop");
+		expect((await t.call("POST", `/strategies/${sixth}/start`)).status).toBe(
+			200,
+		);
 	});
 
-	test("名前を変えられる。タブはオフのときだけ消せ、未約定は取り消して記録は残す。最後の1つは消せない", async () => {
+	test("戦略はオフのときだけ消せる。未約定は取り消し保有は捨て、記録は残す", async () => {
 		const t = setup(
 			always({
 				buyOrder: {
@@ -826,49 +821,39 @@ describe("複数のタブ", () => {
 				},
 			}),
 		);
-		const created = t.trading.create({
-			name: "消す",
-			mode: "paper",
-			strategyId: t.strategy.id,
-		});
-		if (!created.ok) throw new Error();
-		const id = created.status.id;
-		expect(
-			(await t.call("PATCH", `/runs/${id}`, { name: "改名" })).body,
-		).toMatchObject({ status: { name: "改名" } });
-		await t.call("POST", `/runs/${id}/start`);
-		t.at(T0 + M);
-		expect((await t.call("DELETE", `/runs/${id}`)).status).toBe(409);
-		await t.call("POST", `/runs/${id}/stop`);
-		expect((await t.call("DELETE", `/runs/${id}`)).status).toBe(200);
-		expect(t.trading.runs().map((r) => r.id)).toEqual([1]);
-		expect(t.orders()).toMatchObject([
-			{ runId: id, status: "canceled", cancelReason: "タブの削除で取消" },
-		]);
-		expect((await t.call("DELETE", "/runs/1")).status).toBe(409);
-		expect((await t.call("POST", `/runs/${id}/start`)).status).toBe(404);
-	});
-
-	test("戦略は、その戦略を使うタブのどれかがオンか保有がある間だけ変えられない", async () => {
-		const t = setup();
-		const other = t.trading.create({
-			name: "同じ戦略",
-			mode: "paper",
-			strategyId: t.strategy.id,
-		});
-		if (!other.ok) throw new Error();
-		expect(t.trading.strategyLock(t.strategy.id)).toBe(null);
-		await t.call("POST", `/runs/${other.status.id}/start`);
-		expect(t.trading.strategyLock(t.strategy.id)).toBe("running");
-		// 止めているタブは、オンのタブと同じ戦略でも切り替えられる
-		expect(t.trading.update(1, { strategyId: null }).ok).toBe(true);
-		expect(
+		const del = async () =>
 			(
 				await t.app.request(`/api/strategies/${t.strategy.id}`, {
 					method: "DELETE",
 				})
-			).status,
-		).toBe(409);
+			).status;
+		await t.call("POST", "/start");
+		t.at(T0 + M);
+		expect(await del()).toBe(409);
+		await t.call("POST", "/stop");
+		expect(await del()).toBe(200);
+		expect(t.trading.runs()).toEqual([]);
+		expect(t.strategies.get(t.strategy.id)).toBeNull();
+		expect(t.orders()).toMatchObject([
+			{ status: "canceled", cancelReason: "戦略の削除で取消" },
+		]);
+		expect(t.tradingRepo.runs()).toEqual([]);
+		expect((await t.call("POST", "/start")).status).toBe(404);
+		expect(await del()).toBe(404);
+	});
+
+	test("口座の無い戦略は、読んだときに既定の資金のデモの口座を作る", async () => {
+		const t = setup();
+		expect(t.tradingRepo.runs()).toEqual([]);
+		expect(t.trading.runs()).toMatchObject([
+			{
+				id: t.strategy.id,
+				enabled: false,
+				mode: "paper",
+				account: { initialCash: 1_000_000, cash: 1_000_000 },
+			},
+		]);
+		expect(t.tradingRepo.runs()).toHaveLength(1);
 	});
 });
 
@@ -879,7 +864,7 @@ describe("見張り", () => {
 		t.at(T0 + M);
 		t.fill(P);
 		const before = t.orders().length;
-		const res = await t.call("GET", "/runs/1/watch");
+		const res = await t.call("GET", "/watch");
 		expect(res.status).toBe(200);
 		const w = res.body.watch as {
 			actions: { kind: string; price: number | null }[];
@@ -889,14 +874,6 @@ describe("見張り", () => {
 			["takeProfit", P * 1.01],
 		]);
 		expect(t.orders().length).toBe(before);
-		expect((await t.call("GET", "/runs/9/watch")).status).toBe(404);
-	});
-
-	test("戦略を選んでいなければ null", async () => {
-		const t = setup();
-		t.trading.update(1, { strategyId: null });
-		expect((await t.call("GET", "/runs/1/watch")).body).toEqual({
-			watch: null,
-		});
+		expect((await t.call("GET", "/strategies/9/watch")).status).toBe(404);
 	});
 });

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
 	blob,
 	index,
@@ -303,33 +304,42 @@ export const newsRescores = sqliteTable(
 );
 
 /**
- * 自動取引の運用。ホームのタブ1つ。モード・戦略・口座・実行状態を運用ごとに持つ。
- * 削除しても注文・判断の記録から名前を引けるよう、行は消さずに deleted_at を入れる
+ * 戦略の自動取引の口座と実行状態。削除していない行は戦略と 1:1。
+ * 戦略を削除しても注文・判断の記録から名前を引けるよう、行は消さずに deleted_at を入れる
  */
-export const tradingRuns = sqliteTable("trading_runs", {
-	id: integer("id").primaryKey({ autoIncrement: true }),
-	name: text("name").notNull(),
-	/** paper / live */
-	mode: text("mode").notNull(),
-	/** 運用する戦略。オン中は動かしている戦略。戦略を削除しても残るので外部キーにしない */
-	strategyId: integer("strategy_id"),
-	createdAt: integer("created_at").notNull(),
-	deletedAt: integer("deleted_at"),
-	enabled: integer("enabled", { mode: "boolean" }).notNull(),
-	/** 戦略の state（JSON） */
-	state: text("state").notNull(),
-	/** 次の判定時刻。オフなら null */
-	nextEvalAt: integer("next_eval_at"),
-	/** 約定があったので次の見回りで評価し直す */
-	reevaluate: integer("reevaluate", { mode: "boolean" }).notNull(),
-	startedAt: integer("started_at"),
-	/** 開始時の資金（リセットで戻す額） */
-	initialCash: integer("initial_cash").notNull(),
-	/** 口座（JSON: core の Account。現金・保有・未約定の注文）。null は開始時の資金だけの口座 */
-	account: text("account"),
-	/** 最後にリセットした時刻。作ったときは作った時刻 */
-	resetAt: integer("reset_at").notNull(),
-});
+export const tradingRuns = sqliteTable(
+	"trading_runs",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		/** 作ったときの戦略の名前。分析用のエクスポートで、消した戦略の記録に名前を付けるため */
+		name: text("name").notNull(),
+		/** paper / live。今は paper だけ作る */
+		mode: text("mode").notNull(),
+		/** 戦略を削除しても残るので外部キーにしない。統合前に作った削除済みの行は null がある */
+		strategyId: integer("strategy_id"),
+		createdAt: integer("created_at").notNull(),
+		deletedAt: integer("deleted_at"),
+		enabled: integer("enabled", { mode: "boolean" }).notNull(),
+		/** 戦略の state（JSON） */
+		state: text("state").notNull(),
+		/** 次の判定時刻。オフなら null */
+		nextEvalAt: integer("next_eval_at"),
+		/** 約定があったので次の見回りで評価し直す */
+		reevaluate: integer("reevaluate", { mode: "boolean" }).notNull(),
+		startedAt: integer("started_at"),
+		/** 開始時の資金（リセットで戻す額） */
+		initialCash: integer("initial_cash").notNull(),
+		/** 口座（JSON: core の Account。現金・保有・未約定の注文）。null は開始時の資金だけの口座 */
+		account: text("account"),
+		/** 最後にリセットした時刻。作ったときは作った時刻 */
+		resetAt: integer("reset_at").notNull(),
+	},
+	(t) => [
+		uniqueIndex("trading_runs_strategy")
+			.on(t.strategyId)
+			.where(sql`${t.deletedAt} is null`),
+	],
+);
 
 /** 自動取引の注文。発注から約定・取消までを1行で持つ。削除しない */
 export const tradingOrders = sqliteTable(

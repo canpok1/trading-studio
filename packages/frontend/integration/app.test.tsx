@@ -68,8 +68,8 @@ describe("画面遷移", () => {
 			.on(routes.api.market.latest, "$get", () => marketLatest())
 			.on(routes.api.strategies, "$get", () => ({ strategies: [] }))
 			.on(routes.api.data.coverage, "$get", () => ({ timeframes: [] }))
-			.on(routes.api.trading.runs, "$get", () => ({
-				runs: [
+			.on(routes.api.trading.strategies, "$get", () => ({
+				strategies: [
 					tradingRun({ id: 1, name: "リアル", mode: "live" }),
 					tradingRun({ id: 2, name: "デモ", mode: "paper" }),
 				],

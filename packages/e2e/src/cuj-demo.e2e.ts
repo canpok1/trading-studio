@@ -1,6 +1,5 @@
 // CUJ 2: デモ運用を始め、ホームで状況を見て、止める
 import { expect, test } from "@playwright/test";
-import { chooseStrategy } from "./run-settings";
 
 /** 注文の行の名前（「買 0.020 BTC · 約定 …」） */
 const ORDER_ROW = / · (約定|注文中|取消)/;
@@ -67,14 +66,15 @@ test("デモ運用を始めると仮想注文が約定してホームに出て�
 	try {
 		// 始める
 		await page.goto("/home");
-		await chooseStrategy(page, name);
+		await page.getByRole("tab", { name }).click();
 		await page.getByRole("switch", { name: "自動取引" }).click();
 		const confirm = page.getByRole("dialog", {
-			name: "「デモ」の自動取引を開始する（デモ）",
+			name: `「${name}」の自動取引を開始する（デモ）`,
 		});
-		await expect(confirm).toContainText(name);
 		await confirm.getByRole("button", { name: "開始する" }).click();
-		await expect(page.getByRole("status")).toContainText("「デモ」を開始した");
+		await expect(page.getByRole("status")).toContainText(
+			`「${name}」を開始した`,
+		);
 		const band = page.getByRole("complementary", { name: "稼働中の自動取引" });
 		await expect(band).toContainText("デモ稼働中");
 		await expect(page.getByTestId("band-strategy")).toHaveText(name);
@@ -104,9 +104,9 @@ test("デモ運用を始めると仮想注文が約定してホームに出て�
 		await expect(band).toBeHidden();
 		await expect(page.getByTestId("auto-state")).not.toHaveText("稼働中");
 	} finally {
-		await page.request.post("/api/trading/runs/1/stop");
+		await page.request.post(`/api/trading/strategies/${strategy.id}/stop`);
 		// 保有を残すと同じシャードの他のテストの口座の表示が変わるので、口座を戻す
-		await page.request.post("/api/trading/runs/1/reset", {
+		await page.request.post(`/api/trading/strategies/${strategy.id}/reset`, {
 			data: { initialCash: 1_000_000 },
 		});
 	}

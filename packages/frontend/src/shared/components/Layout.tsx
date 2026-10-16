@@ -223,9 +223,7 @@ function TradingBand() {
 					data-testid="band-strategy"
 					className="ml-auto min-w-0 truncate font-bold"
 				>
-					{running.length > 1
-						? running.map((r) => r.name).join("・")
-						: (first.strategy?.name ?? "")}
+					{running.map((r) => r.name).join("・")}
 				</span>
 			</Link>
 		</aside>

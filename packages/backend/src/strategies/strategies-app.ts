@@ -1,7 +1,11 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { validator } from "hono/validator";
-import type { StrategyLock } from "../trading/types-domain";
+import type {
+	StrategyLock,
+	TradingFailure,
+	TradingService,
+} from "../trading/types-domain";
 import { parseCreateInput, parseParamsInput } from "./strategies-domain";
 import type { StrategyResult, StrategyService } from "./types-domain";
 
@@ -26,19 +30,25 @@ function respond(c: Context, r: StrategyResult, okStatus: 200 | 201 = 200) {
 }
 
 const LOCK_REASONS: Record<StrategyLock, string> = {
-	running: "この戦略を使うタブの自動取引を先に停止する",
+	running: "先に自動取引を停止する",
 	holding:
-		"この戦略を使うタブに保有か未約定の注文がある。売れるのを待つか、口座をリセットする",
+		"保有か未約定の注文がなくなるのを待つ。売れるのを待つか、口座をリセットする",
 };
+
+function removeFailure(c: Context, e: TradingFailure) {
+	return e.kind === "not_found"
+		? c.json({ message: "戦略が見つからない" }, 404)
+		: c.json({ message: e.message }, 409);
+}
 
 export function strategyRoutes(
 	service: StrategyService,
-	/** 戦略の条件を変えさせない理由。その戦略を使うタブのどれかがオンか、保有か未約定の注文がある間 */
-	strategyLock: (id: number) => StrategyLock | null = () => null,
+	/** 条件の変更を止める理由と、口座ごとの削除 */
+	trading: Pick<TradingService, "strategyLock" | "remove">,
 ) {
-	/** 運用中の戦略を止めているなら 409 */
+	/** 動かしている戦略を止めているなら 409 */
 	const locked = (c: Context, what: string, id: number) => {
-		const lock = strategyLock(id);
+		const lock = trading.strategyLock(id);
 		if (lock === null) return null;
 		return c.json({ message: `${what}には、${LOCK_REASONS[lock]}` }, 409);
 	};
@@ -68,7 +78,7 @@ export function strategyRoutes(
 			}),
 			(c) => {
 				const id = Number(c.req.param("id"));
-				const no = locked(c, "運用する戦略の条件を変える", id);
+				const no = locked(c, "戦略の条件を変える", id);
 				if (no) return no;
 				return respond(c, service.updateParams(id, c.req.valid("json").params));
 			},
@@ -87,11 +97,9 @@ export function strategyRoutes(
 				),
 		)
 		.delete("/:id", (c) => {
-			const id = Number(c.req.param("id"));
-			const no = locked(c, "運用する戦略を削除する", id);
-			if (no) return no;
-			return service.remove(id)
+			const r = trading.remove(Number(c.req.param("id")));
+			return r.ok
 				? c.json({ ok: true as const }, 200)
-				: c.json({ message: "戦略が見つからない" }, 404);
+				: removeFailure(c, r.error);
 		});
 }

@@ -1,4 +1,4 @@
-// 自動取引の状態（タブごと）。全画面の上部の帯とホームで使うので、画面の枠で1つ持って問い合わせる
+// 自動取引の状態（戦略ごと）。全画面の上部の帯とホームで使うので、画面の枠で1つ持って問い合わせる
 
 import type {
 	AutoTradingStatus,
@@ -29,13 +29,13 @@ import {
 const STATUS_MS = 5_000;
 
 type TradingStatusValue = {
-	/** タブの状態（作った順）。まだ読めていなければ null */
+	/** 戦略ごとの状態（作った順）。まだ読めていなければ null */
 	runs: AutoTradingStatus[] | null;
 	/** 読み直す。操作の後など */
 	refresh: () => Promise<void>;
-	/** 操作の応答で受け取ったタブの状態をすぐ反映する。無いタブなら足す */
+	/** 操作の応答で受け取った状態をすぐ反映する。無い戦略なら足す */
 	set: (s: AutoTradingStatus) => void;
-	/** 消したタブをすぐ外す */
+	/** 消した戦略をすぐ外す */
 	drop: (id: number) => void;
 };
 
@@ -63,10 +63,10 @@ export function TradingStatusProvider({ children }: { children: ReactNode }) {
 	const refresh = useCallback(async () => {
 		const my = ++seq.current;
 		try {
-			const r = await api.api.trading.runs
+			const r = await api.api.trading.strategies
 				.$get()
-				.then((res) => readJson<{ runs: AutoTradingStatus[] }>(res));
-			if (my === seq.current) setRuns(r.runs);
+				.then((res) => readJson<{ strategies: AutoTradingStatus[] }>(res));
+			if (my === seq.current) setRuns(r.strategies);
 		} catch {
 			// 帯とホームの表示は前のまま残す。ホームの操作の失敗はホームで出す
 		}
@@ -88,25 +88,16 @@ export function useTradingStatus(): TradingStatusValue {
 	return v;
 }
 
-/**
- * 戦略の条件の変更・削除を止めている理由（サーバーも 409 で止める）。
- * その戦略を使うタブのどれかがオンなら running、保有か未約定の注文があれば holding
- */
+/** 戦略の条件の変更を止めている理由（サーバーも 409 で止める）。オンなら running、保有か未約定の注文があれば holding */
 export function strategyLockOf(
 	runs: readonly AutoTradingStatus[] | null,
 	strategyId: number,
 ): StrategyLock | null {
-	let lock: StrategyLock | null = null;
-	for (const r of runs ?? []) {
-		if (r.strategy?.id !== strategyId || r.strategyLock === null) continue;
-		if (r.strategyLock === "running") return "running";
-		lock = "holding";
-	}
-	return lock;
+	return runs?.find((r) => r.id === strategyId)?.strategyLock ?? null;
 }
 
 export type OrderQuery = {
-	runId?: number;
+	strategyId?: number;
 	status?: StoredOrder["status"];
 	side?: StoredOrder["side"];
 	limit?: number;
@@ -130,7 +121,9 @@ export function useTradingOrders(query: OrderQuery, active: boolean) {
 			const r = await api.api.trading.orders
 				.$get({
 					query: {
-						...(q.runId !== undefined && { run: String(q.runId) }),
+						...(q.strategyId !== undefined && {
+							strategy: String(q.strategyId),
+						}),
 						...(q.status && { status: q.status }),
 						...(q.side && { side: q.side }),
 						...(q.limit && { limit: String(q.limit) }),
@@ -170,73 +163,67 @@ export function useTradingOrders(query: OrderQuery, active: boolean) {
 }
 
 /** 口座をリセットした時点以降の成績を読み、5秒ごとに読み直す。読めなければ前の値を残す */
-export function useTradingPerformance(runId: number, active: boolean) {
+export function useTradingPerformance(strategyId: number, active: boolean) {
 	const api = useApi();
-	// どのタブの成績かを持ち、切り替え直後に別のタブの成績を出さない
+	// どの戦略の成績かを持ち、切り替え直後に別の戦略の成績を出さない
 	const [loaded, setLoaded] = useState<{
-		runId: number;
+		strategyId: number;
 		performance: TradingPerformance;
 	} | null>(null);
 	const [error, setError] = useState<{
-		runId: number;
+		strategyId: number;
 		message: string;
 	} | null>(null);
 	const seq = useRef(0);
 	const load = useCallback(async () => {
 		const my = ++seq.current;
 		try {
-			const r = await api.api.trading.runs[":id"].performance
-				.$get({ param: { id: String(runId) } })
+			const r = await api.api.trading.strategies[":id"].performance
+				.$get({ param: { id: String(strategyId) } })
 				.then((res) => readJson<{ performance: TradingPerformance }>(res));
 			if (my === seq.current) {
-				setLoaded({ runId, performance: r.performance });
+				setLoaded({ strategyId, performance: r.performance });
 				setError(null);
 			}
 		} catch (e) {
-			if (my === seq.current) setError({ runId, message: errorMessage(e) });
+			if (my === seq.current)
+				setError({ strategyId, message: errorMessage(e) });
 		}
-	}, [api, runId]);
+	}, [api, strategyId]);
 	useEffect(() => {
 		if (active) load();
 	}, [active, load]);
 	useInterval(load, STATUS_MS, active);
 	return {
-		performance: loaded?.runId === runId ? loaded.performance : null,
-		error: error?.runId === runId ? error.message : null,
+		performance: loaded?.strategyId === strategyId ? loaded.performance : null,
+		error: error?.strategyId === strategyId ? error.message : null,
 		reload: load,
 	};
 }
 
-/** 運用する戦略を今の価格で試算した見張りを読み、5秒ごとに読み直す。読めなければ前の値を残す */
-export function useStrategyWatch(
-	runId: number,
-	strategyId: number | null,
-	active: boolean,
-) {
+/** 戦略を今の価格で試算した見張りを読み、5秒ごとに読み直す。読めなければ前の値を残す */
+export function useStrategyWatch(strategyId: number, active: boolean) {
 	const api = useApi();
-	// どのタブ・どの戦略の見張りかを持ち、切り替え直後に前の見張りを出さない
+	// どの戦略の見張りかを持ち、切り替え直後に前の見張りを出さない
 	const [loaded, setLoaded] = useState<{
-		runId: number;
-		strategyId: number | null;
+		strategyId: number;
 		watch: StrategyWatch | null;
 	} | null>(null);
 	const seq = useRef(0);
 	const load = useCallback(async () => {
 		const my = ++seq.current;
 		try {
-			const r = await api.api.trading.runs[":id"].watch
-				.$get({ param: { id: String(runId) } })
+			const r = await api.api.trading.strategies[":id"].watch
+				.$get({ param: { id: String(strategyId) } })
 				.then((res) => readJson<{ watch: StrategyWatch | null }>(res));
-			if (my === seq.current) setLoaded({ runId, strategyId, watch: r.watch });
+			if (my === seq.current) setLoaded({ strategyId, watch: r.watch });
 		} catch {
 			// 見張りは補助の表示なので、読めなければ前の値のまま残す
 		}
-	}, [api, runId, strategyId]);
+	}, [api, strategyId]);
 	useEffect(() => {
 		if (active) load();
 	}, [active, load]);
 	useInterval(load, STATUS_MS, active);
-	return loaded?.runId === runId && loaded.strategyId === strategyId
-		? loaded.watch
-		: null;
+	return loaded?.strategyId === strategyId ? loaded.watch : null;
 }

@@ -15,25 +15,22 @@ afterEach(async () => {
 });
 
 describe("稼働中の戦略", () => {
-	test("自動取引で稼働中のタブが使う戦略は、条件を変えられず削除もできない", async () => {
+	test("自動取引で稼働中の戦略は、条件を変えられず削除もできない", async () => {
 		const api = createFakeApi();
 		onHome(api, {
 			strategies: [templateStrategy(1, "稼働中")],
 			runs: [
 				tradingRun({
 					id: 1,
-					name: "デモ",
+					name: "稼働中",
 					enabled: true,
-					strategy: { id: 1, name: "稼働中" },
 					strategyLock: "running",
 				}),
 			],
 		});
 		const view = renderApp("/strategies/1", api);
 		expect(
-			await view.findByText(
-				/この戦略を使うタブが自動取引で稼働中のため、条件を変えられない。/,
-			),
+			await view.findByText(/自動取引が稼働中のため、条件を変えられない。/),
 		).toBeTruthy();
 		expect(view.queryByRole("button", { name: "この戦略を削除" })).toBeNull();
 		const quantity = view.getByLabelText("1回の注文量（BTC）");
