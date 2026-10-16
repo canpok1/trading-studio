@@ -64,7 +64,7 @@ function Shell() {
 					<Route path="/strategies" element={<StrategiesPage />} />
 					<Route path="/strategies/:id" element={<StrategyPage />} />
 					<Route path="/strategies/:id/edit" element={<StrategyEditPage />} />
-					{/* 取引画面はホームへ統合した。モードの指定はそのまま渡す */}
+					{/* 以前の取引画面の URL はホームで開く */}
 					<Route path="/trades" element={<TradesRedirect />} />
 					<Route path="/data" element={<DataPage />} />
 					<Route path="/export" element={<ExportPage />} />

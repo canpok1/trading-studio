@@ -54,11 +54,21 @@ export function StrategyEditPage() {
 	const current = state.kind === "ok" ? state.data.strategy : null;
 
 	// 編集中の条件は下書きに持ち、「保存」で戦略へ反映する
-	const [draft, setDraft] = useState<ConditionSet | null>(null);
+	// 開いた戦略が変わったときだけ入れ直す。保存後の読み直しで、保存中に続けた編集を消さないため
+	const [draft, setDraft] = useState<{
+		id: number;
+		params: ConditionSet;
+	} | null>(null);
 	useEffect(() => {
-		if (current) setDraft(current.params);
-	}, [current]);
-	const params = draft ?? current?.params ?? null;
+		if (current && draft?.id !== current.id) {
+			setDraft({ id: current.id, params: current.params });
+		}
+	}, [current, draft?.id]);
+	const [saving, setSaving] = useState(false);
+	const params =
+		current && draft?.id === current.id
+			? draft.params
+			: (current?.params ?? null);
 	const errors = useMemo(
 		() => (params ? validateConditionSet(params) : []),
 		[params],
@@ -68,7 +78,8 @@ export function StrategyEditPage() {
 		to: `/strategies/${strategyId}`,
 		label: current?.name ?? "戦略",
 	};
-	if (state.kind === "loading") {
+	// 自動取引の状態が読めるまでは、条件を変えられるかも成績の確認が要るかも分からない
+	if (state.kind === "loading" || runs === null) {
 		return (
 			<Page title="戦略の編集" back={back}>
 				<LoadingCard />
@@ -106,10 +117,11 @@ export function StrategyEditPage() {
 	const hasErr = errors.length > 0;
 	const setParams = (p: ConditionSet) => {
 		setNotice(null);
-		setDraft(p);
+		setDraft({ id: current.id, params: p });
 	};
 	const save = async (resetAccount: boolean) => {
 		setAsking(false);
+		setSaving(true);
 		try {
 			await api.api.strategies[":id"].params
 				.$put({ param: { id: String(current.id) }, json: { params } })
@@ -117,6 +129,8 @@ export function StrategyEditPage() {
 		} catch (e) {
 			setNotice(`保存できなかった: ${errorMessage(e)}`);
 			return;
+		} finally {
+			setSaving(false);
 		}
 		await reload();
 		if (!resetAccount || !run) {
@@ -194,7 +208,7 @@ export function StrategyEditPage() {
 						<Button
 							variant="primary"
 							className="flex-1"
-							disabled={!dirty || hasErr}
+							disabled={!dirty || hasErr || saving}
 							// 成績は変更前の条件で取引したものなので、残すかを聞く
 							onClick={() =>
 								run?.ranSinceReset ? setAsking(true) : save(false)

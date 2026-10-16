@@ -1,4 +1,4 @@
-import { Link, useLocation, useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import { StrategyHeader } from "../../features/strategies/components/StrategyHeader";
 import { StrategyDashboard } from "../../features/trading/components/StrategyDashboard";
 import { Page } from "../../shared/components/Page";
@@ -13,8 +13,6 @@ export function StrategyPage() {
 	const { id } = useParams();
 	const strategyId = Number(id);
 	const { runs } = useTradingStatus();
-	// 編集画面で保存したときの知らせ
-	const notice = (useLocation().state as { notice?: string } | null)?.notice;
 	const run = runs?.find((r) => r.id === strategyId) ?? null;
 
 	if (!run) {
@@ -34,7 +32,9 @@ export function StrategyPage() {
 		);
 	}
 	return (
+		// 戦略を移ったら、開いていた注文の詳細やトーストを持ち越さないよう作り直す
 		<StrategyDashboard
+			key={run.id}
 			strategyId={run.id}
 			head={(toast) => (
 				<>
@@ -42,14 +42,6 @@ export function StrategyPage() {
 						← 戦略
 					</Link>
 					<StrategyHeader key={run.id} run={run} onToast={toast} />
-					{notice && (
-						<p
-							role="status"
-							className="text-[13px] font-semibold lg:col-span-2"
-						>
-							{notice}
-						</p>
-					)}
 				</>
 			)}
 		/>

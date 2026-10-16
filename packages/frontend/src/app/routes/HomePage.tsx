@@ -12,11 +12,11 @@ export function HomePage() {
 	const { runs } = useTradingStatus();
 	const strategyParam = params.get("strategy");
 	const runParam = params.get("run");
-	if (strategyParam !== null) {
-		return <Navigate to={`/strategies/${strategyParam}`} replace />;
-	}
-	if (runParam !== null && runs !== null) {
-		const run = runs.find((r) => r.accountId === Number(runParam));
+	if ((strategyParam !== null || runParam !== null) && runs !== null) {
+		const run =
+			strategyParam !== null
+				? runs.find((r) => r.id === Number(strategyParam))
+				: runs.find((r) => r.accountId === Number(runParam));
 		return <Navigate to={run ? `/strategies/${run.id}` : "/home"} replace />;
 	}
 	return (

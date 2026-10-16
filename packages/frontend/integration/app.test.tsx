@@ -84,7 +84,11 @@ describe("画面遷移", () => {
 		await waitFor(() => expect(view.location.current).toBe("/strategies/6"));
 		cleanup();
 		const again = renderApp("/home?strategy=5", api);
-		expect(again.location.current).toBe("/strategies/5");
+		await waitFor(() => expect(again.location.current).toBe("/strategies/5"));
+		cleanup();
+		// 見つからなければホームのまま
+		const missing = renderApp("/home?strategy=9", api);
+		await waitFor(() => expect(missing.location.current).toBe("/home"));
 	});
 });
 

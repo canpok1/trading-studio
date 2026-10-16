@@ -20,8 +20,9 @@ import {
 	RenameStrategyDialog,
 } from "./StrategyDialogs";
 
-/** オフでも条件を変えられない理由。変えられるなら null */
-export function editBlockReason(run: AutoTradingStatus): string | null {
+/** オフでも条件を変えられない理由。変えられるかはサーバーの判定（strategyLock）に従い、ここでは理由の文だけを作る */
+function editBlockReason(run: AutoTradingStatus): string | null {
+	if (run.strategyLock !== "holding") return null;
 	const { lots, openOrderCount } = run.account;
 	if (lots.length > 0) {
 		return `保有が ${lots.length} ロットあるため編集できない。売り切るか口座をリセットすると編集できる`;
@@ -29,7 +30,7 @@ export function editBlockReason(run: AutoTradingStatus): string | null {
 	if (openOrderCount > 0) {
 		return `未約定の注文が ${openOrderCount} 件あるため編集できない。約定か取消を待つか、口座をリセットすると編集できる`;
 	}
-	return null;
+	return "保有か未約定の注文があるため編集できない。売り切るか口座をリセットすると編集できる";
 }
 
 export function StrategyHeader({
