@@ -100,7 +100,7 @@ type Props = {
 	/** 見出し「チャート」の右に出すもの（ホームの市場評価・印の対象） */
 	headerExtra?: ReactNode;
 	/**
-	 * 低く描き、スマホ幅では操作を1行に収め、出来高と判定の読み取り・拡大縮小のボタン・凡例を省く（指で拡大・移動でき、「最新へ」は残す）。
+	 * 低く描き、スマホ幅では操作を1行に収め、出来高と判定の読み取り・凡例を省く（拡大縮小のボタンと「最新へ」は値の表示の右に残す）。
 	 * 下に並べるものを最初の画面に入れるため（ホーム。市場評価は見出しの横に出す）
 	 */
 	short?: boolean;
@@ -1024,11 +1024,7 @@ export function PriceChart({
 				<Help label="チャート">
 					{onMarker && <p>アイコンをタップで詳細。</p>}
 					{judgments && <p>下の帯をタップでその判定を背景に塗る。</p>}
-					<p>
-						{short
-							? "ピンチ / ホイールで拡大・縮小（PC は＋−も）。"
-							: "ピンチ / ホイール / ＋−で拡大・縮小。"}
-					</p>
+					<p>ピンチ / ホイール / ＋−で拡大・縮小。</p>
 				</Help>
 				{headerExtra}
 			</div>
@@ -1192,7 +1188,7 @@ export function PriceChart({
 						aria-label="縮小"
 						title="縮小"
 						onClick={() => zoom(2)}
-						className={`${ICON_BTN} ${short ? "max-lg:hidden" : ""}`}
+						className={ICON_BTN}
 					>
 						−
 					</button>
@@ -1201,7 +1197,7 @@ export function PriceChart({
 						aria-label="拡大"
 						title="拡大"
 						onClick={() => zoom(0.5)}
-						className={`${ICON_BTN} ${short ? "max-lg:hidden" : ""}`}
+						className={ICON_BTN}
 					>
 						＋
 					</button>
