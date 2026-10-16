@@ -1,10 +1,11 @@
-// 自動取引の状態（戦略ごと）。全画面の上部の帯とホームで使うので、画面の枠で1つ持って問い合わせる
+// 自動取引の状態（戦略ごと）。全画面の上部の帯と戦略の画面で使うので、画面の枠で1つ持って問い合わせる
 
 import type {
 	AutoTradingStatus,
 	OrderSummary,
 	StoredOrder,
 	StrategyLock,
+	TradingMode,
 	TradingPerformance,
 } from "@trading-studio/backend";
 import type { StrategyWatch } from "@trading-studio/core";
@@ -40,6 +41,11 @@ type TradingStatusValue = {
 };
 
 const TradingStatusContext = createContext<TradingStatusValue | null>(null);
+
+export const MODE_LABELS: Record<TradingMode, string> = {
+	paper: "デモ",
+	live: "リアル",
+};
 
 export function TradingStatusProvider({ children }: { children: ReactNode }) {
 	const api = useApi();

@@ -14,9 +14,9 @@ paths:
 | フォルダ | 置くもの |
 |---|---|
 | `app/` | 起動（`main.tsx`）、画面の切り替え（`App.tsx`）、API の接続（`ApiProvider.tsx`）、各画面（`routes/`） |
-| `features/<機能>/` | 1つの機能だけで使うもの。機能は `trading`（ホームの運用）・`backtest`・`news`（ニュース・市場評価・評価の分析）・`market-data`（インポート・エクスポート・相場データ）・`settings`。中は `components/`・`utils/` を必要な分だけ置く |
+| `features/<機能>/` | 1つの機能だけで使うもの。機能は `trading`（自動取引の状況: 要点・チャート・見張り・成績・口座・注文）・`strategies`（戦略の一覧・見出しのカード・作成・名前・削除）・`backtest`・`news`（ニュース・市場評価・評価の分析）・`market-data`（インポート・エクスポート・相場データ）・`settings`。中は `components/`・`utils/` を必要な分だけ置く |
 | `shared/` | 複数の機能で使うものと、画面全体で使うもの（Layout・テーマ・テストの下準備など）。`components/`（画面の部品）と `lib/`（API クライアント・書式・数値など） |
 
 - 依存は `shared → features → app` の一方向。機能どうしは参照しない。`.dependency-cruiser.cjs` で検査する
 - 2つ以上の機能から使うものは `shared/` に置く。機能どうしの参照が必要になったら、その部品を `shared/` へ移す
-- 1つの機能でしか使わないものは、その機能に置く。戦略の画面は固有の部品がまだ無いので `features/strategies/` が無い。足すときに作る
+- 1つの機能でしか使わないものは、その機能に置く

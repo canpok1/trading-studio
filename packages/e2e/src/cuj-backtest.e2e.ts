@@ -65,7 +65,9 @@ test("戦略をひな形から作って保存し、バックテストを流し�
 	const create = page.getByRole("dialog", { name: "新しい戦略" });
 	await create.getByLabel("名前").fill(name);
 	await create.getByRole("button", { name: /^トレンド追随/ }).click();
-	await expect(page.getByRole("status")).toHaveText(`「${name}」を作った`);
+	await expect(
+		page.getByRole("heading", { name: `「${name}」の編集` }),
+	).toBeVisible();
 	await page
 		.getByRole("region", { name: "売り注文（損切り）する条件" })
 		.getByLabel("買値からの %")

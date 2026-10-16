@@ -23,6 +23,8 @@ import { NewsPage } from "./routes/NewsPage";
 import { OtherPage } from "./routes/OtherPage";
 import { SettingsPage } from "./routes/SettingsPage";
 import { StrategiesPage } from "./routes/StrategiesPage";
+import { StrategyEditPage } from "./routes/StrategyEditPage";
+import { StrategyPage } from "./routes/StrategyPage";
 
 export function App() {
 	return (
@@ -59,7 +61,9 @@ function Shell() {
 					<Route path="/news" element={<NewsPage />} />
 					{/* 旧名「AI判定」の URL */}
 					<Route path="/ai" element={<Navigate to="/news" replace />} />
-					<Route path="/strategies/:id?" element={<StrategiesPage />} />
+					<Route path="/strategies" element={<StrategiesPage />} />
+					<Route path="/strategies/:id" element={<StrategyPage />} />
+					<Route path="/strategies/:id/edit" element={<StrategyEditPage />} />
 					{/* 取引画面はホームへ統合した。モードの指定はそのまま渡す */}
 					<Route path="/trades" element={<TradesRedirect />} />
 					<Route path="/data" element={<DataPage />} />

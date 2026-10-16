@@ -1,12 +1,11 @@
-import type { StoredStrategy } from "@trading-studio/backend";
-import type { ConditionSet, TemplateId } from "@trading-studio/core";
-import {
-	strategyTemplate,
-	TEMPLATE_IDS,
-	validateConditionSet,
-} from "@trading-studio/core";
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
-import { Navigate, useNavigate, useParams } from "react-router";
+import type {
+	AutoTradingStatus,
+	StoredStrategy,
+} from "@trading-studio/backend";
+import type { ConditionSet } from "@trading-studio/core";
+import { validateConditionSet } from "@trading-studio/core";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router";
 import {
 	BuyRulesEditor,
 	FrequencyCard,
@@ -14,31 +13,28 @@ import {
 } from "../../shared/components/ConditionEditor";
 import { Modal } from "../../shared/components/Modal";
 import { Page } from "../../shared/components/Page";
-import {
-	EmptyState,
-	ErrorState,
-	LoadingCard,
-} from "../../shared/components/States";
+import { ErrorState, LoadingCard } from "../../shared/components/States";
 import { Button, Card } from "../../shared/components/ui";
 import { useApi } from "../../shared/lib/api";
-import { strategyLockOf, useTradingStatus } from "../../shared/lib/trading";
+import { formatInt } from "../../shared/lib/number";
+import { useTradingStatus } from "../../shared/lib/trading";
 import { errorMessage, readJson, useAsync } from "../../shared/lib/useAsync";
 
-type Data = { strategies: StoredStrategy[]; latest: number | null };
-
-type Dialog = "create" | "rename" | "delete" | null;
+type Data = { strategy: StoredStrategy | null; latest: number | null };
 
 const sameParams = (a: ConditionSet, b: ConditionSet) =>
 	JSON.stringify(a) === JSON.stringify(b);
 
-export function StrategiesPage() {
+/** 戦略の条件の編集。自動取引がオフで、保有も未約定の注文も無いときだけ変えられる */
+export function StrategyEditPage() {
 	const api = useApi();
 	const navigate = useNavigate();
 	const { id: idParam } = useParams();
-	const [dialog, setDialog] = useState<Dialog>(null);
+	const strategyId = Number(idParam);
 	const [notice, setNotice] = useState<string | null>(null);
-	const selectId = useId();
-	const { runs, refresh: refreshTrading } = useTradingStatus();
+	const [asking, setAsking] = useState(false);
+	const { runs, set: setRun } = useTradingStatus();
+	const run = runs?.find((r) => r.id === strategyId) ?? null;
 
 	const load = useCallback(async (): Promise<Data> => {
 		const [list, latest] = await Promise.all([
@@ -50,114 +46,94 @@ export function StrategiesPage() {
 				.then((r) => readJson<{ latest: { close: number } | null }>(r)),
 		]);
 		return {
-			strategies: list.strategies,
+			strategy: list.strategies.find((s) => s.id === strategyId) ?? null,
 			latest: latest.latest?.close ?? null,
 		};
-	}, [api]);
+	}, [api, strategyId]);
 	const { state, reload } = useAsync(load);
-
-	const strategies = state.kind === "ok" ? state.data.strategies : [];
-	const current = strategies.find((s) => String(s.id) === idParam) ?? null;
+	const current = state.kind === "ok" ? state.data.strategy : null;
 
 	// 編集中の条件は下書きに持ち、「保存」で戦略へ反映する
-	const [draft, setDraft] = useState<{
-		id: number;
-		params: ConditionSet;
-	} | null>(null);
+	const [draft, setDraft] = useState<ConditionSet | null>(null);
 	useEffect(() => {
-		if (current && draft?.id !== current.id) {
-			setDraft({ id: current.id, params: current.params });
-		}
-	}, [current, draft?.id]);
-	const params =
-		current && draft?.id === current.id ? draft.params : current?.params;
+		if (current) setDraft(current.params);
+	}, [current]);
+	const params = draft ?? current?.params ?? null;
 	const errors = useMemo(
 		() => (params ? validateConditionSet(params) : []),
 		[params],
 	);
 
-	const open = (id: number) => {
-		setNotice(null);
-		navigate(`/strategies/${id}`);
+	const back = {
+		to: `/strategies/${strategyId}`,
+		label: current?.name ?? "戦略",
 	};
-
 	if (state.kind === "loading") {
 		return (
-			<Page title="戦略">
+			<Page title="戦略の編集" back={back}>
 				<LoadingCard />
 			</Page>
 		);
 	}
-	if (state.kind === "error") {
+	if (state.kind === "error" || !current || !params) {
 		return (
-			<Page title="戦略">
+			<Page title="戦略の編集" back={{ to: "/strategies", label: "戦略" }}>
 				<Card>
 					<ErrorState
-						what={`戦略を読み込めなかった（${state.message}）`}
-						next="サーバーが動いているか確かめてから、もう一度読み込む"
-						action={<Button onClick={reload}>もう一度読み込む</Button>}
-					/>
-				</Card>
-			</Page>
-		);
-	}
-
-	const first = strategies[0];
-	if (!current && first) {
-		return <Navigate to={`/strategies/${first.id}`} replace />;
-	}
-
-	const createDialog = dialog === "create" && (
-		<CreateDialog
-			copyFrom={current}
-			onClose={() => setDialog(null)}
-			onCreated={async (s) => {
-				setDialog(null);
-				refreshTrading();
-				await reload();
-				open(s.id);
-				setNotice(`「${s.name}」を作った`);
-			}}
-		/>
-	);
-
-	if (!current || !params) {
-		return (
-			<Page title="戦略">
-				<Card>
-					<EmptyState
-						title="戦略がまだ無い"
-						description="ひな形から作って、条件を調整する。"
+						what={
+							state.kind === "error"
+								? `戦略を読み込めなかった（${state.message}）`
+								: "戦略が見つからない"
+						}
+						next={
+							state.kind === "error"
+								? "サーバーが動いているか確かめてから、もう一度読み込む"
+								: "削除されたか、URL が違う"
+						}
 						action={
-							<Button variant="primary" onClick={() => setDialog("create")}>
-								＋ 新しい戦略
-							</Button>
+							state.kind === "error" ? (
+								<Button onClick={reload}>もう一度読み込む</Button>
+							) : undefined
 						}
 					/>
 				</Card>
-				{createDialog}
 			</Page>
 		);
 	}
 
-	const lock = strategyLockOf(runs, current.id);
+	const lock = run?.strategyLock ?? null;
 	const dirty = !sameParams(params, current.params);
 	const hasErr = errors.length > 0;
 	const setParams = (p: ConditionSet) => {
 		setNotice(null);
-		setDraft({ id: current.id, params: p });
+		setDraft(p);
 	};
-	const save = async () => {
+	const save = async (resetAccount: boolean) => {
+		setAsking(false);
 		try {
-			const saved = await api.api.strategies[":id"].params
+			await api.api.strategies[":id"].params
 				.$put({ param: { id: String(current.id) }, json: { params } })
 				.then((r) => readJson<{ strategy: StoredStrategy }>(r));
-			// 保存した値を下書きにも入れ、差分が無い状態にする
-			setDraft({ id: saved.strategy.id, params: saved.strategy.params });
-			await reload();
-			setNotice("保存した");
 		} catch (e) {
 			setNotice(`保存できなかった: ${errorMessage(e)}`);
+			return;
+		}
+		await reload();
+		if (!resetAccount || !run) {
+			setNotice("保存した");
+			return;
+		}
+		try {
+			const r = await api.api.trading.strategies[":id"].reset
+				.$post({
+					param: { id: String(run.id) },
+					json: { initialCash: run.account.initialCash },
+				})
+				.then((res) => readJson<{ status: AutoTradingStatus }>(res));
+			setRun(r.status);
+			setNotice("保存し、成績をリセットした");
+		} catch (e) {
+			setNotice(`保存したが、成績をリセットできなかった: ${errorMessage(e)}`);
 		}
 	};
 	const editor = {
@@ -167,33 +143,11 @@ export function StrategiesPage() {
 	};
 
 	return (
-		<Page title="戦略">
-			{/* PC は左に戦略・頻度・リスク上限、右に買い。スマホは 戦略→頻度→買い→リスク上限→保存 の順 */}
+		<Page title={`「${current.name}」の編集`} back={back}>
+			{/* PC は左に操作・頻度・リスク上限、右に買い。スマホは 操作→頻度→買い→リスク上限→保存 の順 */}
 			<div className="flex flex-col gap-3.5 lg:grid lg:grid-cols-2 lg:items-start">
 				<div className="contents lg:flex lg:flex-col lg:gap-3.5">
 					<Card className="flex flex-col gap-3">
-						<div className="flex flex-col gap-1.5">
-							<label htmlFor={selectId} className="text-[13px] font-semibold">
-								戦略
-							</label>
-							<div className="flex gap-2">
-								<select
-									id={selectId}
-									value={current.id}
-									onChange={(e) => open(Number(e.target.value))}
-									className="h-12 min-w-0 flex-1 rounded-[10px] border border-line bg-surface px-3 text-[15px] font-semibold"
-								>
-									{strategies.map((s) => (
-										<option key={s.id} value={s.id}>
-											{s.name}
-										</option>
-									))}
-								</select>
-								<Button onClick={() => setDialog("create")}>
-									＋ 新しい戦略
-								</Button>
-							</div>
-						</div>
 						<div className="flex flex-wrap gap-2">
 							<Button
 								size="sm"
@@ -205,25 +159,12 @@ export function StrategiesPage() {
 							>
 								この条件でバックテスト
 							</Button>
-							<Button size="sm" onClick={() => setDialog("rename")}>
-								この戦略の名前を変える
-							</Button>
-							{lock !== "running" && (
-								<Button
-									size="sm"
-									className="text-loss"
-									onClick={() => setDialog("delete")}
-								>
-									この戦略を削除
-								</Button>
-							)}
 						</div>
 						{lock && (
 							<p role="status" className="text-[13px] font-semibold">
 								{lock === "running"
-									? "自動取引が稼働中のため、条件を変えられない。"
-									: "保有か未約定の注文があるため、条件を変えられない。"}
-								変えるときは「＋ 新しい戦略」でコピーして編集する
+									? "自動取引が稼働中のため、条件を変えられない。停止してから編集する"
+									: "保有か未約定の注文があるため、条件を変えられない。売り切るか口座をリセットしてから編集する"}
 							</p>
 						)}
 					</Card>
@@ -254,7 +195,10 @@ export function StrategiesPage() {
 							variant="primary"
 							className="flex-1"
 							disabled={!dirty || hasErr}
-							onClick={save}
+							// 成績は変更前の条件で取引したものなので、残すかを聞く
+							onClick={() =>
+								run?.ranSinceReset ? setAsking(true) : save(false)
+							}
 						>
 							{hasErr ? "入力を直すと保存できる" : dirty ? "保存" : "変更なし"}
 						</Button>
@@ -266,222 +210,20 @@ export function StrategiesPage() {
 					</div>
 				</div>
 			</div>
-			{createDialog}
-			{dialog === "rename" && (
-				<RenameDialog
-					strategy={current}
-					onClose={() => setDialog(null)}
-					onDone={async () => {
-						refreshTrading();
-						setDialog(null);
-						await reload();
-						setNotice("名前を変えた");
-					}}
-				/>
-			)}
-			{dialog === "delete" && (
-				<DeleteDialog
-					strategy={current}
-					onClose={() => setDialog(null)}
-					onDone={async () => {
-						setDialog(null);
-						refreshTrading();
-						await reload();
-						navigate("/strategies", { replace: true });
-						setNotice("削除した");
-					}}
-				/>
+			{asking && run && (
+				<Modal title="成績をリセットするか" onClose={() => setAsking(false)}>
+					<p className="leading-relaxed">
+						今の成績は変更前の条件で取引したもの。リセットすると、口座を開始時の資金（
+						{formatInt(run.account.initialCash)}
+						円）に戻し、成績を今から数え直す。注文・約定の記録は残る。
+					</p>
+					<Button variant="primary" onClick={() => save(true)}>
+						リセットして保存
+					</Button>
+					<Button onClick={() => save(false)}>成績を残して保存</Button>
+					<Button onClick={() => setAsking(false)}>やめる</Button>
+				</Modal>
 			)}
 		</Page>
-	);
-}
-
-function NameField({
-	value,
-	onChange,
-	error,
-	label,
-}: {
-	value: string;
-	onChange: (v: string) => void;
-	error: string | null;
-	label: string;
-}) {
-	const id = useId();
-	return (
-		<div className="flex flex-col gap-1.5">
-			<label htmlFor={id} className="text-[13px] font-semibold">
-				{label}
-			</label>
-			<input
-				id={id}
-				value={value}
-				onChange={(e) => onChange(e.target.value)}
-				aria-invalid={error ? true : undefined}
-				className="h-12 rounded-[10px] border border-line bg-surface px-3 text-[15px] aria-invalid:border-2 aria-invalid:border-loss"
-			/>
-			{error && (
-				<span className="text-xs font-semibold text-loss">{error}</span>
-			)}
-		</div>
-	);
-}
-
-function CreateDialog({
-	copyFrom,
-	onClose,
-	onCreated,
-}: {
-	copyFrom: StoredStrategy | null;
-	onClose: () => void;
-	onCreated: (s: StoredStrategy) => void;
-}) {
-	const api = useApi();
-	const [name, setName] = useState("新しい戦略");
-	const [error, setError] = useState<string | null>(null);
-	const [busy, setBusy] = useState(false);
-	const create = async (
-		from: { template: TemplateId } | { copyOf: number },
-	) => {
-		setBusy(true);
-		try {
-			const r = await api.api.strategies
-				.$post({ json: { name, from } })
-				.then((res) => readJson<{ strategy: StoredStrategy }>(res));
-			onCreated(r.strategy);
-		} catch (e) {
-			setError(errorMessage(e));
-			setBusy(false);
-		}
-	};
-	const options: [string, string, () => void][] = [
-		...TEMPLATE_IDS.map((t): [string, string, () => void] => {
-			const tpl = strategyTemplate(t);
-			return [
-				t === "blank" ? tpl.name : `${tpl.name}（ひな形）`,
-				tpl.description,
-				() => create({ template: t }),
-			];
-		}),
-	];
-	if (copyFrom) {
-		options.push([
-			`「${copyFrom.name}」を複製`,
-			"保存済みの条件をそのまま写す。",
-			() => create({ copyOf: copyFrom.id }),
-		]);
-	}
-	return (
-		<Modal title="新しい戦略" onClose={onClose}>
-			<NameField
-				label="名前"
-				value={name}
-				onChange={(v) => {
-					setName(v);
-					setError(null);
-				}}
-				error={error}
-			/>
-			<span className="text-xs text-text-2">何から作るか</span>
-			<div className="overflow-hidden rounded-xl border border-line">
-				{options.map(([label, desc, run]) => (
-					<button
-						key={label}
-						type="button"
-						disabled={busy}
-						onClick={run}
-						className="flex w-full flex-col gap-0.5 border-b border-line px-4 py-3 text-left last:border-b-0 hover:bg-surface-2 disabled:opacity-45"
-					>
-						<strong className="text-sm">{label}</strong>
-						<span className="text-xs text-text-2">{desc}</span>
-					</button>
-				))}
-			</div>
-			<Button onClick={onClose}>やめる</Button>
-		</Modal>
-	);
-}
-
-function RenameDialog({
-	strategy,
-	onClose,
-	onDone,
-}: {
-	strategy: StoredStrategy;
-	onClose: () => void;
-	onDone: () => void;
-}) {
-	const api = useApi();
-	const [name, setName] = useState(strategy.name);
-	const [error, setError] = useState<string | null>(null);
-	const [busy, setBusy] = useState(false);
-	const run = async () => {
-		setBusy(true);
-		try {
-			await api.api.strategies[":id"].name
-				.$put({ param: { id: String(strategy.id) }, json: { name } })
-				.then((r) => readJson(r));
-			onDone();
-		} catch (e) {
-			setError(errorMessage(e));
-			setBusy(false);
-		}
-	};
-	return (
-		<Modal title="戦略の名前を変える" onClose={onClose}>
-			<NameField
-				label="新しい名前"
-				value={name}
-				onChange={(v) => {
-					setName(v);
-					setError(null);
-				}}
-				error={error}
-			/>
-			<Button variant="primary" disabled={busy} onClick={run}>
-				名前を変える
-			</Button>
-			<Button onClick={onClose}>やめる</Button>
-		</Modal>
-	);
-}
-
-function DeleteDialog({
-	strategy,
-	onClose,
-	onDone,
-}: {
-	strategy: StoredStrategy;
-	onClose: () => void;
-	onDone: () => void;
-}) {
-	const api = useApi();
-	const [error, setError] = useState<string | null>(null);
-	const [busy, setBusy] = useState(false);
-	const run = async () => {
-		setBusy(true);
-		try {
-			await api.api.strategies[":id"]
-				.$delete({ param: { id: String(strategy.id) } })
-				.then((r) => readJson(r));
-			onDone();
-		} catch (e) {
-			setError(errorMessage(e));
-			setBusy(false);
-		}
-	};
-	return (
-		<Modal title={`「${strategy.name}」を削除する`} onClose={onClose}>
-			<p className="text-[13px]">
-				条件・自動取引の口座・成績は元に戻せない。未約定の注文は取り消し、保有は捨てる。過去のバックテスト結果と、注文・判断の記録（分析用のエクスポート）は残る。
-			</p>
-			{error && (
-				<span className="text-xs font-semibold text-loss">{error}</span>
-			)}
-			<Button variant="danger" disabled={busy} onClick={run}>
-				削除する
-			</Button>
-			<Button onClick={onClose}>やめる</Button>
-		</Modal>
 	);
 }

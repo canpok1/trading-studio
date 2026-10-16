@@ -2,7 +2,7 @@ import { strategyTemplate } from "@trading-studio/core";
 import { expect, test } from "./browser";
 import { routes } from "./fake-api";
 
-test("戦略の画面は横にはみ出さない", async ({ page, api }) => {
+test("戦略の編集画面は横にはみ出さない", async ({ page, api }) => {
 	const strategy = {
 		id: 1,
 		name: "トレンド",
@@ -13,8 +13,10 @@ test("戦略の画面は横にはみ出さない", async ({ page, api }) => {
 	api
 		.on(routes.api.strategies, "$get", () => ({ strategies: [strategy] }))
 		.on(routes.api.data.latest, "$get", () => ({ latest: null }));
-	await page.goto("/strategies");
-	await expect(page.getByLabel("戦略", { exact: true })).toHaveValue("1");
+	await page.goto("/strategies/1/edit");
+	await expect(
+		page.getByRole("heading", { name: "「トレンド」の編集" }),
+	).toBeVisible();
 	const overflow = await page.evaluate(
 		() => document.documentElement.scrollWidth - window.innerWidth,
 	);

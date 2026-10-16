@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { cleanup, fireEvent, within } from "@testing-library/react";
+import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { setupDom } from "../src/shared/lib/test-setup";
 import { createFakeApi, routes } from "./fake-api";
-import { marketLatest, tradingRun } from "./fixtures";
+import { tradingRun } from "./fixtures";
 import { renderApp } from "./render-app";
 
 setupDom();
@@ -63,37 +63,28 @@ describe("画面遷移", () => {
 		).toBeTruthy();
 	});
 
-	test("取引画面の URL はホームへ移り、モードの指定を引き継ぐ", async () => {
-		const api = createFakeApi()
-			.on(routes.api.market.latest, "$get", () => marketLatest())
-			.on(routes.api.strategies, "$get", () => ({ strategies: [] }))
-			.on(routes.api.data.coverage, "$get", () => ({ timeframes: [] }))
-			.on(routes.api.trading.strategies, "$get", () => ({
-				strategies: [
-					tradingRun({ id: 1, name: "リアル", mode: "live" }),
-					tradingRun({ id: 2, name: "デモ", mode: "paper" }),
-				],
-			}));
-		const view = renderApp("/trades?mode=paper", api);
+	test("取引画面の URL はホームへ移る", () => {
+		const view = renderApp("/trades?mode=paper");
 		expect(view.location.current).toBe("/home?mode=paper");
-		const tab = await view.findByRole("tab", { name: "デモ" });
-		expect(tab.getAttribute("aria-selected")).toBe("true");
+		expect(view.getByRole("heading", { name: "ホーム" })).toBeTruthy();
 	});
 
-	test("統合前のタブの URL（?run= は運用の id）は、その運用を引き継いだ戦略のタブで開く", async () => {
-		const api = createFakeApi()
-			.on(routes.api.market.latest, "$get", () => marketLatest())
-			.on(routes.api.strategies, "$get", () => ({ strategies: [] }))
-			.on(routes.api.data.coverage, "$get", () => ({ timeframes: [] }))
-			.on(routes.api.trading.strategies, "$get", () => ({
+	test("以前のホームのタブの URL（?strategy= は戦略の id、統合前の ?run= は口座の id）は戦略の画面へ移る", async () => {
+		const api = createFakeApi().on(
+			routes.api.trading.strategies,
+			"$get",
+			() => ({
 				strategies: [
 					tradingRun({ id: 5, accountId: 2, name: "A" }),
 					tradingRun({ id: 6, accountId: 3, name: "B" }),
 				],
-			}));
+			}),
+		);
 		const view = renderApp("/home?run=3", api);
-		const tab = await view.findByRole("tab", { name: "B" });
-		expect(tab.getAttribute("aria-selected")).toBe("true");
+		await waitFor(() => expect(view.location.current).toBe("/strategies/6"));
+		cleanup();
+		const again = renderApp("/home?strategy=5", api);
+		expect(again.location.current).toBe("/strategies/5");
 	});
 });
 

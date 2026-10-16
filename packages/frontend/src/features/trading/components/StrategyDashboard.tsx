@@ -1,5 +1,4 @@
 import type {
-	AutoTradingStatus,
 	CurrentJudgment,
 	JudgmentSeries,
 	LatestMarket,
@@ -16,67 +15,59 @@ import {
 } from "@trading-studio/core";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router";
-import { AccountPanel } from "../../features/trading/components/AccountPanel";
-import { AutoTradingCard } from "../../features/trading/components/AutoTradingCard";
-import { OrdersPanel } from "../../features/trading/components/OrdersPanel";
-import { PANEL, PanelHeader } from "../../features/trading/components/Panel";
-import { PerformancePanel } from "../../features/trading/components/PerformancePanel";
-import {
-	NextMovesCard,
-	StrategyWatchPanel,
-} from "../../features/trading/components/StrategyWatch";
-import {
-	MarketEvalTile,
-	TotalPnlTile,
-	UnrealizedPnlTile,
-} from "../../features/trading/components/SummaryTiles";
-import {
-	ModeTag,
-	TradeOrderSheet,
-} from "../../features/trading/components/TradeViews";
-import {
-	changePercent,
-	collectorTrouble,
-	judgmentsFrom,
-	loadRange,
-	withLatestPrice,
-} from "../../features/trading/utils/home";
 import type {
 	ChartBar,
 	ChartMarker,
-} from "../../shared/components/chart/chart-data";
-import { alignJudgments } from "../../shared/components/chart/judgment-data";
-import { PriceChart } from "../../shared/components/chart/PriceChart";
-import { orderTime } from "../../shared/components/OrderViews";
+} from "../../../shared/components/chart/chart-data";
+import { alignJudgments } from "../../../shared/components/chart/judgment-data";
+import { PriceChart } from "../../../shared/components/chart/PriceChart";
+import { orderTime } from "../../../shared/components/OrderViews";
 import {
 	EmptyState,
 	ErrorState,
 	Skeleton,
-} from "../../shared/components/States";
-import { Button } from "../../shared/components/ui";
-import { useApi } from "../../shared/lib/api";
-import { useChartBg } from "../../shared/lib/chart-bg";
-import { useChartIndicators } from "../../shared/lib/chart-indicators";
+} from "../../../shared/components/States";
+import { Button } from "../../../shared/components/ui";
+import { useApi } from "../../../shared/lib/api";
+import { useChartBg } from "../../../shared/lib/chart-bg";
+import { useChartIndicators } from "../../../shared/lib/chart-indicators";
 import {
 	initialSpanMs,
 	useChartTimeframe,
-} from "../../shared/lib/chart-timeframe";
-import { formatSignedPercent } from "../../shared/lib/number";
-import { chartTriggers } from "../../shared/lib/strategy-watch";
+} from "../../../shared/lib/chart-timeframe";
+import { formatSignedPercent } from "../../../shared/lib/number";
+import { chartTriggers } from "../../../shared/lib/strategy-watch";
 import {
 	useStrategyWatch,
 	useTradingOrders,
 	useTradingPerformance,
 	useTradingStatus,
-} from "../../shared/lib/trading";
+} from "../../../shared/lib/trading";
 import {
 	errorMessage,
 	readJson,
 	useAsync,
 	useInterval,
 	usePageVisible,
-} from "../../shared/lib/useAsync";
+} from "../../../shared/lib/useAsync";
+import {
+	changePercent,
+	collectorTrouble,
+	judgmentsFrom,
+	loadRange,
+	withLatestPrice,
+} from "../utils/home";
+import { AccountPanel } from "./AccountPanel";
+import { OrdersPanel } from "./OrdersPanel";
+import { PANEL, PanelHeader } from "./Panel";
+import { PerformancePanel } from "./PerformancePanel";
+import { NextMovesCard, StrategyWatchPanel } from "./StrategyWatch";
+import {
+	MarketEvalTile,
+	TotalPnlTile,
+	UnrealizedPnlTile,
+} from "./SummaryTiles";
+import { TradeOrderSheet } from "./TradeViews";
 
 /** 最新価格を問い合わせる間隔 */
 const LATEST_MS = 5_000;
@@ -88,7 +79,19 @@ const MAX_HISTORY = 1_000;
 /** チャートの印に読む注文の数 */
 const MARKER_ORDERS = 300;
 
-export function HomePage() {
+/**
+ * 戦略1つの要点・次の動き・チャート・見張り・成績・口座・注文。strategyId が null なら戦略に依らない市場評価とチャートだけ。
+ * head は最上部に全幅で出すもので、トーストを出す関数を受け取る
+ */
+export function StrategyDashboard({
+	strategyId,
+	head,
+	children,
+}: {
+	strategyId: number | null;
+	head?: (toast: (message: string) => void) => ReactNode;
+	children?: ReactNode;
+}) {
 	const api = useApi();
 	const visible = usePageVisible();
 
@@ -136,18 +139,18 @@ export function HomePage() {
 
 	if (setup.state.kind === "error") {
 		return (
-			<HomeFrame>
+			<DashboardFrame>
 				<ErrorState
 					what="ホームのデータを読み込めなかった"
 					next={setup.state.message}
 					action={<Button onClick={setup.reload}>もう一度読み込む</Button>}
 				/>
-			</HomeFrame>
+			</DashboardFrame>
 		);
 	}
 	if (setup.state.kind === "loading") {
 		return (
-			<HomeFrame>
+			<DashboardFrame>
 				<div
 					role="status"
 					aria-label="読み込み中"
@@ -157,31 +160,37 @@ export function HomePage() {
 					<Skeleton className="h-9 w-2/3" />
 					<Skeleton className="h-[320px] w-full" />
 				</div>
-			</HomeFrame>
+			</DashboardFrame>
 		);
 	}
 	return (
-		<HomeBody
+		<DashboardBody
+			strategyId={strategyId}
+			head={head}
 			latest={latest}
 			latestError={latestError}
 			onRetryLatest={loadLatest}
 			strategies={setup.state.data.strategies}
 			counts={setup.state.data.counts}
 			visible={visible}
-		/>
+		>
+			{children}
+		</DashboardBody>
 	);
 }
 
-function HomeFrame({ children }: { children: ReactNode }) {
+function DashboardFrame({ children }: { children: ReactNode }) {
 	return (
 		<div className="mx-auto flex max-w-[720px] flex-col gap-3.5 px-4 pt-4 pb-2 lg:grid lg:max-w-none lg:grid-cols-2 lg:items-stretch lg:gap-4 lg:px-6">
-			<h1 className="sr-only">ホーム</h1>
 			{children}
 		</div>
 	);
 }
 
-function HomeBody({
+function DashboardBody({
+	strategyId,
+	head,
+	children,
 	latest,
 	latestError,
 	onRetryLatest,
@@ -195,24 +204,18 @@ function HomeBody({
 	strategies: StoredStrategy[];
 	counts: Partial<Record<Timeframe, number>>;
 	visible: boolean;
+	strategyId: number | null;
+	head?: (toast: (message: string) => void) => ReactNode;
+	children?: ReactNode;
 }) {
 	const api = useApi();
 	const { runs } = useTradingStatus();
-	// タブはクエリの strategy（戦略の id）で持つ。無ければ稼働中の最初の戦略、どれも止まっていれば先頭。
-	// 統合前の ?run=（運用の id）は口座の id で、?mode= はそのモードの最初のタブで開く
-	const [params, setParams] = useSearchParams();
-	const strategyParam = Number(params.get("strategy"));
-	const runParam = Number(params.get("run"));
-	const modeParam = params.get("mode");
 	const run =
-		runs?.find((r) => r.id === strategyParam) ??
-		runs?.find((r) => r.accountId === runParam) ??
-		runs?.find((r) => r.mode === modeParam) ??
-		runs?.find((r) => r.enabled) ??
-		runs?.[0] ??
-		null;
+		strategyId === null
+			? null
+			: (runs?.find((r) => r.id === strategyId) ?? null);
 	const runId = run?.id ?? 0;
-	// リアルが使えない間、リアルのタブは口座・成績・注文を出さない
+	// リアルが使えない間、リアルの戦略は口座・成績・注文を出さない
 	const hasAccount = run !== null && !(run.mode === "live" && !LIVE_AVAILABLE);
 	const account = run?.account ?? null;
 	// 状態は定期的に取り直すので、買値が変わったときだけ線を引き直す
@@ -337,11 +340,6 @@ function HomeBody({
 		);
 	}, [bars, fresh, timeframe, latest]);
 
-	const selectRun = (id: number) => {
-		setSelectedOrder(null);
-		setParams({ strategy: String(id) }, { replace: true });
-	};
-
 	const barJudgments = useMemo(
 		() =>
 			fresh && series?.key === barsKey
@@ -365,8 +363,8 @@ function HomeBody({
 		latest !== null && latest.price === null && bars?.bars.length === 0;
 
 	return (
-		<HomeFrame>
-			<RunTabs runs={runs} current={run?.id ?? null} onSelect={selectRun} />
+		<DashboardFrame>
+			{head?.(showToast)}
 			<CollectorAlert latest={latest} />
 			{latestError && (
 				<div
@@ -382,42 +380,16 @@ function HomeBody({
 					</Button>
 				</div>
 			)}
-			{/* 要点: スマホは自動取引を1行で置いて下に通算損益｜含み損益、市場評価、次の動き。PC は横一列で自動取引を右端に */}
+			{/* 要点: スマホは 通算損益｜含み損益、市場評価、次の動き。PC は横一列 */}
 			<div
 				className={`grid grid-cols-2 gap-2.5 lg:col-span-2 ${
 					!hasAccount
-						? "xl:grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)]"
+						? ""
 						: showMoves
-							? "sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-[repeat(3,minmax(0,1fr))_minmax(0,2fr)_minmax(0,1.5fr)]"
-							: "sm:grid-cols-4 xl:grid-cols-[repeat(2,minmax(0,1fr))_minmax(0,2fr)_minmax(0,1.5fr)]"
+							? "sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-[repeat(3,minmax(0,1fr))_minmax(0,2fr)]"
+							: "sm:grid-cols-4"
 				}`}
 			>
-				{run ? (
-					<AutoTradingCard
-						key={`card-${run.id}`}
-						run={run}
-						onToast={showToast}
-						onDeleted={() => {
-							setSelectedOrder(null);
-							setParams({}, { replace: true });
-						}}
-						className="col-span-full xl:order-last xl:col-span-1"
-					/>
-				) : runs?.length === 0 ? (
-					<div className="col-span-full flex items-center gap-3 rounded-xl bg-surface p-3.5 text-[13px] xl:order-last xl:col-span-1">
-						<span className="flex-1">
-							戦略がまだ無い。戦略を作ると、ここで自動取引を動かせる
-						</span>
-						<Link
-							to="/strategies"
-							className="shrink-0 font-semibold text-accent underline"
-						>
-							戦略を作る
-						</Link>
-					</div>
-				) : (
-					<Skeleton className="col-span-full h-14 rounded-xl xl:order-last xl:col-span-1" />
-				)}
 				{hasAccount && run && (
 					<>
 						<TotalPnlTile performance={perf.performance} error={perf.error} />
@@ -427,9 +399,7 @@ function HomeBody({
 				<MarketEvalTile
 					current={current}
 					stackAtLg={showMoves}
-					className={
-						showMoves ? "col-span-2 lg:col-span-1" : "col-span-2 xl:col-span-1"
-					}
+					className={showMoves ? "col-span-2 lg:col-span-1" : "col-span-2"}
 				/>
 				{showMoves && (
 					<NextMovesCard
@@ -526,6 +496,7 @@ function HomeBody({
 					onClose={() => setSelectedOrder(null)}
 				/>
 			)}
+			{children}
 			{toast && (
 				<div
 					role="status"
@@ -534,58 +505,7 @@ function HomeBody({
 					{toast}
 				</div>
 			)}
-		</HomeFrame>
-	);
-}
-
-/** タブ（戦略）の並びと、戦略を作る画面への「＋」。並びきらなければ横にスクロールする */
-function RunTabs({
-	runs,
-	current,
-	onSelect,
-}: {
-	runs: AutoTradingStatus[] | null;
-	current: number | null;
-	onSelect: (id: number) => void;
-}) {
-	if (!runs)
-		return <Skeleton className="h-[42px] rounded-[10px] lg:col-span-2" />;
-	return (
-		<div className="flex min-w-0 items-center gap-2 lg:col-span-2">
-			<div
-				role="tablist"
-				aria-label="タブ"
-				className="flex min-w-0 flex-1 gap-0.5 overflow-x-auto rounded-[10px] bg-surface-2 p-[3px]"
-			>
-				{runs.map((r) => (
-					<button
-						key={r.id}
-						type="button"
-						role="tab"
-						aria-selected={current === r.id}
-						onClick={() => onSelect(r.id)}
-						className={`flex h-9 min-w-[6.5rem] flex-auto shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-xs whitespace-nowrap sm:text-[13px] ${current === r.id ? "bg-surface font-bold text-text shadow-sm" : "text-text-2"}`}
-					>
-						{r.enabled && (
-							<span
-								role="img"
-								aria-label="稼働中"
-								className="h-2 w-2 shrink-0 rounded-full bg-profit"
-							/>
-						)}
-						<span className="max-w-[10rem] truncate">{r.name}</span>
-						{r.mode === "live" && <ModeTag mode="live" />}
-					</button>
-				))}
-			</div>
-			<Link
-				to="/strategies"
-				aria-label="戦略を作る"
-				className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[10px] bg-surface-2 text-xl font-bold text-text-2"
-			>
-				＋
-			</Link>
-		</div>
+		</DashboardFrame>
 	);
 }
 
