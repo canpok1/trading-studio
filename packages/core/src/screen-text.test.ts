@@ -155,26 +155,23 @@ describe("条件の文言", () => {
 		).toBe("1時間足で ADX 14 本が 20 以上");
 	});
 
-	test("予定イベントの前後は種類と前後の時間で書く", () => {
+	test("予定の前後は重要度の下限と前後の時間で書く", () => {
+		const ev = {
+			type: "eventWindow" as const,
+			minImportance: "high" as const,
+			beforeHours: 0,
+			afterHours: 24,
+			allowNoCalendar: false,
+		};
+		expect(conditionScreenText(ev)).toBe("予定（重要度 高）の後 24 時間でない");
 		expect(
 			conditionScreenText({
-				type: "eventWindow",
-				events: ["fomc", "boj"],
-				beforeHours: 0,
-				afterHours: 24,
-				allowNoCalendar: false,
-			}),
-		).toBe("予定イベント（FOMC 声明・日銀会合）の後 24 時間でない");
-		expect(
-			conditionScreenText({
-				type: "eventWindow",
-				events: ["cpi"],
-				beforeHours: 0,
-				afterHours: 24,
+				...ev,
+				minImportance: "medium",
 				allowNoCalendar: true,
 			}),
 		).toBe(
-			"予定イベント（米 CPI）の後 24 時間でない（暦切れのときは成立とみなす）",
+			"予定（重要度 中以上）の後 24 時間でない（暦切れのときは成立とみなす）",
 		);
 	});
 });

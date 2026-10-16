@@ -8,7 +8,11 @@ import {
 	hasTimeframe,
 	isAtrCondition,
 } from "./condition-strategy";
-import { eventSpanText, MARKET_EVENT_LABELS } from "./event-calendar";
+import {
+	eventSpanText,
+	importanceText,
+	isEventImportance,
+} from "./event-calendar";
 import { formatBtc, formatYen } from "./format";
 import type { AggregationRule, Judge } from "./news-judgment";
 import {
@@ -64,7 +68,7 @@ function conditionBody(c: Condition): string {
 		case "holdingBars":
 			return `買ってから ${c.bars} 本経った`;
 		case "eventWindow":
-			return `予定イベント（${c.events.map((e) => MARKET_EVENT_LABELS[e] ?? e).join("・")}）の${eventSpanText(c.beforeHours, c.afterHours)}でない${c.allowNoCalendar ? "（暦切れのときは成立とみなす）" : ""}`;
+			return `予定（${isEventImportance(c.minImportance) ? importanceText(c.minImportance) : c.minImportance}）の${eventSpanText(c.beforeHours, c.afterHours)}でない${c.allowNoCalendar ? "（暦切れのときは成立とみなす）" : ""}`;
 		case "judgment":
 			return `${JUDGE_LABELS[c.judge]}が ${c.values.map((v) => JUDGMENT_VALUE_LABELS[v] ?? v).join("・")} のどれか`;
 	}

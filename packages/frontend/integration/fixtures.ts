@@ -315,6 +315,7 @@ export function backtestRun(
 		error: null,
 		aggregationRule: null,
 		criteriaVersion: null,
+		eventCriteriaVersion: null,
 		newsDelayMs: null,
 		newsDataVersion: null,
 		segment: null,

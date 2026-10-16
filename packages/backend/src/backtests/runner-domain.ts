@@ -29,7 +29,7 @@ export type RunnerJob = {
 		rule: AggregationRule;
 		since: number | null;
 	} | null;
-	/** 予定イベントの暦 */
+	/** 予定の暦 */
 	events: EventCalendar;
 };
 

@@ -5,8 +5,10 @@ import type {
 	BacktestAdvice,
 	BacktestRun,
 	CriteriaVersion,
+	EventCriteriaVersion,
 	HistoryEntry,
 	InstructionsVersion,
+	JudgmentCoverage,
 	RescoreCoverage,
 } from "@trading-studio/backend";
 import type { Condition, ConditionSet } from "@trading-studio/core";
@@ -56,6 +58,7 @@ type RunInput = {
 	to: number;
 	skipGaps: boolean;
 	criteriaVersion: number | null;
+	eventCriteriaVersion: number | null;
 };
 
 /** 受けた条件で実行中の実行を作る */
@@ -70,6 +73,7 @@ function startRun(runs: Map<number, BacktestRun>, body: unknown): BacktestRun {
 		to: input.to,
 		skipGaps: input.skipGaps,
 		criteriaVersion: input.criteriaVersion,
+		eventCriteriaVersion: input.eventCriteriaVersion,
 		status: "running",
 		progress: 0,
 		orderCount: ORDERS.length,
@@ -107,7 +111,7 @@ function pickTemplate(view: View, name: string, rename = false) {
 
 const runButton = (view: View) =>
 	view.getByRole("button", {
-		name: /バックテストを実行|入力を直すと実行できる|の採点がそろうと実行できる/,
+		name: /バックテストを実行|入力を直すと実行できる|の(採点|判断)がそろうと実行できる/,
 	}) as HTMLButtonElement;
 
 const sent = (api: FakeApi, method: string, path: string) =>
@@ -387,6 +391,102 @@ describe("採点の版", () => {
 		fireEvent.click(more);
 		expect(view.getByRole("list", { name: "実行条件" }).textContent).toContain(
 			"採点の版 v2",
+		);
+	});
+});
+
+describe("予定の評価基準の版", () => {
+	const versions: EventCriteriaVersion[] = [
+		{ version: 1, text: "基準", note: "初版", createdAt: START },
+		{ version: 2, text: "基準2", note: "改善", createdAt: START },
+	];
+	const strategies = [
+		storedStrategy({
+			id: 1,
+			name: "予定",
+			params: params([
+				{
+					type: "eventWindow",
+					minImportance: "high",
+					beforeHours: 2,
+					afterHours: 24,
+					allowNoCalendar: false,
+				},
+			]),
+		}),
+	];
+
+	test("予定の前後の条件があると版を選べ、判断がそろうまで実行できず、頼むと期間の前後を広げて送る", async () => {
+		let coverage: JudgmentCoverage = {
+			total: 4,
+			done: 1,
+			pending: 0,
+			failed: 0,
+		};
+		const api = runPageApi({ strategies, eventCriteriaVersions: versions })
+			.on(routes.api.calendar.judgments, "$get", () => ({ coverage }))
+			.on(routes.api.calendar.judgments, "$post", () => {
+				coverage = { ...coverage, pending: 3 };
+				return { coverage };
+			});
+		const view = await openRunPage(api, "2026-05-03", "2026-05-25");
+		const picker = view.getByLabelText(
+			"予定の評価基準の版",
+		) as HTMLSelectElement;
+		expect(picker.selectedOptions[0]?.textContent).toBe("使用中の版（v2）");
+		fireEvent.change(picker, { target: { value: "1" } });
+		const alert = await view.findByRole("alert");
+		expect(alert.textContent).toContain("3 件に v1 の重要度の判断が無い");
+		expect(runButton(view).textContent).toBe(
+			"予定の重要度の判断がそろうと実行できる",
+		);
+		fireEvent.click(
+			within(alert).getByRole("button", { name: "v1 で先に判断する" }),
+		);
+		await waitFor(() =>
+			expect(sent(api, "POST", "/api/calendar/judgments")).toHaveLength(1),
+		);
+		const body = sent(api, "POST", "/api/calendar/judgments")[0]?.body as {
+			from: number;
+			to: number;
+			version: number;
+		};
+		expect(body.version).toBe(1);
+		expect(body.to - body.from).toBe((22 + 1) * 24 * H + (2 + 24) * H);
+		expect(runButton(view).disabled).toBe(true);
+	});
+
+	test("判断がそろうと実行でき、選んだ版を送り、結果に版が出る", async () => {
+		const runs = new Map<number, BacktestRun>();
+		const api = acceptRuns(
+			withResults(
+				runPageApi({ strategies, eventCriteriaVersions: versions }),
+				runs,
+			),
+			runs,
+		).on(routes.api.calendar.judgments, "$get", () => ({
+			coverage: { total: 4, done: 3, pending: 0, failed: 1 },
+		}));
+		const view = await openRunPage(api, "2026-05-03", "2026-05-25");
+		fireEvent.change(view.getByLabelText("予定の評価基準の版"), {
+			target: { value: "1" },
+		});
+		expect(await view.findByText("v1 の重要度の判断: 3 / 4 件")).toBeTruthy();
+		expect(
+			view.getByText(/1 件は判断に失敗した。その前後は暦切れとして実行する/),
+		).toBeTruthy();
+		fireEvent.click(runButton(view));
+		const more = await view.findByRole(
+			"button",
+			{ name: /^他 \d+ 件/ },
+			RUN_WAIT,
+		);
+		expect(sent(api, "POST", "/api/backtests")[0]?.body).toMatchObject({
+			eventCriteriaVersion: 1,
+		});
+		fireEvent.click(more);
+		expect(view.getByRole("list", { name: "実行条件" }).textContent).toContain(
+			"予定の評価基準 v1",
 		);
 	});
 });

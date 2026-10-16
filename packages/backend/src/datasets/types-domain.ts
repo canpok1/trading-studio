@@ -56,6 +56,8 @@ export type DatasetRun = {
 	fees: FeeRates;
 	skipGaps: boolean;
 	criteriaVersion: number | null;
+	/** 予定の前後の条件に使う、予定の評価基準の版。null は使用中の版 */
+	eventCriteriaVersion: number | null;
 	/** 実行する順の相場データ */
 	segmentIds: number[];
 	status: BacktestStatus;

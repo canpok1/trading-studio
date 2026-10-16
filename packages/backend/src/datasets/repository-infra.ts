@@ -56,6 +56,7 @@ function toRun(r: RunRow): DatasetRun {
 		fees: input.fees,
 		skipGaps: input.skipGaps,
 		criteriaVersion: input.criteriaVersion,
+		eventCriteriaVersion: input.eventCriteriaVersion ?? null,
 		segmentIds: JSON.parse(r.segment_ids) as number[],
 		status: r.status,
 		progress: r.status === "done" ? 1 : 0,

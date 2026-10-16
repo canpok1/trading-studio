@@ -105,6 +105,20 @@ export function createTestApp(
 		now: () => 5_000,
 	});
 	scoreRepo.seedCriteria(DEFAULT_CRITERIA, 0);
+	// 取得は自動では動かさず、テストから calendar.run() を呼ぶ。取得元の中身は icalFeeds に URL ごとに入れる
+	const icalFeeds = new Map<string, IcalEvent[] | Error>();
+	const calendar = createCalendarService({
+		repo: new SqliteCalendarRepository(db),
+		fetchIcal: async (url) => {
+			const v = icalFeeds.get(url);
+			if (v === undefined) throw new Error("HTTP 404");
+			if (v instanceof Error) throw v;
+			return v;
+		},
+		now: () => clock.now,
+	});
+	// 予定の重要度の判断は、テストで eventJobs.on を立てたときだけ採点の合間に進める（ほかのテストの採点の順番を変えないため）
+	const eventJobs = { on: false };
 	// 採点は自動では動かさず、テストから scorer.tick() を呼ぶ
 	const scorer = createScorer({
 		repo: scoreRepo,
@@ -112,6 +126,10 @@ export function createTestApp(
 		rule: () => scoreRepo.aggregationRule(),
 		now: () => clock.now,
 		minIntervalMs: 0,
+		jobs: {
+			urgent: (t) => (eventJobs.on ? calendar.jobs.urgent(t) : null),
+			background: (t) => (eventJobs.on ? calendar.jobs.background(t) : null),
+		},
 	});
 	const scoring = createScoringService({
 		repo: scoreRepo,
@@ -131,18 +149,6 @@ export function createTestApp(
 		newsDeletedBefore: () => scoreRepo.newsDeletedBefore(),
 		now: () => clock.now,
 	});
-	// 取得は自動では動かさず、テストから calendar.run() を呼ぶ。取得元の中身は icalFeeds に URL ごとに入れる
-	const icalFeeds = new Map<string, IcalEvent[] | Error>();
-	const calendar = createCalendarService({
-		repo: new SqliteCalendarRepository(db),
-		fetchIcal: async (url) => {
-			const v = icalFeeds.get(url);
-			if (v === undefined) throw new Error("HTTP 404");
-			if (v instanceof Error) throw v;
-			return v;
-		},
-		now: () => clock.now,
-	});
 	const backtestRepo = new SqliteBacktestRepository(db);
 	const backtests = createBacktestService({
 		repo: backtestRepo,
@@ -160,6 +166,7 @@ export function createTestApp(
 		backtestRepo,
 		backtests,
 		segments,
+		calendar,
 		now: () => 3_000,
 	});
 	const adviceRepo = new SqliteAdviceRepository(db);
@@ -266,5 +273,6 @@ export function createTestApp(
 		retention,
 		calendar,
 		icalFeeds,
+		eventJobs,
 	};
 }

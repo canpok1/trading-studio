@@ -10,6 +10,7 @@ import { AdviceSettings } from "../../features/settings/components/AdviceSetting
 import { ApiKeySetting } from "../../features/settings/components/ApiKeySetting";
 import { CompatibleSetting } from "../../features/settings/components/CompatibleSetting";
 import { EventCalendarSetting } from "../../features/settings/components/EventCalendarSetting";
+import { EventCriteriaSetting } from "../../features/settings/components/EventCriteriaSetting";
 import { PromptTab } from "../../features/settings/components/PromptTab";
 import { RetentionSetting } from "../../features/settings/components/RetentionSetting";
 import { RuleTab } from "../../features/settings/components/RuleTab";
@@ -45,6 +46,7 @@ const NEWS_TABS = [
 	["rule", "評価ルール"],
 	["prompt", "プロンプト"],
 	["sources", "取得"],
+	["events", "予定"],
 	["accuracy", "精度"],
 ] as const;
 type NewsSettingsTab = (typeof NEWS_TABS)[number][0];
@@ -75,7 +77,6 @@ export function SettingsPage() {
 					<ThemeSetting />
 					<ApiKeySetting />
 					<CompatibleSetting />
-					<EventCalendarSetting />
 					<RetentionSetting />
 				</div>
 			)}
@@ -222,6 +223,12 @@ function NewsSettings({
 					onChanged={load}
 					initialTrialIds={trialIds}
 				/>
+			)}
+			{tab === "events" && (
+				<>
+					<EventCalendarSetting />
+					<EventCriteriaSetting />
+				</>
 			)}
 			{tab === "accuracy" && <AccuracySetting />}
 			{tab === "sources" && (

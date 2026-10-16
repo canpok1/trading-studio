@@ -1,28 +1,26 @@
-// 予定イベントの暦の取得（設定の取得元の iCal を定期的に取って保存する）と、判定に使う暦の組み立て
+// 予定の取得（設定の取得元の iCal を定期的に取って保存する）・AI による重要度の判断・判定に使う暦の組み立て
 
-import type {
-	CalendarRange,
-	EventCalendar,
-	MarketEvent,
-	ScheduledEvent,
-} from "@trading-studio/core";
+import type { CalendarRange, EventCalendar } from "@trading-studio/core";
+import { mergeRanges } from "@trading-studio/core";
+import type { AiJob, AiJobSource } from "../ai/job-domain";
+import { RETRY_DELAYS_MS } from "../news/scorer-domain";
+import { BUNDLED_EVENTS, BUNDLED_RANGE } from "./bundled-domain";
 import {
-	BUNDLED_EVENT_CALENDAR,
-	combineCalendars,
-	isMarketEvent,
-	JST_OFFSET_MS,
-	MARKET_EVENTS,
-	mergeRanges,
-} from "@trading-studio/core";
+	buildEventPrompt,
+	DEFAULT_EVENT_CRITERIA,
+	EVENT_PROMPT_TEMPLATE,
+	EVENT_RESPONSE_SCHEMA,
+	parseEventResponse,
+} from "./prompt-domain";
 import type {
 	CalendarRepository,
+	EventRow,
 	EventSourceRow,
 	IcalEvent,
+	JudgeTarget,
 } from "./repository-domain";
 import type {
 	CalendarService,
-	EventKeywords,
-	EventSource,
 	EventSourceInput,
 	EventSourceResult,
 } from "./types-domain";
@@ -38,27 +36,28 @@ export const FETCH_INTERVAL_MS = 6 * HOUR_MS;
  * 今週の分だけを載せる取得元では、週の変わり目の前後がどちらの取得にも載らないため
  */
 const CONTINUOUS_MS = DAY_MS;
-/** 語を入れた種類がこの日数のあいだ1件も拾えなければ、拾えていない疑いとして知らせる（FOMC・日銀会合は間が7〜8週空く） */
-const STALE_DAYS = 70;
+/** 運用で使う予定として先に判断する範囲。予定の前後の条件で見る一番長い時間（168 時間）だけ前に終わった予定から */
+const LIVE_LOOKBACK_MS = 7 * DAY_MS;
+/** 同じく、これから始まる予定はこの時間先まで（168 時間に、判断が済むまでの余裕を足す） */
+const LIVE_AHEAD_MS = 8 * DAY_MS;
+/** 再試行の回数を超えて失敗した予定を、使用中の版で判断し直すまでの間。AI が長く止まっても、戻れば判断が進むように */
+const FAILED_RETRY_MS = HOUR_MS;
+const ALL: CalendarRange = {
+	from: Number.MIN_SAFE_INTEGER,
+	until: Number.MAX_SAFE_INTEGER,
+};
 const NAME_MAX = 40;
-const KEYWORD_MAX = 100;
+const CRITERIA_MAX = 5000;
+const NOTE_MAX = 100;
+/** アプリが持つ予定の取得元の名前（AI に渡す） */
+const BUNDLED_SOURCE_NAME = "アプリが持つ過去の予定";
 
 /** 取得元の入力を読む。形が違えば null */
 export function parseEventSourceInput(v: unknown): EventSourceInput | null {
 	if (typeof v !== "object" || v === null) return null;
-	const { name, url, keywords } = v as Record<string, unknown>;
-	if (
-		typeof name !== "string" ||
-		typeof url !== "string" ||
-		typeof keywords !== "object" ||
-		keywords === null ||
-		!Object.entries(keywords).every(
-			([k, w]) => isMarketEvent(k) && typeof w === "string",
-		)
-	) {
-		return null;
-	}
-	return { name, url, keywords: keywords as EventKeywords };
+	const { name, url } = v as Record<string, unknown>;
+	if (typeof name !== "string" || typeof url !== "string") return null;
+	return { name, url };
 }
 
 function checkInput(
@@ -74,11 +73,6 @@ function checkInput(
 	} catch {
 		return { field: "url", message: "http(s) の URL を入れる" };
 	}
-	const words = Object.values(input.keywords).map((w) => (w ?? "").trim());
-	if (words.every((w) => w === ""))
-		return { field: "keywords", message: "1つ以上の種類に語を入れる" };
-	if (words.some((w) => w.length > KEYWORD_MAX))
-		return { field: "keywords", message: `語は ${KEYWORD_MAX} 文字以内にする` };
 	return null;
 }
 
@@ -86,53 +80,35 @@ function checkInput(
 const normalizeUrl = (url: string) =>
 	url.trim().replace(/^webcals?:\/\//i, "https://");
 
-function normalize(input: EventSourceInput): EventSourceInput {
-	const keywords: EventKeywords = {};
-	for (const t of MARKET_EVENTS) {
-		const w = input.keywords[t]?.trim();
-		if (w) keywords[t] = w;
-	}
-	return { name: input.name.trim(), url: normalizeUrl(input.url), keywords };
-}
-
-/** JST の日の 0:00 */
-const jstDayStart = (t: number) =>
-	Math.floor((t + JST_OFFSET_MS) / DAY_MS) * DAY_MS - JST_OFFSET_MS;
-
-/** 取得元に載っている予定のうち、そろっている期間に数えるのは取得した時刻の前後この範囲だけ（繰り返しの予定や遠い過去・先の予定で期間が広がりすぎないように） */
+/** 取得元の予定を取得した時刻の前後この範囲だけ、そろっている期間に数える（繰り返しの予定や遠い過去・先の予定で期間が広がりすぎないように） */
 const LISTED_BEFORE_MS = 7 * DAY_MS;
 const LISTED_AFTER_MS = 366 * DAY_MS;
 
 /**
- * 取得した予定から、語に当たるものを暦にする。
- * 日銀会合は時刻が決まっていないので JST の日の 0:00〜24:00、ほかの種類も終日の予定はその日の 24 時間をイベントの時間にする。
+ * 取得した予定を保存する形にする。終日の予定はその日の 24 時間を予定の時間にする。
  * そろっている期間は、載っている最初の予定（取得した時刻の LISTED_BEFORE_MS 前まで）から、
  * 最後の予定（同じく LISTED_AFTER_MS 後まで）か次の取得の予定時刻の遅いほうまで。
  * 前回の取得が CONTINUOUS_MS 以内なら、その時刻からそろっているとみなす
  */
 export function toCalendar(
 	items: readonly IcalEvent[],
-	keywords: EventKeywords,
 	fetchedAt: number,
 	prevSuccessAt: number | null,
 ): {
-	events: ScheduledEvent[];
+	events: EventRow[];
 	range: CalendarRange;
 	/** 取得元の今の中身で置き換える期間 */
 	listed: CalendarRange;
-	types: MarketEvent[];
 } {
-	const types = MARKET_EVENTS.filter((t) => keywords[t]);
-	const events: ScheduledEvent[] = [];
-	for (const item of items) {
-		const summary = item.summary.toLowerCase();
-		for (const type of types) {
-			if (!summary.includes((keywords[type] as string).toLowerCase())) continue;
-			const start = type === "boj" ? jstDayStart(item.start) : item.start;
-			const allDay = type === "boj" || item.allDay;
-			events.push({ type, start, end: allDay ? start + DAY_MS : start });
-		}
-	}
+	const events: EventRow[] = items.map((i) => ({
+		// UID の無い予定は件名と時刻で見分ける（時刻が変わると別の予定になる）
+		uid: i.uid ?? `${i.summary}@${i.start}`,
+		title: i.summary,
+		description: i.description,
+		start: i.start,
+		end: i.allDay ? i.start + DAY_MS : i.start,
+		allDay: i.allDay,
+	}));
 	const starts = items
 		.map((i) => i.start)
 		.filter(
@@ -141,12 +117,8 @@ export function toCalendar(
 		);
 	const first = Math.min(fetchedAt, ...starts);
 	const last = Math.max(fetchedAt, ...starts);
-	// 取得した時刻より後で載っていない予定は、移動か取り消しとみなす。前の予定は今週の分だけを載せる取得元で消えるので残す。
-	// 日銀会合は日の 0:00 にずらして持つので、その分も含める
-	const listed = {
-		from: Math.min(first, ...events.map((e) => e.start)),
-		until: Math.max(last, ...events.map((e) => e.start)) + 1,
-	};
+	// 取得した時刻より後で載っていない予定は、移動か取り消しとみなす。前の予定は今週の分だけを載せる取得元で消えるので残す
+	const listed = { from: fetchedAt, until: last + 1 };
 	const continuous =
 		prevSuccessAt !== null && fetchedAt - prevSuccessAt <= CONTINUOUS_MS;
 	const range = {
@@ -154,7 +126,7 @@ export function toCalendar(
 		// 次の取得までに載る予定は、次の取得で拾う。今週の分だけを載せる取得元で、週の最後の予定の後が暦切れにならないように
 		until: Math.max(last + 1, fetchedAt + FETCH_INTERVAL_MS),
 	};
-	return { events, range, listed, types };
+	return { events, range, listed };
 }
 
 export type CalendarCollector = CalendarService & {
@@ -162,20 +134,32 @@ export type CalendarCollector = CalendarService & {
 	tick(): void;
 	/** 取得を1回行う。すでに動いていれば、その回の終わりを待つ */
 	run(): Promise<void>;
+	/** 重要度の判断。ニュースの採点の常駐処理が、採点の合間に進める */
+	jobs: AiJobSource;
 };
 
 export function createCalendarService({
 	repo,
 	fetchIcal,
+	appBuiltAt = null,
 	now = Date.now,
+	retryDelaysMs = RETRY_DELAYS_MS,
 }: {
 	repo: CalendarRepository;
 	fetchIcal: FetchIcal;
+	/** 動いているアプリのバージョン（ビルド日時）。判断ごとに記録する。開発版は null */
+	appBuiltAt?: number | null;
 	now?: () => number;
+	/** 判断の自動の再試行の間隔。回数はこの長さ */
+	retryDelaysMs?: readonly number[];
 }): CalendarCollector {
+	repo.seedBundled(BUNDLED_EVENTS.map((e) => ({ ...e, description: null })));
+	repo.seedCriteria(DEFAULT_EVENT_CRITERIA, now());
+
 	let lastRunAt: number | null = null;
 	let running: Promise<void> | null = null;
-	let cached: EventCalendar | null = null;
+	const cached = new Map<number | null, EventCalendar>();
+	const invalidate = () => cached.clear();
 
 	const nextRunAt = () =>
 		lastRunAt === null ? null : lastRunAt + FETCH_INTERVAL_MS;
@@ -183,20 +167,14 @@ export function createCalendarService({
 	async function fetchOne(source: EventSourceRow) {
 		try {
 			const items = await fetchIcal(source.url);
-			// 取得中に消されたか、URL・語が変わっていたら保存しない
+			// 取得中に消されたか、URL が変わっていたら保存しない
 			const current = repo.getSource(source.id);
-			if (
-				!current ||
-				current.url !== source.url ||
-				JSON.stringify(current.keywords) !== JSON.stringify(source.keywords)
-			) {
-				return;
-			}
+			if (!current || current.url !== source.url) return;
 			if (items.length === 0) throw new Error("予定が1件も無い");
 			const at = now();
-			const c = toCalendar(items, current.keywords, at, current.lastSuccessAt);
-			repo.saveFetched(current.id, c.types, c.events, c.range, c.listed, at);
-			cached = null;
+			const c = toCalendar(items, at, current.lastSuccessAt);
+			repo.saveFetched(current.id, c.events, c.range, c.listed, at);
+			invalidate();
 		} catch (e) {
 			const message = e instanceof Error ? e.message : String(e);
 			if (repo.getSource(source.id)) {
@@ -210,53 +188,22 @@ export function createCalendarService({
 		for (const source of repo.listSources()) await fetchOne(source);
 	}
 
-	function toSource(
-		row: EventSourceRow,
-		last: Map<string, number>,
-		t: number,
-	): EventSource {
-		const { firstSuccessAt, ...rest } = row;
-		const since = t - STALE_DAYS * DAY_MS;
-		const stale =
-			firstSuccessAt !== null && firstSuccessAt <= since
-				? MARKET_EVENTS.filter(
-						(type) =>
-							row.keywords[type] &&
-							(last.get(`${row.id}:${type}`) ?? Number.NEGATIVE_INFINITY) <
-								since,
-					)
-				: [];
-		return { ...rest, stale };
-	}
-
-	const sourceOf = (row: EventSourceRow) => toSource(row, lastMap(), now());
-	const lastMap = () =>
-		new Map(
-			repo.lastEventAt().map((r) => [`${r.sourceId}:${r.type}`, r.start]),
-		);
-
-	function calendar(): EventCalendar {
-		if (cached) return cached;
-		const covered = Object.fromEntries(
-			MARKET_EVENTS.map((t) => [t, [] as CalendarRange[]]),
-		) as Record<MarketEvent, CalendarRange[]>;
-		for (const c of repo.coverage()) covered[c.type].push(c.range);
-		cached = combineCalendars([
-			BUNDLED_EVENT_CALENDAR,
-			{
-				events: repo.events(),
-				covered: Object.fromEntries(
-					MARKET_EVENTS.map((t) => [t, mergeRanges(covered[t])]),
-				) as Record<MarketEvent, CalendarRange[]>,
-			},
-		]);
-		return cached;
+	function calendar(version?: number): EventCalendar {
+		const v = version ?? repo.activeCriteriaVersion();
+		const hit = cached.get(v);
+		if (hit) return hit;
+		const cal = {
+			events: repo.events(v),
+			covered: mergeRanges([BUNDLED_RANGE, ...repo.coverage()]),
+		};
+		cached.set(v, cal);
+		return cal;
 	}
 
 	function save(input: EventSourceInput, id: number | null): EventSourceResult {
 		const bad = checkInput(input);
 		if (bad) return { ok: false, kind: "invalid", ...bad };
-		const v = normalize(input);
+		const v = { name: input.name.trim(), url: normalizeUrl(input.url) };
 		const same = repo.sourceByUrl(v.url);
 		if (same && same.id !== id) {
 			return {
@@ -266,43 +213,154 @@ export function createCalendarService({
 			};
 		}
 		if (id === null) {
-			const row = repo.insertSource(v, now());
-			return { ok: true, source: sourceOf(row) };
+			return { ok: true, source: repo.insertSource(v, now()) };
 		}
 		if (!repo.getSource(id)) return { ok: false, kind: "not_found" };
 		repo.updateSource(id, v);
-		cached = null;
-		return { ok: true, source: sourceOf(repo.getSource(id) as EventSourceRow) };
+		invalidate();
+		return { ok: true, source: repo.getSource(id) as EventSourceRow };
 	}
 
-	const service: CalendarCollector = {
-		listSources() {
-			const last = lastMap();
-			const t = now();
-			return repo.listSources().map((r) => toSource(r, last, t));
+	/** 予定1件の重要度を判断する仕事。失敗は運用のニュースの採点と同じく、間を延ばしながら再試行する */
+	const judgeJob =
+		(t: JudgeTarget): AiJob =>
+		async (ask) => {
+			const criteria = repo.getCriteria(t.criteriaVersion);
+			if (!criteria) {
+				repo.saveJudgmentFailure(
+					t,
+					"評価基準の版が無い",
+					t.attempts + 1,
+					true,
+					now() + FAILED_RETRY_MS,
+					now(),
+				);
+				invalidate();
+				return;
+			}
+			try {
+				const { value, model } = await ask(
+					buildEventPrompt(
+						{ ...t, sourceName: t.sourceName ?? BUNDLED_SOURCE_NAME },
+						criteria.text,
+					),
+					EVENT_RESPONSE_SCHEMA,
+				);
+				const r = parseEventResponse(value);
+				if (typeof r === "string") throw new Error(`応答の形が違う: ${r}`);
+				repo.saveJudgment(t, r, {
+					judgedAt: now(),
+					model,
+					appBuiltAt,
+					attempts: t.attempts,
+				});
+			} catch (e) {
+				const attempts = t.attempts + 1;
+				const delay = retryDelaysMs[attempts - 1];
+				repo.saveJudgmentFailure(
+					t,
+					e instanceof Error ? e.message : String(e),
+					attempts,
+					delay === undefined,
+					now() + (delay ?? FAILED_RETRY_MS),
+					now(),
+				);
+			} finally {
+				invalidate();
+			}
+		};
+
+	const jobs: AiJobSource = {
+		// 使用中の版で、運用の判定で見る予定（これから来るものと直近のもの）を早い順に
+		urgent(t) {
+			const v = repo.activeCriteriaVersion();
+			if (v === null) return null;
+			const next = repo.nextUnjudged(
+				v,
+				{ from: t - LIVE_LOOKBACK_MS, until: t + LIVE_AHEAD_MS },
+				"asc",
+				t,
+			);
+			return next ? judgeJob(next) : null;
 		},
+		// 頼まれた判断を頼んだ順に、その後で使用中の版の過去の予定を新しい順に、残り（先の予定）を早い順に
+		background(t) {
+			const requested = repo.nextRequested(t);
+			if (requested) return judgeJob(requested);
+			const v = repo.activeCriteriaVersion();
+			if (v === null) return null;
+			const next =
+				repo.nextUnjudged(
+					v,
+					{ from: ALL.from, until: t - LIVE_LOOKBACK_MS },
+					"desc",
+					t,
+				) ?? repo.nextUnjudged(v, ALL, "asc", t);
+			return next ? judgeJob(next) : null;
+		},
+	};
+
+	const service: CalendarCollector = {
+		listSources: () => repo.listSources(),
 		addSource: (input) => save(input, null),
 		updateSource: (id, input) => save(input, id),
 		removeSource(id) {
 			const ok = repo.removeSource(id);
-			if (ok) cached = null;
+			if (ok) invalidate();
 			return ok;
 		},
 		status() {
 			const t = now();
-			const cal = calendar();
+			const active = repo.activeCriteriaVersion();
 			return {
-				coveredUntil: MARKET_EVENTS.map((type) => ({
-					type,
-					until:
-						cal.covered[type].find((r) => r.from <= t && t < r.until)?.until ??
-						null,
-				})),
+				coveredUntil:
+					calendar().covered.find((r) => r.from <= t && t < r.until)?.until ??
+					null,
 				lastRunAt,
 				nextRunAt: nextRunAt(),
+				unjudged: active === null ? 0 : repo.unjudgedCount(active),
+				failed: active === null ? 0 : repo.failedCount(active),
 			};
 		},
+		criteria: () => ({
+			versions: repo.listCriteria(),
+			activeVersion: repo.activeCriteriaVersion(),
+			template: EVENT_PROMPT_TEMPLATE,
+		}),
+		addCriteria(text, note) {
+			const body = text.trim();
+			if (!body) return { ok: false, message: "評価基準を入れる" };
+			if (body.length > CRITERIA_MAX)
+				return { ok: false, message: `${CRITERIA_MAX} 文字以内にする` };
+			if (repo.listCriteria().some((v) => v.text === body))
+				return { ok: false, message: "同じ内容の版がある" };
+			return {
+				ok: true,
+				version: repo.addCriteria(
+					body,
+					note.trim().slice(0, NOTE_MAX) || "画面から編集",
+					now(),
+				),
+			};
+		},
+		setActiveCriteria(version) {
+			if (!repo.getCriteria(version)) return false;
+			repo.setActiveCriteria(version);
+			invalidate();
+			return true;
+		},
 		calendar,
+		activeVersion: () => repo.activeCriteriaVersion(),
+		judgmentCoverage(from, to, version) {
+			if (!repo.getCriteria(version)) return null;
+			return repo.judgmentCoverage(from, to, version);
+		},
+		requestJudgments(from, to, version) {
+			if (!repo.getCriteria(version)) return null;
+			repo.requestJudgments(from, to, version, now());
+			return repo.judgmentCoverage(from, to, version);
+		},
+		jobs,
 		tick() {
 			if (running) return;
 			const next = nextRunAt();

@@ -25,24 +25,24 @@ describe("条件の文字列", () => {
 		).toBe("4時間足 ADX14 20以下");
 	});
 
-	test("予定イベントの前後は種類と前後の時間", () => {
+	test("予定の前後は重要度の下限と前後の時間", () => {
 		expect(
 			conditionText({
 				type: "eventWindow",
-				events: ["cpi", "nfp"],
+				minImportance: "medium",
 				beforeHours: 2,
 				afterHours: 12,
 				allowNoCalendar: false,
 			}),
-		).toBe("米 CPI/米雇用統計の前 2 時間・後 12 時間でない");
+		).toBe("予定（重要度 中以上）の前 2 時間・後 12 時間でない");
 		expect(
 			conditionText({
 				type: "eventWindow",
-				events: ["cpi"],
+				minImportance: "high",
 				beforeHours: 0,
 				afterHours: 24,
 				allowNoCalendar: true,
 			}),
-		).toBe("米 CPIの後 24 時間でない（暦切れは成立）");
+		).toBe("予定（重要度 高）の後 24 時間でない（暦切れは成立）");
 	});
 });

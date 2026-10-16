@@ -399,7 +399,7 @@ describe("戦略の編集", () => {
 		expect(value(s().getByLabelText("以上・以下"))).toBe("below");
 	});
 
-	test("予定イベントの前後は買いだけに出て、既定は全種類・後 24 時間。範囲外の時間は保存できない", async () => {
+	test("予定の前後は買いだけに出て、既定は重要度 高・後 24 時間。範囲外の時間は保存できない", async () => {
 		let view = await open(strategiesApi());
 		await createFromTemplate(view, "イベント", /^トレンド追随/);
 		const buy = "買い注文する条件";
@@ -410,41 +410,35 @@ describe("戦略の編集", () => {
 		);
 		expect(
 			within(view.getByRole("dialog")).queryByRole("button", {
-				name: "予定イベントの前後でない",
+				name: "予定の前後でない",
 			}),
 		).toBeNull();
 		fireEvent.click(
 			within(view.getByRole("dialog")).getByRole("button", { name: "やめる" }),
 		);
 
-		addCondition(view, buy, "予定イベントの前後でない");
-		const ev = () => row(view, buy, "イベントの何時間後まで");
-		for (const name of [
-			"FOMC 声明",
-			"FOMC 議事要旨",
-			"米 CPI",
-			"米雇用統計",
-			"日銀会合",
-		]) {
-			expect(checked(ev().getByLabelText(name))).toBe(true);
-		}
-		expect(value(ev().getByLabelText("イベントの何時間前から"))).toBe("0");
-		expect(value(ev().getByLabelText("イベントの何時間後まで"))).toBe("24");
+		addCondition(view, buy, "予定の前後でない");
+		const ev = () => row(view, buy, "予定の何時間後まで");
+		expect(value(ev().getByLabelText("予定の重要度"))).toBe("high");
+		expect(value(ev().getByLabelText("予定の何時間前から"))).toBe("0");
+		expect(value(ev().getByLabelText("予定の何時間後まで"))).toBe("24");
 		expect(checked(ev().getByLabelText("暦切れのときも成立とみなす"))).toBe(
 			false,
 		);
 
-		changeValue(ev().getByLabelText("イベントの何時間後まで"), "169");
+		changeValue(ev().getByLabelText("予定の何時間後まで"), "169");
 		expect(ev().getByText("0〜168 の整数で入れる")).toBeTruthy();
 		expect(blocked(view)).toBe(true);
-		changeValue(ev().getByLabelText("イベントの何時間後まで"), "48");
-		fireEvent.click(ev().getByLabelText("日銀会合"));
+		changeValue(ev().getByLabelText("予定の何時間後まで"), "48");
+		fireEvent.change(ev().getByLabelText("予定の重要度"), {
+			target: { value: "medium" },
+		});
 		fireEvent.click(ev().getByLabelText("暦切れのときも成立とみなす"));
 		await save(view);
 
 		view = await reopen(view);
-		expect(value(ev().getByLabelText("イベントの何時間後まで"))).toBe("48");
-		expect(checked(ev().getByLabelText("日銀会合"))).toBe(false);
+		expect(value(ev().getByLabelText("予定の何時間後まで"))).toBe("48");
+		expect(value(ev().getByLabelText("予定の重要度"))).toBe("medium");
 		expect(checked(ev().getByLabelText("暦切れのときも成立とみなす"))).toBe(
 			true,
 		);

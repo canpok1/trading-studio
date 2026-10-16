@@ -19,8 +19,10 @@ export type {
 } from "./backtests/types-domain";
 export type {
 	CalendarStatus,
-	EventKeywords,
+	EventCriteria,
+	EventCriteriaVersion,
 	EventSource,
+	JudgmentCoverage,
 } from "./calendar/types-domain";
 export type { CollectorStatus } from "./collector/types-domain";
 export type {

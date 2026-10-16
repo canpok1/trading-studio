@@ -153,6 +153,7 @@ function rerunState(run: DatasetRunDetail): Partial<BacktestDraft> {
 		initialCash: run.initialCash,
 		fees: run.fees,
 		criteriaVersion: run.criteriaVersion,
+		eventCriteriaVersion: run.eventCriteriaVersion,
 		periodMode: "dataset",
 		datasetId: run.datasetId,
 	};

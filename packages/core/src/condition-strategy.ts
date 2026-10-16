@@ -1,13 +1,13 @@
 // 画面で作る「条件のセット」を実行する汎用の条件戦略
 
-import type { EventCalendar, MarketEvent } from "./event-calendar";
+import type { EventCalendar, EventImportance } from "./event-calendar";
 import {
 	calendarGap,
 	eventSpanText,
 	eventsBetween,
 	HOUR_MS,
-	isMarketEvent,
-	MARKET_EVENT_LABELS,
+	importanceText,
+	isEventImportance,
 } from "./event-calendar";
 import { formatBtc, formatYen } from "./format";
 import { adx, atr, bollinger, ema, rsi } from "./indicators";
@@ -155,13 +155,13 @@ export type Condition =
 	/** 買ってから timeframe の足で bars 本ぶんの時間が経った。売りのグループだけで使える */
 	| { type: "holdingBars"; timeframe: Timeframe; bars: number }
 	/**
-	 * 判定の時刻 t について、[t − afterHours, t + beforeHours] に events のどれかのイベントが無い
-	 * （イベントの afterHours 時間後までと beforeHours 時間前からは買わない）。買いのグループだけで使える。
-	 * 暦がそろっていない（暦切れ）ときは allowNoCalendar なら成立、そうでなければ買いを判定しない
+	 * 判定の時刻 t について、[t − afterHours, t + beforeHours] に重要度が minImportance 以上の予定が無い
+	 * （予定の afterHours 時間後までと beforeHours 時間前からは買わない）。買いのグループだけで使える。
+	 * 暦がそろっていない（暦切れ・重要度が未判断）ときは allowNoCalendar なら成立、そうでなければ買いを判定しない
 	 */
 	| {
 			type: "eventWindow";
-			events: MarketEvent[];
+			minImportance: EventImportance;
 			beforeHours: number;
 			afterHours: number;
 			allowNoCalendar: boolean;
@@ -409,7 +409,7 @@ export const LIMITS = {
 	/** EMA の傾きの %。0.01 刻み */
 	emaSlopePercent: { min: 0, max: 100 },
 	holdingBars: { min: 1, max: 1000 },
-	/** 予定イベントの前後の時間 */
+	/** 予定の前後の時間 */
 	eventHours: { min: 0, max: 168 },
 	/** 買い指値を現在値から下げる %。0 以上 100 未満、0.01 刻み */
 	buyBelowPercent: { min: 0, maxExclusive: 100 },
@@ -466,7 +466,7 @@ export type Ctx = {
 	series: (timeframe: Timeframe) => Series;
 	/** 判定器ごとの今の判定。まだ無ければ入らない */
 	judgments: Partial<Record<Judge, JudgmentValue>>;
-	/** 予定イベントの暦 */
+	/** 予定の暦 */
 	events: EventCalendar;
 	price: number;
 	now: number;
@@ -923,25 +923,25 @@ function checkOther(c: Exclude<Condition, CandleCondition>, ctx: Ctx): Hit {
 		case "eventWindow": {
 			const from = ctx.now - c.afterHours * HOUR_MS;
 			const to = ctx.now + c.beforeHours * HOUR_MS;
-			const names = c.events.map((e) => MARKET_EVENT_LABELS[e]).join("・");
+			const names = importanceText(c.minImportance);
 			const span = eventSpanText(c.beforeHours, c.afterHours);
-			// 暦切れでも、暦にあるイベントに当たれば不成立
-			if (eventsBetween(ctx.events, c.events, from, to).length > 0) {
+			// 暦切れでも、暦にある予定に当たれば不成立
+			if (eventsBetween(ctx.events, c.minImportance, from, to).length > 0) {
 				return { ok: false };
 			}
-			const gap = calendarGap(ctx.events, c.events, from, to);
+			const gap = calendarGap(ctx.events, from, to);
 			if (gap !== null) {
 				return c.allowNoCalendar
 					? {
 							ok: true,
-							why: `予定イベント（${names}）は暦切れのため当たらないとみなす。${gap}`,
+							why: `予定（${names}）は暦切れのため当たらないとみなす。${gap}`,
 						}
 					: {
-							insufficient: `予定イベントの暦切れ。${gap}`,
+							insufficient: `予定の暦切れ。${gap}`,
 							note: "買いを判定しない",
 						};
 			}
-			return { ok: true, why: `予定イベント（${names}）の${span}に当たらない` };
+			return { ok: true, why: `予定（${names}）の${span}に当たらない` };
 		}
 		case "holdingBars": {
 			if (ctx.lot === null) {
@@ -1113,6 +1113,23 @@ export function acceptsNoJudgment(params: ConditionSet): boolean {
 				c.type === "judgment" && (c.values as string[]).includes(NO_JUDGMENT),
 		),
 	);
+}
+
+/**
+ * 予定の前後の条件で見る時間の長さ（どの条件でも一番長いもの）。予定の前後の条件が無ければ null。
+ * バックテストの期間 [from, to] の判定は [from − afterHours, to + beforeHours] の予定を見る
+ */
+export function eventWindowHours(
+	params: ConditionSet,
+): { beforeHours: number; afterHours: number } | null {
+	const windows = allGroups(params).flatMap((g) =>
+		g.conditions.filter((c) => c.type === "eventWindow"),
+	);
+	if (windows.length === 0) return null;
+	return {
+		beforeHours: Math.max(...windows.map((c) => c.beforeHours)),
+		afterHours: Math.max(...windows.map((c) => c.afterHours)),
+	};
 }
 
 /** 判定に渡してほしい足の本数（現在の足を含む）を粒度ごとに */
@@ -1407,16 +1424,11 @@ function validateBuyRule(
 				}
 				case "eventWindow": {
 					if (g !== "buy") {
-						err(at, "予定イベントの前後は買いの条件だけで使える");
+						err(at, "予定の前後は買いの条件だけで使える");
 						break;
 					}
-					if (c.events.length === 0) {
-						err(`${at}.events`, "1つ以上選ぶ");
-					} else if (
-						!c.events.every(isMarketEvent) ||
-						new Set(c.events).size !== c.events.length
-					) {
-						err(`${at}.events`, "選べない値がある");
+					if (!isEventImportance(c.minImportance)) {
+						err(`${at}.minImportance`, "選べない値");
 					}
 					const r = LIMITS.eventHours;
 					if (!isIntIn(c.beforeHours, r)) {
@@ -2112,16 +2124,13 @@ function parseCondition(
 		case "holdingBars":
 			return { type: "holdingBars", timeframe, bars: num(v.bars) };
 		case "eventWindow":
-			if (
-				!Array.isArray(v.events) ||
-				!v.events.every((x) => typeof x === "string")
-			) {
-				return null;
-			}
 			return {
 				type: "eventWindow",
-				// 知らない種類も残し、入力検証で弾く
-				events: v.events as MarketEvent[],
+				// 重要度で選ぶ前（予定の種類で選んでいた頃）の条件は、その種類が当たる「高」とみなす。
+				// 知らない値も残し、入力検証で弾く
+				minImportance: (v.minImportance === undefined && Array.isArray(v.events)
+					? "high"
+					: v.minImportance) as EventImportance,
 				beforeHours: num(v.beforeHours),
 				afterHours: num(v.afterHours),
 				// 選べるようにする前に作った条件は、暦切れで買いを判定しない

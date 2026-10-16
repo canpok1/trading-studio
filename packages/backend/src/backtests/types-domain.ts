@@ -11,6 +11,7 @@ import type {
 	Timeframe,
 	ValidationError,
 } from "@trading-studio/core";
+import type { JudgmentCoverage } from "../calendar/types-domain";
 import type { JudgmentSeries } from "../judgments/types-domain";
 import type { RescoreCoverage } from "../news/types-domain";
 import type { StoredStrategy } from "../strategies/types-domain";
@@ -30,6 +31,8 @@ export type BacktestInput = {
 	skipGaps: boolean;
 	/** 市場評価に使う採点の基準の版。null は運用どおり（記事ごとに運用で採点した版）。市場評価の条件が無ければ無視する */
 	criteriaVersion: number | null;
+	/** 予定の前後の条件に使う、予定の評価基準の版。null は使用中の版。予定の前後の条件が無ければ無視する */
+	eventCriteriaVersion: number | null;
 	/** 期間を相場データで選ぶ。指定すると from・to は無視し、相場データの期間で実行する */
 	segmentId: number | null;
 };
@@ -67,6 +70,8 @@ export type BacktestRun = {
 	aggregationRule: AggregationRule | null;
 	/** 市場評価に使った採点の基準の版。null は運用どおり */
 	criteriaVersion: number | null;
+	/** 予定の前後の条件に使った、予定の評価基準の版。予定の前後の条件が無い・記録する前の実行は null */
+	eventCriteriaVersion: number | null;
 	/**
 	 * 記事を公開から何ミリ秒遅れて使ったか（実行したときの取得の間隔）。市場評価の条件が無い実行と、
 	 * 公開時刻から使う前の実行（運用の採点時刻から使っていた）は null
@@ -144,6 +149,13 @@ export type StartBacktestFailure =
 			message: string;
 			version: number;
 			coverage: RescoreCoverage;
+	  }
+	/** 予定の前後の条件で見る予定に、指定した版の重要度の判断が無いものがある。判断がそろうと実行できる */
+	| {
+			kind: "missing_event_judgments";
+			message: string;
+			version: number;
+			coverage: JudgmentCoverage;
 	  }
 	/** 期間内に欠損がある。skipGaps で実行し直せる */
 	| { kind: "gaps"; gaps: Gap[]; gapCount: number; missingBars: number };

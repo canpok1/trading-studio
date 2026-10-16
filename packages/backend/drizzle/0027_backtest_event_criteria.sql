@@ -1,0 +1,1 @@
+ALTER TABLE `backtest_runs` ADD `event_criteria_version` integer;

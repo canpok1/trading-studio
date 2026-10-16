@@ -1,34 +1,48 @@
-// 予定イベント（米国の金融政策・経済指標の発表、日銀会合）の暦。買いの条件「予定イベントの前後でない」に使う。
-// リポジトリに持つ 2022〜2026 年の分と、設定の取得元（iCal）から取得した分を合わせて使う（docs/adr/0029-event-calendar-from-ical.md）
+// 予定（経済指標の発表・金融政策の会合など）の暦。買いの条件「予定の前後でない」に使う。
+// 予定は取得元の iCal とアプリが持つ過去の分から作り、重要度は AI が判断する（docs/adr/0029-event-calendar-from-ical.md）
 
 import { JST_OFFSET_MS } from "./timeframe";
 
-export const MARKET_EVENTS = [
-	"fomc",
-	"fomcMinutes",
-	"cpi",
-	"nfp",
-	"boj",
-] as const;
-export type MarketEvent = (typeof MARKET_EVENTS)[number];
+/** 予定の重要度。高い順 */
+export const EVENT_IMPORTANCES = ["high", "medium", "low"] as const;
+export type EventImportance = (typeof EVENT_IMPORTANCES)[number];
 
-export const MARKET_EVENT_LABELS: Record<MarketEvent, string> = {
-	fomc: "FOMC 声明",
-	fomcMinutes: "FOMC 議事要旨",
-	cpi: "米 CPI",
-	nfp: "米雇用統計",
-	boj: "日銀会合",
+export const EVENT_IMPORTANCE_LABELS: Record<EventImportance, string> = {
+	high: "高",
+	medium: "中",
+	low: "低",
 };
 
-export function isMarketEvent(v: unknown): v is MarketEvent {
-	return (MARKET_EVENTS as readonly unknown[]).includes(v);
+export function isEventImportance(v: unknown): v is EventImportance {
+	return (EVENT_IMPORTANCES as readonly unknown[]).includes(v);
 }
 
-/** 予定イベント1件。end は時間の幅を持つもの（時刻が決まっていない日銀会合は JST の日の 0:00〜24:00）だけ start と違う */
-export type ScheduledEvent = { type: MarketEvent; start: number; end: number };
+/** importance が min 以上か */
+export function atLeast(importance: EventImportance, min: EventImportance) {
+	return (
+		EVENT_IMPORTANCES.indexOf(importance) <= EVENT_IMPORTANCES.indexOf(min)
+	);
+}
+
+/** 重要度の下限の文言。例: 「重要度 高」「重要度 中以上」「すべての予定」 */
+export function importanceText(min: EventImportance): string {
+	if (min === "high") return "重要度 高";
+	if (min === "low") return "すべての予定";
+	return `重要度 ${EVENT_IMPORTANCE_LABELS[min]}以上`;
+}
+
+/**
+ * 予定1件。end は時間の幅を持つもの（終日の予定はその日の 24 時間）だけ start と違う。
+ * importance は判断に使う版での重要度。まだ判断していないか判断に失敗していれば null
+ */
+export type ScheduledEvent = {
+	title: string;
+	start: number;
+	end: number;
+	importance: EventImportance | null;
+};
 
 export const HOUR_MS = 3_600_000;
-const DAY_MS = 24 * HOUR_MS;
 
 /** JST の年月日。例: 「2026-12-31」 */
 export function jstDate(t: number): string {
@@ -42,273 +56,17 @@ export function jstDateTime(t: number): string {
 	return `${d.getUTCMonth() + 1}/${d.getUTCDate()} ${d.getUTCHours()}:${mm}`;
 }
 
-/** リポジトリに持つ暦が全件を持っている期間（UTC エポックミリ秒、from 以上 until 未満） */
-export const EVENT_CALENDAR_RANGE = {
-	from: 1640962800000, // 2022-01-01 00:00 JST
-	until: 1798729200000, // 2027-01-01 00:00 JST
-} as const;
-
-// [種類, 時刻（UTC エポックミリ秒）, 時刻が決まっていない（JST の日の 0:00 から24時間）]。時刻の順
-const ROWS: readonly (readonly [MarketEvent, number, boolean?])[] = [
-	["fomcMinutes", 1641409200000], // 2022-01-05 14:00 ET。2021年12月会合分
-	["nfp", 1641562200000], // 2022-01-07 08:30 ET。2021-12分
-	["cpi", 1641994200000], // 2022-01-12 08:30 ET。2021-12分
-	["boj", 1642431600000, true], // 2022-01-18 JST 終日
-	["fomc", 1643223600000], // 2022-01-26 14:00 ET
-	["nfp", 1643981400000], // 2022-02-04 08:30 ET。2022-01分
-	["cpi", 1644499800000], // 2022-02-10 08:30 ET。2022-01分
-	["fomcMinutes", 1645038000000], // 2022-02-16 14:00 ET。2022年1月会合分
-	["nfp", 1646400600000], // 2022-03-04 08:30 ET。2022-02分
-	["cpi", 1646919000000], // 2022-03-10 08:30 ET。2022-02分
-	["fomc", 1647453600000], // 2022-03-16 14:00 ET
-	["boj", 1647529200000, true], // 2022-03-18 JST 終日
-	["nfp", 1648816200000], // 2022-04-01 08:30 ET。2022-03分
-	["fomcMinutes", 1649268000000], // 2022-04-06 14:00 ET。2022年3月会合分
-	["cpi", 1649766600000], // 2022-04-12 08:30 ET。2022-03分
-	["boj", 1651071600000, true], // 2022-04-28 JST 終日
-	["fomc", 1651687200000], // 2022-05-04 14:00 ET
-	["nfp", 1651840200000], // 2022-05-06 08:30 ET。2022-04分
-	["cpi", 1652272200000], // 2022-05-11 08:30 ET。2022-04分
-	["fomcMinutes", 1653501600000], // 2022-05-25 14:00 ET。2022年5月会合分
-	["nfp", 1654259400000], // 2022-06-03 08:30 ET。2022-05分
-	["cpi", 1654864200000], // 2022-06-10 08:30 ET。2022-05分
-	["fomc", 1655316000000], // 2022-06-15 14:00 ET
-	["boj", 1655391600000, true], // 2022-06-17 JST 終日
-	["fomcMinutes", 1657130400000], // 2022-07-06 14:00 ET。2022年6月会合分
-	["nfp", 1657283400000], // 2022-07-08 08:30 ET。2022-06分
-	["cpi", 1657715400000], // 2022-07-13 08:30 ET。2022-06分
-	["boj", 1658329200000, true], // 2022-07-21 JST 終日
-	["fomc", 1658944800000], // 2022-07-27 14:00 ET
-	["nfp", 1659702600000], // 2022-08-05 08:30 ET。2022-07分
-	["cpi", 1660134600000], // 2022-08-10 08:30 ET。2022-07分
-	["fomcMinutes", 1660759200000], // 2022-08-17 14:00 ET。2022年7月会合分
-	["nfp", 1662121800000], // 2022-09-02 08:30 ET。2022-08分
-	["cpi", 1663072200000], // 2022-09-13 08:30 ET。2022-08分
-	["boj", 1663772400000, true], // 2022-09-22 JST 終日
-	["fomc", 1663783200000], // 2022-09-21 14:00 ET
-	["nfp", 1665145800000], // 2022-10-07 08:30 ET。2022-09分
-	["fomcMinutes", 1665597600000], // 2022-10-12 14:00 ET。2022年9月会合分
-	["cpi", 1665664200000], // 2022-10-13 08:30 ET。2022-09分
-	["boj", 1666882800000, true], // 2022-10-28 JST 終日
-	["fomc", 1667412000000], // 2022-11-02 14:00 ET
-	["nfp", 1667565000000], // 2022-11-04 08:30 ET。2022-10分
-	["cpi", 1668087000000], // 2022-11-10 08:30 ET。2022-10分
-	["fomcMinutes", 1669230000000], // 2022-11-23 14:00 ET。2022年11月会合分
-	["nfp", 1669987800000], // 2022-12-02 08:30 ET。2022-11分
-	["cpi", 1670938200000], // 2022-12-13 08:30 ET。2022-11分
-	["fomc", 1671044400000], // 2022-12-14 14:00 ET
-	["boj", 1671462000000, true], // 2022-12-20 JST 終日
-	["fomcMinutes", 1672858800000], // 2023-01-04 14:00 ET。2022年12月会合分
-	["nfp", 1673011800000], // 2023-01-06 08:30 ET。2022-12分
-	["cpi", 1673530200000], // 2023-01-12 08:30 ET。2022-12分
-	["boj", 1673967600000, true], // 2023-01-18 JST 終日
-	["fomc", 1675278000000], // 2023-02-01 14:00 ET
-	["nfp", 1675431000000], // 2023-02-03 08:30 ET。2023-01分
-	["cpi", 1676381400000], // 2023-02-14 08:30 ET。2023-01分
-	["fomcMinutes", 1677092400000], // 2023-02-22 14:00 ET。2023年2月会合分
-	["boj", 1678374000000, true], // 2023-03-10 JST 終日
-	["nfp", 1678455000000], // 2023-03-10 08:30 ET。2023-02分
-	["cpi", 1678797000000], // 2023-03-14 08:30 ET。2023-02分
-	["fomc", 1679508000000], // 2023-03-22 14:00 ET
-	["nfp", 1680870600000], // 2023-04-07 08:30 ET。2023-03分
-	["cpi", 1681302600000], // 2023-04-12 08:30 ET。2023-03分
-	["fomcMinutes", 1681322400000], // 2023-04-12 14:00 ET。2023年3月会合分
-	["boj", 1682607600000, true], // 2023-04-28 JST 終日
-	["fomc", 1683136800000], // 2023-05-03 14:00 ET
-	["nfp", 1683289800000], // 2023-05-05 08:30 ET。2023-04分
-	["cpi", 1683721800000], // 2023-05-10 08:30 ET。2023-04分
-	["fomcMinutes", 1684951200000], // 2023-05-24 14:00 ET。2023年5月会合分
-	["nfp", 1685709000000], // 2023-06-02 08:30 ET。2023-05分
-	["cpi", 1686659400000], // 2023-06-13 08:30 ET。2023-05分
-	["fomc", 1686765600000], // 2023-06-14 14:00 ET
-	["boj", 1686841200000, true], // 2023-06-16 JST 終日
-	["fomcMinutes", 1688580000000], // 2023-07-05 14:00 ET。2023年6月会合分
-	["nfp", 1688733000000], // 2023-07-07 08:30 ET。2023-06分
-	["cpi", 1689165000000], // 2023-07-12 08:30 ET。2023-06分
-	["fomc", 1690394400000], // 2023-07-26 14:00 ET
-	["boj", 1690470000000, true], // 2023-07-28 JST 終日
-	["nfp", 1691152200000], // 2023-08-04 08:30 ET。2023-07分
-	["cpi", 1691670600000], // 2023-08-10 08:30 ET。2023-07分
-	["fomcMinutes", 1692208800000], // 2023-08-16 14:00 ET。2023年7月会合分
-	["nfp", 1693571400000], // 2023-09-01 08:30 ET。2023-08分
-	["cpi", 1694608200000], // 2023-09-13 08:30 ET。2023-08分
-	["fomc", 1695232800000], // 2023-09-20 14:00 ET
-	["boj", 1695308400000, true], // 2023-09-22 JST 終日
-	["nfp", 1696595400000], // 2023-10-06 08:30 ET。2023-09分
-	["fomcMinutes", 1697047200000], // 2023-10-11 14:00 ET。2023年9月会合分
-	["cpi", 1697113800000], // 2023-10-12 08:30 ET。2023-09分
-	["boj", 1698678000000, true], // 2023-10-31 JST 終日
-	["fomc", 1698861600000], // 2023-11-01 14:00 ET
-	["nfp", 1699014600000], // 2023-11-03 08:30 ET。2023-10分
-	["cpi", 1699968600000], // 2023-11-14 08:30 ET。2023-10分
-	["fomcMinutes", 1700593200000], // 2023-11-21 14:00 ET。2023年11月会合分
-	["nfp", 1702042200000], // 2023-12-08 08:30 ET。2023-11分
-	["cpi", 1702387800000], // 2023-12-12 08:30 ET。2023-11分
-	["fomc", 1702494000000], // 2023-12-13 14:00 ET
-	["boj", 1702911600000, true], // 2023-12-19 JST 終日
-	["fomcMinutes", 1704308400000], // 2024-01-03 14:00 ET。2023年12月会合分
-	["nfp", 1704461400000], // 2024-01-05 08:30 ET。2023-12分
-	["cpi", 1704979800000], // 2024-01-11 08:30 ET。2023-12分
-	["boj", 1705935600000, true], // 2024-01-23 JST 終日
-	["fomc", 1706727600000], // 2024-01-31 14:00 ET
-	["nfp", 1706880600000], // 2024-02-02 08:30 ET。2024-01分
-	["cpi", 1707831000000], // 2024-02-13 08:30 ET。2024-01分
-	["fomcMinutes", 1708542000000], // 2024-02-21 14:00 ET。2024年1月会合分
-	["nfp", 1709904600000], // 2024-03-08 08:30 ET。2024-02分
-	["cpi", 1710246600000], // 2024-03-12 08:30 ET。2024-02分
-	["boj", 1710774000000, true], // 2024-03-19 JST 終日
-	["fomc", 1710957600000], // 2024-03-20 14:00 ET
-	["nfp", 1712320200000], // 2024-04-05 08:30 ET。2024-03分
-	["cpi", 1712752200000], // 2024-04-10 08:30 ET。2024-03分
-	["fomcMinutes", 1712772000000], // 2024-04-10 14:00 ET。2024年3月会合分
-	["boj", 1714057200000, true], // 2024-04-26 JST 終日
-	["fomc", 1714586400000], // 2024-05-01 14:00 ET
-	["nfp", 1714739400000], // 2024-05-03 08:30 ET。2024-04分
-	["cpi", 1715776200000], // 2024-05-15 08:30 ET。2024-04分
-	["fomcMinutes", 1716400800000], // 2024-05-22 14:00 ET。2024年5月会合分
-	["nfp", 1717763400000], // 2024-06-07 08:30 ET。2024-05分
-	["cpi", 1718195400000], // 2024-06-12 08:30 ET。2024-05分
-	["fomc", 1718215200000], // 2024-06-12 14:00 ET
-	["boj", 1718290800000, true], // 2024-06-14 JST 終日
-	["fomcMinutes", 1720029600000], // 2024-07-03 14:00 ET。2024年6月会合分
-	["nfp", 1720182600000], // 2024-07-05 08:30 ET。2024-06分
-	["cpi", 1720701000000], // 2024-07-11 08:30 ET。2024-06分
-	["boj", 1722351600000, true], // 2024-07-31 JST 終日
-	["fomc", 1722448800000], // 2024-07-31 14:00 ET
-	["nfp", 1722601800000], // 2024-08-02 08:30 ET。2024-07分
-	["cpi", 1723638600000], // 2024-08-14 08:30 ET。2024-07分
-	["fomcMinutes", 1724263200000], // 2024-08-21 14:00 ET。2024年7月会合分
-	["nfp", 1725625800000], // 2024-09-06 08:30 ET。2024-08分
-	["cpi", 1726057800000], // 2024-09-11 08:30 ET。2024-08分
-	["fomc", 1726682400000], // 2024-09-18 14:00 ET
-	["boj", 1726758000000, true], // 2024-09-20 JST 終日
-	["nfp", 1728045000000], // 2024-10-04 08:30 ET。2024-09分
-	["fomcMinutes", 1728496800000], // 2024-10-09 14:00 ET。2024年9月会合分
-	["cpi", 1728563400000], // 2024-10-10 08:30 ET。2024-09分
-	["boj", 1730300400000, true], // 2024-10-31 JST 終日
-	["nfp", 1730464200000], // 2024-11-01 08:30 ET。2024-10分
-	["fomc", 1731006000000], // 2024-11-07 14:00 ET
-	["cpi", 1731504600000], // 2024-11-13 08:30 ET。2024-10分
-	["fomcMinutes", 1732647600000], // 2024-11-26 14:00 ET。2024年11月会合分
-	["nfp", 1733491800000], // 2024-12-06 08:30 ET。2024-11分
-	["cpi", 1733923800000], // 2024-12-11 08:30 ET。2024-11分
-	["boj", 1734534000000, true], // 2024-12-19 JST 終日
-	["fomc", 1734548400000], // 2024-12-18 14:00 ET
-	["fomcMinutes", 1736362800000], // 2025-01-08 14:00 ET。2024年12月会合分
-	["nfp", 1736515800000], // 2025-01-10 08:30 ET。2024-12分
-	["cpi", 1736947800000], // 2025-01-15 08:30 ET。2024-12分
-	["boj", 1737644400000, true], // 2025-01-24 JST 終日
-	["fomc", 1738177200000], // 2025-01-29 14:00 ET
-	["nfp", 1738935000000], // 2025-02-07 08:30 ET。2025-01分
-	["cpi", 1739367000000], // 2025-02-12 08:30 ET。2025-01分
-	["fomcMinutes", 1739991600000], // 2025-02-19 14:00 ET。2025年1月会合分
-	["nfp", 1741354200000], // 2025-03-07 08:30 ET。2025-02分
-	["cpi", 1741782600000], // 2025-03-12 08:30 ET。2025-02分
-	["boj", 1742310000000, true], // 2025-03-19 JST 終日
-	["fomc", 1742407200000], // 2025-03-19 14:00 ET
-	["nfp", 1743769800000], // 2025-04-04 08:30 ET。2025-03分
-	["fomcMinutes", 1744221600000], // 2025-04-09 14:00 ET。2025年3月会合分
-	["cpi", 1744288200000], // 2025-04-10 08:30 ET。2025-03分
-	["boj", 1746025200000, true], // 2025-05-01 JST 終日
-	["nfp", 1746189000000], // 2025-05-02 08:30 ET。2025-04分
-	["fomc", 1746640800000], // 2025-05-07 14:00 ET
-	["cpi", 1747139400000], // 2025-05-13 08:30 ET。2025-04分
-	["fomcMinutes", 1748455200000], // 2025-05-28 14:00 ET。2025年5月会合分
-	["nfp", 1749213000000], // 2025-06-06 08:30 ET。2025-05分
-	["cpi", 1749645000000], // 2025-06-11 08:30 ET。2025-05分
-	["boj", 1750086000000, true], // 2025-06-17 JST 終日
-	["fomc", 1750269600000], // 2025-06-18 14:00 ET
-	["nfp", 1751545800000], // 2025-07-03 08:30 ET。2025-06分
-	["fomcMinutes", 1752084000000], // 2025-07-09 14:00 ET。2025年6月会合分
-	["cpi", 1752582600000], // 2025-07-15 08:30 ET。2025-06分
-	["boj", 1753887600000, true], // 2025-07-31 JST 終日
-	["fomc", 1753898400000], // 2025-07-30 14:00 ET
-	["nfp", 1754051400000], // 2025-08-01 08:30 ET。2025-07分
-	["cpi", 1755001800000], // 2025-08-12 08:30 ET。2025-07分
-	["fomcMinutes", 1755712800000], // 2025-08-20 14:00 ET。2025年7月会合分
-	["nfp", 1757075400000], // 2025-09-05 08:30 ET。2025-08分
-	["cpi", 1757593800000], // 2025-09-11 08:30 ET。2025-08分
-	["fomc", 1758132000000], // 2025-09-17 14:00 ET
-	["boj", 1758207600000, true], // 2025-09-19 JST 終日
-	["fomcMinutes", 1759946400000], // 2025-10-08 14:00 ET。2025年9月会合分
-	["cpi", 1761309000000], // 2025-10-24 08:30 ET。2025-09分。2025年の政府閉鎖で延期（当初予定 2025-10-15）
-	["boj", 1761750000000, true], // 2025-10-30 JST 終日
-	["fomc", 1761760800000], // 2025-10-29 14:00 ET
-	["fomcMinutes", 1763578800000], // 2025-11-19 14:00 ET。2025年10月会合分
-	["nfp", 1763645400000], // 2025-11-20 08:30 ET。2025-09分。2025年の政府閉鎖で延期（当初予定 2025-10-03）
-	["fomc", 1765393200000], // 2025-12-10 14:00 ET
-	["nfp", 1765891800000], // 2025-12-16 08:30 ET。2025-11分。2025年の政府閉鎖の影響で延期。2025-10分の単独の公表は無く、事業所調査の10月分はこの回に含む
-	["cpi", 1766064600000], // 2025-12-18 08:30 ET。2025-11分。2025年の政府閉鎖の影響で延期。2025-10分は公表されず
-	["boj", 1766070000000, true], // 2025-12-19 JST 終日
-	["fomcMinutes", 1767121200000], // 2025-12-30 14:00 ET。2025年12月会合分
-	["nfp", 1767965400000], // 2026-01-09 08:30 ET。2025-12分
-	["cpi", 1768311000000], // 2026-01-13 08:30 ET。2025-12分
-	["boj", 1769094000000, true], // 2026-01-23 JST 終日
-	["fomc", 1769626800000], // 2026-01-28 14:00 ET
-	["nfp", 1770816600000], // 2026-02-11 08:30 ET。2026-01分。延期（当初予定 2026-02-06）
-	["cpi", 1770989400000], // 2026-02-13 08:30 ET。2026-01分。延期（当初予定 2026-02-11）
-	["fomcMinutes", 1771441200000], // 2026-02-18 14:00 ET。2026年1月会合分
-	["nfp", 1772803800000], // 2026-03-06 08:30 ET。2026-02分
-	["cpi", 1773232200000], // 2026-03-11 08:30 ET。2026-02分
-	["boj", 1773846000000, true], // 2026-03-19 JST 終日
-	["fomc", 1773856800000], // 2026-03-18 14:00 ET
-	["nfp", 1775219400000], // 2026-04-03 08:30 ET。2026-03分
-	["fomcMinutes", 1775671200000], // 2026-04-08 14:00 ET。2026年3月会合分
-	["cpi", 1775824200000], // 2026-04-10 08:30 ET。2026-03分
-	["boj", 1777302000000, true], // 2026-04-28 JST 終日
-	["fomc", 1777485600000], // 2026-04-29 14:00 ET
-	["nfp", 1778243400000], // 2026-05-08 08:30 ET。2026-04分
-	["cpi", 1778589000000], // 2026-05-12 08:30 ET。2026-04分
-	["fomcMinutes", 1779300000000], // 2026-05-20 14:00 ET。2026年4月会合分
-	["nfp", 1780662600000], // 2026-06-05 08:30 ET。2026-05分
-	["cpi", 1781094600000], // 2026-06-10 08:30 ET。2026-05分
-	["boj", 1781535600000, true], // 2026-06-16 JST 終日
-	["fomc", 1781719200000], // 2026-06-17 14:00 ET
-	["nfp", 1782995400000], // 2026-07-02 08:30 ET。2026-06分
-	["fomcMinutes", 1783533600000], // 2026-07-08 14:00 ET。2026年6月会合分
-	["cpi", 1784032200000], // 2026-07-14 08:30 ET。2026-06分
-	["fomc", 1785348000000], // 2026-07-29 14:00 ET
-	["boj", 1785423600000, true], // 2026-07-31 JST 終日
-	["nfp", 1786105800000], // 2026-08-07 08:30 ET。2026-07分
-	["cpi", 1786537800000], // 2026-08-12 08:30 ET。2026-07分
-	["fomcMinutes", 1787162400000], // 2026-08-19 14:00 ET。2026年7月会合分
-	["nfp", 1788525000000], // 2026-09-04 08:30 ET。2026-08分
-	["cpi", 1789129800000], // 2026-09-11 08:30 ET。2026-08分
-	["fomc", 1789581600000], // 2026-09-16 14:00 ET
-	["boj", 1789657200000, true], // 2026-09-18 JST 終日
-	["nfp", 1790944200000], // 2026-10-02 08:30 ET。2026-09分
-	["fomcMinutes", 1791396000000], // 2026-10-07 14:00 ET。2026年9月会合分
-	["cpi", 1791981000000], // 2026-10-14 08:30 ET。2026-09分
-	["fomc", 1793210400000], // 2026-10-28 14:00 ET。予定
-	["boj", 1793286000000, true], // 2026-10-30 JST 終日。予定
-	["nfp", 1793971800000], // 2026-11-06 08:30 ET。2026-10分。予定
-	["cpi", 1794317400000], // 2026-11-10 08:30 ET。2026-10分。予定
-	["fomcMinutes", 1795028400000], // 2026-11-18 14:00 ET。2026年10月会合分（federalreserve.gov のカレンダー 2026年11月）。予定
-	["nfp", 1796391000000], // 2026-12-04 08:30 ET。2026-11分。予定
-	["fomc", 1796842800000], // 2026-12-09 14:00 ET。予定
-	["cpi", 1796909400000], // 2026-12-10 08:30 ET。2026-11分。予定
-	["boj", 1797519600000, true], // 2026-12-18 JST 終日。予定
-];
-
-export const SCHEDULED_EVENTS: readonly ScheduledEvent[] = ROWS.map(
-	([type, start, allDay]) => ({
-		type,
-		start,
-		end: allDay ? start + DAY_MS : start,
-	}),
-);
-
 /** 暦が全件を持っている期間。from 以上 until 未満 */
 export type CalendarRange = { from: number; until: number };
 
 /**
- * 判定に使う暦。covered は種類ごとの、全件を持っている期間（重ならず時刻の順）。
- * この外を含む判定は、イベントが無いと言えない
+ * 判定に使う暦。covered は全件を持っている期間（重ならず時刻の順）。
+ * この外を含む判定は、予定が無いと言えない
  */
 export type EventCalendar = {
 	/** 時刻の順 */
 	events: readonly ScheduledEvent[];
-	covered: Readonly<Record<MarketEvent, readonly CalendarRange[]>>;
+	covered: readonly CalendarRange[];
 };
 
 /** 重なるか接する期間をまとめる（時刻の順） */
@@ -324,37 +82,6 @@ export function mergeRanges(ranges: readonly CalendarRange[]): CalendarRange[] {
 	return out;
 }
 
-/** 暦を合わせる。同じ種類・同じ時刻のイベントは1件にする */
-export function combineCalendars(
-	calendars: readonly EventCalendar[],
-): EventCalendar {
-	const seen = new Set<string>();
-	const events: ScheduledEvent[] = [];
-	for (const e of calendars
-		.flatMap((c) => c.events)
-		.sort((a, b) => a.start - b.start || a.end - b.end)) {
-		const key = `${e.type}:${e.start}`;
-		if (seen.has(key)) continue;
-		seen.add(key);
-		events.push(e);
-	}
-	const covered = Object.fromEntries(
-		MARKET_EVENTS.map((t) => [
-			t,
-			mergeRanges(calendars.flatMap((c) => c.covered[t])),
-		]),
-	) as Record<MarketEvent, CalendarRange[]>;
-	return { events, covered };
-}
-
-/** リポジトリに持つ暦 */
-export const BUNDLED_EVENT_CALENDAR: EventCalendar = {
-	events: SCHEDULED_EVENTS,
-	covered: Object.fromEntries(
-		MARKET_EVENTS.map((t) => [t, [EVENT_CALENDAR_RANGE]]),
-	) as Record<MarketEvent, CalendarRange[]>,
-};
-
 /** JST の年月日と時刻。例: 「2026-12-31 23:00」 */
 export function jstDateTimeFull(t: number): string {
 	const d = new Date(t + JST_OFFSET_MS);
@@ -362,59 +89,65 @@ export function jstDateTimeFull(t: number): string {
 	return `${jstDate(t)} ${d.getUTCHours()}:${mm}`;
 }
 
-/**
- * [from, to] の types の暦が全件そろっていなければ、その理由（暦切れ）。そろっていれば null。
- * 例: 「米 CPI の暦は 2027-01-01 0:00 まで」
- */
-export function calendarGap(
-	cal: EventCalendar,
-	types: readonly MarketEvent[],
-	from: number,
-	to: number,
-): string | null {
-	for (const t of types) {
-		const ranges = cal.covered[t];
-		if (ranges.some((r) => r.from <= from && to < r.until)) continue;
-		const label = MARKET_EVENT_LABELS[t];
-		// 判定の期間の始まりを含む期間か、無ければその次・その前の期間で書く
-		const around = ranges.find((r) => r.from <= from && from < r.until);
-		if (around) return `${label} の暦は ${jstDateTimeFull(around.until)} まで`;
-		const after = ranges.find((r) => r.from > from);
-		if (after) return `${label} の暦は ${jstDateTimeFull(after.from)} から`;
-		const before = ranges.at(-1);
-		return before
-			? `${label} の暦は ${jstDateTimeFull(before.until)} まで`
-			: `${label} の暦が無い`;
-	}
-	return null;
-}
-
-/** イベントの時間 [start, end] が [from, to] に掛かるか */
+/** 予定の時間 [start, end] が [from, to] に掛かるか */
 const covers = (e: ScheduledEvent, from: number, to: number) =>
 	e.start <= to && e.end >= from;
 
-/** [from, to] に掛かる、types のどれかのイベント（時刻の順） */
+/**
+ * [from, to] の暦がそろっていなければ、その理由（暦切れ）。そろっていれば null。
+ * 期間の外に掛かるか、重要度をまだ判断していない予定があれば、そろっていない。
+ * 例: 「暦は 2027-01-01 0:00 まで」「「US CPI m/m」の重要度が未判断」
+ */
+export function calendarGap(
+	cal: EventCalendar,
+	from: number,
+	to: number,
+): string | null {
+	const ranges = cal.covered;
+	if (!ranges.some((r) => r.from <= from && to < r.until)) {
+		// 判定の期間の始まりを含む期間か、無ければその次・その前の期間で書く
+		const around = ranges.find((r) => r.from <= from && from < r.until);
+		if (around) return `暦は ${jstDateTimeFull(around.until)} まで`;
+		const after = ranges.find((r) => r.from > from);
+		if (after) return `暦は ${jstDateTimeFull(after.from)} から`;
+		const before = ranges.at(-1);
+		return before ? `暦は ${jstDateTimeFull(before.until)} まで` : "暦が無い";
+	}
+	const unjudged = cal.events.find(
+		(e) => e.importance === null && covers(e, from, to),
+	);
+	return unjudged ? `「${unjudged.title}」の重要度が未判断` : null;
+}
+
+/** [from, to] に掛かる、重要度が min 以上の予定（時刻の順） */
 export function eventsBetween(
 	cal: EventCalendar,
-	types: readonly MarketEvent[],
+	min: EventImportance,
 	from: number,
 	to: number,
 ): ScheduledEvent[] {
 	return cal.events.filter(
-		(e) => types.includes(e.type) && covers(e, from, to),
+		(e) =>
+			e.importance !== null &&
+			atLeast(e.importance, min) &&
+			covers(e, from, to),
 	);
 }
 
-/** t より後に始まる、types のどれかの最初のイベント。暦に無ければ null */
+/** t より後に始まる、重要度が min 以上の最初の予定。暦に無ければ null */
 export function nextEvent(
 	cal: EventCalendar,
-	types: readonly MarketEvent[],
+	min: EventImportance,
 	t: number,
 ): ScheduledEvent | null {
-	return cal.events.find((e) => types.includes(e.type) && e.start > t) ?? null;
+	return (
+		cal.events.find(
+			(e) => e.importance !== null && atLeast(e.importance, min) && e.start > t,
+		) ?? null
+	);
 }
 
-/** イベントの前後の時間の文言。例: 「前 2 時間・後 24 時間」、どちらも 0 なら「発表の時刻」 */
+/** 予定の前後の時間の文言。例: 「前 2 時間・後 24 時間」、どちらも 0 なら「発表の時刻」 */
 export function eventSpanText(beforeHours: number, afterHours: number): string {
 	const parts = [
 		beforeHours > 0 ? `前 ${beforeHours} 時間` : "",
