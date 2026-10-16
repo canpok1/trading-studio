@@ -3,6 +3,7 @@
 import * as z from "zod";
 import type { AdviceService } from "../advice/types-domain";
 import type { BacktestService } from "../backtests/types-domain";
+import type { CalendarService } from "../calendar/types-domain";
 import type { DatasetService } from "../datasets/types-domain";
 import type { JudgmentService } from "../judgments/types-domain";
 import type { MarketService } from "../market/types-domain";
@@ -39,6 +40,11 @@ export type McpDeps = {
 	>;
 	market: Pick<MarketService, "latest" | "bars">;
 	advice: Pick<AdviceService, "get">;
+	/** 予定。読むだけで、取得元と評価基準の変更は道具にしない */
+	calendar: Pick<
+		CalendarService,
+		"listSources" | "status" | "criteria" | "listEvents"
+	>;
 	/** ホームのタブのどれかが運用する戦略に選んでいるか。選ばれている戦略は条件を変えさせない */
 	inUse: (strategyId: number) => boolean;
 	/** run_backtest が終わりを待つ時間。過ぎたら実行中のまま返し、get_backtest で続きを見てもらう */

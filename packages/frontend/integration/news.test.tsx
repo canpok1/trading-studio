@@ -318,7 +318,7 @@ describe("評価詳細", () => {
 			view.getAllByRole("list", { name: "リスクの色の意味" }),
 		).toHaveLength(1);
 
-		fireEvent.click(view.getByRole("tab", { name: "一覧" }));
+		fireEvent.click(view.getByRole("tab", { name: "記事" }));
 		expect(view.location.current).toBe("/news");
 	});
 
@@ -479,7 +479,7 @@ describe("評価詳細", () => {
 		);
 
 		// 一覧の絞り込みを変えても残る
-		fireEvent.click(view.getByRole("tab", { name: "一覧" }));
+		fireEvent.click(view.getByRole("tab", { name: "記事" }));
 		fireEvent.click(await view.findByRole("button", { name: "強気材料" }));
 		expect(view.location.current).toContain("impact=");
 		fireEvent.click(view.getByRole("tab", { name: "評価詳細" }));

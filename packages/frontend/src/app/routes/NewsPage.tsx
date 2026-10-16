@@ -12,6 +12,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { BreakdownCards } from "../../features/news/components/Breakdown";
+import { EventsTab } from "../../features/news/components/EventsTab";
 import { NewsFilterBar } from "../../features/news/components/NewsFilter";
 import { NewsTab } from "../../features/news/components/NewsTab";
 import type { AiData } from "../../features/news/utils/ai";
@@ -56,7 +57,8 @@ const NEWS_PAGE = 100;
 const NEWS_MAX = 1000;
 
 const VIEWS = [
-	["list", "一覧"],
+	["list", "記事"],
+	["events", "予定"],
 	["evaluation", "評価詳細"],
 ] as const;
 type View = (typeof VIEWS)[number][0];
@@ -66,7 +68,8 @@ export function NewsPage() {
 	const visible = usePageVisible();
 
 	const [params, setParams] = useSearchParams();
-	const view: View = params.get("tab") === "evaluation" ? "evaluation" : "list";
+	const tabParam = params.get("tab");
+	const view: View = VIEWS.find(([v]) => v === tabParam)?.[0] ?? "list";
 	// 絞り込みの条件は残したまま切り替える
 	const setView = (v: View) => {
 		const next = new URLSearchParams(params);
@@ -131,10 +134,29 @@ export function NewsPage() {
 		}
 	}, [api, filterKey, limit]);
 	useEffect(() => {
-		if (visible) load();
-	}, [visible, load]);
-	useInterval(load, POLL_MS, visible);
+		// 予定のタブでは記事と市場評価を使わないので読まない
+		if (visible && view !== "events") load();
+	}, [visible, view, load]);
+	useInterval(load, POLL_MS, visible && view !== "events");
 	const precisions = useArticlePrecisions(data?.news ?? [], visible);
+	const tabs = (
+		<Tabs
+			label="ニュースの表示"
+			items={VIEWS}
+			current={view}
+			onSelect={setView}
+		/>
+	);
+
+	// 予定は記事・市場評価を読み終えるのを待たずに出す
+	if (view === "events") {
+		return (
+			<Page title="ニュース" actions={<SettingsLink />}>
+				{tabs}
+				<EventsTab visible={visible} />
+			</Page>
+		);
+	}
 
 	if (!data) {
 		return (
@@ -162,14 +184,6 @@ export function NewsPage() {
 
 	const { current } = data;
 	const troubles = aiTroubles(data.collector, data.scorer);
-	const tabs = (
-		<Tabs
-			label="ニュースの表示"
-			items={VIEWS}
-			current={view}
-			onSelect={setView}
-		/>
-	);
 	if (view === "evaluation") {
 		return (
 			<Page title="ニュース" actions={<SettingsLink />}>

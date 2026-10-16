@@ -1,7 +1,16 @@
 // 予定の取得（設定の取得元の iCal を定期的に取って保存する）・AI による重要度の判断・判定に使う暦の組み立て
 
-import type { CalendarRange, EventCalendar } from "@trading-studio/core";
-import { mergeRanges } from "@trading-studio/core";
+import type {
+	CalendarRange,
+	EventCalendar,
+	EventImportance,
+} from "@trading-studio/core";
+import {
+	atLeast,
+	EVENT_IMPORTANCES,
+	isEventImportance,
+	mergeRanges,
+} from "@trading-studio/core";
 import type { AiJob, AiJobSource } from "../ai/job-domain";
 import { RETRY_DELAYS_MS } from "../news/scorer-domain";
 import { BUNDLED_EVENTS, BUNDLED_RANGE } from "./bundled-domain";
@@ -24,6 +33,24 @@ import type {
 	EventSourceInput,
 	EventSourceResult,
 } from "./types-domain";
+import { EVENT_LIST_MAX } from "./types-domain";
+
+/** 予定の一覧の問い合わせ。from・to は必須の整数、version・minImportance は省ける。形が違えば null */
+export function parseEventListQuery(q: Record<string, string | undefined>): {
+	from: number;
+	to: number;
+	version?: number;
+	minImportance?: EventImportance;
+} | null {
+	const from = Number(q.from);
+	const to = Number(q.to);
+	const version = q.version === undefined ? undefined : Number(q.version);
+	if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to)) return null;
+	if (version !== undefined && !Number.isSafeInteger(version)) return null;
+	const min = q.minImportance;
+	if (min !== undefined && !isEventImportance(min)) return null;
+	return { from, to, version, minImportance: min };
+}
 
 /** 取得元の予定を取る手段。テストでは偽物に差し替える */
 export type FetchIcal = (url: string) => Promise<IcalEvent[]>;
@@ -359,6 +386,24 @@ export function createCalendarService({
 			if (!repo.getCriteria(version)) return null;
 			repo.requestJudgments(from, to, version, now());
 			return repo.judgmentCoverage(from, to, version);
+		},
+		listEvents({ from, to, version, minImportance }) {
+			const v = version ?? repo.activeCriteriaVersion();
+			if (v === null || !repo.getCriteria(v)) return null;
+			const importances = minImportance
+				? EVENT_IMPORTANCES.filter((i) => atLeast(i, minImportance))
+				: null;
+			return {
+				version: v,
+				...repo.listEvents(from, to, v, importances, EVENT_LIST_MAX),
+			};
+		},
+		rejudgeEvent(id, version) {
+			const v = version ?? repo.activeCriteriaVersion();
+			if (v === null || !repo.getCriteria(v)) return false;
+			const ok = repo.requestJudgment(id, v, now());
+			if (ok) invalidate();
+			return ok;
 		},
 		jobs,
 		tick() {

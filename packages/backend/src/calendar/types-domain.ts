@@ -59,7 +59,13 @@ export type JudgmentCoverage = {
 
 /** 予定1件の重要度の判断 */
 export type EventJudgment =
-	| { status: "pending" | "retry"; attempts: number; error: string | null }
+	| {
+			status: "pending" | "retry";
+			attempts: number;
+			error: string | null;
+			/** 再試行の時刻。すぐ判断するなら null */
+			nextAttemptAt: number | null;
+	  }
 	| { status: "failed"; attempts: number; error: string }
 	| {
 			status: "done";
@@ -68,6 +74,30 @@ export type EventJudgment =
 			judgedAt: number;
 			model: string;
 	  };
+
+/** 一覧に出す予定1件 */
+export type ListedEvent = {
+	id: number;
+	title: string;
+	description: string | null;
+	start: number;
+	end: number;
+	allDay: boolean;
+	/** 取得元の名前。アプリが持つ予定は null */
+	sourceName: string | null;
+	/** その版での判断。まだ判断していなければ null */
+	judgment: EventJudgment | null;
+};
+
+/** 一覧で一度に返す件数の上限 */
+export const EVENT_LIST_MAX = 500;
+
+export type EventListResult = {
+	version: number;
+	events: ListedEvent[];
+	/** 条件に合う件数（上限を超えた分を含む） */
+	total: number;
+};
 
 export type EventCriteriaResult =
 	| { ok: true; version: EventCriteriaVersion }
@@ -100,4 +130,16 @@ export interface CalendarService {
 		to: number,
 		version: number,
 	): JudgmentCoverage | null;
+	/**
+	 * [from, to] に掛かる予定を始まりの順に。version を省くと使用中の版。
+	 * minImportance を指定すると、判断済みでそれより低い予定を除く（判断していない予定は残す）。版が無ければ null
+	 */
+	listEvents(query: {
+		from: number;
+		to: number;
+		version?: number;
+		minImportance?: EventImportance;
+	}): EventListResult | null;
+	/** 予定1件をその版（省くと使用中の版）で判断し直すよう頼む。判断済みでも頼める。予定か版が無ければ false */
+	rejudgeEvent(id: number, version?: number): boolean;
 }

@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { validator } from "hono/validator";
-import { parseEventSourceInput } from "./calendar-domain";
+import { parseEventListQuery, parseEventSourceInput } from "./calendar-domain";
 import type {
 	CalendarService,
 	EventSourceInput,
@@ -104,6 +104,45 @@ export function calendarRoutes(service: CalendarService) {
 					? c.json({ coverage }, 200)
 					: c.json({ message: "版が見つからない" }, 404);
 			},
+		)
+		.get(
+			"/events",
+			validator("query", (q, c) => {
+				const p = parseEventListQuery(q as Record<string, string | undefined>);
+				return (
+					p ??
+					c.json(
+						{
+							message:
+								"from・to・version は整数、minImportance は high・medium・low",
+						},
+						400,
+					)
+				);
+			}),
+			(c) => {
+				const r = service.listEvents(c.req.valid("query"));
+				return r
+					? c.json(r, 200)
+					: c.json({ message: "版が見つからない" }, 404);
+			},
+		)
+		.post(
+			"/events/:id/judge",
+			validator("json", (v, c) => {
+				const o = isObj(v) ? v : {};
+				if (o.version !== undefined && !Number.isSafeInteger(o.version)) {
+					return c.json({ message: "version は整数" }, 400);
+				}
+				return { version: o.version as number | undefined };
+			}),
+			(c) =>
+				service.rejudgeEvent(
+					Number(c.req.param("id")),
+					c.req.valid("json").version,
+				)
+					? c.json({ ok: true as const }, 200)
+					: c.json({ message: "予定か版が見つからない" }, 404),
 		)
 		.post(
 			"/judgments",
