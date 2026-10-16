@@ -72,10 +72,14 @@ export function EventsTab({ visible }: { visible: boolean }) {
 		setParams(next, { replace: true });
 	};
 
-	const [data, setData] = useState<{
+	const key = `${period}:${min}`;
+	const [loaded, setData] = useState<{
+		key: string;
 		list: EventListResult;
 		status: CalendarStatus;
 	} | null>(null);
+	// 条件を変えたら、新しい条件の結果が届くまで前の条件の一覧を出さない
+	const data = loaded?.key === key ? loaded : null;
 	const [error, setError] = useState<string | null>(null);
 	// 条件を変えた直後と定期の問い合わせが重なると応答の順が入れ替わりうるので、最後に出したものだけ使う
 	const seq = useRef(0);
@@ -98,7 +102,7 @@ export function EventsTab({ visible }: { visible: boolean }) {
 				api.api.calendar.status.$get().then((r) => readJson<CalendarStatus>(r)),
 			]);
 			if (id !== seq.current) return;
-			setData({ list, status });
+			setData({ key: `${period}:${min}`, list, status });
 			setError(null);
 		} catch (e) {
 			if (id === seq.current) setError(errorMessage(e));
@@ -312,14 +316,17 @@ function EventRow({
 							{formatDateTime(j.judgedAt)} · {j.model}
 						</span>
 					)}
-					<Button
-						size="sm"
-						className="self-start"
-						disabled={busy || j?.status === "pending"}
-						onClick={rejudge}
-					>
-						v{version} で判断し直す
-					</Button>
+					{/* 判断し直せるのは失敗して止めた予定だけ（判断済みを消すと運用の判定が暦切れになる） */}
+					{j?.status === "failed" && (
+						<Button
+							size="sm"
+							className="self-start"
+							disabled={busy}
+							onClick={rejudge}
+						>
+							v{version} で判断し直す
+						</Button>
+					)}
 					{error && (
 						<span role="alert" className="font-semibold text-loss">
 							頼めなかった: {error}

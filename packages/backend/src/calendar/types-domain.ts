@@ -140,6 +140,9 @@ export interface CalendarService {
 		version?: number;
 		minImportance?: EventImportance;
 	}): EventListResult | null;
-	/** 予定1件をその版（省くと使用中の版）で判断し直すよう頼む。判断済みでも頼める。予定か版が無ければ false */
+	/**
+	 * 判断に失敗して止めた予定1件を、その版（省くと使用中の版）で判断し直すよう頼む。予定・版が無いか失敗していなければ false。
+	 * 判断済みの予定は頼めない（頼み直す間に元の判断を消すと、運用の判定が暦切れになるため）
+	 */
 	rejudgeEvent(id: number, version?: number): boolean;
 }

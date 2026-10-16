@@ -138,7 +138,10 @@ export function NewsPage() {
 		if (visible && view !== "events") load();
 	}, [visible, view, load]);
 	useInterval(load, POLL_MS, visible && view !== "events");
-	const precisions = useArticlePrecisions(data?.news ?? [], visible);
+	const precisions = useArticlePrecisions(
+		data?.news ?? [],
+		visible && view !== "events",
+	);
 	const tabs = (
 		<Tabs
 			label="ニュースの表示"

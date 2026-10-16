@@ -142,7 +142,7 @@ export function calendarRoutes(service: CalendarService) {
 					c.req.valid("json").version,
 				)
 					? c.json({ ok: true as const }, 200)
-					: c.json({ message: "予定か版が見つからない" }, 404),
+					: c.json({ message: "判断に失敗した予定が見つからない" }, 404),
 		)
 		.post(
 			"/judgments",

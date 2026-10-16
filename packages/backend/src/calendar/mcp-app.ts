@@ -28,10 +28,9 @@ const eventView = (e: ListedEvent) => {
 							model: j.model,
 						}
 					: j.status === "failed"
-						? { status: "failed", attempts: j.attempts, error: j.error }
+						? { status: "failed", error: j.error }
 						: {
 								status: j.status,
-								attempts: j.attempts,
 								error: j.error,
 								nextAttemptAt:
 									j.nextAttemptAt === null ? null : jst(j.nextAttemptAt),
@@ -81,7 +80,7 @@ export function registerCalendarTools(
 		"list_events",
 		{
 			description:
-				"予定と重要度の判断（ニュース画面の予定のタブ）。期間に掛かる予定を始まりの順に。judgment.status は done: 判断済み / waiting: まだ判断していない / pending: 判断を頼まれて待っている / retry: 失敗して nextAttemptAt に再試行 / failed: 失敗して止まっている",
+				"予定と使用中の版での重要度の判断（ニュース画面の予定のタブ）。期間に掛かる予定を始まりの順に。judgment.status は done: 判断済み / waiting: まだ判断していない / pending: 判断を頼まれて待っている / retry: 失敗して nextAttemptAt に再試行 / failed: 失敗して止まっている",
 			inputSchema: {
 				from: z
 					.string()
@@ -89,11 +88,6 @@ export function registerCalendarTools(
 						"期間の始まり。ISO 8601（タイムゾーン付き）か YYYY-MM-DD（JST）",
 					),
 				to: z.string().describe("期間の終わり。書き方は from と同じ"),
-				version: z
-					.number()
-					.int()
-					.optional()
-					.describe("予定の評価基準の版。省くと使用中の版"),
 				minImportance: z
 					.enum(["high", "medium", "low"])
 					.optional()
@@ -115,7 +109,6 @@ export function registerCalendarTools(
 			const r = calendar.listEvents({
 				from,
 				to,
-				version: a.version,
 				minImportance: a.minImportance,
 			});
 			if (!r) return fail("予定の評価基準の版が見つからない");

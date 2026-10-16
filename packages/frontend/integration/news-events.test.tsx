@@ -134,12 +134,17 @@ test("重要度で絞ると、判断済みで低い予定を除いて問い合�
 	expect(view.location.current).toContain("min=high");
 });
 
-test("「詳しく」から予定1件を判断し直せる", async () => {
+test("判断に失敗した予定は「詳しく」から判断し直せる。判断済みの予定には出さない", async () => {
 	const view = setup([
 		event({
 			id: 7,
 			title: "US CPI",
 			description: "Impact: High",
+			judgment: { status: "failed", attempts: 4, error: "HTTP 429" },
+		}),
+		event({
+			id: 8,
+			title: "US ISM",
 			judgment: {
 				status: "done",
 				importance: "high",
@@ -149,7 +154,12 @@ test("「詳しく」から予定1件を判断し直せる", async () => {
 			},
 		}),
 	]);
-	await waitFor(() => expect(rows(view)).toHaveLength(1));
+	await waitFor(() => expect(rows(view)).toHaveLength(2));
+	expect(
+		within(rows(view)[1] as HTMLElement).queryByRole("button", {
+			name: "v2 で判断し直す",
+		}),
+	).toBeNull();
 	const row = within(rows(view)[0] as HTMLElement);
 	expect(row.getByText("Impact: High")).toBeTruthy();
 	fireEvent.click(row.getByRole("button", { name: "v2 で判断し直す" }));

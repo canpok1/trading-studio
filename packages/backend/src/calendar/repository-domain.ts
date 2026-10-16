@@ -141,6 +141,6 @@ export interface CalendarRepository {
 		importances: readonly EventImportance[] | null,
 		limit: number,
 	): { events: ListedEvent[]; total: number };
-	/** 予定1件の判断を頼む（判断済みでも頼み直す）。予定が無ければ false */
+	/** 判断に失敗して止めた予定1件の判断を頼み直す。その予定が無いか失敗していなければ false */
 	requestJudgment(eventId: number, version: number, now: number): boolean;
 }

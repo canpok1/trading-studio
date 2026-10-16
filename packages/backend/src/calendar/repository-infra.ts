@@ -607,11 +607,9 @@ export class SqliteCalendarRepository implements CalendarRepository {
 	requestJudgment(eventId: number, version: number, now: number): boolean {
 		const r = this.sql
 			.query(
-				`insert into event_judgments (event_id, criteria_version, status, attempts, requested_at)
-				 select ?1, ?2, 'pending', 0, ?3 where exists (select 1 from scheduled_events where id = ?1)
-				 on conflict (event_id, criteria_version) do update set status = 'pending',
-				 importance = null, reason = null, attempts = 0, error = null, next_attempt_at = null,
-				 requested_at = ?3`,
+				`update event_judgments set status = 'pending', attempts = 0, error = null,
+				 next_attempt_at = null, requested_at = ?3
+				 where event_id = ?1 and criteria_version = ?2 and status = 'failed'`,
 			)
 			.run(eventId, version, now);
 		return r.changes > 0;

@@ -761,12 +761,6 @@ describe("MCP", () => {
 			});
 			const bad = await call("list_events", { from: "x", to: "2026-01-30" });
 			expect(bad.isError).toBe(true);
-			const missing = await call("list_events", {
-				from: "2026-01-28",
-				to: "2026-01-30",
-				version: 9,
-			});
-			expect(missing.isError).toBe(true);
 		});
 	});
 });

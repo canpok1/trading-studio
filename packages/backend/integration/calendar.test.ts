@@ -368,33 +368,44 @@ describe("予定の一覧", () => {
 		expect((await list("&version=9")).status).toBe(404);
 	});
 
-	test("予定1件を判断済みでも判断し直せる", async () => {
+	test("判断に失敗して止めた予定1件を判断し直せる。判断済みの予定は頼めない", async () => {
 		const t = setup();
 		await t.add({ name: "週次", url: URL_A });
 		const at = END + 3 * D;
-		t.icalFeeds.set(URL_A, [ev("US CPI", at, "1")]);
+		t.icalFeeds.set(URL_A, [ev("US CPI", at, "1"), ev("US PPI", at + D, "2")]);
 		t.clock.now = END;
 		await t.calendar.run();
+		const broken: AskModel = async () => ({ value: {}, model: "m" });
+		// CPI を再試行の回数を超えて失敗させる
+		for (const wait of [0, 30_000, 120_000, 600_000]) {
+			t.clock.now += wait;
+			await t.calendar.jobs.urgent(t.clock.now)?.(broken);
+		}
 		await t.judgeAll();
-		const id = (
-			(await (await t.send("GET", `/events?from=${at}&to=${at}`)).json()) as {
-				events: { id: number }[];
+		const events = (
+			(await (
+				await t.send("GET", `/events?from=${at}&to=${at + D}`)
+			).json()) as {
+				events: { id: number; title: string; judgment: { status: string } }[];
 			}
-		).events[0]?.id as number;
-		const res = await t.send("POST", `/events/${id}/judge`, {});
-		expect(res.status).toBe(200);
-		const after = (await (
-			await t.send("GET", `/events?from=${at}&to=${at}`)
-		).json()) as { events: { judgment: { status: string } }[] };
-		expect(after.events[0]?.judgment.status).toBe("pending");
-		// 判断し直す間は暦切れになる
+		).events;
+		const cpi = events.find((e) => e.title === "US CPI");
+		const ppi = events.find((e) => e.title === "US PPI");
+		expect(cpi?.judgment.status).toBe("failed");
+		expect(ppi?.judgment.status).toBe("done");
+		expect((await t.send("POST", `/events/${ppi?.id}/judge`, {})).status).toBe(
+			404,
+		);
+		expect((await t.send("POST", `/events/${cpi?.id}/judge`, {})).status).toBe(
+			200,
+		);
+		await t.calendar.jobs.background(t.clock.now)?.(demoAsk);
 		expect(
 			t.calendar.calendar().events.find((e) => e.start === at)?.importance,
-		).toBeNull();
-		expect(await t.judgeAll()).toBe(1);
+		).toBe("high");
 		expect((await t.send("POST", "/events/99999/judge", {})).status).toBe(404);
 		expect(
-			(await t.send("POST", `/events/${id}/judge`, { version: 9 })).status,
+			(await t.send("POST", `/events/${cpi?.id}/judge`, { version: 9 })).status,
 		).toBe(404);
 	});
 });
