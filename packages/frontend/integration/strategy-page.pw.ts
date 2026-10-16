@@ -2,16 +2,9 @@
 import type { Page } from "@playwright/test";
 import { strategyTemplate } from "@trading-studio/core";
 import { expect, test } from "./browser";
+import { openChartSettings } from "./chart-settings";
 import { templateStrategy, tradingRun } from "./fixtures";
 import { onHome } from "./home-api";
-
-/** チャート上端の「表示」のメニューを開く。線の表示の切り替えと本数の歯車はこの中にある */
-async function openDisplay(page: Page) {
-	const button = page.getByRole("button", { name: /^表示/ });
-	if ((await button.getAttribute("aria-expanded")) !== "true") {
-		await button.click();
-	}
-}
 
 /** 戦略の画面を開く */
 async function openStrategy(page: Page, id: number) {
@@ -76,7 +69,7 @@ test("EMA は戦略で使っていれば表示して始まり、どの粒度で�
 	const ema = page.getByRole("button", { name: "EMA", exact: true });
 
 	await openStrategy(page, 1);
-	await openDisplay(page);
+	await openChartSettings(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "true");
 	// 既定は日足。戦略の条件の足（トレンド追随は1時間足）は見ない
 	const tf = page.getByLabel("足の粒度");
@@ -85,13 +78,13 @@ test("EMA は戦略で使っていれば表示して始まり、どの粒度で�
 	// 選んだ足は再読み込みしても保たれ、どの足でも出す
 	await tf.selectOption("5m");
 	await page.reload();
+	await openChartSettings(page);
 	await expect(tf).toHaveValue("5m");
-	await openDisplay(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "true");
 
 	// EMA を使わない戦略では隠して始まる
 	await openStrategy(page, 2);
-	await openDisplay(page);
+	await openChartSettings(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "false");
 
 	// 本数を変えると表示し、再読み込みしても保つ
@@ -99,16 +92,16 @@ test("EMA は戦略で使っていれば表示して始まり、どの粒度で�
 	await page.getByLabel("EMA 1本目の本数").fill("9");
 	await page.getByLabel("EMA 2本目の本数").fill("");
 	await page.getByRole("button", { name: "表示する" }).click();
-	await openDisplay(page);
+	await openChartSettings(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByTestId("chart-ema-9")).toHaveText(/^EMA9 [\d,]+$/);
 	await page.reload();
-	await openDisplay(page);
+	await openChartSettings(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByTestId("chart-ema-9")).toBeVisible();
 	await page.getByRole("button", { name: "EMA の本数を変える" }).click();
 	await page.getByRole("button", { name: "既定の値に戻す" }).click();
-	await openDisplay(page);
+	await openChartSettings(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "true");
 	await page.getByRole("button", { name: "EMA の本数を変える" }).click();
 	await expect(page.getByLabel("EMA 1本目の本数")).toHaveValue("20");
@@ -149,7 +142,7 @@ test("RSI の条件を持つ戦略を選ぶと RSI の小窓と値が出て、�
 	await page.goto("/strategies/1");
 	const toggle = page.getByRole("button", { name: "RSI", exact: true });
 	const value = page.getByTestId("chart-rsi-2");
-	await openDisplay(page);
+	await openChartSettings(page);
 	await expect(toggle).toHaveAttribute("aria-pressed", "true");
 	await expect(value).toHaveText(/^RSI2 \d+\.\d$/);
 	await toggle.click();
@@ -159,7 +152,6 @@ test("RSI の条件を持つ戦略を選ぶと RSI の小窓と値が出て、�
 
 	// 条件の足以外でも出す
 	await page.getByLabel("足の粒度").selectOption("5m");
-	await openDisplay(page);
 	await expect(toggle).toHaveAttribute("aria-pressed", "true");
 	await expect(value).toBeVisible();
 });
@@ -172,14 +164,14 @@ test("ローソク足に切り替えると4本値が出て、再読み込み後�
 	await page.goto("/strategies/1");
 	await expect(page.getByTestId("chart-close")).toHaveText(PRICE);
 	const toggle = page.getByRole("button", { name: "ローソク足", exact: true });
-	await openDisplay(page);
+	await openChartSettings(page);
 	await expect(toggle).toHaveAttribute("aria-pressed", "false");
 	await toggle.click();
 	await expect(toggle).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByText(/^始 [\d,]+ 高 [\d,]+ 安 [\d,]+$/)).toBeVisible();
 
 	await page.reload();
-	await openDisplay(page);
+	await openChartSettings(page);
 	await expect(toggle).toHaveAttribute("aria-pressed", "true");
 	await toggle.click();
 	await expect(toggle).toHaveAttribute("aria-pressed", "false");
@@ -194,18 +186,14 @@ for (const name of ["買値", "出来高"]) {
 		onHome(api);
 		await page.goto("/strategies/1");
 		await expect(page.getByTestId("chart-close")).toHaveText(PRICE);
-		const menu = page.getByRole("button", { name: /^表示/ });
 		const toggle = page.getByRole("button", { name, exact: true });
-		await expect(menu).toContainText(name);
-		await openDisplay(page);
+		await openChartSettings(page);
 		await expect(toggle).toHaveAttribute("aria-pressed", "true");
 		await toggle.click();
 		await expect(toggle).toHaveAttribute("aria-pressed", "false");
-		await expect(menu).not.toContainText(name);
 
 		await page.reload();
-		await expect(menu).not.toContainText(name);
-		await openDisplay(page);
+		await openChartSettings(page);
 		await expect(toggle).toHaveAttribute("aria-pressed", "false");
 		await toggle.click();
 		await expect(toggle).toHaveAttribute("aria-pressed", "true");
@@ -273,7 +261,6 @@ test("PC 幅では戦略の見出しの下に要点が横一列、その下に�
 test("チャートに市場評価の背景と帯が出て、帯をタップすると背景が入れ替わり、再読み込み後も保たれる", async ({
 	page,
 	api,
-	isMobile,
 }) => {
 	onHome(api);
 	await page.goto("/strategies/1");
@@ -285,20 +272,16 @@ test("チャートに市場評価の背景と帯が出て、帯をタップす�
 	await expect(sentiment).toContainText("センチ");
 	await expect(sentiment.getByTestId("badge-sentiment")).toBeVisible();
 	await expect(page.getByTestId("chart-judgment-risk")).toContainText("リスク");
-	// スマホでは −/＋/最新へ を値の表示の下（チャートのすぐ上）に置く。PC では右
+	// −/＋/最新へ は設定の札と同じ行に置き、値の表示はその下
 	const close = await page.getByTestId("chart-close").boundingBox();
 	const latest = await page
 		.getByRole("button", { name: "最新へ" })
 		.boundingBox();
 	if (!close || !latest) throw new Error("値の表示かボタンが無い");
-	if (isMobile) {
-		expect(latest.y).toBeGreaterThan(close.y + close.height);
-	} else {
-		expect(latest.x).toBeGreaterThan(close.x + close.width);
-	}
+	expect(close.y).toBeGreaterThan(latest.y + latest.height - 1);
 
-	const bgSelect = page.getByLabel("背景に使う判定");
-	await expect(bgSelect).toHaveValue("sentiment");
+	const settings = page.getByRole("button", { name: "チャートの設定" });
+	await expect(settings).toContainText("背景 センチ");
 	// 背景がセンチメントのとき、帯はリスクの1本。その帯をタップする
 	const chart = page.getByRole("img", { name: "価格チャート" });
 	const box = await chart.boundingBox();
@@ -311,9 +294,9 @@ test("チャートに市場評価の背景と帯が出て、帯をタップす�
 	await chart.click({
 		position: { x: moved.width / 2, y: moved.height - 26 - 10 },
 	});
-	await expect(bgSelect).toHaveValue("risk");
+	await expect(settings).toContainText("背景 リスク");
 	await page.reload();
-	await expect(page.getByLabel("背景に使う判定")).toHaveValue("risk");
+	await expect(settings).toContainText("背景 リスク");
 });
 
 test("ボリンジャーバンドは戦略で使っていなければ隠して始まり、本数と σ を変えると表示する", async ({
@@ -324,7 +307,7 @@ test("ボリンジャーバンドは戦略で使っていなければ隠して�
 	await page.goto("/strategies/1");
 	await expect(page.getByTestId("chart-close")).toHaveText(PRICE);
 	const bb = page.getByRole("button", { name: "BB", exact: true });
-	await openDisplay(page);
+	await openChartSettings(page);
 	await expect(bb).toHaveAttribute("aria-pressed", "false");
 	await expect(page.getByTestId("chart-bb")).toHaveCount(0);
 
@@ -334,7 +317,7 @@ test("ボリンジャーバンドは戦略で使っていなければ隠して�
 	await page.getByLabel("ボリンジャーバンドの本数", { exact: true }).fill("5");
 	await page.getByLabel("ボリンジャーバンドの σ", { exact: true }).fill("1.5");
 	await page.getByRole("button", { name: "表示する" }).click();
-	await openDisplay(page);
+	await openChartSettings(page);
 	await expect(bb).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByTestId("chart-bb")).toHaveText(
 		/^BB5 [\d,]+\/[\d,]+\/[\d,]+$/,
@@ -343,7 +326,7 @@ test("ボリンジャーバンドは戦略で使っていなければ隠して�
 	await page.getByRole("button", { name: "BB の本数を変える" }).click();
 	await page.getByRole("button", { name: "既定の値に戻す" }).click();
 	await expect(page.getByTestId("chart-bb")).toHaveText(/^BB20 /);
-	await openDisplay(page);
+	await openChartSettings(page);
 	await bb.click();
 	await expect(page.getByTestId("chart-bb")).toHaveCount(0);
 });
@@ -367,9 +350,11 @@ test("次の動きと戦略の見張りが出て、グループの開閉を覚�
 	await expect(buyGroup).not.toHaveAttribute("open");
 	await buyGroup.locator("summary").click();
 	await expect(buyGroup).toHaveAttribute("open");
-	await expect(page.getByRole("button", { name: /^表示/ })).toContainText(
-		"発動価格",
-	);
+	await openChartSettings(page);
+	await expect(
+		page.getByRole("button", { name: "発動価格", exact: true }),
+	).toHaveAttribute("aria-pressed", "true");
+	await page.keyboard.press("Escape");
 
 	await page.reload();
 	await expect(buyGroup).toHaveAttribute("open");

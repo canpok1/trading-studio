@@ -464,19 +464,12 @@ function DashboardBody({
 					headerExtra={
 						home && (
 							<div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
-								{run && (
-									<span
-										data-testid="chart-mark"
-										className="text-xs text-text-2"
-									>
-										印: <b className="text-text">{run.name}</b>
-									</span>
-								)}
 								<MarketEvalInline current={current} />
 							</div>
 						)
 					}
 					latestNote={<Change24h latest={latest} />}
+					toolbarLabel={TIMEFRAME_LABELS[timeframe]}
 					toolbar={
 						<select
 							aria-label="足の粒度"

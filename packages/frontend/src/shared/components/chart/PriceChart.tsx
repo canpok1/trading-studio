@@ -37,6 +37,7 @@ import type { ChartTrigger } from "../../lib/strategy-watch";
 import { Help } from "../Help";
 import { JudgmentBadge, SHORT_JUDGE_LABELS } from "../judgment/JudgmentBadge";
 import { valueStyle } from "../judgment/judgment-style";
+import { Modal } from "../Modal";
 import type { ChartBar, ChartMarker } from "./chart-data";
 import {
 	barStep,
@@ -84,23 +85,24 @@ type Props = {
 	 * 省略すると最後の足の終値を出す（過去のデータを見るバックテスト結果）
 	 */
 	currentPrice?: number | null;
-	/** 保有中のロットの買値。ロットごとに線を引く。渡すと「表示」に買値の切り替えを出す（ホーム） */
+	/** 保有中のロットの買値。ロットごとに線を引く。渡すと設定に買値の切り替えを出す（ホーム・戦略の画面） */
 	entryPrices?: readonly number[];
-	/** 発動価格（戦略の次の行動）。破線と、価格の軸の薄い札で出す。渡すと「表示」に発動価格の切り替えを出す（ホーム） */
+	/** 発動価格（戦略の次の行動）。破線と、価格の軸の薄い札で出す。渡すと設定に発動価格の切り替えを出す（ホーム・戦略の画面） */
 	triggers?: readonly ChartTrigger[];
-	/** 表示の切り替えの先頭に置く操作（ホームの粒度の切り替えなど） */
+	/** チャートの設定の先頭に置く操作（足の粒度の切り替え） */
 	toolbar?: ReactNode;
+	/** toolbar で選んでいるもの。設定はモーダルにしまうので、これを札で出す（足の粒度） */
+	toolbarLabel?: string;
 	/**
-	 * 表示の切り替えを1行にまとめる（ホーム）。背景はプルダウン、線の表示は「表示」のメニューに入れる。
-	 * 包む要素をパネルにし、PC 幅では高く描く
+	 * 包む要素をパネルにし、PC 幅では高く描く（ホーム・戦略の画面）
 	 */
 	compact?: boolean;
 	/** 最新の足を表示しているときだけ、上端の終値の右に出す（ホームの24時間の変化率） */
 	latestNote?: ReactNode;
-	/** 見出し「チャート」の右に出すもの（ホームの市場評価・印の対象） */
+	/** 見出し「チャート」の右に出すもの（ホームの市場評価） */
 	headerExtra?: ReactNode;
 	/**
-	 * 低く描き、スマホ幅では操作を1行に収め、出来高と判定の読み取り・凡例を省く（拡大縮小のボタンと「最新へ」は値の表示の右に残す）。
+	 * 低く描き、スマホ幅では出来高と判定の読み取りを省く。
 	 * 下に並べるものを最初の画面に入れるため（ホーム。市場評価は見出しの横に出す）
 	 */
 	short?: boolean;
@@ -218,9 +220,9 @@ function chartColors() {
 const CHIP =
 	"h-8 rounded-full border border-line px-3 text-xs font-semibold text-text-2 disabled:opacity-40 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-white dark:aria-pressed:text-accent-ink";
 
-/** 1行にまとめた切り替えのプルダウン */
-const DROP =
-	"h-8 min-w-0 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold";
+/** 設定の今の値を見せる札 */
+const TAG =
+	"rounded-full bg-surface-2 px-2.5 py-1 text-xs font-semibold whitespace-nowrap";
 
 const ICON_BTN =
 	"grid size-8 place-items-center rounded-full border border-line text-base font-semibold text-text-2";
@@ -247,6 +249,7 @@ export function PriceChart({
 	entryPrices: entryProp,
 	triggers: triggerProp,
 	toolbar,
+	toolbarLabel,
 	compact = false,
 	latestNote,
 	headerExtra,
@@ -919,21 +922,6 @@ export function PriceChart({
 			))}
 		</fieldset>
 	);
-	const bgSelect = judgments && (
-		<select
-			aria-label="背景に使う判定"
-			value={bg}
-			onChange={(e) => onBgChange?.(e.target.value as ChartBg)}
-			className={DROP}
-		>
-			{JUDGES.map((j) => (
-				<option key={j} value={j}>
-					背景 {JUDGE_LABELS[j]}
-				</option>
-			))}
-			<option value="none">背景 なし</option>
-		</select>
-	);
 	const displayButtons = (
 		<>
 			<button
@@ -1008,15 +996,106 @@ export function PriceChart({
 			})}
 		</>
 	);
-	const shownLabels = [
-		...(candle ? ["ローソク足"] : []),
-		...(showVolume ? ["出来高"] : []),
-		...(hasEntry && showEntry ? ["買値"] : []),
-		...(hasTriggers && showTriggers ? ["発動価格"] : []),
-		...(["ema", "bb", "rsi"] as const)
-			.filter((k) => indicators[k].on)
-			.map((k) => INDICATOR_LABELS[k]),
-	];
+	// 凡例の中身。場所を取らないよう「？」の吹き出しの中で見せる
+	const hasLegend = !!(onMarker || showEma || showBb || showRsi || judgments);
+	const legendBody = (
+		<div className="flex flex-col gap-2">
+			{onMarker && (
+				<LegendRow title="注文">
+					<LegendItem shape="up" colorVar="--color-buy" label="買い約定" />
+					<LegendItem shape="down" colorVar="--color-sell" label="売り約定" />
+					<LegendItem shape="circle" colorVar="--color-buy" label="注文中" />
+					<LegendItem shape="square" colorVar="--color-cancel" label="取消" />
+				</LegendRow>
+			)}
+			{showEma && (
+				<LegendRow
+					title="EMA"
+					note={
+						indicators.ema.custom
+							? "指数移動平均。本数は歯車で変えた値"
+							: indicators.ema.fromStrategy
+								? "指数移動平均。本数は戦略の条件の値"
+								: "指数移動平均。本数は既定の値（歯車で変えられる）"
+					}
+				>
+					{emaPeriods.map((n, j) => (
+						<span key={n} className="flex items-center gap-1">
+							<i
+								className="inline-block h-[3px] w-3"
+								style={{ background: `var(${emaVar(j)})` }}
+							/>
+							EMA {n}
+						</span>
+					))}
+				</LegendRow>
+			)}
+			{showBb && (
+				<LegendRow
+					title="ボリンジャーバンド"
+					note={
+						indicators.bb.custom
+							? "上限・中央（点線）・下限。本数と σ は歯車で変えた値"
+							: indicators.bb.fromStrategy
+								? "上限・中央（点線）・下限。本数と σ は戦略の条件の値"
+								: "上限・中央（点線）・下限。本数と σ は既定の値（歯車で変えられる）"
+					}
+				>
+					<span className="flex items-center gap-1">
+						<i
+							className="inline-block h-[3px] w-3"
+							style={{ background: "var(--color-bb)" }}
+						/>
+						{bb.period} 本・{bb.sigma}σ
+					</span>
+				</LegendRow>
+			)}
+			{showRsi && (
+				<LegendRow
+					title="RSI"
+					note="下の小窓に 0〜100 で描き、点線はしきい値。本数・しきい値は歯車で変えられる"
+				>
+					{rsiLines.map((l, j) => (
+						<span key={l.period} className="flex items-center gap-1">
+							<i
+								className="inline-block h-[3px] w-3"
+								style={{ background: `var(${rsiVar(j)})` }}
+							/>
+							RSI {l.period}
+						</span>
+					))}
+				</LegendRow>
+			)}
+			{judgments &&
+				JUDGES.map((j) => (
+					<LegendRow
+						key={j}
+						title={JUDGE_LABELS[j]}
+						note={j === bg ? "背景" : "下の帯"}
+					>
+						{JUDGMENT_VALUES[j].map((v) => {
+							const st = valueStyle(j, v);
+							return (
+								<span key={v} className="flex items-center gap-1">
+									<i
+										className="inline-block h-2.5 w-3 rounded-sm"
+										style={
+											j === bg
+												? {
+														background: `var(${st.bg})`,
+														outline: `1px solid var(${st.solid})`,
+													}
+												: { background: `var(${st.solid})` }
+										}
+									/>
+									{st.label}
+								</span>
+							);
+						})}
+					</LegendRow>
+				))}
+		</div>
+	);
 	const controls = (
 		<>
 			<div className="flex min-h-6 flex-wrap items-center gap-x-1.5 gap-y-1">
@@ -1025,32 +1104,34 @@ export function PriceChart({
 					{onMarker && <p>アイコンをタップで詳細。</p>}
 					{judgments && <p>下の帯をタップでその判定を背景に塗る。</p>}
 					<p>ピンチ / ホイール / ＋−で拡大・縮小。</p>
+					{hasLegend && (
+						<div className="mt-2 flex flex-col gap-1.5">
+							<p className="font-semibold">凡例</p>
+							{legendBody}
+						</div>
+					)}
 				</Help>
 				{headerExtra}
 			</div>
-			{compact ? (
-				<div
-					className={`flex items-center gap-2 ${short ? "max-lg:flex-nowrap" : ""} flex-wrap`}
-				>
-					{toolbar}
-					{bgSelect}
-					<DisplayMenu
-						open={menuOpen}
-						onOpenChange={setMenuOpen}
-						summary={shownLabels.length === 0 ? "なし" : shownLabels.join("・")}
-					>
-						{displayButtons}
-					</DisplayMenu>
-				</div>
-			) : (
-				<>
-					{toolbar}
+			{menuOpen && (
+				<Modal title="チャートの設定" onClose={() => setMenuOpen(false)}>
+					<div className="flex items-center gap-2">
+						<span className="text-xs text-text-2">足</span>
+						{toolbar}
+					</div>
 					{bgButtons}
 					<div className="flex flex-wrap items-center gap-2">
 						<span className="text-xs text-text-2">表示</span>
 						{displayButtons}
 					</div>
-				</>
+					<button
+						type="button"
+						onClick={() => setMenuOpen(false)}
+						className="h-10 rounded-lg border border-line text-sm font-semibold"
+					>
+						閉じる
+					</button>
+				</Modal>
 			)}
 			{editing === "ema" && (
 				<EmaSettingsModal
@@ -1072,146 +1153,167 @@ export function PriceChart({
 			)}
 		</>
 	);
-	const chart = (
-		<>
-			<div
-				className={`flex gap-2 lg:flex-row lg:items-start ${short ? "flex-row items-start" : "flex-col"}`}
-			>
-				<div
-					aria-live="off"
-					className="num flex min-h-8 min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs"
-				>
-					{slot && !bar && (
-						<>
-							<span className="text-text-2">{formatDateTime(slot.time)}</span>
-							<span className="font-semibold text-text-2">データなし</span>
-						</>
+	const readout = (
+		<div
+			aria-live="off"
+			className="num flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs"
+		>
+			{slot && !bar && (
+				<>
+					<span className="text-text-2">{formatDateTime(slot.time)}</span>
+					<span className="font-semibold text-text-2">データなし</span>
+				</>
+			)}
+			{bar && (
+				<>
+					<span className="text-text-2">{formatDateTime(bar.time)}</span>
+					{candle && bar.open !== undefined && (
+						<span className="text-text-2">
+							始 {formatInt(bar.open)} 高 {formatInt(bar.high ?? 0)} 安{" "}
+							{formatInt(bar.low ?? 0)}
+						</span>
 					)}
-					{bar && (
-						<>
-							<span className="text-text-2">{formatDateTime(bar.time)}</span>
-							{candle && bar.open !== undefined && (
-								<span className="text-text-2">
-									始 {formatInt(bar.open)} 高 {formatInt(bar.high ?? 0)} 安{" "}
-									{formatInt(bar.low ?? 0)}
-								</span>
-							)}
-							<span data-testid="chart-close" className="font-semibold">
-								{formatInt(bar.close)}円
-							</span>
-							{atLastSlot && latestNote}
-							{showVolume && bar.volume !== undefined && (
+					<span data-testid="chart-close" className="font-semibold">
+						{formatInt(bar.close)}円
+					</span>
+					{atLastSlot && latestNote}
+					{showVolume && bar.volume !== undefined && (
+						<span
+							data-testid="chart-volume"
+							className={`text-text-2 ${short ? "max-lg:hidden" : ""}`}
+						>
+							出来高 {formatBtc(bar.volume)} BTC
+						</span>
+					)}
+					{judgments &&
+						JUDGES.map((j) => {
+							const v = judgments[j][shown as number] ?? null;
+							if (v === null) return null;
+							return (
 								<span
-									data-testid="chart-volume"
-									className={`text-text-2 ${short ? "max-lg:hidden" : ""}`}
+									key={j}
+									data-testid={`chart-judgment-${j}`}
+									className={`flex items-center gap-1 ${short ? "max-lg:hidden" : ""}`}
 								>
-									出来高 {formatBtc(bar.volume)} BTC
+									{SHORT_JUDGE_LABELS[j]}
+									<JudgmentBadge judge={j} value={v} small />
 								</span>
-							)}
-							{judgments &&
-								JUDGES.map((j) => {
-									const v = judgments[j][shown as number] ?? null;
-									if (v === null) return null;
-									return (
-										<span
-											key={j}
-											data-testid={`chart-judgment-${j}`}
-											className={`flex items-center gap-1 ${short ? "max-lg:hidden" : ""}`}
-										>
-											{SHORT_JUDGE_LABELS[j]}
-											<JudgmentBadge judge={j} value={v} small />
-										</span>
-									);
-								})}
-							{showEma &&
-								emaPeriods.map((n, j) => {
-									const v = emaValues[j]?.[shown as number];
-									return (
-										<span
-											key={n}
-											data-testid={`chart-ema-${n}`}
-											className="flex items-center gap-1"
-										>
-											<i
-												className="inline-block h-[3px] w-2.5"
-												style={{ background: `var(${emaVar(j)})` }}
-											/>
-											EMA{n}{" "}
-											{v === undefined || Number.isNaN(v) ? "—" : formatInt(v)}
-										</span>
-									);
-								})}
-							{bbValues && (
+							);
+						})}
+					{showEma &&
+						emaPeriods.map((n, j) => {
+							const v = emaValues[j]?.[shown as number];
+							return (
 								<span
-									data-testid="chart-bb"
+									key={n}
+									data-testid={`chart-ema-${n}`}
 									className="flex items-center gap-1"
 								>
 									<i
 										className="inline-block h-[3px] w-2.5"
-										style={{ background: "var(--color-bb)" }}
+										style={{ background: `var(${emaVar(j)})` }}
 									/>
-									BB{bb.period}{" "}
-									{[bbValues.upper, bbValues.middle, bbValues.lower]
-										.map((vs) => {
-											const v = vs[shown as number];
-											return v === undefined || Number.isNaN(v)
-												? "—"
-												: formatInt(v);
-										})
-										.join("/")}
+									EMA{n}{" "}
+									{v === undefined || Number.isNaN(v) ? "—" : formatInt(v)}
 								</span>
-							)}
-							{showRsi &&
-								rsiLines.map((l, j) => {
-									const v = rsiValues[j]?.[shown as number];
-									return (
-										<span
-											key={l.period}
-											data-testid={`chart-rsi-${l.period}`}
-											className="flex items-center gap-1"
-										>
-											<i
-												className="inline-block h-[3px] w-2.5"
-												style={{ background: `var(${rsiVar(j)})` }}
-											/>
-											RSI{l.period}{" "}
-											{v === undefined || Number.isNaN(v) ? "—" : formatRsi(v)}
-										</span>
-									);
-								})}
-						</>
+							);
+						})}
+					{bbValues && (
+						<span data-testid="chart-bb" className="flex items-center gap-1">
+							<i
+								className="inline-block h-[3px] w-2.5"
+								style={{ background: "var(--color-bb)" }}
+							/>
+							BB{bb.period}{" "}
+							{[bbValues.upper, bbValues.middle, bbValues.lower]
+								.map((vs) => {
+									const v = vs[shown as number];
+									return v === undefined || Number.isNaN(v)
+										? "—"
+										: formatInt(v);
+								})
+								.join("/")}
+						</span>
 					)}
-				</div>
-				<div className="flex shrink-0 items-center justify-end gap-1.5">
-					<button
-						type="button"
-						aria-label="縮小"
-						title="縮小"
-						onClick={() => zoom(2)}
-						className={ICON_BTN}
-					>
-						−
-					</button>
-					<button
-						type="button"
-						aria-label="拡大"
-						title="拡大"
-						onClick={() => zoom(0.5)}
-						className={ICON_BTN}
-					>
-						＋
-					</button>
-					<button
-						type="button"
-						disabled={atLatest}
-						title="最新の足へ移動"
-						onClick={toLatest}
-						className={CHIP}
-					>
-						最新へ
-					</button>
-				</div>
+					{showRsi &&
+						rsiLines.map((l, j) => {
+							const v = rsiValues[j]?.[shown as number];
+							return (
+								<span
+									key={l.period}
+									data-testid={`chart-rsi-${l.period}`}
+									className="flex items-center gap-1"
+								>
+									<i
+										className="inline-block h-[3px] w-2.5"
+										style={{ background: `var(${rsiVar(j)})` }}
+									/>
+									RSI{l.period}{" "}
+									{v === undefined || Number.isNaN(v) ? "—" : formatRsi(v)}
+								</span>
+							);
+						})}
+				</>
+			)}
+		</div>
+	);
+	const zoomButtons = (
+		<div className="flex shrink-0 items-center justify-end gap-1.5">
+			<button
+				type="button"
+				aria-label="縮小"
+				title="縮小"
+				onClick={() => zoom(2)}
+				className={ICON_BTN}
+			>
+				−
+			</button>
+			<button
+				type="button"
+				aria-label="拡大"
+				title="拡大"
+				onClick={() => zoom(0.5)}
+				className={ICON_BTN}
+			>
+				＋
+			</button>
+			<button
+				type="button"
+				disabled={atLatest}
+				title="最新の足へ移動"
+				onClick={toLatest}
+				className={CHIP}
+			>
+				最新へ
+			</button>
+		</div>
+	);
+	// 足・背景・表示はまとめて歯車のモーダルに入れ、普段は足と背景だけ札で出す
+	const settingsChip = (
+		<button
+			type="button"
+			aria-label="チャートの設定"
+			onClick={() => setMenuOpen(true)}
+			className="flex min-w-0 items-center gap-1.5"
+		>
+			{toolbarLabel && <span className={TAG}>{toolbarLabel}</span>}
+			{judgments && (
+				<span className={TAG}>
+					背景 {bg === "none" ? "なし" : SHORT_JUDGE_LABELS[bg]}
+				</span>
+			)}
+			<span aria-hidden="true" className={`${ICON_BTN} shrink-0`}>
+				⚙
+			</span>
+		</button>
+	);
+	const chart = (
+		<>
+			<div className="flex items-center justify-between gap-2">
+				{settingsChip}
+				{zoomButtons}
 			</div>
+			{readout}
 			<div
 				ref={box}
 				role="img"
@@ -1226,125 +1328,6 @@ export function PriceChart({
 							: `h-[260px] ${compact ? "lg:h-[480px]" : "lg:h-[360px]"}`
 				}`}
 			/>
-			{(onMarker || showEma || showBb || showRsi || judgments) && (
-				<details
-					className={`min-w-0 rounded-[10px] border border-line px-3 py-2 text-xs ${short ? "max-lg:hidden" : ""}`}
-				>
-					<summary className="cursor-pointer font-semibold">凡例</summary>
-					<div className="mt-2 flex flex-col gap-2">
-						{onMarker && (
-							<LegendRow title="注文">
-								<LegendItem
-									shape="up"
-									colorVar="--color-buy"
-									label="買い約定"
-								/>
-								<LegendItem
-									shape="down"
-									colorVar="--color-sell"
-									label="売り約定"
-								/>
-								<LegendItem
-									shape="circle"
-									colorVar="--color-buy"
-									label="注文中"
-								/>
-								<LegendItem
-									shape="square"
-									colorVar="--color-cancel"
-									label="取消"
-								/>
-							</LegendRow>
-						)}
-						{showEma && (
-							<LegendRow
-								title="EMA"
-								note={
-									indicators.ema.custom
-										? "指数移動平均。本数は歯車で変えた値"
-										: indicators.ema.fromStrategy
-											? "指数移動平均。本数は戦略の条件の値"
-											: "指数移動平均。本数は既定の値（歯車で変えられる）"
-								}
-							>
-								{emaPeriods.map((n, j) => (
-									<span key={n} className="flex items-center gap-1">
-										<i
-											className="inline-block h-[3px] w-3"
-											style={{ background: `var(${emaVar(j)})` }}
-										/>
-										EMA {n}
-									</span>
-								))}
-							</LegendRow>
-						)}
-						{showBb && (
-							<LegendRow
-								title="ボリンジャーバンド"
-								note={
-									indicators.bb.custom
-										? "上限・中央（点線）・下限。本数と σ は歯車で変えた値"
-										: indicators.bb.fromStrategy
-											? "上限・中央（点線）・下限。本数と σ は戦略の条件の値"
-											: "上限・中央（点線）・下限。本数と σ は既定の値（歯車で変えられる）"
-								}
-							>
-								<span className="flex items-center gap-1">
-									<i
-										className="inline-block h-[3px] w-3"
-										style={{ background: "var(--color-bb)" }}
-									/>
-									{bb.period} 本・{bb.sigma}σ
-								</span>
-							</LegendRow>
-						)}
-						{showRsi && (
-							<LegendRow
-								title="RSI"
-								note="下の小窓に 0〜100 で描き、点線はしきい値。本数・しきい値は歯車で変えられる"
-							>
-								{rsiLines.map((l, j) => (
-									<span key={l.period} className="flex items-center gap-1">
-										<i
-											className="inline-block h-[3px] w-3"
-											style={{ background: `var(${rsiVar(j)})` }}
-										/>
-										RSI {l.period}
-									</span>
-								))}
-							</LegendRow>
-						)}
-						{judgments &&
-							JUDGES.map((j) => (
-								<LegendRow
-									key={j}
-									title={JUDGE_LABELS[j]}
-									note={j === bg ? "背景" : "下の帯"}
-								>
-									{JUDGMENT_VALUES[j].map((v) => {
-										const st = valueStyle(j, v);
-										return (
-											<span key={v} className="flex items-center gap-1">
-												<i
-													className="inline-block h-2.5 w-3 rounded-sm"
-													style={
-														j === bg
-															? {
-																	background: `var(${st.bg})`,
-																	outline: `1px solid var(${st.solid})`,
-																}
-															: { background: `var(${st.solid})` }
-													}
-												/>
-												{st.label}
-											</span>
-										);
-									})}
-								</LegendRow>
-							))}
-					</div>
-				</details>
-			)}
 		</>
 	);
 
@@ -1363,58 +1346,6 @@ export function PriceChart({
 		<div className="flex flex-col gap-2">
 			{controls}
 			{chart}
-		</div>
-	);
-}
-
-/** 「表示」のボタンと、押すと開く線の表示の切り替え。外を押すか Esc で閉じる */
-function DisplayMenu({
-	open,
-	onOpenChange,
-	summary,
-	children,
-}: {
-	open: boolean;
-	onOpenChange: (open: boolean) => void;
-	summary: string;
-	children: ReactNode;
-}) {
-	const root = useRef<HTMLDivElement>(null);
-	useEffect(() => {
-		if (!open) return;
-		const onDown = (e: PointerEvent) => {
-			if (!root.current?.contains(e.target as Node)) onOpenChange(false);
-		};
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") onOpenChange(false);
-		};
-		document.addEventListener("pointerdown", onDown);
-		document.addEventListener("keydown", onKey);
-		return () => {
-			document.removeEventListener("pointerdown", onDown);
-			document.removeEventListener("keydown", onKey);
-		};
-	}, [open, onOpenChange]);
-	return (
-		<div ref={root} className="relative min-w-0">
-			<button
-				type="button"
-				aria-expanded={open}
-				onClick={() => onOpenChange(!open)}
-				className={`${DROP} flex max-w-full items-center gap-1`}
-			>
-				<span className="shrink-0">表示</span>
-				<span className="truncate font-normal text-text-2">{summary}</span>
-				<span aria-hidden="true" className="text-text-2">
-					▾
-				</span>
-			</button>
-			{open && (
-				<fieldset className="absolute top-full right-0 z-20 mt-1 flex w-max max-w-[calc(100vw-48px)] flex-col items-start gap-2 rounded-xl border border-line bg-surface p-3 shadow-lg">
-					<legend className="sr-only">表示する線</legend>
-					{children}
-				</fieldset>
-			)}
 		</div>
 	);
 }

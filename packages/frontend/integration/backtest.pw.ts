@@ -9,6 +9,7 @@ import {
 	START,
 } from "./backtest-fakes";
 import { expect, test } from "./browser";
+import { openChartLegend, openChartSettings } from "./chart-settings";
 import { routes } from "./fake-api";
 import { storedStrategy } from "./fixtures";
 
@@ -49,6 +50,7 @@ test("結果の画面にチャートが描かれ、横にはみ出さない", as
 	onResults(api, runs, chart);
 	await page.goto("/backtest/runs/7");
 	await expect(page.getByRole("img", { name: "価格チャート" })).toBeVisible();
+	await openChartSettings(page);
 	await expect(
 		page.getByRole("button", { name: "ローソク足", exact: true }),
 	).toBeEnabled();
@@ -84,12 +86,13 @@ test("RSI の条件を持つ戦略の結果では、チャートの下に RSI �
 	});
 	onResults(api, runs, chart);
 	await page.goto("/backtest/runs/7");
+	await openChartSettings(page);
 	await page.getByLabel("足の粒度").selectOption("1h");
 	await expect(
 		page.getByRole("button", { name: "RSI", exact: true }),
 	).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByTestId("chart-rsi-14")).toHaveText(/^RSI14 \d+\.\d$/);
-	await page.getByText("凡例").click();
+	await openChartLegend(page);
 	await expect(page.getByText(/点線はしきい値/)).toBeVisible();
 });
 
@@ -110,6 +113,7 @@ test("ボリンジャーバンドの条件を持つ戦略の結果では、チ�
 	});
 	onResults(api, runs, chart);
 	await page.goto("/backtest/runs/7");
+	await openChartSettings(page);
 	await page.getByLabel("足の粒度").selectOption("1h");
 	await expect(
 		page.getByRole("button", { name: "BB", exact: true }),
@@ -117,7 +121,7 @@ test("ボリンジャーバンドの条件を持つ戦略の結果では、チ�
 	await expect(page.getByTestId("chart-bb")).toHaveText(
 		/^BB20 [\d,]+\/[\d,]+\/[\d,]+$/,
 	);
-	await page.getByText("凡例").click();
+	await openChartLegend(page);
 	await expect(page.getByText(/本数と σ は戦略の条件の値/)).toBeVisible();
 });
 
