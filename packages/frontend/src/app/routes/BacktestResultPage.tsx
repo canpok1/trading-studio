@@ -607,6 +607,7 @@ function Result({ run }: { run: BacktestRun }) {
 						bg={bg}
 						onBgChange={setBg}
 						viewKey={`${chart.timeframe}`}
+						toolbarLabel={TIMEFRAME_LABELS[timeframe]}
 						toolbar={
 							<select
 								aria-label="足の粒度"

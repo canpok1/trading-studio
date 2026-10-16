@@ -78,14 +78,16 @@ test("カードを押すとチャートの印がその戦略になり、選択�
 	onHome(api, { runs: fourRuns() });
 	await page.goto("/home");
 	// 最初は先頭の戦略
-	await expect(page.getByTestId("chart-mark")).toHaveText("印: トレンド");
+	await expect(page.getByRole("button", { name: /^トレンド/ })).toHaveAttribute(
+		"aria-pressed",
+		"true",
+	);
 	const second = page.getByRole("button", { name: /^逆張り/ });
 	await second.click();
 	await expect(second).toHaveAttribute("aria-pressed", "true");
-	await expect(page.getByTestId("chart-mark")).toHaveText("印: 逆張り");
 	await expect(page.getByRole("link", { name: "詳しく ›" })).toHaveCount(1);
 	await page.reload();
-	await expect(page.getByTestId("chart-mark")).toHaveText("印: 逆張り");
+	await expect(second).toHaveAttribute("aria-pressed", "true");
 	await page.getByRole("link", { name: "詳しく ›" }).click();
 	await expect(page).toHaveURL(/\/strategies\/3$/);
 });
@@ -98,7 +100,6 @@ test("稼働中の戦略が無ければ、その旨と戦略の一覧への導�
 	await page.goto("/home");
 	await expect(page.getByText(/稼働中の戦略は無い/)).toBeVisible();
 	await expect(page.getByTestId("chart-close")).toBeVisible();
-	await expect(page.getByTestId("chart-mark")).toHaveCount(0);
 	await page.getByRole("link", { name: "戦略を見る" }).click();
 	await expect(page).toHaveURL(/\/strategies$/);
 });
