@@ -224,8 +224,8 @@ test("バックテストの実行画面は、入力欄を空欄にしても、�
 	expect(again.queryByText("この画面を表示できなかった")).toBeNull();
 }, 30_000);
 
-test("戦略の画面は、入力欄を空欄にしても落ちない", async () => {
-	const view = renderApp("/strategies/1", robustApi());
-	await view.findByDisplayValue("空欄", {}, WAIT);
-	clearEachInput(view, "戦略");
+test("戦略の編集画面は、入力欄を空欄にしても落ちない", async () => {
+	const view = renderApp("/strategies/1/edit", robustApi());
+	await view.findByRole("heading", { name: "「空欄」の編集" }, WAIT);
+	clearEachInput(view, "「空欄」の編集");
 });

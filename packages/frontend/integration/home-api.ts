@@ -1,4 +1,4 @@
-// ホームが読む口をまとめて偽物にする。タブ（戦略）の操作（オンオフ・名前・削除・リセット）は state に反映し、次の読み込みで画面に返す
+// ホームと戦略の画面が読む口をまとめて偽物にする。戦略の操作（オンオフ・名前・条件・削除・リセット）は state に反映し、次の読み込みで画面に返す
 import type {
 	AutoTradingStatus,
 	CollectorStatus,
@@ -122,12 +122,37 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 		.on(routes.api.trading.strategies, "$get", () => ({
 			strategies: state.runs,
 		}))
+		.on(routes.api.strategies, "$post", (req) => {
+			const { name, from } = req.body as {
+				name: string;
+				from: { copyOf: number } | { template: string };
+			};
+			const id = Math.max(0, ...state.runs.map((r) => r.id)) + 1;
+			const source =
+				"copyOf" in from
+					? state.strategies.find((x) => x.id === from.copyOf)
+					: undefined;
+			const strategy = storedStrategy({
+				id,
+				name,
+				...(source ? { params: source.params } : {}),
+			});
+			state.strategies.push(strategy);
+			state.runs.push(tradingRun({ id, name }));
+			return { strategy };
+		})
 		.on(routes.api.strategies[":id"].name, "$put", (req, reply) => {
 			const { name } = req.body as { name: string };
 			const run = update(req.params.id as string, { name });
 			return run
 				? { strategy: storedStrategy({ id: run.id, name }) }
 				: reply(404, RUN_NOT_FOUND);
+		})
+		.on(routes.api.strategies[":id"].params, "$put", (req, reply) => {
+			const s = state.strategies.find((x) => x.id === Number(req.params.id));
+			if (!s) return reply(404, RUN_NOT_FOUND);
+			s.params = (req.body as { params: StoredStrategy["params"] }).params;
+			return { strategy: s };
 		})
 		.on(routes.api.strategies[":id"], "$delete", (req) => {
 			state.runs = state.runs.filter((r) => r.id !== Number(req.params.id));
@@ -158,6 +183,7 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 				equity: initialCash,
 				resetAt: Date.now(),
 			};
+			run.ranSinceReset = false;
 			return { status: run };
 		})
 		.on(

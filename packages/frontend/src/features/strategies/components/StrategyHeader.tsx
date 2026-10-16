@@ -1,35 +1,50 @@
-// ホームの自動取引のカード。選んでいる戦略のオンオフと状態・戦略名を1行で出し、止まっている理由があるときだけ添える。
-// 戦略の名前の変更・削除はたまにしか使わないので「⋯」の設定に入れる
+// 戦略の画面の最上部。名前・状態・自動取引のオンオフ・編集への入口を1枚に置き、止まっている理由・編集できない理由があるときだけ下に添える。
+// 名前の変更・複製・削除はたまにしか使わないので「⋯」に入れる
 
-import type { AutoTradingStatus } from "@trading-studio/backend";
+import type {
+	AutoTradingStatus,
+	StoredStrategy,
+} from "@trading-studio/backend";
 import { LIVE_AVAILABLE } from "@trading-studio/core";
 import { useState } from "react";
-import { Link } from "react-router";
+import { useNavigate } from "react-router";
 import { Modal } from "../../../shared/components/Modal";
 import { Button } from "../../../shared/components/ui";
 import { useApi } from "../../../shared/lib/api";
 import { formatClock } from "../../../shared/lib/format";
-import { useTradingStatus } from "../../../shared/lib/trading";
+import { MODE_LABELS, useTradingStatus } from "../../../shared/lib/trading";
 import { errorMessage, readJson } from "../../../shared/lib/useAsync";
-import { DeleteRunDialog, RenameRunDialog } from "./RunDialogs";
-import { TILE } from "./SummaryTiles";
-import { MODE_LABELS } from "./TradeViews";
+import {
+	CreateStrategyDialog,
+	DeleteStrategyDialog,
+	RenameStrategyDialog,
+} from "./StrategyDialogs";
 
-export function AutoTradingCard({
+/** オフでも条件を変えられない理由。変えられるかはサーバーの判定（strategyLock）に従い、ここでは理由の文だけを作る */
+function editBlockReason(run: AutoTradingStatus): string | null {
+	if (run.strategyLock !== "holding") return null;
+	const { lots, openOrderCount } = run.account;
+	if (lots.length > 0) {
+		return `保有が ${lots.length} ロットあるため編集できない。売り切るか口座をリセットすると編集できる`;
+	}
+	if (openOrderCount > 0) {
+		return `未約定の注文が ${openOrderCount} 件あるため編集できない。約定か取消を待つか、口座をリセットすると編集できる`;
+	}
+	return "保有か未約定の注文があるため編集できない。売り切るか口座をリセットすると編集できる";
+}
+
+export function StrategyHeader({
 	run,
 	onToast,
-	onDeleted,
-	className = "",
 }: {
 	run: AutoTradingStatus;
 	onToast: (message: string) => void;
-	onDeleted: () => void;
-	className?: string;
 }) {
 	const api = useApi();
+	const navigate = useNavigate();
 	const { set, drop, refresh } = useTradingStatus();
 	const [dialog, setDialog] = useState<
-		"start" | "settings" | "rename" | "delete" | null
+		"start" | "menu" | "rename" | "copy" | "delete" | null
 	>(null);
 	const [busy, setBusy] = useState(false);
 	const on = run.enabled;
@@ -37,6 +52,7 @@ export function AutoTradingCard({
 	const label = MODE_LABELS[run.mode];
 	const id = String(run.id);
 	const now = Date.now();
+	const blocked = on ? null : editBlockReason(run);
 
 	const send = async (
 		call: () => Promise<{ status: AutoTradingStatus }>,
@@ -82,10 +98,25 @@ export function AutoTradingCard({
 	};
 
 	const loss = run.dailyLoss;
-	const holding = run.strategyLock === "holding";
 	return (
-		<section aria-label="自動取引設定" className={`${TILE} ${className}`}>
-			<div className="flex items-center gap-3">
+		<section
+			aria-label="自動取引設定"
+			className="flex flex-col gap-2.5 lg:col-span-2"
+		>
+			<div className="flex items-center gap-3 rounded-xl bg-surface p-3.5">
+				<div className="flex min-w-0 flex-1 flex-col">
+					<h1 className="truncate text-[17px] font-bold">{run.name}</h1>
+					<span className="text-xs text-text-2">
+						<span data-testid="auto-state">
+							{unavailable
+								? "リアル取引はまだ使えない"
+								: on
+									? "稼働中"
+									: "停止中"}
+						</span>
+						・{label}
+					</span>
+				</div>
 				<button
 					type="button"
 					role="switch"
@@ -99,33 +130,29 @@ export function AutoTradingCard({
 						className={`h-[26px] w-[26px] rounded-full bg-white shadow transition-transform ${on ? "translate-x-6" : ""}`}
 					/>
 				</button>
-				<div className="flex min-w-0 flex-1 flex-col">
-					<h2 className="text-[13px] font-bold">
-						自動取引{" "}
-						<span data-testid="auto-state" className="whitespace-nowrap">
-							{unavailable
-								? "リアル取引はまだ使えない"
-								: on
-									? "稼働中"
-									: "停止中"}
-						</span>
-					</h2>
-					<span
-						data-testid="auto-strategy"
-						className="truncate text-xs text-text-2"
+				{!on && (
+					<Button
+						size="sm"
+						disabled={blocked !== null}
+						onClick={() => navigate(`/strategies/${run.id}/edit`)}
 					>
-						{run.name}
-					</span>
-				</div>
+						編集
+					</Button>
+				)}
 				<button
 					type="button"
 					aria-label="戦略の設定"
-					onClick={() => setDialog("settings")}
+					onClick={() => setDialog("menu")}
 					className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line text-base font-bold text-text-2 hover:bg-surface-2"
 				>
 					⋯
 				</button>
 			</div>
+			{blocked && (
+				<p className="rounded-xl bg-warn px-3.5 py-3 text-xs leading-relaxed">
+					{blocked}
+				</p>
+			)}
 			{on && run.waitingForMarket && (
 				<p className="text-xs font-semibold">
 					価格の収集が止まっているため、判定を待っている
@@ -136,22 +163,12 @@ export function AutoTradingCard({
 					1日の損失上限に達したため、翌 0 時まで新しい買いを止めている
 				</p>
 			)}
-			{dialog === "settings" && (
+			{dialog === "menu" && (
 				<Modal title={`「${run.name}」の設定`} onClose={() => setDialog(null)}>
-					{holding && (
-						<p className="text-xs text-text-2">
-							保有か未約定の注文がある間は、戦略の条件を変えられない
-						</p>
-					)}
-					<Link
-						to={`/strategies/${run.id}`}
-						className="flex h-11 items-center justify-center rounded-[10px] border border-line text-sm font-semibold"
-					>
-						条件を見る・変える
-					</Link>
 					<Button onClick={() => setDialog("rename")}>
 						戦略の名前を変える
 					</Button>
+					<Button onClick={() => setDialog("copy")}>戦略を複製する</Button>
 					{!on && (
 						<Button className="text-loss" onClick={() => setDialog("delete")}>
 							戦略を削除
@@ -161,7 +178,7 @@ export function AutoTradingCard({
 				</Modal>
 			)}
 			{dialog === "rename" && (
-				<RenameRunDialog
+				<RenameStrategyDialog
 					run={run}
 					onClose={() => setDialog(null)}
 					onDone={() => {
@@ -171,15 +188,26 @@ export function AutoTradingCard({
 					}}
 				/>
 			)}
+			{dialog === "copy" && (
+				<CreateStrategyDialog
+					copyFrom={run}
+					onClose={() => setDialog(null)}
+					onCreated={(s: StoredStrategy) => {
+						refresh();
+						navigate(`/strategies/${s.id}/edit`);
+					}}
+				/>
+			)}
 			{dialog === "delete" && (
-				<DeleteRunDialog
+				<DeleteStrategyDialog
 					run={run}
 					onClose={() => setDialog(null)}
 					onDone={() => {
-						setDialog(null);
 						drop(run.id);
-						onDeleted();
-						onToast(`「${run.name}」を削除した`);
+						navigate("/strategies", {
+							replace: true,
+							state: { notice: `「${run.name}」を削除した` },
+						});
 					}}
 				/>
 			)}

@@ -1,10 +1,10 @@
-// CUJ 2: デモ運用を始め、ホームで状況を見て、止める
+// CUJ 2: デモ運用を始め、戦略の画面で状況を見て、止める
 import { expect, test } from "@playwright/test";
 
 /** 注文の行の名前（「買 0.020 BTC · 約定 …」） */
 const ORDER_ROW = / · (約定|注文中|取消)/;
 
-test("デモ運用を始めると仮想注文が約定してホームに出て、止めると帯が消える", async ({
+test("デモ運用を始めると仮想注文が約定して戦略の画面に出て、止めると帯が消える", async ({
 	page,
 	isMobile,
 }) => {
@@ -65,8 +65,11 @@ test("デモ運用を始めると仮想注文が約定してホームに出て�
 
 	try {
 		// 始める
-		await page.goto("/home");
-		await page.getByRole("tab", { name }).click();
+		await page.goto("/strategies");
+		await page
+			.getByRole("list", { name: "戦略の一覧" })
+			.getByRole("link", { name: new RegExp(name) })
+			.click();
 		await page.getByRole("switch", { name: "自動取引" }).click();
 		const confirm = page.getByRole("dialog", {
 			name: `「${name}」の自動取引を開始する（デモ）`,
@@ -79,7 +82,7 @@ test("デモ運用を始めると仮想注文が約定してホームに出て�
 		await expect(band).toContainText("デモ稼働中");
 		await expect(page.getByTestId("band-strategy")).toHaveText(name);
 
-		// ホームで状況を見る。次の1分足の終わりに成行で買い、次に来た約定で約定する
+		// 戦略の画面で状況を見る。次の1分足の終わりに成行で買い、次に来た約定で約定する
 		const rows = page
 			.getByRole("region", { name: "注文・約定" })
 			.getByRole("button", { name: ORDER_ROW });

@@ -9,12 +9,8 @@ import { Modal } from "../../../shared/components/Modal";
 import { OrderSheet } from "../../../shared/components/OrderViews";
 import { Button } from "../../../shared/components/ui";
 import { useApi } from "../../../shared/lib/api";
+import { MODE_LABELS } from "../../../shared/lib/trading";
 import { errorMessage, readJson } from "../../../shared/lib/useAsync";
-
-export const MODE_LABELS: Record<TradingMode, string> = {
-	paper: "デモ",
-	live: "リアル",
-};
 
 /** モードの印。リアルを見分けられるように色を変える */
 export function ModeTag({ mode }: { mode: TradingMode }) {

@@ -47,6 +47,7 @@ export function tradingRun(
 		mode: "paper",
 		nextEvalAt: null,
 		startedAt: null,
+		ranSinceReset: over.enabled ?? false,
 		waitingForMarket: false,
 		dailyLoss: { loss: 0, limit: null, blocked: false },
 		account: {

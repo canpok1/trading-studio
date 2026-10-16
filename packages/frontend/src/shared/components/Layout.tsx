@@ -181,8 +181,8 @@ export function Layout({ badges = {} }: { badges?: Record<string, boolean> }) {
 }
 
 /**
- * 自動取引がオンの間だけ、全画面の上部に出す帯。通算損益を出し、押すとホームの稼働中のタブへ。
- * 複数のタブが稼働中なら件数と、損益の合計（開始時の資金の合計に対する %）を出す
+ * 自動取引がオンの間だけ、全画面の上部に出す帯。通算損益を出し、押すと稼働中の戦略の画面へ。
+ * 複数の戦略が稼働中なら件数と、損益の合計（開始時の資金の合計に対する %）を出し、押すと戦略の一覧へ
  */
 function TradingBand() {
 	const { runs } = useTradingStatus();
@@ -202,7 +202,7 @@ function TradingBand() {
 			className="sticky top-0 z-30 border-b-[3px] border-dashed border-paper-ink bg-paper text-xs text-paper-ink"
 		>
 			<Link
-				to={`/home?strategy=${first.id}`}
+				to={running.length > 1 ? "/strategies" : `/strategies/${first.id}`}
 				className="flex min-h-10 items-center gap-2 px-4"
 			>
 				<PaperIcon />

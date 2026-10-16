@@ -5,6 +5,7 @@ import { strategyTemplate } from "@trading-studio/core";
 import { changeValue, setupDom } from "../src/shared/lib/test-setup";
 import type { FakeApi } from "./fake-api";
 import { createFakeApi, routes } from "./fake-api";
+import { tradingRun } from "./fixtures";
 import { renderApp } from "./render-app";
 
 setupDom();
@@ -29,6 +30,11 @@ function strategiesApi(): FakeApi {
 		.on(routes.api.data.latest, "$get", () => ({ latest: null }))
 		.on(routes.api.strategies, "$get", () => ({
 			strategies: [...store.values()],
+		}))
+		.on(routes.api.trading.strategies, "$get", () => ({
+			strategies: [...store.values()].map((s) =>
+				tradingRun({ id: s.id, name: s.name }),
+			),
 		}))
 		.on(routes.api.strategies, "$post", (req, reply) => {
 			const { name, from } = req.body as {
@@ -98,23 +104,22 @@ async function createFromTemplate(view: View, name: string, template: RegExp) {
 	const dialog = within(view.getByRole("dialog", { name: "新しい戦略" }));
 	changeValue(dialog.getByLabelText("名前"), name);
 	fireEvent.click(dialog.getByRole("button", { name: template }));
-	await statusIs(view, `「${name}」を作った`);
 	await opened(view, name);
 }
 
 /**
- * 戦略を開き終えるまで待つ。作った戦略を開くのは「作った」と出た後になり、
+ * 戦略の編集画面を開き終えるまで待つ。作った戦略は編集画面で開き、
  * 編集中の下書きは開いた後の effect で入るので、その前に打つと上書きされる
  */
 async function opened(view: View, name: string) {
-	await waitFor(() => expect(selectedName(view)).toBe(name), wait);
+	await view.findByRole("heading", { name: `「${name}」の編集` }, wait);
 	await new Promise((r) => setTimeout(r, 0));
 }
 
-/** 戦略の選択欄で選ばれている名前。happy-dom の selectedOptions は選び直しに追従しないことがあるので使わない */
-function selectedName(view: View) {
-	const select = view.getByLabelText("戦略") as HTMLSelectElement;
-	return [...select.options].find((o) => o.selected)?.textContent;
+/** 編集している戦略の名前 */
+function editingName(view: View) {
+	const h = view.getByRole("heading", { level: 1 }).textContent ?? "";
+	return h.replace(/^「(.*)」の編集$/, "$1");
 }
 
 async function save(view: View) {
@@ -125,7 +130,7 @@ async function save(view: View) {
 /** ブラウザの再読み込みに当たる。偽物の API が覚えている戦略を読み直す */
 async function reopen(view: View) {
 	const path = view.location.current;
-	const name = selectedName(view) as string;
+	const name = editingName(view);
 	cleanup();
 	const again = renderApp(path, view.api);
 	await opened(again, name);
@@ -578,47 +583,24 @@ describe("買いの注文の出し方", () => {
 	});
 });
 
-describe("戦略の管理", () => {
-	test("複製・リネーム・削除ができ、同じ名前を付けようとするとサーバーの理由を出す", async () => {
+describe("戦略の作成", () => {
+	test("ひな形から作ると編集画面が開き、同じ名前を付けようとするとサーバーの理由を出す", async () => {
 		const view = await open(strategiesApi());
 		const base = "レンジ";
 		await createFromTemplate(view, base, /^レンジ逆張り/);
+		expect(view.location.current).toBe("/strategies/1/edit");
 
-		fireEvent.click(view.getByRole("button", { name: "＋ 新しい戦略" }));
-		const dialog = within(view.getByRole("dialog", { name: "新しい戦略" }));
+		cleanup();
+		const list = await open(view.api);
+		expect(
+			list.getByRole("list", { name: "戦略の一覧" }).textContent,
+		).toContain(base);
+		fireEvent.click(list.getByRole("button", { name: "＋ 新しい戦略" }));
+		const dialog = within(list.getByRole("dialog", { name: "新しい戦略" }));
 		changeValue(dialog.getByLabelText("名前"), base);
 		fireEvent.click(dialog.getByRole("button", { name: /^空の戦略/ }));
 		expect(
 			await dialog.findByText("同じ名前の戦略がある。別の名前にする", {}, wait),
 		).toBeTruthy();
-
-		const copy = `${base} のコピー`;
-		changeValue(dialog.getByLabelText("名前"), copy);
-		fireEvent.click(
-			dialog.getByRole("button", { name: new RegExp(`^「${base}」を複製`) }),
-		);
-		await statusIs(view, `「${copy}」を作った`);
-		await opened(view, copy);
-		const select = () => view.getByLabelText("戦略") as HTMLSelectElement;
-
-		const renamed = `${base} 改`;
-		fireEvent.click(
-			view.getByRole("button", { name: "この戦略の名前を変える" }),
-		);
-		const rename = within(
-			view.getByRole("dialog", { name: "戦略の名前を変える" }),
-		);
-		changeValue(rename.getByLabelText("新しい名前"), renamed);
-		fireEvent.click(rename.getByRole("button", { name: "名前を変える" }));
-		await statusIs(view, "名前を変えた");
-		expect(selectedName(view)).toBe(renamed);
-
-		fireEvent.click(view.getByRole("button", { name: "この戦略を削除" }));
-		const del = within(
-			view.getByRole("dialog", { name: `「${renamed}」を削除する` }),
-		);
-		fireEvent.click(del.getByRole("button", { name: "削除する" }));
-		await statusIs(view, "削除した");
-		expect([...select().options].map((o) => o.textContent)).toEqual([base]);
 	});
 });
