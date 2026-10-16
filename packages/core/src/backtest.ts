@@ -63,7 +63,7 @@ export type BacktestConfig<P> = {
 	 * 戦略が判定器を使わなければ省いてよい。
 	 * since は採点の記録が始まった時刻で、これより前（null なら全体）は判定を渡さない（データなし）
 	 */
-	/** 予定イベントの暦 */
+	/** 予定の暦 */
 	events: EventCalendar;
 	judgments?: {
 		news: readonly ScoredNews[];

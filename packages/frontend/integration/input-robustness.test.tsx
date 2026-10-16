@@ -163,6 +163,11 @@ function robustApi() {
 			activeVersion: null,
 			template: "",
 		}))
+		.on(routes.api.calendar.criteria, "$get", () => ({
+			versions: [],
+			activeVersion: null,
+			template: "",
+		}))
 		.on(routes.api.segments, "$get", () => ({ segments: [] }))
 		.on(routes.api.datasets, "$get", () => ({ datasets: [] }));
 }

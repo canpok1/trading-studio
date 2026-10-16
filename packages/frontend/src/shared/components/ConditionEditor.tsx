@@ -7,11 +7,11 @@ import type {
 	Condition,
 	ConditionGroupKey,
 	ConditionSet,
+	EventImportance,
 	FrequencyUnit,
 	Judge,
 	JudgmentConditionValue,
 	JudgmentValue,
-	MarketEvent,
 	OrderType,
 	PartialSell,
 	Timeframe,
@@ -25,6 +25,8 @@ import {
 	DEFAULT_BUY_ORDER,
 	DEFAULT_CONDITION_TIMEFRAME,
 	DEFAULT_PARTIAL_SELL,
+	EVENT_IMPORTANCE_LABELS,
+	EVENT_IMPORTANCES,
 	FREQUENCY_UNIT_LABELS,
 	FREQUENCY_UNITS,
 	formatBtc,
@@ -35,8 +37,6 @@ import {
 	JUDGMENT_CONDITION_VALUES,
 	JUDGMENT_VALUE_LABELS,
 	LIMITS,
-	MARKET_EVENT_LABELS,
-	MARKET_EVENTS,
 	newBuyRuleId,
 	ORDER_TYPE_LABELS,
 	partialSellQuantity,
@@ -387,7 +387,7 @@ const CONDITION_NAMES: Record<ConditionKind, string> = {
 	entryAtr: "買値からの ATR の倍数",
 	trailingAtr: "買ってからの最高値からの ATR の倍数",
 	holdingBars: "買ってからの本数",
-	eventWindow: "予定イベントの前後でない",
+	eventWindow: "予定の前後でない",
 	"judgment:sentiment": "センチメントが指定のどれか",
 	"judgment:risk": "リスクが指定のどれか",
 };
@@ -543,7 +543,7 @@ function defaultCondition(
 		case "eventWindow":
 			return {
 				type: kind,
-				events: [...MARKET_EVENTS],
+				minImportance: "high",
 				beforeHours: 0,
 				afterHours: 24,
 				allowNoCalendar: false,
@@ -1012,33 +1012,34 @@ function ConditionRow({
 			);
 			break;
 		case "eventWindow": {
-			const toggle = (v: MarketEvent, on: boolean) => {
-				const set = new Set<string>(c.events);
-				if (on) set.add(v);
-				else set.delete(v);
-				onChange({ ...c, events: MARKET_EVENTS.filter((x) => set.has(x)) });
-			};
 			body = (
 				<>
-					<span>予定イベント</span>
-					<span className="flex flex-wrap gap-1">
-						{MARKET_EVENTS.map((v) => (
-							<ChipCheck
-								key={v}
-								checked={(c.events as string[]).includes(v)}
-								onChange={(on) => toggle(v, on)}
-							>
-								{MARKET_EVENT_LABELS[v]}
-							</ChipCheck>
+					<span>重要度</span>
+					<select
+						aria-label="予定の重要度"
+						value={c.minImportance}
+						onChange={(e) =>
+							onChange({
+								...c,
+								minImportance: e.target.value as EventImportance,
+							})
+						}
+						className={selectClass}
+					>
+						{EVENT_IMPORTANCES.map((v) => (
+							<option key={v} value={v}>
+								{EVENT_IMPORTANCE_LABELS[v]}
+								{v === "medium" ? "以上" : v === "low" ? "以上（すべて）" : ""}
+							</option>
 						))}
-					</span>
-					<span>の</span>
+					</select>
+					<span>の予定の</span>
 					<NumberInput
 						value={c.beforeHours}
 						onChange={(beforeHours) => onChange({ ...c, beforeHours })}
 						invalid={bad("beforeHours")}
 						inputMode="numeric"
-						aria-label="イベントの何時間前から"
+						aria-label="予定の何時間前から"
 						className="w-16"
 					/>
 					<span>時間前から</span>
@@ -1047,7 +1048,7 @@ function ConditionRow({
 						onChange={(afterHours) => onChange({ ...c, afterHours })}
 						invalid={bad("afterHours")}
 						inputMode="numeric"
-						aria-label="イベントの何時間後まで"
+						aria-label="予定の何時間後まで"
 						className="w-16"
 					/>
 					<span>時間後までに当たらない</span>
@@ -1504,7 +1505,7 @@ function RuleGroups({
 						[
 							["価格・保有", PRICE_KINDS[adding]],
 							["市場評価", JUDGMENT_KINDS],
-							["予定イベント", EVENT_KINDS[adding]],
+							["予定", EVENT_KINDS[adding]],
 						] as const
 					)
 						.filter(([, kinds]) => kinds.length > 0)

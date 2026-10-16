@@ -4,6 +4,8 @@ import type {
 	Dataset,
 	DatasetBlocker,
 	DatasetRun,
+	EventCriteria,
+	JudgmentCoverage,
 	ListedSegment,
 	RescoreCoverage,
 	StoredStrategy,
@@ -22,6 +24,8 @@ import {
 	conditionStrategy,
 	DEFAULT_CONDITION_TIMEFRAME,
 	DEFAULT_FEE_RATES,
+	eventWindowHours,
+	HOUR_MS,
 	historyShortfalls,
 	isCoarser,
 	parseConditionSet,
@@ -44,6 +48,10 @@ import {
 } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { DatasetPicker } from "../../features/backtest/components/DatasetPicker";
+import {
+	EventJudgmentStatus,
+	judgmentsReady,
+} from "../../features/backtest/components/EventJudgmentStatus";
 import {
 	RescoreStatus,
 	rescoreReady,
@@ -121,6 +129,8 @@ export type BacktestDraft = {
 	fees: { limitPpm: number; marketPpm: number };
 	/** 市場評価に使う採点の基準の版。null・省略は運用どおり */
 	criteriaVersion?: number | null;
+	/** 予定の前後の条件に使う予定の評価基準の版。null・省略は使用中の版 */
+	eventCriteriaVersion?: number | null;
 	/** 期間の決め方。segment=相場データを選ぶ、dataset=データセットでまとめて実行する、range（省略）=日付で指定する */
 	periodMode?: "segment" | "dataset" | "range";
 	/** 選んだ相場データ。null・省略や消えた相場データは一番新しいもの */
@@ -159,6 +169,7 @@ function loadDraft(strategies: StoredStrategy[]): BacktestDraft | null {
 			initialCash: v.initialCash,
 			fees: v.fees,
 			criteriaVersion: v.criteriaVersion ?? null,
+			eventCriteriaVersion: v.eventCriteriaVersion ?? null,
 			periodMode: v.periodMode ?? "range",
 			segmentId: v.segmentId ?? null,
 			datasetId: v.datasetId ?? null,
@@ -239,6 +250,7 @@ type Data = {
 	/** AI 判定の採点の記録の始まり。まだ無ければ null */
 	firstScoredAt: number | null;
 	criteriaVersions: CriteriaVersion[];
+	eventCriteria: EventCriteria;
 	/** 新しい順 */
 	segments: ListedSegment[];
 	/** 名前の順 */
@@ -253,7 +265,7 @@ export function BacktestRunPage() {
 	const job = useBacktestJob();
 
 	const load = useCallback(async (): Promise<Data> => {
-		const [s, c, l, j, cv, ds, dd] = await Promise.all([
+		const [s, c, l, j, cv, ds, dd, ec] = await Promise.all([
 			api.api.strategies
 				.$get()
 				.then((res) => readJson<{ strategies: StoredStrategy[] }>(res)),
@@ -275,6 +287,9 @@ export function BacktestRunPage() {
 			api.api.datasets
 				.$get()
 				.then((res) => readJson<{ datasets: Dataset[] }>(res)),
+			api.api.calendar.criteria
+				.$get()
+				.then((res) => readJson<EventCriteria>(res)),
 		]);
 		return {
 			strategies: s.strategies,
@@ -282,6 +297,7 @@ export function BacktestRunPage() {
 			latest: l.latest?.close ?? null,
 			firstScoredAt: j.firstScoredAt,
 			criteriaVersions: cv.versions,
+			eventCriteria: ec,
 			segments: ds.segments,
 			datasets: dd.datasets,
 		};
@@ -334,6 +350,10 @@ export function BacktestRunPage() {
 					passed?.criteriaVersion !== undefined
 						? passed.criteriaVersion
 						: (base?.criteriaVersion ?? null),
+				eventCriteriaVersion:
+					passed?.eventCriteriaVersion !== undefined
+						? passed.eventCriteriaVersion
+						: (base?.eventCriteriaVersion ?? null),
 				periodMode: passed?.periodMode ?? base?.periodMode ?? "range",
 				segmentId:
 					passed?.segmentId !== undefined
@@ -418,6 +438,7 @@ export function BacktestRunPage() {
 			latest={state.data.latest}
 			firstScoredAt={state.data.firstScoredAt}
 			criteriaVersions={state.data.criteriaVersions}
+			eventCriteria={state.data.eventCriteria}
 			segments={state.data.segments}
 			datasets={state.data.datasets}
 		/>
@@ -432,6 +453,7 @@ function RunForm({
 	latest,
 	firstScoredAt: latestFirstScoredAt,
 	criteriaVersions,
+	eventCriteria,
 	segments,
 	datasets: initialDatasets,
 }: {
@@ -442,6 +464,7 @@ function RunForm({
 	latest: number | null;
 	firstScoredAt: number | null;
 	criteriaVersions: CriteriaVersion[];
+	eventCriteria: EventCriteria;
 	segments: ListedSegment[];
 	datasets: Dataset[];
 }) {
@@ -456,6 +479,7 @@ function RunForm({
 		to: useId(),
 		cash: useId(),
 		version: useId(),
+		eventVersion: useId(),
 		segment: useId(),
 	};
 
@@ -590,6 +614,22 @@ function RunForm({
 		criteriaVersion !== null &&
 		(rescore === null || !rescoreReady(rescore));
 
+	// 予定の前後の条件があれば、期間の前後に条件の幅を足した範囲の予定に、版の重要度の判断がそろっているときだけ実行できる。
+	// まとめた実行は相場データごとにサーバーが確かめる
+	const eventHours = eventWindowHours(p);
+	const eventCriteriaVersion = eventCriteria.versions.some(
+		(v) => v.version === draft.eventCriteriaVersion,
+	)
+		? (draft.eventCriteriaVersion ?? null)
+		: null;
+	const eventVersion = eventCriteriaVersion ?? eventCriteria.activeVersion;
+	const [judgments, setJudgments] = useState<JudgmentCoverage | null>(null);
+	const eventBlocked =
+		!byDataset &&
+		eventHours !== null &&
+		eventVersion !== null &&
+		(judgments === null || !judgmentsReady(judgments));
+
 	const bars = useMemo(() => {
 		if (!cov || cov.firstTime === null || cov.lastTime === null) return 0;
 		const a = Math.max(fromMs, cov.firstTime);
@@ -654,6 +694,7 @@ function RunForm({
 					fees: draft.fees,
 					skipGaps,
 					criteriaVersion,
+					eventCriteriaVersion: eventHours ? eventCriteriaVersion : null,
 				},
 			});
 			const body = (await res.json()) as {
@@ -698,6 +739,7 @@ function RunForm({
 					fees: draft.fees,
 					skipGaps,
 					criteriaVersion,
+					eventCriteriaVersion: eventHours ? eventCriteriaVersion : null,
 					segmentId: segment?.id ?? null,
 				},
 			});
@@ -1069,6 +1111,54 @@ function RunForm({
 							)}
 						</div>
 					)}
+					{eventHours && (
+						<div className="flex flex-col gap-1.5">
+							<div className="flex items-center gap-1.5">
+								<label
+									htmlFor={ids.eventVersion}
+									className="text-[13px] font-semibold"
+								>
+									予定の評価基準の版
+								</label>
+								<Help label="予定の評価基準の版">
+									<p>
+										予定の前後の条件で、予定の重要度をどの版の評価基準で判断したものにするか。版は設定の「ニュース」→「予定」で作る。
+									</p>
+									<p>
+										期間の前後に条件の時間を足した範囲の予定が、すべてその版で判断済みのときだけ実行できる。
+									</p>
+								</Help>
+							</div>
+							<select
+								id={ids.eventVersion}
+								value={eventCriteriaVersion ?? ""}
+								onChange={(e) =>
+									update({
+										eventCriteriaVersion:
+											e.target.value === "" ? null : Number(e.target.value),
+									})
+								}
+								className="h-11 rounded-[10px] border border-line bg-surface px-2 text-sm"
+							>
+								<option value="">
+									使用中の版（v{eventCriteria.activeVersion}）
+								</option>
+								{[...eventCriteria.versions].reverse().map((v) => (
+									<option key={v.version} value={v.version}>
+										v{v.version} {v.note}
+									</option>
+								))}
+							</select>
+							{eventVersion !== null && !byDataset && (
+								<EventJudgmentStatus
+									from={fromMs - eventHours.afterHours * HOUR_MS}
+									to={toMs + eventHours.beforeHours * HOUR_MS}
+									version={eventVersion}
+									onChange={setJudgments}
+								/>
+							)}
+						</div>
+					)}
 					{step?.limited && <Note>{stepLimitedText(step.timeframe)}</Note>}
 					{shortfalls.length > 0 && (
 						<Note>
@@ -1254,7 +1344,8 @@ function RunForm({
 								hasErr ||
 								(!byDataset && bars === 0) ||
 								judgmentError !== null ||
-								rescoreBlocked
+								rescoreBlocked ||
+								eventBlocked
 							}
 							onClick={() => run(false)}
 						>
@@ -1266,9 +1357,11 @@ function RunForm({
 										? "期間にデータが無い"
 										: rescoreBlocked
 											? `v${criteriaVersion} の採点がそろうと実行できる`
-											: byDataset && dataset
-												? `${dataset.segments.length} 件をまとめて実行`
-												: "バックテストを実行"}
+											: eventBlocked
+												? `予定の重要度の判断がそろうと実行できる`
+												: byDataset && dataset
+													? `${dataset.segments.length} 件をまとめて実行`
+													: "バックテストを実行"}
 						</Button>
 					</div>
 				</div>

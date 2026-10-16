@@ -27,7 +27,7 @@ export type StrategyInput<P> = {
 	recent: { timeframeMs: number; candles: readonly Candle[] };
 	/** 判定器ごとの、その時点で得られていた AI 判定 */
 	judgments: Readonly<Record<string, readonly Judgment[]>>;
-	/** 予定イベントの暦 */
+	/** 予定の暦 */
 	events: EventCalendar;
 	/** 保有の合計 */
 	position: Position;

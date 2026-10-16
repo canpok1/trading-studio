@@ -492,7 +492,7 @@ export type DecideInput<P> = {
 	recent: StrategyInput<P>["recent"];
 	/** 判定器ごとの AI 判定。評価時点で今の集計ルールで計算したもの */
 	judgments: Readonly<Record<string, readonly Judgment[]>>;
-	/** 予定イベントの暦 */
+	/** 予定の暦 */
 	events: EventCalendar;
 	account: Account;
 	state: JsonValue;

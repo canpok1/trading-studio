@@ -1,10 +1,4 @@
-import type {
-	CalendarStatus,
-	EventKeywords,
-	EventSource,
-} from "@trading-studio/backend";
-import type { MarketEvent } from "@trading-studio/core";
-import { MARKET_EVENT_LABELS, MARKET_EVENTS } from "@trading-studio/core";
+import type { CalendarStatus, EventSource } from "@trading-studio/backend";
 import { useCallback, useState } from "react";
 import { Help } from "../../../shared/components/Help";
 import { Modal } from "../../../shared/components/Modal";
@@ -24,7 +18,7 @@ const POLL_MS = 5_000;
 
 type Loaded = { sources: EventSource[]; status: CalendarStatus };
 
-/** 予定イベントの暦の取得元。暦は買いの条件（戦略）で使い、バックテストと自動取引にまたがるので「全般」に置く */
+/** 予定の取得元（iCal）と取得の状態 */
 export function EventCalendarSetting() {
 	const api = useApi();
 	const load = useCallback(async (): Promise<Loaded> => {
@@ -49,18 +43,19 @@ export function EventCalendarSetting() {
 	return (
 		<Card className="flex flex-col gap-2.5">
 			<div className="flex items-center gap-1.5">
-				<h2 className="text-[15px] font-bold">予定イベントの暦</h2>
-				<Help label="予定イベントの暦">
+				<h2 className="text-[15px] font-bold">予定の取得元</h2>
+				<Help label="予定の取得元">
 					<p>
-						買いの条件「予定イベントの前後でない」に使う暦。アプリが 2022〜2026
-						年の分を持ち、ここに足した取得元（iCal）から 6
+						買いの条件「予定の前後でない」に使う暦。アプリが 2022〜2026
+						年の主な予定を持ち、ここに足した取得元（iCal）から 6
 						時間ごとに取得した分で延びる。
 					</p>
 					<p>
-						取得元ごとに、イベントの種類ごとの語を件名に含む予定を拾う（大文字・小文字は区別しない）。語を空けた種類はその取得元から拾わない。
+						取得した予定は1件ずつ AI
+						が「予定の評価基準」で重要度（高・中・低）を判断する。判断はニュースの採点と間隔を空けて順に進める。
 					</p>
 					<p>
-						取得した暦は消さず、バックテストでも使う。暦がそろっていない期間（暦切れ）の扱いは条件ごとに選ぶ。
+						取得した予定は消さず、バックテストでも使う。暦がそろっていない期間や重要度が未判断の予定（暦切れ）の扱いは条件ごとに選ぶ。
 					</p>
 				</Help>
 			</div>
@@ -104,30 +99,23 @@ export function EventCalendarSetting() {
 
 function Coverage({ status }: { status: CalendarStatus }) {
 	return (
-		<table className="w-full text-xs">
-			<caption className="sr-only">種類ごとの暦の期間</caption>
-			<tbody>
-				{status.coveredUntil.map(({ type, until }) => (
-					<tr key={type}>
-						<th scope="row" className="py-0.5 text-left font-normal">
-							{MARKET_EVENT_LABELS[type]}
-						</th>
-						<td
-							className={`num py-0.5 text-right ${until === null ? "font-semibold text-loss" : "text-text-2"}`}
-						>
-							{until === null ? "暦切れ" : `${formatDateTime(until)} まで`}
-						</td>
-					</tr>
-				))}
-			</tbody>
-		</table>
+		<div className="flex flex-col gap-0.5 text-xs">
+			<span
+				data-testid="calendar-coverage"
+				className={`num ${status.coveredUntil === null ? "font-semibold text-loss" : "text-text-2"}`}
+			>
+				{status.coveredUntil === null
+					? "暦切れ"
+					: `暦は ${formatDateTime(status.coveredUntil)} まで`}
+			</span>
+			<span data-testid="calendar-unjudged" className="num text-text-2">
+				{status.unjudged === 0
+					? "すべての予定の重要度を判断済み"
+					: `重要度を未判断の予定 ${status.unjudged} 件（順に判断中）`}
+			</span>
+		</div>
 	);
 }
-
-const keywordsText = (k: EventKeywords) =>
-	MARKET_EVENTS.filter((t) => k[t])
-		.map((t) => `${MARKET_EVENT_LABELS[t]}「${k[t]}」`)
-		.join("・");
 
 function SourceList({
 	sources,
@@ -169,9 +157,6 @@ function SourceList({
 							<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 								<span className="text-sm font-semibold">{s.name}</span>
 								<span className="truncate text-xs text-text-2">{s.url}</span>
-								<span className="text-xs text-text-2">
-									{keywordsText(s.keywords)}
-								</span>
 								<span className="num text-xs text-text-2">
 									{s.lastSuccessAt === null
 										? "まだ取得していない"
@@ -180,12 +165,6 @@ function SourceList({
 								{s.lastError && (
 									<span className="text-xs font-semibold text-loss">
 										{s.lastError}
-									</span>
-								)}
-								{s.stale.length > 0 && (
-									<span className="text-xs font-semibold text-loss">
-										{s.stale.map((t) => MARKET_EVENT_LABELS[t]).join("・")}が 70
-										日拾えていない。件名の語を確かめる
 									</span>
 								)}
 							</div>
@@ -216,7 +195,7 @@ function SourceList({
 				<Modal title="取得元を削除する" onClose={() => setRemoving(null)}>
 					<p className="text-sm">
 						「{removing.name}
-						」と、そこから取得した暦を削除する。バックテストでもその暦を使わなくなる。
+						」と、そこから取得した予定を削除する。バックテストでもその予定を使わなくなる。
 					</p>
 					<div className="grid grid-cols-2 gap-3">
 						<Button onClick={() => setRemoving(null)}>やめる</Button>
@@ -252,26 +231,18 @@ function SourceForm({
 	const api = useApi();
 	const [name, setName] = useState(source?.name ?? "");
 	const [url, setUrl] = useState(source?.url ?? "");
-	const [keywords, setKeywords] = useState<EventKeywords>(
-		source?.keywords ?? {},
-	);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<{
 		field?: string;
 		message: string;
 	} | null>(null);
-	const changesData =
-		source !== null &&
-		(url.trim() !== source.url ||
-			MARKET_EVENTS.some(
-				(t) => (keywords[t] ?? "").trim() !== (source.keywords[t] ?? ""),
-			));
+	const changesData = source !== null && url.trim() !== source.url;
 
 	const save = async () => {
 		setBusy(true);
 		setError(null);
 		try {
-			const json = { name, url, keywords };
+			const json = { name, url };
 			const res =
 				source === null
 					? await api.api.calendar.sources.$post({ json })
@@ -290,9 +261,6 @@ function SourceForm({
 			setBusy(false);
 		}
 	};
-	const setWord = (t: MarketEvent, w: string) =>
-		setKeywords((k) => ({ ...k, [t]: w }));
-
 	return (
 		<div className="flex flex-col gap-2.5">
 			<div className="flex flex-col gap-1.5">
@@ -326,32 +294,9 @@ function SourceForm({
 					className={inputClass}
 				/>
 			</div>
-			<fieldset className="flex flex-col gap-1.5">
-				<legend className="mb-1.5 text-[13px] font-semibold">
-					件名で拾う語（空けた種類は拾わない）
-				</legend>
-				{MARKET_EVENTS.map((t) => (
-					<div key={t} className="flex items-center gap-2">
-						<label
-							htmlFor={`event-source-${t}`}
-							className="w-28 shrink-0 text-[13px]"
-						>
-							{MARKET_EVENT_LABELS[t]}
-						</label>
-						<input
-							id={`event-source-${t}`}
-							value={keywords[t] ?? ""}
-							maxLength={100}
-							onChange={(e) => setWord(t, e.target.value)}
-							aria-invalid={error?.field === "keywords" || undefined}
-							className={inputClass}
-						/>
-					</div>
-				))}
-			</fieldset>
 			{changesData && (
 				<p className="text-xs text-text-2">
-					URL か語を変えると、この取得元から取得した暦を消して取り直す
+					URL を変えると、この取得元から取得した予定を消して取り直す
 				</p>
 			)}
 			{error && (

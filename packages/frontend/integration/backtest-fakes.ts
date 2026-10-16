@@ -3,6 +3,7 @@ import type {
 	BacktestChart,
 	BacktestRun,
 	CriteriaVersion,
+	EventCriteriaVersion,
 	StoredStrategy,
 } from "@trading-studio/backend";
 import type {
@@ -66,6 +67,8 @@ export type RunPageSetup = {
 	/** 採点の記録の始まり。null はまだ無い */
 	firstScoredAt?: number | null;
 	criteriaVersions?: CriteriaVersion[];
+	/** 予定の評価基準の版。最後のものを使用中にする */
+	eventCriteriaVersions?: EventCriteriaVersion[];
 	/** 30日目の1時間足を3本欠かす */
 	gap?: boolean;
 };
@@ -77,6 +80,7 @@ export function onRunPage(
 		strategies = [],
 		firstScoredAt = null,
 		criteriaVersions = [],
+		eventCriteriaVersions = [],
 		gap = false,
 	}: RunPageSetup = {},
 ): FakeApi {
@@ -108,6 +112,11 @@ export function onRunPage(
 		.on(routes.api.scoring.criteria, "$get", () => ({
 			versions: criteriaVersions,
 			activeVersion: criteriaVersions.at(-1)?.version ?? null,
+			template: "",
+		}))
+		.on(routes.api.calendar.criteria, "$get", () => ({
+			versions: eventCriteriaVersions,
+			activeVersion: eventCriteriaVersions.at(-1)?.version ?? null,
 			template: "",
 		}))
 		.on(routes.api.segments, "$get", () => ({ segments: [] }))

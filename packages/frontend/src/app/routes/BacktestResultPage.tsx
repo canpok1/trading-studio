@@ -184,6 +184,7 @@ function rerunState(run: BacktestRun): Partial<BacktestDraft> {
 		initialCash: run.initialCash,
 		fees: run.fees,
 		criteriaVersion: run.criteriaVersion,
+		eventCriteriaVersion: run.eventCriteriaVersion,
 		periodMode: run.segment ? "segment" : "range",
 		segmentId: run.segment?.id ?? null,
 	};
@@ -268,6 +269,9 @@ export function RunHeader({
 		...(run.aggregationRule ? [ruleText(run.aggregationRule)] : []),
 		...(run.criteriaVersion !== null
 			? [`採点の版 v${run.criteriaVersion}`]
+			: []),
+		...(run.eventCriteriaVersion !== null
+			? [`予定の評価基準 v${run.eventCriteriaVersion}`]
 			: []),
 		...(run.newsDelayMs !== null
 			? [`ニュースは公開の${Math.round(run.newsDelayMs / 60_000)}分後から`]
