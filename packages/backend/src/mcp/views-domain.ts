@@ -50,6 +50,7 @@ import type {
 	AutoTradingStatus,
 	StoredOrder,
 	StrategyLock,
+	StrategySummary,
 	TradingPerformance,
 } from "../trading/types-domain";
 
@@ -400,14 +401,38 @@ export function watchGroupView(g: WatchGroup) {
 	};
 }
 
+/** 発動価格の今の価格からの幅（%）を足す。次の判定で起きるもの（価格なし）は null */
+const withDistance = (price: number) => (a: WatchAction) => ({
+	...a,
+	distancePercent:
+		a.price === null ? null : Math.round((a.price / price - 1) * 10_000) / 100,
+});
+
+/** ホームのカード1枚ぶん。比べる値（通算損益・含み損益・確定損益・勝率・PF・最大DD・取引回数）と次の動き */
+export function strategySummaryView(s: StrategySummary) {
+	const { position, lots } = s.status.account;
+	const n = s.nextMoves;
+	const action = n && withDistance(n.price);
+	return {
+		...tradingRunView(s.status),
+		performance: s.performance && tradingPerformanceView(s.performance),
+		unrealizedPnl: unrealizedPnl(
+			position.quantity,
+			position.entryPrice,
+			n?.price ?? s.performance?.price ?? null,
+		),
+		lots: lots.length,
+		nextMoves: n &&
+			action && {
+				now: n.now.map(action),
+				up: n.up && action(n.up),
+				down: n.down && action(n.down),
+			},
+	};
+}
+
 export function watchView(w: StrategyWatch) {
-	const action = (a: WatchAction) => ({
-		...a,
-		distancePercent:
-			a.price === null
-				? null
-				: Math.round((a.price / w.price - 1) * 10_000) / 100,
-	});
+	const action = withDistance(w.price);
 	const next = nextMoves(w);
 	return {
 		price: w.price,

@@ -44,6 +44,7 @@ const strategyId = (c: Context) => Number(c.req.param("id"));
 export function tradingRoutes(service: TradingService) {
 	return new Hono()
 		.get("/strategies", (c) => c.json({ strategies: service.runs() }))
+		.get("/summaries", (c) => c.json({ summaries: service.summaries() }))
 		.post("/strategies/:id/start", (c) =>
 			respond(c, service.start(strategyId(c))),
 		)

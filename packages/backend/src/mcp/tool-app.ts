@@ -34,6 +34,7 @@ export type McpDeps = {
 		| "run"
 		| "performance"
 		| "watch"
+		| "summaries"
 		| "orders"
 		| "orderSummary"
 		| "order"

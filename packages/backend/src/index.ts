@@ -79,6 +79,7 @@ export type {
 	StoredDecision,
 	StoredOrder,
 	StrategyLock,
+	StrategySummary,
 	TradingMode,
 	TradingPerformance,
 } from "./trading/types-domain";

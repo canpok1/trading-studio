@@ -8,6 +8,7 @@ import type {
 	StrategyWatch,
 	TradeOrder,
 	ValidationError,
+	WatchAction,
 } from "@trading-studio/core";
 import type {
 	CreateStrategyInput,
@@ -125,6 +126,22 @@ export type AutoTradingStatus = {
 
 export type StrategyLock = "running" | "holding";
 
+/** ホームのカードに出す戦略1つの要約 */
+export type StrategySummary = {
+	status: AutoTradingStatus;
+	/** 口座のリセット以降の成績 */
+	performance: TradingPerformance | null;
+	/** 次の動き（次の判定で起きる売買と、上側・下側で一番近い発動価格）。価格がまだ無ければ null */
+	nextMoves: {
+		price: number;
+		now: WatchAction[];
+		up: WatchAction | null;
+		down: WatchAction | null;
+		/** 買いが2つ以上。売買の種類に買いの名前を添える */
+		multiBuy: boolean;
+	} | null;
+};
+
 export type TradingFailure =
 	| { kind: "running"; message: string }
 	| { kind: "not_running"; message: string }
@@ -149,6 +166,8 @@ export interface TradingService {
 	 * 戦略が無ければ null、価格がまだ無ければ watch が null
 	 */
 	watch(strategyId: number): { watch: StrategyWatch | null } | null;
+	/** ホームのカードに出す戦略（デモで、オンか、オフでも保有か未約定の注文がある）の要約。作った順 */
+	summaries(): StrategySummary[];
 	/** 戦略を作り、その口座（デモ・開始時の資金は既定）も作る */
 	createStrategy(input: CreateStrategyInput): StrategyResult;
 	/** 戦略を消す。オフのときだけ。未約定の注文は取り消し、保有は捨てる。注文・判断の記録は残す */
