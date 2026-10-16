@@ -427,7 +427,8 @@ describe("0016 運用（タブ）ごとの自動取引", () => {
 			decision: "{}",
 			judgments: "{}",
 		});
-		migrateDb(db, { now: 1 });
+		// 0028 は戦略の無い運用を削除済みにするので、その前までで確かめる
+		migrateDb(db, { migrationsFolder: await migrationsUpTo(27), now: 1 });
 		expect(runs(db)).toEqual([
 			{
 				id: 1,
@@ -459,7 +460,8 @@ describe("0016 運用（タブ）ごとの自動取引", () => {
 	test("オフなら選んでいた運用する戦略を引き継ぎ、口座が無ければ既定の資金で作る", async () => {
 		const db = await dbUpTo(15);
 		insert(db, "settings", { key: "active_strategy_id", value: "3" });
-		migrateDb(db, { now: 1 });
+		// 0028 は戦略の無い運用を削除済みにするので、その前までで確かめる
+		migrateDb(db, { migrationsFolder: await migrationsUpTo(27), now: 1 });
 		expect(runs(db)).toEqual([
 			expect.objectContaining({
 				id: 1,
@@ -557,3 +559,105 @@ async function addMigration(sql: string): Promise<string> {
 	await writeFile(join(folder, `${tag}.sql`), sql);
 	return folder;
 }
+
+describe("0028 戦略と運用を 1:1 にする", () => {
+	const runs = (db: ReturnType<typeof openDb>) =>
+		db.$client
+			.query<Record<string, unknown>, []>(
+				"select id, name, mode, strategy_id, enabled, initial_cash, account, deleted_at is not null as deleted from trading_runs order by id",
+			)
+			.all();
+	const strategy = (db: ReturnType<typeof openDb>, id: number) =>
+		insert(db, "strategies", {
+			id,
+			name: `s${id}`,
+			params: "{}",
+			created_at: 0,
+			updated_at: 0,
+		});
+	const run = (
+		db: ReturnType<typeof openDb>,
+		row: Record<string, string | number | null>,
+	) =>
+		insert(db, "trading_runs", {
+			name: "r",
+			mode: "paper",
+			created_at: 0,
+			enabled: 0,
+			state: "null",
+			reevaluate: 0,
+			initial_cash: 500_000,
+			reset_at: 0,
+			...row,
+		});
+
+	test("運用は戦略の口座として残し、リアルはデモにする。戦略の無い運用は未約定を取り消して削除済みにし、運用の無い戦略には既定の資金の口座を作る", async () => {
+		const db = await dbUpTo(27);
+		// 0016 が作る運用を外し、行を決めて確かめる
+		db.$client.run("delete from trading_runs");
+		strategy(db, 1);
+		strategy(db, 2);
+		strategy(db, 3);
+		run(db, { id: 1, strategy_id: 1, account: '{"cash":1}' });
+		run(db, { id: 2, strategy_id: 2, mode: "live" });
+		run(db, { id: 3, strategy_id: null });
+		run(db, { id: 4, strategy_id: 9, enabled: 1 });
+		run(db, { id: 5, strategy_id: 3, deleted_at: 1 });
+		insert(db, "trading_orders", {
+			run_id: 4,
+			mode: "paper",
+			id: "p1",
+			side: "buy",
+			type: "limit",
+			status: "open",
+			reason: "r",
+			strategy_name: "s",
+		});
+		migrateDb(db, { now: 1 });
+		expect(runs(db)).toEqual([
+			expect.objectContaining({
+				id: 1,
+				strategy_id: 1,
+				account: '{"cash":1}',
+				deleted: 0,
+			}),
+			expect.objectContaining({
+				id: 2,
+				strategy_id: 2,
+				mode: "paper",
+				deleted: 0,
+			}),
+			expect.objectContaining({ id: 3, deleted: 1 }),
+			expect.objectContaining({ id: 4, enabled: 0, deleted: 1 }),
+			expect.objectContaining({ id: 5, deleted: 1 }),
+			{
+				id: 6,
+				name: "s3",
+				mode: "paper",
+				strategy_id: 3,
+				enabled: 0,
+				initial_cash: 1_000_000,
+				account: null,
+				deleted: 0,
+			},
+		]);
+		expect(
+			db.$client
+				.query("select status, cancel_reason from trading_orders")
+				.all(),
+		).toEqual([
+			{ status: "canceled", cancel_reason: "戦略と運用の統合で取消" },
+		]);
+	});
+
+	test("同じ戦略を使う運用が2つあれば適用しない", async () => {
+		const db = await dbUpTo(27);
+		// 0016 が作る運用を外し、行を決めて確かめる
+		db.$client.run("delete from trading_runs");
+		strategy(db, 1);
+		run(db, { id: 1, strategy_id: 1 });
+		run(db, { id: 2, strategy_id: 1 });
+		expect(() => migrateDb(db, { now: 1 })).toThrow();
+		expect(runs(db)).toHaveLength(2);
+	});
+});

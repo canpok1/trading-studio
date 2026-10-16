@@ -12,9 +12,12 @@ import {
 	normalizeAccount,
 } from "@trading-studio/core";
 import type { Db } from "../db/open-infra";
-import type { TradingRepository, TradingRunRow } from "./repository-domain";
 import type {
-	OrderFilter,
+	RunOrderFilter,
+	TradingRepository,
+	TradingRunRow,
+} from "./repository-domain";
+import type {
 	OrderSummary,
 	StoredDecision,
 	StoredOrder,
@@ -117,7 +120,7 @@ const toOrder = (r: OrderRow): StoredOrder => ({
 	),
 });
 
-function orderWhere(filter: OrderFilter): {
+function orderWhere(filter: RunOrderFilter): {
 	where: string;
 	args: (string | number)[];
 } {
@@ -152,7 +155,7 @@ export class SqliteTradingRepository implements TradingRepository {
 		return this.sql.transaction(fn)();
 	}
 
-	/** 削除していない運用（作った順） */
+	/** 削除していない口座（作った順） */
 	runs(): TradingRunRow[] {
 		return this.sql
 			.query<RunRow, []>(
@@ -162,7 +165,7 @@ export class SqliteTradingRepository implements TradingRepository {
 			.map(toRun);
 	}
 
-	/** 削除していない運用の id（作った順）。口座を読まずに済ませる */
+	/** 削除していない口座の id（作った順）。口座を読まずに済ませる */
 	runIds(): number[] {
 		return this.sql
 			.query<{ id: number }, []>(
@@ -172,17 +175,18 @@ export class SqliteTradingRepository implements TradingRepository {
 			.map((r) => r.id);
 	}
 
-	/** 削除していない運用が選んでいる戦略の id */
-	strategyIds(): number[] {
-		return this.sql
-			.query<{ strategy_id: number }, []>(
-				"select distinct strategy_id from trading_runs where deleted_at is null and strategy_id is not null",
-			)
-			.all()
-			.map((r) => r.strategy_id);
+	/** オンの口座の数。口座を読まずに数える */
+	runningCount(): number {
+		return (
+			this.sql
+				.query<{ n: number }, []>(
+					"select count(*) as n from trading_runs where deleted_at is null and enabled = 1",
+				)
+				.get()?.n ?? 0
+		);
 	}
 
-	/** 削除していない運用 */
+	/** 削除していない口座 */
 	run(id: number): TradingRunRow | null {
 		const r = this.sql
 			.query<RunRow, [number]>(
@@ -192,47 +196,33 @@ export class SqliteTradingRepository implements TradingRepository {
 		return r ? toRun(r) : null;
 	}
 
-	/** 運用を足す。口座は開始時の資金だけで作る */
-	createRun(
-		input: { name: string; mode: TradingMode; strategyId: number | null },
-		now: number,
-	): number {
+	/** 戦略の削除していない口座 */
+	runOf(strategyId: number): TradingRunRow | null {
+		const r = this.sql
+			.query<RunRow, [number]>(
+				"select * from trading_runs where strategy_id = ? and deleted_at is null",
+			)
+			.get(strategyId);
+		return r ? toRun(r) : null;
+	}
+
+	/** 戦略の口座を作る。デモで、口座は開始時の資金だけで作る */
+	createRun(strategy: { id: number; name: string }, now: number): number {
 		return Number(
 			this.sql.run(
 				`insert into trading_runs (name, mode, strategy_id, created_at, enabled, state, reevaluate, initial_cash, account, reset_at)
-				values (?, ?, ?, ?, 0, 'null', 0, ?, null, ?)`,
-				[
-					input.name,
-					input.mode,
-					input.strategyId,
-					now,
-					DEFAULT_INITIAL_CASH,
-					now,
-				],
+				values (?, 'paper', ?, ?, 0, 'null', 0, ?, null, ?)`,
+				[strategy.name, strategy.id, now, DEFAULT_INITIAL_CASH, now],
 			).lastInsertRowid,
 		);
 	}
 
-	/** 運用を1つも持っていなければ、既定の資金のデモを1つ作る（タブは最低1つ） */
-	ensureRun(now: number): void {
-		const r = this.sql
-			.query<{ n: number }, []>(
-				"select count(*) as n from trading_runs where deleted_at is null",
-			)
-			.get();
-		if ((r?.n ?? 0) === 0) {
-			this.createRun({ name: "デモ", mode: "paper", strategyId: null }, now);
-		}
-	}
-
-	/** 実行状態・名前・戦略・口座を保存する */
+	/** 実行状態・口座を保存する */
 	saveRun(row: TradingRunRow): void {
 		this.sql.run(
-			`update trading_runs set name = ?, strategy_id = ?, enabled = ?, state = ?, next_eval_at = ?, reevaluate = ?, started_at = ?,
+			`update trading_runs set enabled = ?, state = ?, next_eval_at = ?, reevaluate = ?, started_at = ?,
 			initial_cash = ?, account = ?, reset_at = ? where id = ?`,
 			[
-				row.name,
-				row.strategyId,
 				row.enabled ? 1 : 0,
 				JSON.stringify(row.state),
 				row.nextEvalAt,
@@ -246,7 +236,7 @@ export class SqliteTradingRepository implements TradingRepository {
 		);
 	}
 
-	/** 運用を消す。注文・判断の記録から名前を引けるよう、行は残す */
+	/** 口座を消す。注文・判断の記録から名前を引けるよう、行は残す */
 	deleteRun(id: number, now: number): void {
 		this.sql.run("update trading_runs set deleted_at = ? where id = ?", [
 			now,
@@ -308,7 +298,7 @@ export class SqliteTradingRepository implements TradingRepository {
 	}
 
 	/** 注文を新しい順に。約定・取消の時刻があればその時刻、無ければ発注時刻で並べる */
-	orders(filter: OrderFilter = {}, limit = 1000): StoredOrder[] {
+	orders(filter: RunOrderFilter = {}, limit = 1000): StoredOrder[] {
 		const { where, args } = orderWhere(filter);
 		return this.sql
 			.query<OrderRow, (string | number)[]>(
@@ -330,7 +320,7 @@ export class SqliteTradingRepository implements TradingRepository {
 	}
 
 	/** 条件に合う注文の件数と、損益の合計（件数で切らない） */
-	orderSummary(filter: OrderFilter = {}): OrderSummary {
+	orderSummary(filter: RunOrderFilter = {}): OrderSummary {
 		const { where, args } = orderWhere(filter);
 		const r = this.sql
 			.query<{ count: number; pnl: number }, (string | number)[]>(

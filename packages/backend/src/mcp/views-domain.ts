@@ -49,6 +49,7 @@ import type { StoredStrategy } from "../strategies/types-domain";
 import type {
 	AutoTradingStatus,
 	StoredOrder,
+	StrategyLock,
 	TradingPerformance,
 } from "../trading/types-domain";
 
@@ -72,12 +73,12 @@ export function parseTime(s: string): number | null {
 
 export function strategyView(
 	s: StoredStrategy,
-	inUse: (id: number) => boolean,
+	strategyLock: (id: number) => StrategyLock | null,
 ) {
 	return {
 		id: s.id,
 		name: s.name,
-		active: inUse(s.id),
+		lock: strategyLock(s.id),
 		updatedAt: jst(s.updatedAt),
 		screenText: conditionSetScreenText(s.params).join("\n"),
 		params: s.params,
@@ -278,7 +279,7 @@ export function analysisView<J extends Judge>(
 
 const MODE_LABELS = { paper: "デモ", live: "リアル" } as const;
 
-/** 口座・成績・注文・戦略の見張りを出さないタブ。画面と同じく、動かせないリアル */
+/** 口座・成績・注文・戦略の見張りを出さない戦略。画面と同じく、動かせないリアル */
 export const hidden = (r: AutoTradingStatus) =>
 	r.mode === "live" && !LIVE_AVAILABLE;
 
@@ -311,7 +312,6 @@ export function tradingRunView(r: AutoTradingStatus) {
 		mode: r.mode,
 		modeLabel: MODE_LABELS[r.mode],
 		enabled: r.enabled,
-		strategy: r.strategy,
 		nextEvalAt: r.nextEvalAt === null ? null : jst(r.nextEvalAt),
 		startedAt: r.startedAt === null ? null : jst(r.startedAt),
 		waitingForMarket: r.waitingForMarket,
@@ -319,7 +319,7 @@ export function tradingRunView(r: AutoTradingStatus) {
 	};
 }
 
-/** デモのタブの口座・含み損益・成績。リアルは画面と同じく出さない */
+/** デモの口座・含み損益・成績。リアルは画面と同じく出さない */
 export function paperView(
 	r: AutoTradingStatus,
 	price: number | null,

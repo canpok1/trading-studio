@@ -122,7 +122,7 @@ export class FakeApi {
 /** どの画面でも読み込む口（自動取引の状況・実行中のバックテスト・バージョン）を空で答える偽物 */
 export function createFakeApi(): FakeApi {
 	return new FakeApi()
-		.on(routes.api.trading.runs, "$get", () => ({ runs: [] }))
+		.on(routes.api.trading.strategies, "$get", () => ({ strategies: [] }))
 		.on(routes.api.backtests.current, "$get", () => ({ run: null }))
 		.on(routes.api["dataset-runs"].current, "$get", () => ({ run: null }))
 		.on(routes.api.version, "$get", () => ({ builtAt: null }));

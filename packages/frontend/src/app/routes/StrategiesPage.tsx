@@ -38,7 +38,7 @@ export function StrategiesPage() {
 	const [dialog, setDialog] = useState<Dialog>(null);
 	const [notice, setNotice] = useState<string | null>(null);
 	const selectId = useId();
-	const { runs } = useTradingStatus();
+	const { runs, refresh: refreshTrading } = useTradingStatus();
 
 	const load = useCallback(async (): Promise<Data> => {
 		const [list, latest] = await Promise.all([
@@ -113,6 +113,7 @@ export function StrategiesPage() {
 			onClose={() => setDialog(null)}
 			onCreated={async (s) => {
 				setDialog(null);
+				refreshTrading();
 				await reload();
 				open(s.id);
 				setNotice(`「${s.name}」を作った`);
@@ -207,7 +208,7 @@ export function StrategiesPage() {
 							<Button size="sm" onClick={() => setDialog("rename")}>
 								この戦略の名前を変える
 							</Button>
-							{!lock && (
+							{lock !== "running" && (
 								<Button
 									size="sm"
 									className="text-loss"
@@ -220,8 +221,8 @@ export function StrategiesPage() {
 						{lock && (
 							<p role="status" className="text-[13px] font-semibold">
 								{lock === "running"
-									? "この戦略を使うタブが自動取引で稼働中のため、条件を変えられない。"
-									: "この戦略を使うタブに保有か未約定の注文があるため、条件を変えられない。"}
+									? "自動取引が稼働中のため、条件を変えられない。"
+									: "保有か未約定の注文があるため、条件を変えられない。"}
 								変えるときは「＋ 新しい戦略」でコピーして編集する
 							</p>
 						)}
@@ -271,6 +272,7 @@ export function StrategiesPage() {
 					strategy={current}
 					onClose={() => setDialog(null)}
 					onDone={async () => {
+						refreshTrading();
 						setDialog(null);
 						await reload();
 						setNotice("名前を変えた");
@@ -283,6 +285,7 @@ export function StrategiesPage() {
 					onClose={() => setDialog(null)}
 					onDone={async () => {
 						setDialog(null);
+						refreshTrading();
 						await reload();
 						navigate("/strategies", { replace: true });
 						setNotice("削除した");
@@ -470,7 +473,7 @@ function DeleteDialog({
 	return (
 		<Modal title={`「${strategy.name}」を削除する`} onClose={onClose}>
 			<p className="text-[13px]">
-				条件は元に戻せない。過去のバックテスト結果は残る。
+				条件・自動取引の口座・成績は元に戻せない。未約定の注文は取り消し、保有は捨てる。過去のバックテスト結果と、注文・判断の記録（分析用のエクスポート）は残る。
 			</p>
 			{error && (
 				<span className="text-xs font-semibold text-loss">{error}</span>

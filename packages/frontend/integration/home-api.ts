@@ -1,4 +1,4 @@
-// ホームが読む口をまとめて偽物にする。タブの操作（戦略の選択・オンオフ・追加・削除・リセット）は state に反映し、次の読み込みで画面に返す
+// ホームが読む口をまとめて偽物にする。タブ（戦略）の操作（オンオフ・名前・削除・リセット）は state に反映し、次の読み込みで画面に返す
 import type {
 	AutoTradingStatus,
 	CollectorStatus,
@@ -14,6 +14,7 @@ import {
 	judgmentSeries,
 	marketLatest,
 	neutralJudgment,
+	storedStrategy,
 	tradingPerformance,
 	tradingRun,
 } from "./fixtures";
@@ -27,7 +28,7 @@ export type HomeState = {
 	collector: CollectorStatus;
 };
 
-/** 運用する戦略を選んでいれば、買いの発動価格が1つある見張り */
+/** 買いの発動価格が1つある見張り */
 function watchOf(price: number): StrategyWatch {
 	const trigger = Math.round(price * 0.98);
 	return {
@@ -74,7 +75,7 @@ function watchOf(price: number): StrategyWatch {
 
 const RUN_NOT_FOUND = {
 	kind: "not_found",
-	message: "運用が見つからない",
+	message: "戦略が見つからない",
 } as const;
 
 export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
@@ -91,10 +92,6 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 		const run = find(id);
 		if (run) Object.assign(run, patch);
 		return run;
-	};
-	const named = (id: number | null) => {
-		const s = state.strategies.find((x) => x.id === id);
-		return s ? { id: s.id, name: s.name } : null;
 	};
 	api
 		.on(routes.api.market.latest, "$get", () =>
@@ -122,51 +119,35 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 				step,
 			);
 		})
-		.on(routes.api.trading.runs, "$get", () => ({ runs: state.runs }))
-		.on(routes.api.trading.runs, "$post", (req, reply) => {
-			const body = req.body as {
-				name: string;
-				mode: AutoTradingStatus["mode"];
-				strategyId: number | null;
-			};
-			const run = tradingRun({
-				id: Math.max(...state.runs.map((r) => r.id)) + 1,
-				name: body.name,
-				mode: body.mode,
-				strategy: named(body.strategyId),
-			});
-			state.runs.push(run);
-			return reply(201, { status: run });
+		.on(routes.api.trading.strategies, "$get", () => ({
+			strategies: state.runs,
+		}))
+		.on(routes.api.strategies[":id"].name, "$put", (req, reply) => {
+			const { name } = req.body as { name: string };
+			const run = update(req.params.id as string, { name });
+			return run
+				? { strategy: storedStrategy({ id: run.id, name }) }
+				: reply(404, RUN_NOT_FOUND);
 		})
-		.on(routes.api.trading.runs[":id"], "$patch", (req, reply) => {
-			const body = req.body as { name?: string; strategyId?: number | null };
-			const run = update(req.params.id as string, {
-				...(body.name !== undefined && { name: body.name }),
-				...(body.strategyId !== undefined && {
-					strategy: named(body.strategyId),
-				}),
-			});
-			return run ? { status: run } : reply(404, RUN_NOT_FOUND);
-		})
-		.on(routes.api.trading.runs[":id"], "$delete", (req) => {
+		.on(routes.api.strategies[":id"], "$delete", (req) => {
 			state.runs = state.runs.filter((r) => r.id !== Number(req.params.id));
 			return { ok: true as const };
 		})
-		.on(routes.api.trading.runs[":id"].start, "$post", (req, reply) => {
+		.on(routes.api.trading.strategies[":id"].start, "$post", (req, reply) => {
 			const run = update(req.params.id as string, {
 				enabled: true,
 				strategyLock: "running",
 			});
 			return run ? { status: run } : reply(404, RUN_NOT_FOUND);
 		})
-		.on(routes.api.trading.runs[":id"].stop, "$post", (req, reply) => {
+		.on(routes.api.trading.strategies[":id"].stop, "$post", (req, reply) => {
 			const run = update(req.params.id as string, {
 				enabled: false,
 				strategyLock: null,
 			});
 			return run ? { status: run } : reply(404, RUN_NOT_FOUND);
 		})
-		.on(routes.api.trading.runs[":id"].reset, "$post", (req, reply) => {
+		.on(routes.api.trading.strategies[":id"].reset, "$post", (req, reply) => {
 			const run = find(req.params.id as string);
 			if (!run) return reply(404, RUN_NOT_FOUND);
 			const { initialCash } = req.body as { initialCash: number };
@@ -179,32 +160,36 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 			};
 			return { status: run };
 		})
-		.on(routes.api.trading.runs[":id"].performance, "$get", (req, reply) => {
+		.on(
+			routes.api.trading.strategies[":id"].performance,
+			"$get",
+			(req, reply) => {
+				const run = find(req.params.id as string);
+				if (!run) return reply(404, RUN_NOT_FOUND);
+				const { account } = run;
+				return {
+					performance: tradingPerformance({
+						resetAt: account.resetAt,
+						initialCash: account.initialCash,
+						cash: account.cash,
+						position: account.position,
+						price: state.price,
+						equity: account.equity,
+						trades: state.orders.filter((o) => o.side === "sell").length,
+					}),
+				};
+			},
+		)
+		.on(routes.api.trading.strategies[":id"].watch, "$get", (req, reply) => {
 			const run = find(req.params.id as string);
 			if (!run) return reply(404, RUN_NOT_FOUND);
-			const { account } = run;
-			return {
-				performance: tradingPerformance({
-					resetAt: account.resetAt,
-					initialCash: account.initialCash,
-					cash: account.cash,
-					position: account.position,
-					price: state.price,
-					equity: account.equity,
-					trades: state.orders.filter((o) => o.side === "sell").length,
-				}),
-			};
-		})
-		.on(routes.api.trading.runs[":id"].watch, "$get", (req, reply) => {
-			const run = find(req.params.id as string);
-			if (!run) return reply(404, RUN_NOT_FOUND);
-			return { watch: run.strategy ? watchOf(state.price) : null };
+			return { watch: watchOf(state.price) };
 		})
 		.on(routes.api.trading.orders, "$get", (req) => {
 			const q = req.query;
 			const hit = state.orders.filter(
 				(o) =>
-					(!q.has("run") || o.runId === Number(q.get("run"))) &&
+					(!q.has("strategy") || o.runId === Number(q.get("strategy"))) &&
 					(!q.has("status") || o.status === q.get("status")) &&
 					(!q.has("side") || o.side === q.get("side")),
 			);
@@ -214,7 +199,7 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 				realizedPnl: hit.reduce((n, o) => n + (o.pnl ?? 0), 0),
 			};
 		})
-		.on(routes.api.trading.orders[":run"][":id"], "$get", (req, reply) => {
+		.on(routes.api.trading.orders[":strategy"][":id"], "$get", (req, reply) => {
 			const order = state.orders.find((o) => o.id === req.params.id);
 			if (!order) return reply(404, { message: "注文が見つからない" });
 			return { order, judgments: { sentiment: "+1", risk: "calm" } };

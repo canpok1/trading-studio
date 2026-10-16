@@ -1,12 +1,10 @@
-// ホームの自動取引のカード。選んでいるタブのオンオフと状態・戦略名を1行で出し、止まっている理由があるときだけ添える。
-// 運用する戦略の変更・タブの名前の変更・削除はたまにしか使わないので「⋯」の設定に入れる
+// ホームの自動取引のカード。選んでいる戦略のオンオフと状態・戦略名を1行で出し、止まっている理由があるときだけ添える。
+// 戦略の名前の変更・削除はたまにしか使わないので「⋯」の設定に入れる
 
-import type {
-	AutoTradingStatus,
-	StoredStrategy,
-} from "@trading-studio/backend";
-import { LIVE_AVAILABLE, validateConditionSet } from "@trading-studio/core";
-import { useId, useState } from "react";
+import type { AutoTradingStatus } from "@trading-studio/backend";
+import { LIVE_AVAILABLE } from "@trading-studio/core";
+import { useState } from "react";
+import { Link } from "react-router";
 import { Modal } from "../../../shared/components/Modal";
 import { Button } from "../../../shared/components/ui";
 import { useApi } from "../../../shared/lib/api";
@@ -19,31 +17,24 @@ import { MODE_LABELS } from "./TradeViews";
 
 export function AutoTradingCard({
 	run,
-	strategies,
-	canDelete,
 	onToast,
 	onDeleted,
 	className = "",
 }: {
 	run: AutoTradingStatus;
-	strategies: StoredStrategy[];
-	/** タブは最低1つ残す */
-	canDelete: boolean;
 	onToast: (message: string) => void;
 	onDeleted: () => void;
 	className?: string;
 }) {
 	const api = useApi();
-	const { set, drop } = useTradingStatus();
+	const { set, drop, refresh } = useTradingStatus();
 	const [dialog, setDialog] = useState<
 		"start" | "settings" | "rename" | "delete" | null
 	>(null);
-	const selectId = useId();
 	const [busy, setBusy] = useState(false);
 	const on = run.enabled;
 	const unavailable = run.mode === "live" && !LIVE_AVAILABLE;
 	const label = MODE_LABELS[run.mode];
-	const active = run.strategy;
 	const id = String(run.id);
 	const now = Date.now();
 
@@ -68,15 +59,11 @@ export function AutoTradingCard({
 			// 停止は確認なしで即時
 			send(
 				() =>
-					api.api.trading.runs[":id"].stop
+					api.api.trading.strategies[":id"].stop
 						.$post({ param: { id } })
 						.then((res) => readJson<{ status: AutoTradingStatus }>(res)),
 				() => "自動取引を停止した。今から新しい注文は出ない",
 			);
-			return;
-		}
-		if (!active) {
-			onToast("運用する戦略を選ぶと開始できる");
 			return;
 		}
 		setDialog("start");
@@ -86,28 +73,11 @@ export function AutoTradingCard({
 		setDialog(null);
 		send(
 			() =>
-				api.api.trading.runs[":id"].start
+				api.api.trading.strategies[":id"].start
 					.$post({ param: { id } })
 					.then((res) => readJson<{ status: AutoTradingStatus }>(res)),
 			(s) =>
 				`「${s.name}」を開始した。次の判定 ${s.nextEvalAt === null ? "—" : formatClock(s.nextEvalAt, Date.now())} から模擬売買する`,
-		);
-	};
-
-	const choose = (next: number | null) => {
-		const s = strategies.find((x) => x.id === next);
-		// 条件が足りない戦略は動かせないので、運用する戦略に選ばせない
-		if (s && validateConditionSet(s.params).length > 0) {
-			onToast("この戦略は条件が足りないため選べない。「戦略」の画面で直す");
-			return;
-		}
-		send(
-			() =>
-				api.api.trading.runs[":id"]
-					.$patch({ param: { id }, json: { strategyId: next } })
-					.then((res) => readJson<{ status: AutoTradingStatus }>(res)),
-			(r) =>
-				`運用する戦略を${r.strategy ? `「${r.strategy.name}」に` : "未選択に"}した`,
 		);
 	};
 
@@ -144,12 +114,12 @@ export function AutoTradingCard({
 						data-testid="auto-strategy"
 						className="truncate text-xs text-text-2"
 					>
-						{active ? active.name : "戦略 未選択"}
+						{run.name}
 					</span>
 				</div>
 				<button
 					type="button"
-					aria-label="タブの設定"
+					aria-label="戦略の設定"
 					onClick={() => setDialog("settings")}
 					className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line text-base font-bold text-text-2 hover:bg-surface-2"
 				>
@@ -168,48 +138,23 @@ export function AutoTradingCard({
 			)}
 			{dialog === "settings" && (
 				<Modal title={`「${run.name}」の設定`} onClose={() => setDialog(null)}>
-					<div className="flex flex-col gap-1.5">
-						<label htmlFor={selectId} className="text-[13px] font-semibold">
-							運用する戦略
-						</label>
-						<select
-							id={selectId}
-							className="h-11 w-full rounded-lg border border-line bg-surface px-3 text-[15px] font-semibold disabled:opacity-60"
-							value={active?.id ?? ""}
-							disabled={busy || on || holding}
-							onChange={(e) =>
-								choose(e.target.value === "" ? null : Number(e.target.value))
-							}
-						>
-							<option value="">未選択</option>
-							{strategies.map((s) => (
-								<option key={s.id} value={s.id}>
-									{s.name}
-								</option>
-							))}
-						</select>
-						{strategies.length === 0 && (
-							<p className="text-xs text-text-2">
-								戦略がまだ無い。「戦略」の画面で作ると選べる
-							</p>
-						)}
-						{on && (
-							<p className="text-xs text-text-2">
-								稼働中は運用する戦略を変えられない
-							</p>
-						)}
-						{!on && holding && (
-							<p className="text-xs text-text-2">
-								保有か未約定の注文がある間は、運用する戦略を変えられない
-							</p>
-						)}
-					</div>
+					{holding && (
+						<p className="text-xs text-text-2">
+							保有か未約定の注文がある間は、戦略の条件を変えられない
+						</p>
+					)}
+					<Link
+						to={`/strategies/${run.id}`}
+						className="flex h-11 items-center justify-center rounded-[10px] border border-line text-sm font-semibold"
+					>
+						条件を見る・変える
+					</Link>
 					<Button onClick={() => setDialog("rename")}>
-						タブの名前を変える
+						戦略の名前を変える
 					</Button>
-					{canDelete && !on && (
+					{!on && (
 						<Button className="text-loss" onClick={() => setDialog("delete")}>
-							タブを削除
+							戦略を削除
 						</Button>
 					)}
 					<Button onClick={() => setDialog(null)}>閉じる</Button>
@@ -219,10 +164,10 @@ export function AutoTradingCard({
 				<RenameRunDialog
 					run={run}
 					onClose={() => setDialog(null)}
-					onDone={(s) => {
+					onDone={() => {
 						setDialog(null);
-						set(s);
-						onToast("タブの名前を変えた");
+						refresh();
+						onToast("戦略の名前を変えた");
 					}}
 				/>
 			)}
@@ -234,17 +179,17 @@ export function AutoTradingCard({
 						setDialog(null);
 						drop(run.id);
 						onDeleted();
-						onToast(`「${run.name}」のタブを削除した`);
+						onToast(`「${run.name}」を削除した`);
 					}}
 				/>
 			)}
-			{dialog === "start" && active && (
+			{dialog === "start" && (
 				<Modal
 					title={`「${run.name}」の自動取引を開始する（${label}）`}
 					onClose={() => setDialog(null)}
 				>
 					<p className="leading-relaxed">
-						{active.name} が、次の判定（
+						{run.name} が、次の判定（
 						{run.nextEvalAt === null ? "—" : formatClock(run.nextEvalAt, now)}
 						）から
 						{run.mode === "paper"

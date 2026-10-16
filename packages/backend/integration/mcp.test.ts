@@ -83,7 +83,6 @@ async function setup() {
 			market: t.market,
 			advice: t.advice,
 			calendar: t.calendar,
-			inUse: (id) => t.trading.inUse(id),
 			sleep: async () => {},
 		}),
 	);
@@ -107,7 +106,7 @@ async function setup() {
 }
 
 describe("MCP", () => {
-	test("道具の一覧に自動取引や運用する戦略を変えるものは無い", async () => {
+	test("道具の一覧に自動取引のオンオフを変えるものは無い", async () => {
 		const { client } = await setup();
 		const names = (await client.listTools()).tools.map((t) => t.name).sort();
 		expect(names).toEqual([
@@ -127,6 +126,7 @@ describe("MCP", () => {
 			"get_scoring_setup",
 			"get_strategy",
 			"get_strategy_watch",
+			"list_auto_trading",
 			"list_backtests",
 			"list_datasets",
 			"list_events",
@@ -134,7 +134,6 @@ describe("MCP", () => {
 			"list_segments",
 			"list_strategies",
 			"list_trading_orders",
-			"list_trading_runs",
 			"preview_aggregation_rule",
 			"rescore_news",
 			"run_backtest",
@@ -177,7 +176,7 @@ describe("MCP", () => {
 		const { id } = created.json as { id: number };
 
 		const list = await call("list_strategies");
-		expect(list.json).toMatchObject([{ id, name: "相談A", active: false }]);
+		expect(list.json).toMatchObject([{ id, name: "相談A", lock: null }]);
 
 		const updated = await call("update_strategy", {
 			id,
@@ -193,14 +192,17 @@ describe("MCP", () => {
 		);
 	});
 
-	test("タブで運用する戦略に選んでいる戦略は変えられない", async () => {
+	test("自動取引がオンの戦略は変えられない", async () => {
 		const { t, call } = await setup();
 		const created = await call("create_strategy", {
 			name: "運用中",
 			params: PARAMS,
 		});
 		const { id } = created.json as { id: number };
-		t.trading.update(1, { strategyId: id });
+		expect(t.trading.start(id).ok).toBe(true);
+		expect((await call("get_strategy", { id })).json).toMatchObject({
+			lock: "running",
+		});
 		const r = await call("update_strategy", {
 			id,
 			params: { ...PARAMS, maxPositions: 3 },
@@ -346,7 +348,7 @@ describe("MCP", () => {
 		).not.toContain(memberId);
 	});
 
-	test("ホームのタブの口座・成績・注文・戦略の見張り、価格とチャートの足を読める", async () => {
+	test("戦略ごとの口座・成績・注文・戦略の見張り、価格とチャートの足を読める", async () => {
 		const { t, call } = await setup();
 		const M = TIMEFRAME_MS["1m"];
 		const T0 = 1_800_000_000_000;
@@ -387,15 +389,14 @@ describe("MCP", () => {
 			},
 		});
 		const strategyId = (created.json as { id: number }).id;
-		t.trading.update(1, { strategyId });
-		expect(t.trading.start(1).ok).toBe(true);
+		expect(t.trading.start(strategyId).ok).toBe(true);
 		t.clock.now = T0 + M;
 		t.trading.tick();
 		t.live.current = { ...t.live.current, latestTrade: trade(2, P) };
 		t.trading.onTrades([trade(2, P)]);
 		t.live.current = { ...t.live.current, latestTrade: trade(3, P + 50_000) };
 
-		const runs = (await call("list_trading_runs")).json as {
+		const runs = (await call("list_auto_trading")).json as {
 			id: number;
 			mode: string;
 			enabled: boolean;
@@ -404,23 +405,23 @@ describe("MCP", () => {
 			performance: { grades: { maxDrawdown: string } };
 		}[];
 		expect(runs[0]).toMatchObject({
-			id: 1,
+			id: strategyId,
+			name: "毎分買う",
 			mode: "paper",
 			modeLabel: "デモ",
 			enabled: true,
-			strategy: { id: strategyId, name: "毎分買う" },
 		});
 		// 0.01 BTC を 1,000万円で買い、今 1,005万円
 		expect(runs[0]?.unrealizedPnl).toBe(500);
 		expect(runs[0]?.account.lots[0]?.unrealizedPnl).toBe(500);
 		expect(runs[0]?.performance.grades.maxDrawdown).toBe("優秀");
 
-		const orders = await call("list_trading_orders", { runId: 1 });
+		const orders = await call("list_trading_orders", { strategyId });
 		expect(orders.json).toMatchObject({
 			total: 1,
 			orders: [{ side: "buy", status: "filled", fillPrice: P, judgments: {} }],
 		});
-		const watch = await call("get_strategy_watch", { runId: 1 });
+		const watch = await call("get_strategy_watch", { strategyId });
 		expect(watch.isError).toBe(false);
 		expect(watch.json).toMatchObject({
 			price: P + 50_000,
@@ -428,19 +429,21 @@ describe("MCP", () => {
 			buys: [{ lots: [{ entryPrice: P }] }],
 		});
 		expect(watch.text).toContain("買値から 1% 下がった");
-		expect((await call("list_trading_orders", { runId: 99 })).isError).toBe(
+		expect(
+			(await call("list_trading_orders", { strategyId: 99 })).isError,
+		).toBe(true);
+
+		// リアルの口座は今は作らないが、あれば画面と同じく口座を出さない
+		t.db.$client.run(
+			"update trading_runs set mode = 'live' where strategy_id = ?",
+			[strategyId],
+		);
+		expect(
+			((await call("list_auto_trading")).json as Record<string, unknown>[])[0],
+		).not.toHaveProperty("account");
+		expect((await call("get_strategy_watch", { strategyId })).isError).toBe(
 			true,
 		);
-
-		const live = t.trading.create({ name: "リアル", mode: "live", strategyId });
-		if (!live.ok) throw new Error();
-		const liveRow = (
-			(await call("list_trading_runs")).json as Record<string, unknown>[]
-		).find((r) => r.id === live.status.id);
-		expect(liveRow).not.toHaveProperty("account");
-		expect(
-			(await call("get_strategy_watch", { runId: live.status.id })).isError,
-		).toBe(true);
 
 		expect(await call("get_market_price")).toMatchObject({
 			json: {

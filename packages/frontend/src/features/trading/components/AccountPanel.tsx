@@ -52,7 +52,7 @@ export function AccountPanel({
 		setResetting(false);
 		setBusy(true);
 		try {
-			const r = await api.api.trading.runs[":id"].reset
+			const r = await api.api.trading.strategies[":id"].reset
 				.$post({ param: { id: String(status.id) }, json: { initialCash } })
 				.then((res) => readJson<{ status: AutoTradingStatus }>(res));
 			set(r.status);

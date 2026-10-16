@@ -13,15 +13,9 @@ async function openDisplay(page: Page) {
 	}
 }
 
-/** タブの設定で運用する戦略を選び、設定を閉じる */
-async function chooseStrategy(page: Page, label: string | null) {
-	await page.getByRole("button", { name: "タブの設定" }).click();
-	const dialog = page.getByRole("dialog", { name: /の設定$/ });
-	const select = dialog.getByLabel("運用する戦略");
-	await (label === null
-		? select.selectOption("")
-		: select.selectOption({ label }));
-	await dialog.getByRole("button", { name: "閉じる" }).click();
+/** 戦略のタブを選ぶ */
+async function chooseStrategy(page: Page, name: string) {
+	await page.getByRole("tab", { name }).click();
 }
 
 const PRICE = /^[\d,]+円$/;
@@ -73,6 +67,10 @@ test("EMA は戦略で使っていれば表示して始まり、どの粒度で�
 		strategies: [
 			templateStrategy(1, trend, "trend"),
 			templateStrategy(2, range, "range"),
+		],
+		runs: [
+			tradingRun({ id: 1, name: trend }),
+			tradingRun({ id: 2, name: range }),
 		],
 	});
 	await page.goto("/home");
@@ -151,13 +149,7 @@ test("RSI の条件を持つ戦略を選ぶと RSI の小窓と値が出て、�
 	});
 	onHome(api, {
 		strategies: [rsiStrategy],
-		runs: [
-			tradingRun({
-				id: 1,
-				name: "デモ",
-				strategy: { id: 1, name: "RSI" },
-			}),
-		],
+		runs: [tradingRun({ id: 1, name: "RSI" })],
 	});
 	await page.goto("/home");
 	const toggle = page.getByRole("button", { name: "RSI", exact: true });
@@ -359,15 +351,17 @@ test("ボリンジャーバンドは戦略で使っていなければ隠して�
 	await expect(page.getByTestId("chart-bb")).toHaveCount(0);
 });
 
-test("運用する戦略を選ぶと、次の動きと戦略の見張りが出て、グループの開閉を覚える", async ({
+test("次の動きと戦略の見張りが出て、グループの開閉を覚える", async ({
 	page,
 	api,
 }) => {
 	const name = "見張り";
-	onHome(api, { strategies: [templateStrategy(1, name, "range")] });
+	onHome(api, {
+		strategies: [templateStrategy(1, name, "range")],
+		runs: [tradingRun({ id: 1, name })],
+	});
 	await page.goto("/home");
 	await expect(page.getByTestId("chart-close")).toHaveText(PRICE);
-	await chooseStrategy(page, name);
 	await expect(page.getByRole("region", { name: "次の動き" })).toBeVisible();
 	const panel = page.getByRole("region", { name: "戦略の見張り" });
 	await expect(panel).toContainText("買い1");
@@ -384,6 +378,4 @@ test("運用する戦略を選ぶと、次の動きと戦略の見張りが出�
 	await expect(buyGroup).toHaveAttribute("open");
 	await buyGroup.locator("summary").click();
 	await expect(buyGroup).not.toHaveAttribute("open");
-	await chooseStrategy(page, null);
-	await expect(panel).toBeHidden();
 });

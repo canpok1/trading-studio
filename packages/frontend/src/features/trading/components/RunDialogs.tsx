@@ -1,144 +1,11 @@
-// ホームのタブ（運用）の追加・名前の変更・削除の確認
+// ホームのタブ（戦略）の名前の変更・削除の確認
 
-import type {
-	AutoTradingStatus,
-	StoredStrategy,
-	TradingMode,
-} from "@trading-studio/backend";
-import { TRADING_RUN_LIMITS, validateConditionSet } from "@trading-studio/core";
+import type { AutoTradingStatus } from "@trading-studio/backend";
 import { useId, useState } from "react";
 import { Modal } from "../../../shared/components/Modal";
-import { Button, Tabs } from "../../../shared/components/ui";
+import { Button } from "../../../shared/components/ui";
 import { useApi } from "../../../shared/lib/api";
 import { errorMessage, readJson } from "../../../shared/lib/useAsync";
-import { MODE_LABELS } from "./TradeViews";
-
-const MODES: readonly (readonly [TradingMode, string])[] = [
-	["paper", MODE_LABELS.paper],
-	["live", MODE_LABELS.live],
-];
-
-function NameField({
-	value,
-	onChange,
-}: {
-	value: string;
-	onChange: (v: string) => void;
-}) {
-	const id = useId();
-	return (
-		<div className="flex flex-col gap-1.5">
-			<label htmlFor={id} className="text-[13px] font-semibold">
-				タブの名前
-			</label>
-			<input
-				id={id}
-				value={value}
-				onChange={(e) => onChange(e.target.value)}
-				maxLength={TRADING_RUN_LIMITS.name}
-				className="h-12 rounded-[10px] border border-line bg-surface px-3 text-[15px]"
-			/>
-		</div>
-	);
-}
-
-/** 名前は、自分で書き換えるまで選んだ戦略の名前に合わせる */
-export function AddRunDialog({
-	strategies,
-	hasLive,
-	onClose,
-	onCreated,
-}: {
-	strategies: StoredStrategy[];
-	/** リアルのタブは1つまで */
-	hasLive: boolean;
-	onClose: () => void;
-	onCreated: (s: AutoTradingStatus) => void;
-}) {
-	const api = useApi();
-	const strategyId = useId();
-	// 条件が足りない戦略は動かせないので選ばせない
-	const usable = strategies.filter(
-		(s) => validateConditionSet(s.params).length === 0,
-	);
-	const [mode, setMode] = useState<TradingMode>("paper");
-	const [strategy, setStrategy] = useState<StoredStrategy | null>(
-		usable[0] ?? null,
-	);
-	const [name, setName] = useState<string | null>(null);
-	const [error, setError] = useState<string | null>(null);
-	const [busy, setBusy] = useState(false);
-	// 戦略の名前はタブの名前より長くてよいので、収まる長さに切る
-	const shownName =
-		name ??
-		(strategy?.name ?? MODE_LABELS[mode]).slice(0, TRADING_RUN_LIMITS.name);
-	const add = async () => {
-		setBusy(true);
-		setError(null);
-		try {
-			const r = await api.api.trading.runs
-				.$post({
-					json: { name: shownName, mode, strategyId: strategy?.id ?? null },
-				})
-				.then((res) => readJson<{ status: AutoTradingStatus }>(res));
-			onCreated(r.status);
-		} catch (e) {
-			setError(errorMessage(e));
-			setBusy(false);
-		}
-	};
-	return (
-		<Modal title="タブを追加する" onClose={onClose}>
-			<div className="flex flex-col gap-1.5">
-				<span className="text-[13px] font-semibold">モード</span>
-				<Tabs label="モード" items={MODES} current={mode} onSelect={setMode} />
-				{mode === "live" && (
-					<span className="text-xs text-text-2">
-						{hasLive
-							? "リアルのタブは1つまで（実口座は1つのため）"
-							: "リアル取引はまだ使えない。タブは作れるが動かせない"}
-					</span>
-				)}
-			</div>
-			<div className="flex flex-col gap-1.5">
-				<label htmlFor={strategyId} className="text-[13px] font-semibold">
-					運用する戦略
-				</label>
-				<select
-					id={strategyId}
-					className="h-11 w-full rounded-lg border border-line bg-surface px-3 text-[15px] font-semibold"
-					value={strategy?.id ?? ""}
-					onChange={(e) =>
-						setStrategy(
-							usable.find((s) => s.id === Number(e.target.value)) ?? null,
-						)
-					}
-				>
-					<option value="">未選択</option>
-					{usable.map((s) => (
-						<option key={s.id} value={s.id}>
-							{s.name}
-						</option>
-					))}
-				</select>
-			</div>
-			<NameField value={shownName} onChange={setName} />
-			{error && (
-				<p role="alert" className="text-xs font-semibold text-loss">
-					{error}
-				</p>
-			)}
-			<Button
-				variant="primary"
-				disabled={busy || (mode === "live" && hasLive)}
-				onClick={add}
-			>
-				追加する
-			</Button>
-			<Button onClick={onClose}>やめる</Button>
-		</Modal>
-	);
-}
 
 export function RenameRunDialog({
 	run,
@@ -147,9 +14,10 @@ export function RenameRunDialog({
 }: {
 	run: AutoTradingStatus;
 	onClose: () => void;
-	onDone: (s: AutoTradingStatus) => void;
+	onDone: () => void;
 }) {
 	const api = useApi();
+	const id = useId();
 	const [name, setName] = useState(run.name);
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
@@ -157,18 +25,28 @@ export function RenameRunDialog({
 		setBusy(true);
 		setError(null);
 		try {
-			const r = await api.api.trading.runs[":id"]
-				.$patch({ param: { id: String(run.id) }, json: { name } })
-				.then((res) => readJson<{ status: AutoTradingStatus }>(res));
-			onDone(r.status);
+			await api.api.strategies[":id"].name
+				.$put({ param: { id: String(run.id) }, json: { name } })
+				.then((res) => readJson(res));
+			onDone();
 		} catch (e) {
 			setError(errorMessage(e));
 			setBusy(false);
 		}
 	};
 	return (
-		<Modal title="タブの名前を変える" onClose={onClose}>
-			<NameField value={name} onChange={setName} />
+		<Modal title="戦略の名前を変える" onClose={onClose}>
+			<div className="flex flex-col gap-1.5">
+				<label htmlFor={id} className="text-[13px] font-semibold">
+					戦略の名前
+				</label>
+				<input
+					id={id}
+					value={name}
+					onChange={(e) => setName(e.target.value)}
+					className="h-12 rounded-[10px] border border-line bg-surface px-3 text-[15px]"
+				/>
+			</div>
 			{error && (
 				<p role="alert" className="text-xs font-semibold text-loss">
 					{error}
@@ -199,7 +77,7 @@ export function DeleteRunDialog({
 		setBusy(true);
 		setError(null);
 		try {
-			await api.api.trading.runs[":id"]
+			await api.api.strategies[":id"]
 				.$delete({ param: { id: String(run.id) } })
 				.then((res) => readJson(res));
 			onDone();
@@ -209,10 +87,10 @@ export function DeleteRunDialog({
 		}
 	};
 	return (
-		<Modal title={`「${run.name}」のタブを削除する`} onClose={onClose}>
+		<Modal title={`「${run.name}」を削除する`} onClose={onClose}>
 			<p className="leading-relaxed">
 				{holding ? "未約定の注文は取り消し、保有は捨てる。" : ""}
-				タブの口座と成績は見られなくなる。注文と判断の記録は分析用のエクスポートに残る。
+				条件・口座・成績は元に戻せない。過去のバックテスト結果と、注文・判断の記録（分析用のエクスポート）は残る。
 			</p>
 			{error && (
 				<p role="alert" className="text-xs font-semibold text-loss">

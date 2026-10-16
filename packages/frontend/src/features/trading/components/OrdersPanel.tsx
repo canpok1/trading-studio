@@ -36,12 +36,12 @@ const SIDE_OPTIONS: readonly (readonly [SideFilter, string])[] = [
 
 /** 選んだ注文の詳細は、チャートの印と共通なのでホームが出す */
 export function OrdersPanel({
-	runId,
+	strategyId,
 	active,
 	selectedId,
 	onSelect,
 }: {
-	runId: number;
+	strategyId: number;
 	active: boolean;
 	selectedId: string | null;
 	onSelect: (id: string) => void;
@@ -51,7 +51,7 @@ export function OrdersPanel({
 	const [limit, setLimit] = useState(ORDERS_PAGE);
 	const loaded = useTradingOrders(
 		{
-			runId,
+			strategyId,
 			...(kind !== "all" && { status: kind }),
 			...(side !== "all" && { side }),
 			limit,

@@ -83,10 +83,7 @@ export function createApp({
 		.get("/version", (c) => c.json({ builtAt: appBuiltAt }))
 		.route("/data", marketDataRoutes(marketData))
 		.route("/market", marketRoutes(market))
-		.route(
-			"/strategies",
-			strategyRoutes(strategies, (id) => trading.strategyLock(id)),
-		)
+		.route("/strategies", strategyRoutes(strategies, trading))
 		.route("/backtests", backtestRoutes(backtests, datasets))
 		.route("/datasets", datasetRoutes(datasets))
 		.route("/dataset-runs", datasetRunRoutes(datasets))

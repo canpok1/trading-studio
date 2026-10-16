@@ -202,7 +202,7 @@ function TradingBand() {
 			className="sticky top-0 z-30 border-b-[3px] border-dashed border-paper-ink bg-paper text-xs text-paper-ink"
 		>
 			<Link
-				to={`/home?run=${first.id}`}
+				to={`/home?strategy=${first.id}`}
 				className="flex min-h-10 items-center gap-2 px-4"
 			>
 				<PaperIcon />
@@ -223,9 +223,7 @@ function TradingBand() {
 					data-testid="band-strategy"
 					className="ml-auto min-w-0 truncate font-bold"
 				>
-					{running.length > 1
-						? running.map((r) => r.name).join("・")
-						: (first.strategy?.name ?? "")}
+					{running.map((r) => r.name).join("・")}
 				</span>
 			</Link>
 		</aside>

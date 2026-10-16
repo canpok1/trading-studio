@@ -18,10 +18,10 @@ export function registerTradingTools(
 	{ trading, market }: ToolDeps,
 ) {
 	server.registerTool(
-		"list_trading_runs",
+		"list_auto_trading",
 		{
 			description:
-				"ホームのタブ（運用）の一覧（作った順）。モード（paper=デモ・live=リアル）・稼働中か・運用する戦略・次の判定時刻・今日の確定損失と1日の損失上限。デモは口座（現金・保有・ロットごとの含み損益）・含み損益・口座のリセット以降の成績（通算損益・ガチホ・勝率など。画面と同じ5段階の評価付き）も返す。リアルは画面と同じく口座と成績を出さない。オンオフ・戦略の切替は画面から人が行う",
+				"戦略ごとの自動取引の一覧（戦略を作った順。id は戦略の id）。戦略1つが口座1つを持つ。モード（今は paper=デモだけ）・稼働中か・次の判定時刻・今日の確定損失と1日の損失上限。デモは口座（現金・保有・ロットごとの含み損益）・含み損益・口座のリセット以降の成績（通算損益・ガチホ・勝率など。画面と同じ5段階の評価付き）も返す。リアルは画面と同じく口座と成績を出さない。オンオフは画面から人が行う",
 			annotations: readOnly,
 		},
 		() => {
@@ -39,20 +39,18 @@ export function registerTradingTools(
 		"get_strategy_watch",
 		{
 			description:
-				"ホームの「次の動き」「戦略の見張り」。タブで運用する戦略を今の価格で試算した、買いとロットごとの条件の成立・今の値・発動価格（価格がいくらになれば成立するか）。actions は起きうる売買で、price が null なら今の価格のまま次の判定で起きる。nextMoves は画面の「次の動き」（次の判定で起きるものと、上側・下側それぞれ最も近い発動価格）。distancePercent は今の価格からの幅。注文はしない。リアルのタブは画面と同じく出さない",
+				"ホームの「次の動き」「戦略の見張り」。戦略を今の価格で試算した、買いとロットごとの条件の成立・今の値・発動価格（価格がいくらになれば成立するか）。actions は起きうる売買で、price が null なら今の価格のまま次の判定で起きる。nextMoves は画面の「次の動き」（次の判定で起きるものと、上側・下側それぞれ最も近い発動価格）。distancePercent は今の価格からの幅。注文はしない。リアルは画面と同じく出さない",
 			inputSchema: {
-				runId: z.number().int().describe("タブ（list_trading_runs）"),
+				strategyId: z.number().int().describe("戦略の id（list_strategies）"),
 			},
 			annotations: readOnly,
 		},
-		({ runId }) => {
-			const run = trading.run(runId);
-			if (!run) return fail("タブが見つからない");
-			if (hidden(run)) return fail("リアルのタブは戦略の見張りを出さない");
-			const w = trading.watch(runId)?.watch ?? null;
-			return w
-				? text(watchView(w))
-				: fail("運用する戦略を選んでいないか、価格がまだ無い");
+		({ strategyId }) => {
+			const run = trading.run(strategyId);
+			if (!run) return fail("戦略が見つからない");
+			if (hidden(run)) return fail("リアルは戦略の見張りを出さない");
+			const w = trading.watch(strategyId)?.watch ?? null;
+			return w ? text(watchView(w)) : fail("価格がまだ無い");
 		},
 	);
 
@@ -60,9 +58,9 @@ export function registerTradingTools(
 		"list_trading_orders",
 		{
 			description:
-				"タブ（運用）の注文・約定（新しい順）。発注の理由・約定・往復の損益（売りの pnl、手数料込み）・売りのロットの買値と利確/損切りの別（exitKind）・発注したときの市場評価（judgments）を含む。total と realizedPnl は件数で切らずに数えた件数と損益の合計。リアルのタブは画面と同じく出さない",
+				"戦略の自動取引の注文・約定（新しい順）。発注の理由・約定・往復の損益（売りの pnl、手数料込み）・売りのロットの買値と利確/損切りの別（exitKind）・発注したときの市場評価（judgments）を含む。total と realizedPnl は件数で切らずに数えた件数と損益の合計。リアルは画面と同じく出さない",
 			inputSchema: {
-				runId: z.number().int().describe("タブ（list_trading_runs）"),
+				strategyId: z.number().int().describe("戦略の id（list_strategies）"),
 				status: z
 					.enum(["open", "filled", "canceled"])
 					.optional()
@@ -72,11 +70,11 @@ export function registerTradingTools(
 			},
 			annotations: readOnly,
 		},
-		({ runId, status, side, limit }) => {
-			const run = trading.run(runId);
-			if (!run) return fail("タブが見つからない");
-			if (hidden(run)) return fail("リアルのタブは注文・約定を出さない");
-			const filter = { runId, status, side };
+		({ strategyId, status, side, limit }) => {
+			const run = trading.run(strategyId);
+			if (!run) return fail("戦略が見つからない");
+			if (hidden(run)) return fail("リアルは注文・約定を出さない");
+			const filter = { strategyId, status, side };
 			const summary = trading.orderSummary(filter);
 			return text({
 				total: summary.count,
@@ -84,7 +82,7 @@ export function registerTradingTools(
 				orders: trading.orders(filter, limit).map((o) => ({
 					...tradingOrderView(o),
 					judgments: judgmentsView(
-						trading.order(runId, o.id)?.decision?.judgments,
+						trading.order(strategyId, o.id)?.decision?.judgments,
 					),
 				})),
 			});

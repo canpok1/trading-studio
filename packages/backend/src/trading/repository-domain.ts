@@ -14,28 +14,21 @@ import type {
 
 export interface TradingRepository {
 	transaction<T>(fn: () => T): T;
-	/** 削除していない運用（作った順） */
+	/** 削除していない口座（作った順） */
 	runs(): TradingRunRow[];
-	/** 削除していない運用の id（作った順）。口座を読まずに済ませる */
+	/** 削除していない口座の id（作った順）。口座を読まずに済ませる */
 	runIds(): number[];
-	/** 削除していない運用が選んでいる戦略の id */
-	strategyIds(): number[];
-	/** 削除していない運用 */
+	/** オンの口座の数。口座を読まずに数える */
+	runningCount(): number;
+	/** 削除していない口座 */
 	run(id: number): TradingRunRow | null;
-	/** 運用を足す。口座は開始時の資金だけで作る */
-	createRun(
-		input: {
-			name: string;
-			mode: TradingMode;
-			strategyId: number | null;
-		},
-		now: number,
-	): number;
-	/** 運用を1つも持っていなければ、既定の資金のデモを1つ作る（タブは最低1つ） */
-	ensureRun(now: number): void;
-	/** 実行状態・名前・戦略・口座を保存する */
+	/** 戦略の削除していない口座 */
+	runOf(strategyId: number): TradingRunRow | null;
+	/** 戦略の口座を作る。デモで、口座は開始時の資金だけで作る */
+	createRun(strategy: { id: number; name: string }, now: number): number;
+	/** 実行状態・口座を保存する */
 	saveRun(row: TradingRunRow): void;
-	/** 運用を消す。注文・判断の記録から名前を引けるよう、行は残す */
+	/** 口座を消す。注文・判断の記録から名前を引けるよう、行は残す */
 	deleteRun(id: number, now: number): void;
 	/** 注文の記録を最新の内容にする。新しい注文なら発注した判断と戦略を付けて足す */
 	saveOrders(
@@ -52,11 +45,11 @@ export interface TradingRepository {
 	): void;
 	order(runId: number, id: string): StoredOrder | null;
 	/** 注文を新しい順に。約定・取消の時刻があればその時刻、無ければ発注時刻で並べる */
-	orders(filter?: OrderFilter, limit?: number): StoredOrder[];
+	orders(filter?: RunOrderFilter, limit?: number): StoredOrder[];
 	/** from より後に約定した注文を約定の古い順に。リセットと同じ時刻の約定はリセット前の口座のもの */
 	filledSince(runId: number, from: number): StoredOrder[];
 	/** 条件に合う注文の件数と、損益の合計（件数で切らない） */
-	orderSummary(filter?: OrderFilter): OrderSummary;
+	orderSummary(filter?: RunOrderFilter): OrderSummary;
 	addDecision(
 		run: {
 			id: number;
@@ -72,12 +65,17 @@ export interface TradingRepository {
 	decision(id: number): StoredDecision | null;
 }
 
-/** 運用（ホームのタブ1つ）の行。モード・戦略・口座・実行状態を運用ごとに持つ */
+/** 注文の絞り込み。戦略の代わりに口座で指定する */
+export type RunOrderFilter = Omit<OrderFilter, "strategyId"> & {
+	runId?: number;
+};
+
+/** 戦略の口座と実行状態の行 */
 export type TradingRunRow = {
 	id: number;
 	name: string;
 	mode: TradingMode;
-	/** 運用する戦略。オン中は動かしている戦略 */
+	/** 口座を持つ戦略。統合前に作った削除済みの行は null がある */
 	strategyId: number | null;
 	createdAt: number;
 	enabled: boolean;

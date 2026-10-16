@@ -9,12 +9,16 @@ import type {
 	TradeOrder,
 	ValidationError,
 } from "@trading-studio/core";
+import type {
+	CreateStrategyInput,
+	StrategyResult,
+} from "../strategies/types-domain";
 
 /** paper: デモ（最新の実データで模擬売買） / live: リアル（実資金。フェーズ5で有効にする） */
 export type TradingMode = "paper" | "live";
 
 export type StoredOrder = TradeOrder & {
-	/** 運用の id */
+	/** 口座（trading_runs）の id。注文の id はこの中で振る */
 	runId: number;
 	mode: TradingMode;
 	/** 発注した判断。無ければ null */
@@ -28,7 +32,7 @@ export type StoredOrder = TradeOrder & {
 };
 
 export type OrderFilter = {
-	runId?: number;
+	strategyId?: number;
 	status?: TradeOrder["status"];
 	side?: TradeOrder["side"];
 };
@@ -92,15 +96,17 @@ export type TradingPerformance = {
 	averageHoldingMs: number | null;
 };
 
-/** 運用1つの状態 */
+/** 戦略1つの自動取引の状態 */
 export type AutoTradingStatus = {
+	/** 戦略の id */
 	id: number;
+	/** 口座（trading_runs）の id。統合前の運用（ホームのタブ）の id と同じ */
+	accountId: number;
+	/** 戦略の名前 */
 	name: string;
 	enabled: boolean;
 	mode: TradingMode;
-	/** 運用する戦略（オン中は動かしている戦略）。選んでいないか削除されていれば null */
-	strategy: { id: number; name: string } | null;
-	/** 次の判定時刻。オフなら、今オンにしたときの最初の判定時刻（戦略が無ければ null） */
+	/** 次の判定時刻。オフなら、今オンにしたときの最初の判定時刻 */
 	nextEvalAt: number | null;
 	startedAt: number | null;
 	/** 価格の収集が止まっていて判定を待っている */
@@ -109,7 +115,7 @@ export type AutoTradingStatus = {
 	dailyLoss: { loss: number; limit: number | null; blocked: boolean };
 	account: TradingAccountView;
 	/**
-	 * この運用の戦略の切り替えを止めている理由。
+	 * 戦略の条件の変更を止めている理由。
 	 * running=自動取引がオン、holding=口座に保有か未約定の注文がある。止めていなければ null
 	 */
 	strategyLock: StrategyLock | null;
@@ -120,11 +126,9 @@ export type StrategyLock = "running" | "holding";
 export type TradingFailure =
 	| { kind: "running"; message: string }
 	| { kind: "not_running"; message: string }
-	| { kind: "no_strategy"; message: string }
 	| { kind: "invalid_strategy"; message: string; errors: ValidationError[] }
 	| { kind: "unsupported_mode"; message: string }
 	| { kind: "invalid_cash"; message: string }
-	| { kind: "invalid_name"; message: string }
 	| { kind: "not_found"; message: string }
 	| { kind: "limit"; message: string }
 	| { kind: "locked"; message: string };
@@ -133,52 +137,38 @@ export type TradingResult =
 	| { ok: true; status: AutoTradingStatus }
 	| { ok: false; error: TradingFailure };
 
-/** 運用を足す・変えるときの値 */
-export type RunInput = {
-	name: string;
-	mode: TradingMode;
-	strategyId: number | null;
-};
-
+/** 戦略ごとの自動取引。戦略1つが口座1つを持つ。引数の id は戦略の id */
 export interface TradingService {
-	/** 運用の一覧（作った順） */
+	/** 戦略ごとの状態（作った順） */
 	runs(): AutoTradingStatus[];
-	run(id: number): AutoTradingStatus | null;
+	run(strategyId: number): AutoTradingStatus | null;
 	/**
-	 * 運用する戦略を今の価格で試算した見張り（条件ごとの成立と発動価格）。注文も state の変更もしない。
-	 * 運用が無ければ null、戦略を選んでいないか価格がまだ無ければ watch が null
+	 * 戦略を今の価格で試算した見張り（条件ごとの成立と発動価格）。注文も state の変更もしない。
+	 * 戦略が無ければ null、価格がまだ無ければ watch が null
 	 */
-	watch(id: number): { watch: StrategyWatch | null } | null;
-	/** 運用を足す。数は core の TRADING_RUN_LIMITS まで、リアルは1つまで */
-	create(input: RunInput): TradingResult;
-	/** 名前と運用する戦略を変える。戦略はオン中と保有がある間は変えられない */
-	update(
-		id: number,
-		input: { name?: string; strategyId?: number | null },
-	): TradingResult;
-	/** 運用を消す。オフのときだけ。未約定の注文は取り消し、保有は捨てる。最後の1つは消せない */
-	remove(id: number): { ok: true } | { ok: false; error: TradingFailure };
-	/** 運用する戦略で自動取引をオンにする */
-	start(id: number): TradingResult;
+	watch(strategyId: number): { watch: StrategyWatch | null } | null;
+	/** 戦略を作り、その口座（デモ・開始時の資金は既定）も作る */
+	createStrategy(input: CreateStrategyInput): StrategyResult;
+	/** 戦略を消す。オフのときだけ。未約定の注文は取り消し、保有は捨てる。注文・判断の記録は残す */
+	remove(
+		strategyId: number,
+	): { ok: true } | { ok: false; error: TradingFailure };
+	/** 自動取引をオンにする。同時にオンにできるのは core の TRADING_LIMITS.running まで */
+	start(strategyId: number): TradingResult;
 	/** オフにする。未約定の注文は取り消さない */
-	stop(id: number): TradingResult;
+	stop(strategyId: number): TradingResult;
 	/** 口座を開始時の資金に戻す。オフのときだけ */
-	reset(id: number, initialCash: number): TradingResult;
+	reset(strategyId: number, initialCash: number): TradingResult;
 	/** 新しい順に最大 limit 件 */
 	orders(filter: OrderFilter, limit?: number): StoredOrder[];
 	/** 件数で切らずに数えた、条件に合う注文の件数と実現損益 */
 	orderSummary(filter: OrderFilter): OrderSummary;
-	/** 口座をリセットした時点以降の成績。運用が無ければ null */
-	performance(id: number): TradingPerformance | null;
+	/** 口座をリセットした時点以降の成績。戦略が無ければ null */
+	performance(strategyId: number): TradingPerformance | null;
 	order(
-		runId: number,
+		strategyId: number,
 		id: string,
 	): { order: StoredOrder; decision: StoredDecision | null } | null;
-	/**
-	 * 戦略の条件の変更・削除を止めている理由。その戦略を使う運用のどれかがオンなら running、
-	 * どれかに保有か未約定の注文があれば holding。止めていなければ null
-	 */
+	/** 戦略の条件の変更を止めている理由。オンなら running、保有か未約定の注文があれば holding。止めていなければ null */
 	strategyLock(strategyId: number): StrategyLock | null;
-	/** どれかの運用が運用する戦略に選んでいるか */
-	inUse(strategyId: number): boolean;
 }

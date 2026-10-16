@@ -13,17 +13,15 @@ import {
 	TIMEFRAME_LABELS,
 	TIMEFRAME_MS,
 	TIMEFRAMES,
-	TRADING_RUN_LIMITS,
 } from "@trading-studio/core";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { AccountPanel } from "../../features/trading/components/AccountPanel";
 import { AutoTradingCard } from "../../features/trading/components/AutoTradingCard";
 import { OrdersPanel } from "../../features/trading/components/OrdersPanel";
 import { PANEL, PanelHeader } from "../../features/trading/components/Panel";
 import { PerformancePanel } from "../../features/trading/components/PerformancePanel";
-import { AddRunDialog } from "../../features/trading/components/RunDialogs";
 import {
 	NextMovesCard,
 	StrategyWatchPanel,
@@ -128,6 +126,13 @@ export function HomePage() {
 		return { strategies: list.strategies, counts };
 	}, [api]);
 	const setup = useAsync(loadSetup);
+	// ホームは開いたまま他の画面へ移るので、戻ったときに戦略の条件（チャートの指標の既定）を読み直す
+	const shown = useRef(visible);
+	const reloadSetup = setup.reload;
+	useEffect(() => {
+		if (visible && !shown.current) reloadSetup();
+		shown.current = visible;
+	}, [visible, reloadSetup]);
 
 	if (setup.state.kind === "error") {
 		return (
@@ -192,20 +197,21 @@ function HomeBody({
 	visible: boolean;
 }) {
 	const api = useApi();
-	const { runs, set } = useTradingStatus();
-	// タブはクエリの run で持つ。無ければ稼働中の最初のタブ、どれも止まっていれば先頭。
-	// 以前の ?mode= のリンクは、そのモードの最初のタブで開く
+	const { runs } = useTradingStatus();
+	// タブはクエリの strategy（戦略の id）で持つ。無ければ稼働中の最初の戦略、どれも止まっていれば先頭。
+	// 統合前の ?run=（運用の id）は口座の id で、?mode= はそのモードの最初のタブで開く
 	const [params, setParams] = useSearchParams();
+	const strategyParam = Number(params.get("strategy"));
 	const runParam = Number(params.get("run"));
 	const modeParam = params.get("mode");
 	const run =
-		runs?.find((r) => r.id === runParam) ??
+		runs?.find((r) => r.id === strategyParam) ??
+		runs?.find((r) => r.accountId === runParam) ??
 		runs?.find((r) => r.mode === modeParam) ??
 		runs?.find((r) => r.enabled) ??
 		runs?.[0] ??
 		null;
 	const runId = run?.id ?? 0;
-	const [adding, setAdding] = useState(false);
 	// リアルが使えない間、リアルのタブは口座・成績・注文を出さない
 	const hasAccount = run !== null && !(run.mode === "live" && !LIVE_AVAILABLE);
 	const account = run?.account ?? null;
@@ -216,15 +222,11 @@ function HomeBody({
 		[entryKey],
 	);
 	const { orders, reload: reloadOrders } = useTradingOrders(
-		{ runId, limit: MARKER_ORDERS },
+		{ strategyId: runId, limit: MARKER_ORDERS },
 		visible && hasAccount,
 	);
 	const perf = useTradingPerformance(runId, visible && hasAccount);
-	const watch = useStrategyWatch(
-		runId,
-		run?.strategy?.id ?? null,
-		visible && hasAccount,
-	);
+	const watch = useStrategyWatch(runId, visible && hasAccount);
 	const showMoves = hasAccount && watch !== null;
 	// 見張りは定期的に取り直すので、発動価格が変わったときだけ線を引き直す
 	const triggerKey = JSON.stringify(chartTriggers(watch));
@@ -244,7 +246,7 @@ function HomeBody({
 		},
 		[],
 	);
-	const active = strategies.find((x) => x.id === run?.strategy?.id) ?? null;
+	const active = strategies.find((x) => x.id === run?.id) ?? null;
 
 	const [timeframe, setTimeframe] = useChartTimeframe();
 	const range = loadRange(timeframe, counts);
@@ -337,7 +339,7 @@ function HomeBody({
 
 	const selectRun = (id: number) => {
 		setSelectedOrder(null);
-		setParams({ run: String(id) }, { replace: true });
+		setParams({ strategy: String(id) }, { replace: true });
 	};
 
 	const barJudgments = useMemo(
@@ -364,12 +366,7 @@ function HomeBody({
 
 	return (
 		<HomeFrame>
-			<RunTabs
-				runs={runs}
-				current={run?.id ?? null}
-				onSelect={selectRun}
-				onAdd={() => setAdding(true)}
-			/>
+			<RunTabs runs={runs} current={run?.id ?? null} onSelect={selectRun} />
 			<CollectorAlert latest={latest} />
 			{latestError && (
 				<div
@@ -399,8 +396,6 @@ function HomeBody({
 					<AutoTradingCard
 						key={`card-${run.id}`}
 						run={run}
-						strategies={strategies}
-						canDelete={(runs?.length ?? 0) > 1}
 						onToast={showToast}
 						onDeleted={() => {
 							setSelectedOrder(null);
@@ -408,6 +403,18 @@ function HomeBody({
 						}}
 						className="col-span-full xl:order-last xl:col-span-1"
 					/>
+				) : runs?.length === 0 ? (
+					<div className="col-span-full flex items-center gap-3 rounded-xl bg-surface p-3.5 text-[13px] xl:order-last xl:col-span-1">
+						<span className="flex-1">
+							戦略がまだ無い。戦略を作ると、ここで自動取引を動かせる
+						</span>
+						<Link
+							to="/strategies"
+							className="shrink-0 font-semibold text-accent underline"
+						>
+							戦略を作る
+						</Link>
+					</div>
 				) : (
 					<Skeleton className="col-span-full h-14 rounded-xl xl:order-last xl:col-span-1" />
 				)}
@@ -483,7 +490,7 @@ function HomeBody({
 				/>
 			)}
 			{hasAccount && watch && (
-				<StrategyWatchPanel runId={runId} watch={watch} />
+				<StrategyWatchPanel strategyId={runId} watch={watch} />
 			)}
 			{hasAccount && run && (
 				<>
@@ -504,7 +511,7 @@ function HomeBody({
 			{hasAccount && (
 				<OrdersPanel
 					key={runId}
-					runId={runId}
+					strategyId={runId}
 					active={visible}
 					selectedId={selectedOrder}
 					onSelect={setSelectedOrder}
@@ -512,24 +519,11 @@ function HomeBody({
 			)}
 			{selectedOrder && (
 				<TradeOrderSheet
-					runId={runId}
+					strategyId={runId}
 					id={selectedOrder}
 					initial={orders?.find((o) => o.id === selectedOrder) ?? null}
 					onSelect={setSelectedOrder}
 					onClose={() => setSelectedOrder(null)}
-				/>
-			)}
-			{adding && runs && (
-				<AddRunDialog
-					strategies={strategies}
-					hasLive={runs.some((r) => r.mode === "live")}
-					onClose={() => setAdding(false)}
-					onCreated={(s) => {
-						setAdding(false);
-						set(s);
-						selectRun(s.id);
-						showToast(`「${s.name}」のタブを追加した`);
-					}}
 				/>
 			)}
 			{toast && (
@@ -544,17 +538,15 @@ function HomeBody({
 	);
 }
 
-/** タブ（運用）の並びと追加のボタン。並びきらなければ横にスクロールする */
+/** タブ（戦略）の並びと、戦略を作る画面への「＋」。並びきらなければ横にスクロールする */
 function RunTabs({
 	runs,
 	current,
 	onSelect,
-	onAdd,
 }: {
 	runs: AutoTradingStatus[] | null;
 	current: number | null;
 	onSelect: (id: number) => void;
-	onAdd: () => void;
 }) {
 	if (!runs)
 		return <Skeleton className="h-[42px] rounded-[10px] lg:col-span-2" />;
@@ -586,15 +578,13 @@ function RunTabs({
 					</button>
 				))}
 			</div>
-			<button
-				type="button"
-				aria-label="タブを追加"
-				disabled={runs.length >= TRADING_RUN_LIMITS.runs}
-				onClick={onAdd}
-				className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[10px] bg-surface-2 text-xl font-bold text-text-2 disabled:opacity-40"
+			<Link
+				to="/strategies"
+				aria-label="戦略を作る"
+				className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[10px] bg-surface-2 text-xl font-bold text-text-2"
 			>
 				＋
-			</button>
+			</Link>
 		</div>
 	);
 }

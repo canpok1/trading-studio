@@ -27,7 +27,7 @@ export type McpDeps = {
 	news: Pick<NewsService, "searchNews">;
 	judgments: Pick<JudgmentService, "rule" | "current" | "series" | "preview">;
 	accuracy: AccuracyService;
-	/** ホームのタブ（運用）。読むだけで、オンオフや戦略の切替は道具にしない */
+	/** 戦略ごとの自動取引。オンオフは道具にしない。条件の変更を止める理由を引き、戦略は口座と一緒に作る */
 	trading: Pick<
 		TradingService,
 		| "runs"
@@ -37,6 +37,8 @@ export type McpDeps = {
 		| "orders"
 		| "orderSummary"
 		| "order"
+		| "strategyLock"
+		| "createStrategy"
 	>;
 	market: Pick<MarketService, "latest" | "bars">;
 	advice: Pick<AdviceService, "get">;
@@ -45,8 +47,6 @@ export type McpDeps = {
 		CalendarService,
 		"listSources" | "status" | "criteria" | "listEvents"
 	>;
-	/** ホームのタブのどれかが運用する戦略に選んでいるか。選ばれている戦略は条件を変えさせない */
-	inUse: (strategyId: number) => boolean;
 	/** run_backtest が終わりを待つ時間。過ぎたら実行中のまま返し、get_backtest で続きを見てもらう */
 	backtestWaitMs?: number;
 	sleep?: (ms: number) => Promise<void>;
