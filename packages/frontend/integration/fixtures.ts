@@ -42,6 +42,7 @@ export function tradingRun(
 	over: Partial<AutoTradingStatus> & Pick<AutoTradingStatus, "id" | "name">,
 ): AutoTradingStatus {
 	return {
+		accountId: over.id,
 		enabled: false,
 		mode: "paper",
 		nextEvalAt: null,

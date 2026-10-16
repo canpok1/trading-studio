@@ -67,7 +67,7 @@ test("稼働中の帯は他の画面にも出て、押すとホームの稼働�
 	const band = page.getByRole("complementary", { name: "稼働中の自動取引" });
 	await expect(band).toContainText("デモ稼働中");
 	await band.getByRole("link").click();
-	await expect(page).toHaveURL(/\/home\?run=2$/);
+	await expect(page).toHaveURL(/\/home\?strategy=2$/);
 	await expect(page.getByRole("tab", { name: /比較/ })).toHaveAttribute(
 		"aria-selected",
 		"true",

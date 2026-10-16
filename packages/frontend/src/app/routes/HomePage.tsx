@@ -126,6 +126,13 @@ export function HomePage() {
 		return { strategies: list.strategies, counts };
 	}, [api]);
 	const setup = useAsync(loadSetup);
+	// ホームは開いたまま他の画面へ移るので、戻ったときに戦略の条件（チャートの指標の既定）を読み直す
+	const shown = useRef(visible);
+	const reloadSetup = setup.reload;
+	useEffect(() => {
+		if (visible && !shown.current) reloadSetup();
+		shown.current = visible;
+	}, [visible, reloadSetup]);
 
 	if (setup.state.kind === "error") {
 		return (
@@ -191,13 +198,15 @@ function HomeBody({
 }) {
 	const api = useApi();
 	const { runs } = useTradingStatus();
-	// タブ（戦略）はクエリの run で持つ。無ければ稼働中の最初の戦略、どれも止まっていれば先頭。
-	// 以前の ?mode= のリンクは、そのモードの最初のタブで開く
+	// タブはクエリの strategy（戦略の id）で持つ。無ければ稼働中の最初の戦略、どれも止まっていれば先頭。
+	// 統合前の ?run=（運用の id）は口座の id で、?mode= はそのモードの最初のタブで開く
 	const [params, setParams] = useSearchParams();
+	const strategyParam = Number(params.get("strategy"));
 	const runParam = Number(params.get("run"));
 	const modeParam = params.get("mode");
 	const run =
-		runs?.find((r) => r.id === runParam) ??
+		runs?.find((r) => r.id === strategyParam) ??
+		runs?.find((r) => r.accountId === runParam) ??
 		runs?.find((r) => r.mode === modeParam) ??
 		runs?.find((r) => r.enabled) ??
 		runs?.[0] ??
@@ -330,7 +339,7 @@ function HomeBody({
 
 	const selectRun = (id: number) => {
 		setSelectedOrder(null);
-		setParams({ run: String(id) }, { replace: true });
+		setParams({ strategy: String(id) }, { replace: true });
 	};
 
 	const barJudgments = useMemo(

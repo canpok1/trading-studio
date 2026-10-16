@@ -272,6 +272,7 @@ export function StrategiesPage() {
 					strategy={current}
 					onClose={() => setDialog(null)}
 					onDone={async () => {
+						refreshTrading();
 						setDialog(null);
 						await reload();
 						setNotice("名前を変えた");

@@ -202,7 +202,7 @@ function TradingBand() {
 			className="sticky top-0 z-30 border-b-[3px] border-dashed border-paper-ink bg-paper text-xs text-paper-ink"
 		>
 			<Link
-				to={`/home?run=${first.id}`}
+				to={`/home?strategy=${first.id}`}
 				className="flex min-h-10 items-center gap-2 px-4"
 			>
 				<PaperIcon />

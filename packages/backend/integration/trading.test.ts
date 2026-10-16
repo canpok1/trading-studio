@@ -81,7 +81,7 @@ function setup(params: ConditionSet = always()) {
 		quantity: 1,
 	});
 	t.live.current = { ...t.live.current, latestTrade: trade(P) };
-	const s = t.strategies.create({ name: "常に買う", from: { params } });
+	const s = t.trading.createStrategy({ name: "常に買う", from: { params } });
 	if (!s.ok) throw new Error(JSON.stringify(s.error));
 	/** この戦略の操作は /start のように書ける */
 	const call = async (method: string, path: string, body?: unknown) => {
@@ -213,10 +213,9 @@ describe("自動取引のオンオフ", () => {
 
 	test("リアルの口座は動かせず、条件が足りなければオンにできない", async () => {
 		const t = setup();
-		t.status();
 		t.db.$client.run("update trading_runs set mode = 'live'");
 		expect((await t.call("POST", "/start")).body.kind).toBe("unsupported_mode");
-		const blank = t.strategies.create({
+		const blank = t.trading.createStrategy({
 			name: "空",
 			from: { template: "blank" },
 		});
@@ -688,7 +687,6 @@ describe("複数ポジション", () => {
 
 	test("ロットを持つ前に保存した口座は、保有を1ロットとして読む", () => {
 		const t = setup();
-		t.status();
 		t.db.$client.run(
 			"update trading_runs set account = ? where strategy_id = ?",
 			[
@@ -779,7 +777,6 @@ describe("複数の戦略", () => {
 	test("1つの口座が読めなくても、ほかの戦略は約定・評価を続ける", async () => {
 		const t = setup();
 		const broken = await create(t, "壊れた");
-		t.trading.run(broken);
 		t.db.$client.run(
 			"update trading_runs set account = '{' where strategy_id = ?",
 			[broken],
@@ -842,18 +839,27 @@ describe("複数の戦略", () => {
 		expect(await del()).toBe(404);
 	});
 
-	test("口座の無い戦略は、読んだときに既定の資金のデモの口座を作る", async () => {
+	test("戦略を作ると既定の資金のデモの口座を作り、戦略だけの行は一覧に出さない", async () => {
 		const t = setup();
-		expect(t.tradingRepo.runs()).toEqual([]);
 		expect(t.trading.runs()).toMatchObject([
 			{
 				id: t.strategy.id,
 				enabled: false,
 				mode: "paper",
-				account: { initialCash: 1_000_000, cash: 1_000_000 },
+				account: {
+					initialCash: 1_000_000,
+					cash: 1_000_000,
+					resetAt: t.clock.now,
+				},
 			},
 		]);
-		expect(t.tradingRepo.runs()).toHaveLength(1);
+		const bare = t.strategies.create({
+			name: "口座なし",
+			from: { template: "blank" },
+		});
+		if (!bare.ok) throw new Error();
+		expect(t.trading.runs()).toHaveLength(1);
+		expect(t.trading.run(bare.strategy.id)).toBeNull();
 	});
 });
 

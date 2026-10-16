@@ -48,6 +48,9 @@ import type {
 	TradingService,
 } from "./types-domain";
 
+/** 削除の途中で戦略が消えていたことを、トランザクションを巻き戻して知らせる */
+class StrategyGone extends Error {}
+
 /** デモの注文の id の頭につける文字 */
 const PAPER_ID_PREFIX = "p";
 
@@ -69,7 +72,7 @@ export function createTradingService({
 	fees = DEFAULT_FEE_RATES,
 }: {
 	repo: TradingRepository;
-	strategies: Pick<StrategyService, "get" | "list" | "remove">;
+	strategies: Pick<StrategyService, "get" | "list" | "create" | "remove">;
 	judgments: Pick<JudgmentService, "current">;
 	calendar: Pick<CalendarService, "calendar">;
 	marketData: Pick<
@@ -224,7 +227,7 @@ export function createTradingService({
 	const currentPrice = (live: LiveMarket): number | null =>
 		live.latestTrade?.price ?? marketData.lastCandle("1m")?.close ?? null;
 
-	/** 戦略の切り替えを止めている理由。保有はオフにしても口座に残り、オンにし直すと同じ戦略で売るため、保有がある間も止める */
+	/** 戦略の条件の変更を止めている理由。保有はオフにしても口座に残り、オンにし直すと同じ戦略で売るため、保有がある間も止める */
 	const lockOf = (row: TradingRunRow): StrategyLock | null =>
 		row.enabled
 			? "running"
@@ -241,6 +244,7 @@ export function createTradingService({
 		const a = row.account;
 		return {
 			id: s.id,
+			accountId: row.id,
 			name: s.name,
 			enabled: row.enabled,
 			mode: row.mode,
@@ -277,16 +281,13 @@ export function createTradingService({
 
 	const notFound = () => fail("not_found", "戦略が見つからない");
 
-	/** 戦略と、その口座。口座がまだ無ければ作る（戦略を作ったとき・統合の後に初めて読んだとき） */
+	/** 戦略と、その口座 */
 	const accountOf = (
 		strategyId: number,
 	): { s: StoredStrategy; row: TradingRunRow } | null => {
 		const s = strategies.get(strategyId);
-		if (!s) return null;
-		const row = repo.runOf(strategyId);
-		if (row) return { s, row };
-		const created = repo.run(repo.createRun(s, now()));
-		return created ? { s, row: created } : null;
+		const row = s ? repo.runOf(strategyId) : null;
+		return s && row ? { s, row } : null;
 	};
 
 	const okRun = (strategyId: number): TradingResult => {
@@ -390,9 +391,10 @@ export function createTradingService({
 		runs() {
 			const t = now();
 			const live = market();
-			return strategies.list().flatMap((x) => {
-				const found = accountOf(x.id);
-				return found ? [statusOf(found.s, found.row, t, live)] : [];
+			const rows = new Map(repo.runs().map((r) => [r.strategyId, r]));
+			return strategies.list().flatMap((s) => {
+				const row = rows.get(s.id);
+				return row ? [statusOf(s, row, t, live)] : [];
 			});
 		},
 
@@ -428,6 +430,14 @@ export function createTradingService({
 			};
 		},
 
+		createStrategy(input) {
+			return repo.transaction(() => {
+				const r = strategies.create(input);
+				if (r.ok) repo.createRun(r.strategy, now());
+				return r;
+			});
+		},
+
 		remove(strategyId) {
 			const found = accountOf(strategyId);
 			if (!found) return notFound();
@@ -436,16 +446,22 @@ export function createTradingService({
 				return fail("running", "戦略を消すには先に自動取引を停止する");
 			}
 			const t = now();
-			repo.transaction(() => {
-				const canceled = cancelAll(row.account, t, "戦略の削除で取消");
-				saveChanges(row, canceled.changed, {
-					decisionId: null,
-					strategy: null,
+			try {
+				repo.transaction(() => {
+					const canceled = cancelAll(row.account, t, "戦略の削除で取消");
+					saveChanges(row, canceled.changed, {
+						decisionId: null,
+						strategy: null,
+					});
+					repo.saveRun({ ...row, account: canceled.account });
+					repo.deleteRun(row.id, t);
+					// 間に消されていたら、口座の削除も巻き戻す
+					if (!strategies.remove(strategyId)) throw new StrategyGone();
 				});
-				repo.saveRun({ ...row, account: canceled.account });
-				repo.deleteRun(row.id, t);
-				strategies.remove(strategyId);
-			});
+			} catch (e) {
+				if (e instanceof StrategyGone) return notFound();
+				throw e;
+			}
 			return { ok: true };
 		},
 

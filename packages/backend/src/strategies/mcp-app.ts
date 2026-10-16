@@ -79,7 +79,7 @@ export function registerStrategyTools(
 		({ name, params }) => {
 			const p = parseParamsInput({ params });
 			if (!p) return fail("条件セットの形が違う。get_guide を参照");
-			const r = strategies.create({ name, from: { params: p } });
+			const r = trading.createStrategy({ name, from: { params: p } });
 			if (!r.ok) return strategyFailure(r.error);
 			return text(strategyView(r.strategy, lock));
 		},

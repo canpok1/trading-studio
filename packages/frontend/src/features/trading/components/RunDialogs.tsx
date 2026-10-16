@@ -7,9 +7,6 @@ import { Button } from "../../../shared/components/ui";
 import { useApi } from "../../../shared/lib/api";
 import { errorMessage, readJson } from "../../../shared/lib/useAsync";
 
-/** 戦略の名前の文字数（サーバーの検証と同じ） */
-const NAME_MAX = 40;
-
 export function RenameRunDialog({
 	run,
 	onClose,
@@ -47,7 +44,6 @@ export function RenameRunDialog({
 					id={id}
 					value={name}
 					onChange={(e) => setName(e.target.value)}
-					maxLength={NAME_MAX}
 					className="h-12 rounded-[10px] border border-line bg-surface px-3 text-[15px]"
 				/>
 			</div>

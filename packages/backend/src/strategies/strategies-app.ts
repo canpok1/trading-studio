@@ -43,8 +43,8 @@ function removeFailure(c: Context, e: TradingFailure) {
 
 export function strategyRoutes(
 	service: StrategyService,
-	/** 条件の変更を止める理由と、口座ごとの削除 */
-	trading: Pick<TradingService, "strategyLock" | "remove">,
+	/** 条件の変更を止める理由と、口座ごとの作成・削除 */
+	trading: Pick<TradingService, "strategyLock" | "createStrategy" | "remove">,
 ) {
 	/** 動かしている戦略を止めているなら 409 */
 	const locked = (c: Context, what: string, id: number) => {
@@ -67,7 +67,7 @@ export function strategyRoutes(
 				if (!r.ok) return c.json({ message: r.message }, 400);
 				return { name: r.input.name, from: r.input.from };
 			}),
-			(c) => respond(c, service.create(c.req.valid("json")), 201),
+			(c) => respond(c, trading.createStrategy(c.req.valid("json")), 201),
 		)
 		.put(
 			"/:id/params",

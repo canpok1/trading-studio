@@ -27,7 +27,7 @@ export type McpDeps = {
 	news: Pick<NewsService, "searchNews">;
 	judgments: Pick<JudgmentService, "rule" | "current" | "series" | "preview">;
 	accuracy: AccuracyService;
-	/** 戦略ごとの自動取引。読むだけで、オンオフは道具にしない。条件の変更を止める理由も引く */
+	/** 戦略ごとの自動取引。オンオフは道具にしない。条件の変更を止める理由を引き、戦略は口座と一緒に作る */
 	trading: Pick<
 		TradingService,
 		| "runs"
@@ -38,6 +38,7 @@ export type McpDeps = {
 		| "orderSummary"
 		| "order"
 		| "strategyLock"
+		| "createStrategy"
 	>;
 	market: Pick<MarketService, "latest" | "bars">;
 	advice: Pick<AdviceService, "get">;

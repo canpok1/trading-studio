@@ -9,6 +9,10 @@ import type {
 	TradeOrder,
 	ValidationError,
 } from "@trading-studio/core";
+import type {
+	CreateStrategyInput,
+	StrategyResult,
+} from "../strategies/types-domain";
 
 /** paper: デモ（最新の実データで模擬売買） / live: リアル（実資金。フェーズ5で有効にする） */
 export type TradingMode = "paper" | "live";
@@ -96,6 +100,8 @@ export type TradingPerformance = {
 export type AutoTradingStatus = {
 	/** 戦略の id */
 	id: number;
+	/** 口座（trading_runs）の id。統合前の運用（ホームのタブ）の id と同じ */
+	accountId: number;
 	/** 戦略の名前 */
 	name: string;
 	enabled: boolean;
@@ -141,6 +147,8 @@ export interface TradingService {
 	 * 戦略が無ければ null、価格がまだ無ければ watch が null
 	 */
 	watch(strategyId: number): { watch: StrategyWatch | null } | null;
+	/** 戦略を作り、その口座（デモ・開始時の資金は既定）も作る */
+	createStrategy(input: CreateStrategyInput): StrategyResult;
 	/** 戦略を消す。オフのときだけ。未約定の注文は取り消し、保有は捨てる。注文・判断の記録は残す */
 	remove(
 		strategyId: number,

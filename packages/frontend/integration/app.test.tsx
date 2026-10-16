@@ -79,6 +79,22 @@ describe("画面遷移", () => {
 		const tab = await view.findByRole("tab", { name: "デモ" });
 		expect(tab.getAttribute("aria-selected")).toBe("true");
 	});
+
+	test("統合前のタブの URL（?run= は運用の id）は、その運用を引き継いだ戦略のタブで開く", async () => {
+		const api = createFakeApi()
+			.on(routes.api.market.latest, "$get", () => marketLatest())
+			.on(routes.api.strategies, "$get", () => ({ strategies: [] }))
+			.on(routes.api.data.coverage, "$get", () => ({ timeframes: [] }))
+			.on(routes.api.trading.strategies, "$get", () => ({
+				strategies: [
+					tradingRun({ id: 5, accountId: 2, name: "A" }),
+					tradingRun({ id: 6, accountId: 3, name: "B" }),
+				],
+			}));
+		const view = renderApp("/home?run=3", api);
+		const tab = await view.findByRole("tab", { name: "B" });
+		expect(tab.getAttribute("aria-selected")).toBe("true");
+	});
 });
 
 describe("サイドメニューの折り畳み", () => {
