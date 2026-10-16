@@ -1,4 +1,4 @@
-// 戦略の一覧。行ごとに状態のバッジとモード・通算損益を出し、押すと戦略の画面へ。オンオフは戦略の画面で行う
+// 戦略の一覧。1行目に名前、2行目に状態のバッジ・モード・通算損益を出し、押すと戦略の画面へ。オンオフは戦略の画面で行う
 
 import type { AutoTradingStatus } from "@trading-studio/backend";
 import { Link } from "react-router";
@@ -26,11 +26,18 @@ export function StrategyList({ runs }: { runs: AutoTradingStatus[] }) {
 							to={`/strategies/${r.id}`}
 							className="flex items-center gap-3 px-3.5 py-3 hover:bg-surface-2"
 						>
-							<span className="flex min-w-0 flex-1 flex-col gap-0.5">
-								<strong className="truncate text-[15px]">{r.name}</strong>
-								<span className="text-xs text-text-2">
-									{MODE_LABELS[r.mode]}
-									<span className="ml-3">
+							<span className="flex min-w-0 flex-1 flex-col gap-1">
+								{/* 長い名前でも見切れないよう折り返す */}
+								<strong className="text-[15px] wrap-anywhere">{r.name}</strong>
+								<span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-2">
+									<span
+										data-testid="strategy-state"
+										className={`rounded-full px-2 py-0.5 font-bold whitespace-nowrap ${r.enabled ? "bg-profit/15 text-profit" : "bg-surface-2 text-text-2"}`}
+									>
+										{r.enabled ? "● 稼働中" : "停止中"}
+									</span>
+									<span>{MODE_LABELS[r.mode]}</span>
+									<span>
 										{r.ranSinceReset ? (
 											<>
 												通算{" "}
@@ -45,12 +52,6 @@ export function StrategyList({ runs }: { runs: AutoTradingStatus[] }) {
 										)}
 									</span>
 								</span>
-							</span>
-							<span
-								data-testid="strategy-state"
-								className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold whitespace-nowrap ${r.enabled ? "bg-profit/15 text-profit" : "bg-surface-2 text-text-2"}`}
-							>
-								{r.enabled ? "● 稼働中" : "停止中"}
 							</span>
 							<span aria-hidden className="text-text-2">
 								›
