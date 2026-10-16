@@ -15,6 +15,7 @@ import { createTradingService } from "../src/trading/trading-domain";
 import type {
 	AutoTradingStatus,
 	StoredOrder,
+	StrategySummary,
 } from "../src/trading/types-domain";
 import { createTestApp, TEST_FEE_RATES } from "./test-app";
 
@@ -785,6 +786,31 @@ describe("複数の戦略", () => {
 			{ id: t.strategy.id, name: "常に買う", enabled: false, mode: "paper" },
 			{ id: second, name: "比較用", enabled: true, mode: "paper" },
 		]);
+	});
+
+	test("ホームの要約はオンの戦略と、オフでも保有がある戦略だけを作った順に返す", async () => {
+		const t = setup();
+		const idle = await create(t, "止めたまま");
+		const running = await create(t, "動かす");
+		await t.call("POST", "/start");
+		await t.call("POST", `/strategies/${running}/start`);
+		t.at(T0 + M);
+		t.fill(P);
+		// 買った後に止めても、保有があるので出す
+		await t.call("POST", "/stop");
+		const body = (await t.call("GET", "/summaries")).body as {
+			summaries: StrategySummary[];
+		};
+		expect(body.summaries.map((x) => x.status.id)).toEqual([
+			t.strategy.id,
+			running,
+		]);
+		expect(body.summaries.map((x) => x.status.id)).not.toContain(idle);
+		const [held] = body.summaries;
+		expect(held?.status.enabled).toBe(false);
+		expect(held?.performance?.initialCash).toBe(1_000_000);
+		expect(held?.nextMoves?.price).toBe(P);
+		expect(held?.nextMoves?.multiBuy).toBe(false);
 	});
 
 	test("1つの口座が読めなくても、ほかの戦略は約定・評価を続ける", async () => {

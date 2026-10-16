@@ -63,6 +63,7 @@ import { PANEL, PanelHeader } from "./Panel";
 import { PerformancePanel } from "./PerformancePanel";
 import { NextMovesCard, StrategyWatchPanel } from "./StrategyWatch";
 import {
+	MarketEvalInline,
 	MarketEvalTile,
 	TotalPnlTile,
 	UnrealizedPnlTile,
@@ -80,15 +81,18 @@ const MAX_HISTORY = 1_000;
 const MARKER_ORDERS = 300;
 
 /**
- * 戦略1つの要点・次の動き・チャート・見張り・成績・口座・注文。strategyId が null なら戦略に依らない市場評価とチャートだけ。
+ * 戦略1つの要点・次の動き・チャート・見張り・成績・口座・注文。
+ * layout が home なら市場評価とチャートだけにし、strategyId の戦略の印（買値・発動価格・注文）をチャートに描く（null なら印なし）。
  * head は最上部に全幅で出すもので、トーストを出す関数を受け取る
  */
 export function StrategyDashboard({
 	strategyId,
+	layout = "strategy",
 	head,
 	children,
 }: {
 	strategyId: number | null;
+	layout?: "strategy" | "home";
 	head?: (toast: (message: string) => void) => ReactNode;
 	children?: ReactNode;
 }) {
@@ -166,6 +170,7 @@ export function StrategyDashboard({
 	return (
 		<DashboardBody
 			strategyId={strategyId}
+			layout={layout}
 			head={head}
 			latest={latest}
 			latestError={latestError}
@@ -189,6 +194,7 @@ function DashboardFrame({ children }: { children: ReactNode }) {
 
 function DashboardBody({
 	strategyId,
+	layout,
 	head,
 	children,
 	latest,
@@ -205,6 +211,7 @@ function DashboardBody({
 	counts: Partial<Record<Timeframe, number>>;
 	visible: boolean;
 	strategyId: number | null;
+	layout: "strategy" | "home";
 	head?: (toast: (message: string) => void) => ReactNode;
 	children?: ReactNode;
 }) {
@@ -217,6 +224,8 @@ function DashboardBody({
 	const runId = run?.id ?? 0;
 	// リアルが使えない間、リアルの戦略は口座・成績・注文を出さない
 	const hasAccount = run !== null && !(run.mode === "live" && !LIVE_AVAILABLE);
+	// ホームは印だけ描き、要点・成績・口座・注文の一覧は戦略の画面で見る
+	const home = layout === "home";
 	const account = run?.account ?? null;
 	// 状態は定期的に取り直すので、買値が変わったときだけ線を引き直す
 	const entryKey = account?.lots.map((l) => l.entryPrice).join(",") ?? "";
@@ -228,14 +237,21 @@ function DashboardBody({
 		{ strategyId: runId, limit: MARKER_ORDERS },
 		visible && hasAccount,
 	);
-	const perf = useTradingPerformance(runId, visible && hasAccount);
+	const perf = useTradingPerformance(runId, visible && hasAccount && !home);
 	const watch = useStrategyWatch(runId, visible && hasAccount);
 	const showMoves = hasAccount && watch !== null;
 	// 見張りは定期的に取り直すので、発動価格が変わったときだけ線を引き直す
 	const triggerKey = JSON.stringify(chartTriggers(watch));
 	// biome-ignore lint/correctness/useExhaustiveDependencies: 発動価格が変わったとき（triggerKey）だけ作り直す
 	const triggers = useMemo(() => chartTriggers(watch), [triggerKey]);
-	const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
+	// どの戦略の注文かを持ち、ホームで印の対象を切り替えたら前の戦略の注文の詳細を閉じる
+	const [selected, setSelected] = useState<{
+		runId: number;
+		id: string;
+	} | null>(null);
+	const selectedOrder = selected?.runId === runId ? selected.id : null;
+	const setSelectedOrder = (id: string | null) =>
+		setSelected(id === null ? null : { runId, id });
 	const [toast, setToast] = useState<string | null>(null);
 	const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const showToast = useCallback((message: string) => {
@@ -381,33 +397,35 @@ function DashboardBody({
 				</div>
 			)}
 			{/* 要点: スマホは 通算損益｜含み損益、市場評価、次の動き。PC は横一列 */}
-			<div
-				className={`grid grid-cols-2 gap-2.5 lg:col-span-2 ${
-					!hasAccount
-						? ""
-						: showMoves
-							? "sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-[repeat(3,minmax(0,1fr))_minmax(0,2fr)]"
-							: "sm:grid-cols-4"
-				}`}
-			>
-				{hasAccount && run && (
-					<>
-						<TotalPnlTile performance={perf.performance} error={perf.error} />
-						<UnrealizedPnlTile status={run} price={latest?.price ?? null} />
-					</>
-				)}
-				<MarketEvalTile
-					current={current}
-					stackAtLg={showMoves}
-					className={showMoves ? "col-span-2 lg:col-span-1" : "col-span-2"}
-				/>
-				{showMoves && (
-					<NextMovesCard
-						watch={watch}
-						className="col-span-full lg:col-span-2 xl:col-span-1"
+			{!home && (
+				<div
+					className={`grid grid-cols-2 gap-2.5 lg:col-span-2 ${
+						!hasAccount
+							? ""
+							: showMoves
+								? "sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-[repeat(3,minmax(0,1fr))_minmax(0,2fr)]"
+								: "sm:grid-cols-4"
+					}`}
+				>
+					{hasAccount && run && (
+						<>
+							<TotalPnlTile performance={perf.performance} error={perf.error} />
+							<UnrealizedPnlTile status={run} price={latest?.price ?? null} />
+						</>
+					)}
+					<MarketEvalTile
+						current={current}
+						stackAtLg={showMoves}
+						className={showMoves ? "col-span-2 lg:col-span-1" : "col-span-2"}
 					/>
-				)}
-			</div>
+					{showMoves && (
+						<NextMovesCard
+							watch={watch}
+							className="col-span-full lg:col-span-2 xl:col-span-1"
+						/>
+					)}
+				</div>
+			)}
 			{barsError && !bars ? (
 				<section aria-label="価格チャート" className={`${PANEL} lg:col-span-2`}>
 					<PanelHeader title="チャート" />
@@ -442,6 +460,22 @@ function DashboardBody({
 					bg={bg}
 					onBgChange={setBg}
 					compact
+					short={home}
+					headerExtra={
+						home && (
+							<div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
+								{run && (
+									<span
+										data-testid="chart-mark"
+										className="text-xs text-text-2"
+									>
+										印: <b className="text-text">{run.name}</b>
+									</span>
+								)}
+								<MarketEvalInline current={current} />
+							</div>
+						)
+					}
 					latestNote={<Change24h latest={latest} />}
 					toolbar={
 						<select
@@ -459,10 +493,10 @@ function DashboardBody({
 					}
 				/>
 			)}
-			{hasAccount && watch && (
+			{!home && hasAccount && watch && (
 				<StrategyWatchPanel strategyId={runId} watch={watch} />
 			)}
-			{hasAccount && run && (
+			{!home && hasAccount && run && (
 				<>
 					<PerformancePanel performance={perf.performance} error={perf.error} />
 					<AccountPanel
@@ -478,7 +512,7 @@ function DashboardBody({
 					/>
 				</>
 			)}
-			{hasAccount && (
+			{!home && hasAccount && (
 				<OrdersPanel
 					key={runId}
 					strategyId={runId}

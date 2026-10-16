@@ -97,6 +97,13 @@ type Props = {
 	compact?: boolean;
 	/** 最新の足を表示しているときだけ、上端の終値の右に出す（ホームの24時間の変化率） */
 	latestNote?: ReactNode;
+	/** 見出し「チャート」の右に出すもの（ホームの市場評価・印の対象） */
+	headerExtra?: ReactNode;
+	/**
+	 * 低く描き、スマホ幅では操作を1行に収め、出来高と判定の読み取り・拡大縮小のボタン・凡例を省く（指で拡大・移動でき、「最新へ」は残す）。
+	 * 下に並べるものを最初の画面に入れるため（ホーム。市場評価は見出しの横に出す）
+	 */
+	short?: boolean;
 	/**
 	 * 表示範囲を合わせ直すきっかけ。指定すると、足が更新されても値が変わるまで利用者の拡大・移動を保つ
 	 * （数秒ごとに最新の価格を足すホームで、そのたびに表示範囲が戻らないように）
@@ -242,6 +249,8 @@ export function PriceChart({
 	toolbar,
 	compact = false,
 	latestNote,
+	headerExtra,
+	short = false,
 	viewKey,
 	judgments = null,
 	bg = "sentiment",
@@ -1010,16 +1019,23 @@ export function PriceChart({
 	];
 	const controls = (
 		<>
-			<div className="flex min-h-6 items-center gap-1.5">
+			<div className="flex min-h-6 flex-wrap items-center gap-x-1.5 gap-y-1">
 				<h2 className="text-[15px] font-bold">チャート</h2>
 				<Help label="チャート">
 					{onMarker && <p>アイコンをタップで詳細。</p>}
 					{judgments && <p>下の帯をタップでその判定を背景に塗る。</p>}
-					<p>ピンチ / ホイール / ＋−で拡大・縮小。</p>
+					<p>
+						{short
+							? "ピンチ / ホイールで拡大・縮小（PC は＋−も）。"
+							: "ピンチ / ホイール / ＋−で拡大・縮小。"}
+					</p>
 				</Help>
+				{headerExtra}
 			</div>
 			{compact ? (
-				<div className="flex flex-wrap items-center gap-2">
+				<div
+					className={`flex items-center gap-2 ${short ? "max-lg:flex-nowrap" : ""} flex-wrap`}
+				>
 					{toolbar}
 					{bgSelect}
 					<DisplayMenu
@@ -1062,7 +1078,9 @@ export function PriceChart({
 	);
 	const chart = (
 		<>
-			<div className="flex flex-col gap-2 lg:flex-row lg:items-start">
+			<div
+				className={`flex gap-2 lg:flex-row lg:items-start ${short ? "flex-row items-start" : "flex-col"}`}
+			>
 				<div
 					aria-live="off"
 					className="num flex min-h-8 min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs"
@@ -1087,7 +1105,10 @@ export function PriceChart({
 							</span>
 							{atLastSlot && latestNote}
 							{showVolume && bar.volume !== undefined && (
-								<span data-testid="chart-volume" className="text-text-2">
+								<span
+									data-testid="chart-volume"
+									className={`text-text-2 ${short ? "max-lg:hidden" : ""}`}
+								>
 									出来高 {formatBtc(bar.volume)} BTC
 								</span>
 							)}
@@ -1099,7 +1120,7 @@ export function PriceChart({
 										<span
 											key={j}
 											data-testid={`chart-judgment-${j}`}
-											className="flex items-center gap-1"
+											className={`flex items-center gap-1 ${short ? "max-lg:hidden" : ""}`}
 										>
 											{SHORT_JUDGE_LABELS[j]}
 											<JudgmentBadge judge={j} value={v} small />
@@ -1171,7 +1192,7 @@ export function PriceChart({
 						aria-label="縮小"
 						title="縮小"
 						onClick={() => zoom(2)}
-						className={ICON_BTN}
+						className={`${ICON_BTN} ${short ? "max-lg:hidden" : ""}`}
 					>
 						−
 					</button>
@@ -1180,7 +1201,7 @@ export function PriceChart({
 						aria-label="拡大"
 						title="拡大"
 						onClick={() => zoom(0.5)}
-						className={ICON_BTN}
+						className={`${ICON_BTN} ${short ? "max-lg:hidden" : ""}`}
 					>
 						＋
 					</button>
@@ -1200,13 +1221,19 @@ export function PriceChart({
 				role="img"
 				aria-label="価格チャート"
 				className={`w-full ${
-					showRsi
-						? `h-[347px] ${compact ? "lg:h-[640px]" : "lg:h-[480px]"}`
-						: `h-[260px] ${compact ? "lg:h-[480px]" : "lg:h-[360px]"}`
+					short
+						? showRsi
+							? "h-[270px] lg:h-[460px]"
+							: "h-[200px] lg:h-[340px]"
+						: showRsi
+							? `h-[347px] ${compact ? "lg:h-[640px]" : "lg:h-[480px]"}`
+							: `h-[260px] ${compact ? "lg:h-[480px]" : "lg:h-[360px]"}`
 				}`}
 			/>
 			{(onMarker || showEma || showBb || showRsi || judgments) && (
-				<details className="min-w-0 rounded-[10px] border border-line px-3 py-2 text-xs">
+				<details
+					className={`min-w-0 rounded-[10px] border border-line px-3 py-2 text-xs ${short ? "max-lg:hidden" : ""}`}
+				>
 					<summary className="cursor-pointer font-semibold">凡例</summary>
 					<div className="mt-2 flex flex-col gap-2">
 						{onMarker && (
@@ -1380,7 +1407,7 @@ function DisplayMenu({
 				onClick={() => onOpenChange(!open)}
 				className={`${DROP} flex max-w-full items-center gap-1`}
 			>
-				表示
+				<span className="shrink-0">表示</span>
 				<span className="truncate font-normal text-text-2">{summary}</span>
 				<span aria-hidden="true" className="text-text-2">
 					▾

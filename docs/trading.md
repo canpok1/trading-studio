@@ -99,6 +99,7 @@
 | API | 内容 |
 |---|---|
 | `GET /api/trading/strategies` | 戦略ごとの自動取引の状態（戦略を作った順。`id` は戦略の id）。オン/オフ・モード・次の判定時刻・口座（今の価格で評価した総資産を含む）・口座のリセットから一度でもオンにしたか・条件を変えられない理由 |
+| `GET /api/trading/summaries` | ホームのカードに出す戦略（デモで、オンか、オフでも保有か未約定の注文がある。作った順）の状態・成績・次の動き（`docs/home.md`） |
 | `POST /api/trading/strategies/:id/start` | オンにする |
 | `POST /api/trading/strategies/:id/stop` | オフにする |
 | `POST /api/trading/strategies/:id/reset` | `{ initialCash }` で口座をリセットする |

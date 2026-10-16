@@ -20,6 +20,7 @@ import {
 	idealStepTimeframe,
 	JUDGES,
 	newAccount,
+	nextMoves,
 	publicLots,
 	realizedPnlOn,
 	settleFills,
@@ -430,6 +431,24 @@ export function createTradingService({
 					buyBlocked: dailyLossBlock(a, t, s.params.dailyLossLimit),
 				}),
 			};
+		},
+
+		summaries() {
+			return this.runs()
+				.filter(
+					(r) =>
+						r.mode === "paper" && (r.enabled || r.strategyLock === "holding"),
+				)
+				.map((status) => {
+					const w = this.watch(status.id)?.watch ?? null;
+					const multiBuy =
+						(strategies.get(status.id)?.params.buys.length ?? 0) >= 2;
+					return {
+						status,
+						performance: this.performance(status.id),
+						nextMoves: w && { price: w.price, ...nextMoves(w), multiBuy },
+					};
+				});
 		},
 
 		createStrategy(input) {

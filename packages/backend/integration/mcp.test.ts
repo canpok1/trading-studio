@@ -130,6 +130,7 @@ describe("MCP", () => {
 			"list_backtests",
 			"list_datasets",
 			"list_events",
+			"list_home_strategies",
 			"list_news_scores",
 			"list_segments",
 			"list_strategies",
@@ -421,6 +422,17 @@ describe("MCP", () => {
 			total: 1,
 			orders: [{ side: "buy", status: "filled", fillPrice: P, judgments: {} }],
 		});
+		const home = (await call("list_home_strategies")).json;
+		expect(home).toMatchObject([
+			{
+				id: strategyId,
+				enabled: true,
+				unrealizedPnl: 500,
+				lots: 1,
+				performance: { trades: 0 },
+				nextMoves: { up: { kind: "takeProfit", distancePercent: 0.5 } },
+			},
+		]);
 		const watch = await call("get_strategy_watch", { strategyId });
 		expect(watch.isError).toBe(false);
 		expect(watch.json).toMatchObject({

@@ -6,7 +6,7 @@ import type {
 	StoredStrategy,
 } from "@trading-studio/backend";
 import type { StrategyWatch, Timeframe } from "@trading-studio/core";
-import { TIMEFRAME_MS } from "@trading-studio/core";
+import { nextMoves, TIMEFRAME_MS } from "@trading-studio/core";
 import type { FakeApi } from "./fake-api";
 import { routes } from "./fake-api";
 import {
@@ -88,6 +88,21 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 		...init,
 	};
 	const find = (id: string) => state.runs.find((r) => r.id === Number(id));
+	const performanceOf = (run: AutoTradingStatus) => {
+		const { initialCash, equity } = run.account;
+		const pnl = equity === null ? null : equity - initialCash;
+		return tradingPerformance({
+			resetAt: run.account.resetAt,
+			initialCash,
+			cash: run.account.cash,
+			position: run.account.position,
+			price: state.price,
+			equity,
+			pnl,
+			pnlPercent: pnl === null ? null : (pnl / initialCash) * 100,
+			trades: state.orders.filter((o) => o.side === "sell").length,
+		});
+	};
 	const update = (id: string, patch: Partial<AutoTradingStatus>) => {
 		const run = find(id);
 		if (run) Object.assign(run, patch);
@@ -192,18 +207,7 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 			(req, reply) => {
 				const run = find(req.params.id as string);
 				if (!run) return reply(404, RUN_NOT_FOUND);
-				const { account } = run;
-				return {
-					performance: tradingPerformance({
-						resetAt: account.resetAt,
-						initialCash: account.initialCash,
-						cash: account.cash,
-						position: account.position,
-						price: state.price,
-						equity: account.equity,
-						trades: state.orders.filter((o) => o.side === "sell").length,
-					}),
-				};
+				return { performance: performanceOf(run) };
 			},
 		)
 		.on(routes.api.trading.strategies[":id"].watch, "$get", (req, reply) => {
@@ -211,6 +215,21 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 			if (!run) return reply(404, RUN_NOT_FOUND);
 			return { watch: watchOf(state.price) };
 		})
+		.on(routes.api.trading.summaries, "$get", () => ({
+			summaries: state.runs
+				.filter(
+					(r) =>
+						r.mode === "paper" && (r.enabled || r.strategyLock === "holding"),
+				)
+				.map((status) => {
+					const w = watchOf(state.price);
+					return {
+						status,
+						performance: performanceOf(status),
+						nextMoves: { price: w.price, ...nextMoves(w), multiBuy: false },
+					};
+				}),
+		}))
 		.on(routes.api.trading.orders, "$get", (req) => {
 			const q = req.query;
 			const hit = state.orders.filter(
