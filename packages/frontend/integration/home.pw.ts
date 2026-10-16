@@ -140,3 +140,27 @@ test("スマホはカードを2列、PC は全幅のチャートの下に横一�
 		expect(c.x + c.width).toBeGreaterThan(chart.x + chart.width / 2);
 	}
 });
+
+test("−・＋を「最新へ」と同じ行に出し、押しても最新の足は見えたまま", async ({
+	page,
+	api,
+}) => {
+	onHome(api, { runs: fourRuns() });
+	await page.goto("/home");
+	const latest = await page
+		.getByRole("button", { name: "最新へ" })
+		.boundingBox();
+	const minus = page.getByRole("button", { name: "縮小" });
+	const plus = page.getByRole("button", { name: "拡大" });
+	await expect(minus).toBeVisible();
+	await expect(plus).toBeVisible();
+	const m = await minus.boundingBox();
+	const p = await plus.boundingBox();
+	if (!latest || !m || !p) throw new Error("見つからない");
+	expect(Math.abs(m.y - latest.y)).toBeLessThan(latest.height);
+	expect(Math.abs(p.y - latest.y)).toBeLessThan(latest.height);
+	// 最新が見えている間は右端を保つので、拡大・縮小しても最新の足は見えたまま
+	await plus.click();
+	await minus.click();
+	await expect(page.getByRole("button", { name: "最新へ" })).toBeDisabled();
+});
