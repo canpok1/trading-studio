@@ -29,6 +29,7 @@ export function execute(
 			initialCash: job.initialCash,
 			fees: job.fees,
 			judgments: job.judgments ?? undefined,
+			events: job.events,
 			onProgress,
 			shouldAbort,
 		});

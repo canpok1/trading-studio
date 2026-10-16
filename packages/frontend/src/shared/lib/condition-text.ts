@@ -67,7 +67,7 @@ function conditionBody(c: Condition): string {
 		case "holdingBars":
 			return `${c.bars}本保有`;
 		case "eventWindow":
-			return `${c.events.map((e) => MARKET_EVENT_LABELS[e] ?? e).join("/")}の${eventSpanText(c.beforeHours, c.afterHours)}でない`;
+			return `${c.events.map((e) => MARKET_EVENT_LABELS[e] ?? e).join("/")}の${eventSpanText(c.beforeHours, c.afterHours)}でない${c.allowNoCalendar ? "（暦切れは成立）" : ""}`;
 		case "judgment":
 			return `${JUDGE_SHORT[c.judge]} ${c.values.map((v) => JUDGMENT_VALUE_LABELS[v] ?? v).join("/")}`;
 	}

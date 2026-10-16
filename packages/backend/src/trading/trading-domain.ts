@@ -29,6 +29,7 @@ import {
 	validateConditionSet,
 	watchConditionSet,
 } from "@trading-studio/core";
+import type { CalendarService } from "../calendar/types-domain";
 import type { LiveMarket } from "../collector/collector-domain";
 import type { JudgmentService } from "../judgments/types-domain";
 import type { MarketDataRepository } from "../market-data/repository-domain";
@@ -60,6 +61,7 @@ export function createTradingService({
 	repo,
 	strategies,
 	judgments,
+	calendar,
 	marketData,
 	market,
 	now = Date.now,
@@ -68,6 +70,7 @@ export function createTradingService({
 	repo: TradingRepository;
 	strategies: Pick<StrategyService, "get">;
 	judgments: Pick<JudgmentService, "current">;
+	calendar: Pick<CalendarService, "calendar">;
 	marketData: Pick<
 		MarketDataRepository,
 		"candlesBefore" | "loadCandles" | "lastCandle"
@@ -196,6 +199,7 @@ export function createTradingService({
 			price: (live.latestTrade as MarketTrade).price,
 			...candlesAt(s, t, live),
 			judgments: judgmentInput(values, t),
+			events: calendar.calendar(),
 			account: expired.account,
 			state: row.state,
 			fees,
@@ -407,6 +411,7 @@ export function createTradingService({
 					price,
 					...candlesAt(s, t, live),
 					judgments: judgmentInput(judgmentValues(), t),
+					events: calendar.calendar(),
 					lots: publicLots(a.lots),
 					cash: a.cash,
 					openOrders: a.openOrders.map((x) => ({ ...x.order })),

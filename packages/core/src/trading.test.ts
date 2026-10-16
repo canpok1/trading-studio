@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { defaultFillModel, runBacktest } from "./backtest";
 import { conditionStrategy } from "./condition-strategy";
+import { BUNDLED_EVENT_CALENDAR } from "./event-calendar";
 import type { Strategy } from "./strategy";
 import { strategyTemplate } from "./templates";
 import { TIMEFRAME_MS } from "./timeframe";
@@ -43,6 +44,7 @@ describe("バックテストとの一致", () => {
 		const from = 500 * H;
 		const bt = runBacktest({
 			strategy: conditionStrategy,
+			events: BUNDLED_EVENT_CALENDAR,
 			params,
 			candles: { "1h": candles },
 			stepCandles: candles,
@@ -65,6 +67,7 @@ describe("バックテストとの一致", () => {
 			const bar = candles[i] as Candle;
 			const out: StepOutput = tradingStep({
 				strategy: conditionStrategy,
+				events: BUNDLED_EVENT_CALENDAR,
 				params,
 				now: bar.time + H,
 				price: bar.close,
@@ -121,6 +124,7 @@ const fixed = (
 const decideWith = (strategy: Strategy<null>, account: Account) =>
 	decide({
 		strategy,
+		events: BUNDLED_EVENT_CALENDAR,
 		params: null,
 		now: 10 * H,
 		price: 10_000_000,

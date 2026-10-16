@@ -18,6 +18,9 @@ import { createBacktestService } from "../src/backtests/backtests-domain";
 import { inlineRunner } from "../src/backtests/inline-runner-infra";
 import { SqliteBacktestRepository } from "../src/backtests/repository-infra";
 import type { BacktestRunner } from "../src/backtests/runner-domain";
+import { createCalendarService } from "../src/calendar/calendar-domain";
+import type { IcalEvent } from "../src/calendar/repository-domain";
+import { SqliteCalendarRepository } from "../src/calendar/repository-infra";
 import type { Collector, LiveMarket } from "../src/collector/collector-domain";
 import { createDatasetService } from "../src/datasets/datasets-domain";
 import { SqliteDatasetRepository } from "../src/datasets/repository-infra";
@@ -128,6 +131,18 @@ export function createTestApp(
 		newsDeletedBefore: () => scoreRepo.newsDeletedBefore(),
 		now: () => clock.now,
 	});
+	// 取得は自動では動かさず、テストから calendar.run() を呼ぶ。取得元の中身は icalFeeds に URL ごとに入れる
+	const icalFeeds = new Map<string, IcalEvent[] | Error>();
+	const calendar = createCalendarService({
+		repo: new SqliteCalendarRepository(db),
+		fetchIcal: async (url) => {
+			const v = icalFeeds.get(url);
+			if (v === undefined) throw new Error("HTTP 404");
+			if (v instanceof Error) throw v;
+			return v;
+		},
+		now: () => clock.now,
+	});
 	const backtestRepo = new SqliteBacktestRepository(db);
 	const backtests = createBacktestService({
 		repo: backtestRepo,
@@ -137,6 +152,7 @@ export function createTestApp(
 		judgments,
 		scoring,
 		segments,
+		calendar,
 		now: () => 3_000,
 	});
 	const datasets = createDatasetService({
@@ -167,6 +183,7 @@ export function createTestApp(
 		repo: tradingRepo,
 		strategies,
 		judgments,
+		calendar,
 		marketData: marketDataRepo,
 		market: () => live.current,
 		now: () => clock.now,
@@ -217,6 +234,7 @@ export function createTestApp(
 		segments,
 		datasets,
 		compatible,
+		calendar,
 		...over,
 	});
 	return {
@@ -246,5 +264,7 @@ export function createTestApp(
 		trading,
 		tradingRepo,
 		retention,
+		calendar,
+		icalFeeds,
 	};
 }

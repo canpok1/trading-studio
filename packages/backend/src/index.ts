@@ -17,6 +17,11 @@ export type {
 	RunListResult,
 	RunSort,
 } from "./backtests/types-domain";
+export type {
+	CalendarStatus,
+	EventKeywords,
+	EventSource,
+} from "./calendar/types-domain";
 export type { CollectorStatus } from "./collector/types-domain";
 export type {
 	Dataset,

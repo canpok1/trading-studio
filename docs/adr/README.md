@@ -32,4 +32,4 @@
 | [0026](0026-dataset-groups-segments-run-separately.md) | データセットは相場データを束ねたものにし、相場データごとに別々に実行して成績を合算する | 採用 | 2026-10-10 |
 | [0027](0027-openai-compatible-connection-per-model.md) | Gemini 直結に加えて OpenAI 互換の接続先を持ち、モデルを選ぶと接続先も決まるようにする | 採用 | 2026-10-11 |
 | [0028](0028-test-scope-and-layers.md) | テストのスコープを層をまたぐかで決め、backend は DDD の3層・frontend は Bulletproof React の構成にする | 採用 | 2026-10-13 |
-| [0029](0029-event-calendar-in-repo.md) | 予定イベントの暦はリポジトリのデータとして持ち、暦の無い期間は買いを判定しない | 採用 | 2026-10-16 |
+| [0029](0029-event-calendar-from-ical.md) | 予定イベントの暦は設定した取得元（iCal）から自動で取得し、暦切れの扱いは条件で選ぶ | 採用 | 2026-10-16 |

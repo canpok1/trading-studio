@@ -1,6 +1,7 @@
 // バックテストエンジン。過去の足の上で戦略を動かし、注文・約定・成績を計算する
 
 import { aggregateCandles } from "./candles";
+import type { EventCalendar } from "./event-calendar";
 import { notionalYen } from "./money";
 import type { AggregationRule, ScoredNews } from "./news-judgment";
 import { judgmentCursor } from "./news-judgment";
@@ -62,6 +63,8 @@ export type BacktestConfig<P> = {
 	 * 戦略が判定器を使わなければ省いてよい。
 	 * since は採点の記録が始まった時刻で、これより前（null なら全体）は判定を渡さない（データなし）
 	 */
+	/** 予定イベントの暦 */
+	events: EventCalendar;
 	judgments?: {
 		news: readonly ScoredNews[];
 		rule: AggregationRule;
@@ -237,6 +240,7 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 			account,
 			state,
 			fees,
+			events: config.events,
 			nextEvalAt,
 			fill: { price: (order) => fillModel(order, bar), time: bar.time },
 			inputs: () => {

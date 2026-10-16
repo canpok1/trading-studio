@@ -546,6 +546,7 @@ function defaultCondition(
 				events: [...MARKET_EVENTS],
 				beforeHours: 0,
 				afterHours: 24,
+				allowNoCalendar: false,
 			};
 		default: {
 			const judge = kind.slice("judgment:".length) as Judge;
@@ -1050,6 +1051,12 @@ function ConditionRow({
 						className="w-16"
 					/>
 					<span>時間後までに当たらない</span>
+					<ChipCheck
+						checked={c.allowNoCalendar}
+						onChange={(allowNoCalendar) => onChange({ ...c, allowNoCalendar })}
+					>
+						暦切れのときも成立とみなす
+					</ChipCheck>
 				</>
 			);
 			break;
