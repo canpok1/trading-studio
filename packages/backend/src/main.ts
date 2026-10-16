@@ -275,6 +275,7 @@ const server = new Hono()
 			trading: tradingEngine,
 			market,
 			advice,
+			calendar,
 			inUse: (id) => tradingEngine.inUse(id),
 		}),
 	)

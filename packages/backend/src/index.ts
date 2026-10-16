@@ -21,8 +21,10 @@ export type {
 	CalendarStatus,
 	EventCriteria,
 	EventCriteriaVersion,
+	EventListResult,
 	EventSource,
 	JudgmentCoverage,
+	ListedEvent,
 } from "./calendar/types-domain";
 export type { CollectorStatus } from "./collector/types-domain";
 export type {

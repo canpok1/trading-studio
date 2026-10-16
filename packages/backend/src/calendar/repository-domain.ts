@@ -1,10 +1,15 @@
-import type { CalendarRange, ScheduledEvent } from "@trading-studio/core";
+import type {
+	CalendarRange,
+	EventImportance,
+	ScheduledEvent,
+} from "@trading-studio/core";
 import type { EventJudgeResponse } from "./prompt-domain";
 import type {
 	EventCriteriaVersion,
 	EventSource,
 	EventSourceInput,
 	JudgmentCoverage,
+	ListedEvent,
 } from "./types-domain";
 
 /** iCal の予定1件 */
@@ -128,4 +133,14 @@ export interface CalendarRepository {
 	unjudgedCount(version: number): number;
 	/** version で判断に失敗して止めた予定の件数 */
 	failedCount(version: number): number;
+	/** [from, to] に掛かる予定を始まりの順に limit 件まで。importances を渡すと、判断済みでそれ以外の重要度の予定を除く */
+	listEvents(
+		from: number,
+		to: number,
+		version: number,
+		importances: readonly EventImportance[] | null,
+		limit: number,
+	): { events: ListedEvent[]; total: number };
+	/** 判断に失敗して止めた予定1件の判断を頼み直す。その予定が無いか失敗していなければ false */
+	requestJudgment(eventId: number, version: number, now: number): boolean;
 }

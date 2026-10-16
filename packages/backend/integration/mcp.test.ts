@@ -82,6 +82,7 @@ async function setup() {
 			trading: t.trading,
 			market: t.market,
 			advice: t.advice,
+			calendar: t.calendar,
 			inUse: (id) => t.trading.inUse(id),
 			sleep: async () => {},
 		}),
@@ -117,6 +118,7 @@ describe("MCP", () => {
 			"get_backtest_orders",
 			"get_data_coverage",
 			"get_dataset_run",
+			"get_event_setup",
 			"get_guide",
 			"get_market_evaluation",
 			"get_market_evaluation_analysis",
@@ -127,6 +129,7 @@ describe("MCP", () => {
 			"get_strategy_watch",
 			"list_backtests",
 			"list_datasets",
+			"list_events",
 			"list_news_scores",
 			"list_segments",
 			"list_strategies",
@@ -723,6 +726,41 @@ describe("MCP", () => {
 				version: 9,
 			});
 			expect(missing.isError).toBe(true);
+		});
+	});
+
+	describe("予定", () => {
+		test("予定の仕組みと、予定ごとの重要度の判断を読める", async () => {
+			const { call } = await setup();
+			const setup1 = await call("get_event_setup");
+			expect(setup1.json).toMatchObject({
+				sources: [],
+				criteria: [{ version: 1, active: true }],
+			});
+			expect((setup1.json as { template: string }).template).toContain(
+				"{event}",
+			);
+			const r = await call("list_events", {
+				from: "2026-01-28",
+				to: "2026-01-30",
+			});
+			expect(r.isError).toBe(false);
+			const items = (r.json as { items: { title: string }[] }).items;
+			expect(items.map((e) => e.title)).toEqual([
+				expect.stringContaining("FOMC 声明"),
+			]);
+			expect(r.json).toMatchObject({
+				version: 1,
+				items: [
+					{
+						start: "2026-01-29T04:00:00+09:00",
+						source: "アプリが持つ過去の予定",
+						judgment: { status: "waiting" },
+					},
+				],
+			});
+			const bad = await call("list_events", { from: "x", to: "2026-01-30" });
+			expect(bad.isError).toBe(true);
 		});
 	});
 });

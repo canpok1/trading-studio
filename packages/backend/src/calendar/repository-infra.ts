@@ -13,8 +13,10 @@ import type {
 } from "./repository-domain";
 import type {
 	EventCriteriaVersion,
+	EventJudgment,
 	EventSourceInput,
 	JudgmentCoverage,
+	ListedEvent,
 } from "./types-domain";
 
 const ACTIVE_CRITERIA_KEY = "event_criteria_version";
@@ -62,6 +64,60 @@ type TargetRow = {
 	start: number;
 	allDay: number;
 };
+
+type ListedRow = {
+	id: number;
+	title: string;
+	description: string | null;
+	start: number;
+	end: number;
+	all_day: number;
+	source_name: string | null;
+	status: "pending" | "retry" | "failed" | "done" | null;
+	importance: EventImportance | null;
+	reason: string | null;
+	judged_at: number | null;
+	model: string | null;
+	attempts: number | null;
+	error: string | null;
+	next_attempt_at: number | null;
+};
+
+function toJudgment(r: ListedRow): EventJudgment | null {
+	const attempts = r.attempts ?? 0;
+	switch (r.status) {
+		case null:
+			return null;
+		case "done":
+			return {
+				status: "done",
+				importance: r.importance as EventImportance,
+				reason: r.reason ?? "",
+				judgedAt: r.judged_at ?? 0,
+				model: r.model ?? "",
+			};
+		case "failed":
+			return { status: "failed", attempts, error: r.error ?? "" };
+		default:
+			return {
+				status: r.status,
+				attempts,
+				error: r.error,
+				nextAttemptAt: r.next_attempt_at,
+			};
+	}
+}
+
+const toListed = (r: ListedRow): ListedEvent => ({
+	id: r.id,
+	title: r.title,
+	description: r.description,
+	start: r.start,
+	end: r.end,
+	allDay: r.all_day === 1,
+	sourceName: r.source_name,
+	judgment: toJudgment(r),
+});
 
 const toTarget = (r: TargetRow, criteriaVersion: number): JudgeTarget => ({
 	eventId: r.eventId,
@@ -515,6 +571,48 @@ export class SqliteCalendarRepository implements CalendarRepository {
 			)
 			.get(version);
 		return r?.n ?? 0;
+	}
+
+	listEvents(
+		from: number,
+		to: number,
+		version: number,
+		importances: readonly EventImportance[] | null,
+		limit: number,
+	): { events: ListedEvent[]; total: number } {
+		const keep =
+			importances === null
+				? ""
+				: `and (j.status is null or j.status != 'done' or j.importance in (${importances.map((i) => `'${i}'`).join(", ")}))`;
+		const where = `from scheduled_events e
+			 left join event_sources s on s.id = e.source_id
+			 left join event_judgments j on j.event_id = e.id and j.criteria_version = ?3
+			 where e.start <= ?2 and e.end >= ?1 ${keep}`;
+		const total =
+			this.sql
+				.query<{ n: number }, [number, number, number]>(
+					`select count(*) as n ${where}`,
+				)
+				.get(from, to, version)?.n ?? 0;
+		const rows = this.sql
+			.query<ListedRow, [number, number, number, number]>(
+				`select e.id, e.title, e.description, e.start, e.end, e.all_day, s.name as source_name,
+				 j.status, j.importance, j.reason, j.judged_at, j.model, j.attempts, j.error, j.next_attempt_at
+				 ${where} order by e.start, e.id limit ?4`,
+			)
+			.all(from, to, version, limit);
+		return { events: rows.map(toListed), total };
+	}
+
+	requestJudgment(eventId: number, version: number, now: number): boolean {
+		const r = this.sql
+			.query(
+				`update event_judgments set status = 'pending', attempts = 0, error = null,
+				 next_attempt_at = null, requested_at = ?3
+				 where event_id = ?1 and criteria_version = ?2 and status = 'failed'`,
+			)
+			.run(eventId, version, now);
+		return r.changes > 0;
 	}
 
 	failedCount(version: number): number {

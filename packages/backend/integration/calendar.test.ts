@@ -311,6 +311,105 @@ describe("予定の取得元", () => {
 	});
 });
 
+describe("予定の一覧", () => {
+	test("期間に掛かる予定を判断とともに始まりの順に返し、重要度の下限で判断済みの低いものを除く", async () => {
+		const t = setup();
+		await t.add({ name: "週次", url: URL_A });
+		const at = END + 3 * D;
+		t.icalFeeds.set(URL_A, [
+			ev("US PPI", at, "2", "Impact: Medium"),
+			ev("US CPI", at - D, "1"),
+			ev("Bank Holiday", at + D, "3"),
+			ev("Later", at + 2 * D, "4"),
+		]);
+		t.clock.now = END;
+		await t.calendar.run();
+		const list = async (q: string) => {
+			const res = await t.send(
+				"GET",
+				`/events?from=${at - D}&to=${at + D}${q}`,
+			);
+			return {
+				status: res.status,
+				body: (await res.json()) as {
+					version: number;
+					total: number;
+					events: {
+						title: string;
+						sourceName: string | null;
+						judgment: unknown;
+					}[];
+				},
+			};
+		};
+		let r = await list("");
+		expect(r.body.version).toBe(1);
+		expect(r.body.events.map((e) => e.title)).toEqual([
+			"US CPI",
+			"US PPI",
+			"Bank Holiday",
+		]);
+		expect(r.body.events[0]).toMatchObject({
+			sourceName: "週次",
+			judgment: null,
+		});
+		// 判断していない予定は重要度で絞っても残す
+		expect((await list("&minImportance=high")).body.total).toBe(3);
+		await t.judgeAll();
+		r = await list("&minImportance=medium");
+		expect(r.body.events.map((e) => e.title)).toEqual(["US CPI", "US PPI"]);
+		expect(r.body.events[1]?.judgment).toMatchObject({
+			status: "done",
+			importance: "medium",
+			reason: "テストの判断",
+			model: "test-model",
+		});
+		expect((await list("&minImportance=huge")).status).toBe(400);
+		expect((await list("&version=9")).status).toBe(404);
+	});
+
+	test("判断に失敗して止めた予定1件を判断し直せる。判断済みの予定は頼めない", async () => {
+		const t = setup();
+		await t.add({ name: "週次", url: URL_A });
+		const at = END + 3 * D;
+		t.icalFeeds.set(URL_A, [ev("US CPI", at, "1"), ev("US PPI", at + D, "2")]);
+		t.clock.now = END;
+		await t.calendar.run();
+		const broken: AskModel = async () => ({ value: {}, model: "m" });
+		// CPI を再試行の回数を超えて失敗させる
+		for (const wait of [0, 30_000, 120_000, 600_000]) {
+			t.clock.now += wait;
+			await t.calendar.jobs.urgent(t.clock.now)?.(broken);
+		}
+		await t.judgeAll();
+		const events = (
+			(await (
+				await t.send("GET", `/events?from=${at}&to=${at + D}`)
+			).json()) as {
+				events: { id: number; title: string; judgment: { status: string } }[];
+			}
+		).events;
+		const cpi = events.find((e) => e.title === "US CPI");
+		const ppi = events.find((e) => e.title === "US PPI");
+		expect(cpi?.judgment.status).toBe("failed");
+		expect(ppi?.judgment.status).toBe("done");
+		expect((await t.send("POST", `/events/${ppi?.id}/judge`, {})).status).toBe(
+			404,
+		);
+		expect((await t.send("POST", `/events/${cpi?.id}/judge`, {})).status).toBe(
+			200,
+		);
+		await t.calendar.jobs.background(t.clock.now)?.(demoAsk);
+		expect(
+			t.calendar.calendar().events.find((e) => e.start === at)?.importance,
+		).toBe("high");
+		expect((await t.send("POST", "/events/99999/judge", {})).status).toBe(404);
+		expect(
+			(await t.send("POST", `/events/${cpi?.id}/judge`, { version: 9 })).status,
+		).toBe(404);
+	});
+});
+
 describe("予定の重要度の判断", () => {
 	test("アプリが持つ過去の予定も判断し、使用中の版の運用で見る予定を先に、過去の予定は新しい順に判断する", async () => {
 		const t = setup();
