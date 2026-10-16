@@ -228,7 +228,6 @@ function StrategyCard({
 			<button
 				type="button"
 				aria-pressed={selected}
-				aria-label={`${status.name}（チャートの印）`}
 				onClick={onSelect}
 				className="flex min-w-0 flex-1 flex-col gap-1 rounded-xl px-3 pt-2.5 pb-2 text-left hover:bg-surface-2"
 			>
@@ -245,7 +244,9 @@ function StrategyCard({
 					)}
 				</span>
 				{!status.enabled && (
-					<span className="text-[11px] text-text-2">停止中・保有あり</span>
+					<span className="text-[11px] text-text-2">
+						停止中（保有・注文あり）
+					</span>
 				)}
 				<span
 					data-testid="home-strategy-value"

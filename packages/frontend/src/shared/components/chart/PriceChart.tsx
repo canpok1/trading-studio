@@ -100,7 +100,7 @@ type Props = {
 	/** 見出し「チャート」の右に出すもの（ホームの市場評価・印の対象） */
 	headerExtra?: ReactNode;
 	/**
-	 * 低く描き、スマホ幅では操作を1行に収め、出来高と判定の読み取り・拡大縮小のボタン・凡例を省く（指で拡大・移動はできる）。
+	 * 低く描き、スマホ幅では操作を1行に収め、出来高と判定の読み取り・拡大縮小のボタン・凡例を省く（指で拡大・移動でき、「最新へ」は残す）。
 	 * 下に並べるものを最初の画面に入れるため（ホーム。市場評価は見出しの横に出す）
 	 */
 	short?: boolean;
@@ -1024,7 +1024,11 @@ export function PriceChart({
 				<Help label="チャート">
 					{onMarker && <p>アイコンをタップで詳細。</p>}
 					{judgments && <p>下の帯をタップでその判定を背景に塗る。</p>}
-					<p>ピンチ / ホイール / ＋−で拡大・縮小。</p>
+					<p>
+						{short
+							? "ピンチ / ホイールで拡大・縮小（PC は＋−も）。"
+							: "ピンチ / ホイール / ＋−で拡大・縮小。"}
+					</p>
 				</Help>
 				{headerExtra}
 			</div>
@@ -1074,7 +1078,9 @@ export function PriceChart({
 	);
 	const chart = (
 		<>
-			<div className="flex flex-col gap-2 lg:flex-row lg:items-start">
+			<div
+				className={`flex gap-2 lg:flex-row lg:items-start ${short ? "flex-row items-start" : "flex-col"}`}
+			>
 				<div
 					aria-live="off"
 					className="num flex min-h-8 min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs"
@@ -1180,15 +1186,13 @@ export function PriceChart({
 						</>
 					)}
 				</div>
-				<div
-					className={`flex shrink-0 items-center justify-end gap-1.5 ${short ? "max-lg:hidden" : ""}`}
-				>
+				<div className="flex shrink-0 items-center justify-end gap-1.5">
 					<button
 						type="button"
 						aria-label="縮小"
 						title="縮小"
 						onClick={() => zoom(2)}
-						className={ICON_BTN}
+						className={`${ICON_BTN} ${short ? "max-lg:hidden" : ""}`}
 					>
 						−
 					</button>
@@ -1197,7 +1201,7 @@ export function PriceChart({
 						aria-label="拡大"
 						title="拡大"
 						onClick={() => zoom(0.5)}
-						className={ICON_BTN}
+						className={`${ICON_BTN} ${short ? "max-lg:hidden" : ""}`}
 					>
 						＋
 					</button>

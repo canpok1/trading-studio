@@ -38,7 +38,7 @@ test("オンの戦略とオフでも保有がある戦略を作った順にカ�
 	await expect(cards.nth(0)).toContainText("トレンド");
 	await expect(cards.nth(1)).toContainText("逆張り");
 	await expect(cards.nth(2)).toContainText("売り待ち");
-	await expect(cards.nth(2)).toContainText("停止中・保有あり");
+	await expect(cards.nth(2)).toContainText("停止中（保有・注文あり）");
 	await expect(cards.nth(0).getByTestId("home-strategy-value")).toHaveText(
 		"+18,420円",
 	);
@@ -79,7 +79,7 @@ test("カードを押すとチャートの印がその戦略になり、選択�
 	await page.goto("/home");
 	// 最初は先頭の戦略
 	await expect(page.getByTestId("chart-mark")).toHaveText("印: トレンド");
-	const second = page.getByRole("button", { name: "逆張り（チャートの印）" });
+	const second = page.getByRole("button", { name: /^逆張り/ });
 	await second.click();
 	await expect(second).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByTestId("chart-mark")).toHaveText("印: 逆張り");
