@@ -314,6 +314,8 @@ export function tradingRunView(r: AutoTradingStatus) {
 		enabled: r.enabled,
 		nextEvalAt: r.nextEvalAt === null ? null : jst(r.nextEvalAt),
 		startedAt: r.startedAt === null ? null : jst(r.startedAt),
+		// 口座をリセットしてから一度もオンにしていなければ false（戦略の一覧の「まだ動かしていない」）
+		ranSinceReset: r.ranSinceReset,
 		waitingForMarket: r.waitingForMarket,
 		dailyLoss: r.dailyLoss,
 	};

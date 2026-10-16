@@ -250,6 +250,8 @@ export function createTradingService({
 			mode: row.mode,
 			nextEvalAt: row.enabled ? row.nextEvalAt : firstEvalAt(s, t),
 			startedAt: row.enabled ? row.startedAt : null,
+			ranSinceReset:
+				row.enabled || (row.startedAt !== null && row.startedAt >= row.resetAt),
 			waitingForMarket:
 				row.enabled &&
 				(live.status.state !== "running" || live.latestTrade === null),

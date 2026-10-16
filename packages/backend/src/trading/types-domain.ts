@@ -109,6 +109,8 @@ export type AutoTradingStatus = {
 	/** 次の判定時刻。オフなら、今オンにしたときの最初の判定時刻 */
 	nextEvalAt: number | null;
 	startedAt: number | null;
+	/** 口座をリセットしてから一度でもオンにした。戦略の一覧の「まだ動かしていない」に使う */
+	ranSinceReset: boolean;
 	/** 価格の収集が止まっていて判定を待っている */
 	waitingForMarket: boolean;
 	/** 今日（JST）の確定損失（円、損が無ければ 0）と、戦略の1日の損失上限。上限に達していれば新しい買いを止めている */

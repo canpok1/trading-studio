@@ -463,6 +463,19 @@ describe("口座のリセット", () => {
 		expect(t.orders().map((o) => o.id)).toEqual(["p1", "p2"]);
 	});
 
+	test("リセットから一度でもオンにしたかを返し、リセットで戻る", async () => {
+		const t = setup();
+		expect(t.status().ranSinceReset).toBe(false);
+		await t.call("POST", "/start");
+		expect(t.status().ranSinceReset).toBe(true);
+		t.at(T0 + M);
+		await t.call("POST", "/stop");
+		expect(t.status().ranSinceReset).toBe(true);
+		t.clock.now = T0 + 2 * M;
+		await t.call("POST", "/reset", { initialCash: 1_000_000 });
+		expect(t.status().ranSinceReset).toBe(false);
+	});
+
 	test("開始時の資金は1円以上の整数", async () => {
 		const t = setup();
 		expect((await t.call("POST", "/reset", { initialCash: 0 })).status).toBe(
