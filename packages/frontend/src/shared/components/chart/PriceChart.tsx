@@ -85,11 +85,11 @@ type Props = {
 	 * 省略すると最後の足の終値を出す（過去のデータを見るバックテスト結果）
 	 */
 	currentPrice?: number | null;
-	/** 保有中のロットの買値。ロットごとに線を引く。渡すと「表示」に買値の切り替えを出す（ホーム） */
+	/** 保有中のロットの買値。ロットごとに線を引く。渡すと設定に買値の切り替えを出す（ホーム・戦略の画面） */
 	entryPrices?: readonly number[];
-	/** 発動価格（戦略の次の行動）。破線と、価格の軸の薄い札で出す。渡すと「表示」に発動価格の切り替えを出す（ホーム） */
+	/** 発動価格（戦略の次の行動）。破線と、価格の軸の薄い札で出す。渡すと設定に発動価格の切り替えを出す（ホーム・戦略の画面） */
 	triggers?: readonly ChartTrigger[];
-	/** 表示の切り替えの先頭に置く操作（ホームの粒度の切り替えなど） */
+	/** チャートの設定の先頭に置く操作（足の粒度の切り替え） */
 	toolbar?: ReactNode;
 	/** toolbar で選んでいるもの。設定はモーダルにしまうので、これを札で出す（足の粒度） */
 	toolbarLabel?: string;
@@ -99,7 +99,7 @@ type Props = {
 	compact?: boolean;
 	/** 最新の足を表示しているときだけ、上端の終値の右に出す（ホームの24時間の変化率） */
 	latestNote?: ReactNode;
-	/** 見出し「チャート」の右に出すもの（ホームの市場評価・印の対象） */
+	/** 見出し「チャート」の右に出すもの（ホームの市場評価） */
 	headerExtra?: ReactNode;
 	/**
 	 * 低く描き、スマホ幅では出来高と判定の読み取りを省く。
@@ -220,7 +220,7 @@ function chartColors() {
 const CHIP =
 	"h-8 rounded-full border border-line px-3 text-xs font-semibold text-text-2 disabled:opacity-40 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-white dark:aria-pressed:text-accent-ink";
 
-/** 1行にまとめた切り替えのプルダウン */
+/** 設定の今の値を見せる札 */
 const TAG =
 	"rounded-full bg-surface-2 px-2.5 py-1 text-xs font-semibold whitespace-nowrap";
 
