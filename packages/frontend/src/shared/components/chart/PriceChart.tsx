@@ -57,13 +57,10 @@ import {
 	useChartStyle,
 	useShowEntry,
 	useShowTriggers,
+	useShowValues,
 	useShowVolume,
 } from "./chart-style";
-import {
-	BbSettingsModal,
-	EmaSettingsModal,
-	RsiSettingsModal,
-} from "./IndicatorSettings";
+import { BbFields, EmaFields, RsiFields } from "./IndicatorSettings";
 import { JudgeLayer, stripArea } from "./judge-layer";
 import type { BarJudgments, ChartBg } from "./judgment-data";
 import { slotAligned } from "./judgment-data";
@@ -293,7 +290,7 @@ export function PriceChart({
 	} | null>(null);
 	// 最新の足が画面に入っているか。入っていれば「最新へ」のボタンを押せなくする
 	const [atLatest, setAtLatest] = useState(true);
-	const [editing, setEditing] = useState<"ema" | "bb" | "rsi" | null>(null);
+	const [showValues, setShowValues] = useShowValues();
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [style, setStyle] = useChartStyle();
 	const [showEntry, setShowEntry] = useShowEntry();
@@ -966,36 +963,27 @@ export function PriceChart({
 					発動価格
 				</button>
 			)}
-			{(["ema", "bb", "rsi"] as const).map((k) => {
-				const label = INDICATOR_LABELS[k];
-				const c = indicators[k];
-				return (
-					<span key={k} className="flex items-center gap-1">
-						<button
-							type="button"
-							aria-pressed={c.on}
-							onClick={() => c.setOn(!c.on)}
-							className={CHIP}
-						>
-							{label}
-						</button>
-						<button
-							type="button"
-							aria-label={`${label} の本数を変える`}
-							title={`${label} の本数を変える`}
-							onClick={() => {
-								setMenuOpen(false);
-								setEditing(k);
-							}}
-							className={ICON_BTN}
-						>
-							⚙
-						</button>
-					</span>
-				);
-			})}
 		</>
 	);
+	// 本数の欄は表示しているときだけ出し、モーダルが縦に伸びすぎないようにする
+	const indicatorRows = (["ema", "bb", "rsi"] as const).map((k) => {
+		const c = indicators[k];
+		return (
+			<div key={k} className="flex flex-col gap-1.5">
+				<button
+					type="button"
+					aria-pressed={c.on}
+					onClick={() => c.setOn(!c.on)}
+					className={`${CHIP} self-start`}
+				>
+					{INDICATOR_LABELS[k]}
+				</button>
+				{k === "ema" && c.on && <EmaFields control={indicators.ema} />}
+				{k === "bb" && c.on && <BbFields control={indicators.bb} />}
+				{k === "rsi" && c.on && <RsiFields control={indicators.rsi} />}
+			</div>
+		);
+	});
 	// 凡例の中身。場所を取らないよう「？」の吹き出しの中で見せる
 	const hasLegend = !!(onMarker || showEma || showBb || showRsi || judgments);
 	const legendBody = (
@@ -1124,6 +1112,10 @@ export function PriceChart({
 						<span className="text-xs text-text-2">表示</span>
 						{displayButtons}
 					</div>
+					<div className="flex flex-col gap-2.5">
+						<span className="text-xs text-text-2">指標</span>
+						{indicatorRows}
+					</div>
 					<button
 						type="button"
 						onClick={() => setMenuOpen(false)}
@@ -1132,24 +1124,6 @@ export function PriceChart({
 						閉じる
 					</button>
 				</Modal>
-			)}
-			{editing === "ema" && (
-				<EmaSettingsModal
-					control={indicators.ema}
-					onClose={() => setEditing(null)}
-				/>
-			)}
-			{editing === "bb" && (
-				<BbSettingsModal
-					control={indicators.bb}
-					onClose={() => setEditing(null)}
-				/>
-			)}
-			{editing === "rsi" && (
-				<RsiSettingsModal
-					control={indicators.rsi}
-					onClose={() => setEditing(null)}
-				/>
 			)}
 		</>
 	);
@@ -1167,7 +1141,7 @@ export function PriceChart({
 			{bar && (
 				<>
 					<span className="text-text-2">{formatDateTime(bar.time)}</span>
-					{candle && bar.open !== undefined && (
+					{showValues && candle && bar.open !== undefined && (
 						<span className="text-text-2">
 							始 {formatInt(bar.open)} 高 {formatInt(bar.high ?? 0)} 安{" "}
 							{formatInt(bar.low ?? 0)}
@@ -1177,6 +1151,10 @@ export function PriceChart({
 						{formatInt(bar.close)}円
 					</span>
 					{atLastSlot && latestNote}
+				</>
+			)}
+			{bar && showValues && (
+				<>
 					{showVolume && bar.volume !== undefined && (
 						<span
 							data-testid="chart-volume"
@@ -1254,6 +1232,17 @@ export function PriceChart({
 							);
 						})}
 				</>
+			)}
+			{slot && (
+				<button
+					type="button"
+					aria-label="チャートの値"
+					aria-expanded={showValues}
+					onClick={() => setShowValues(!showValues)}
+					className="h-6 rounded-full border border-line px-2 text-xs font-semibold text-text-2"
+				>
+					{showValues ? "値 ▴" : "値 ▾"}
+				</button>
 			)}
 		</div>
 	);

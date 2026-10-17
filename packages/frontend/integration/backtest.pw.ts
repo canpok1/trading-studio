@@ -9,7 +9,11 @@ import {
 	START,
 } from "./backtest-fakes";
 import { expect, test } from "./browser";
-import { openChartLegend, openChartSettings } from "./chart-settings";
+import {
+	openChartLegend,
+	openChartSettings,
+	openChartValues,
+} from "./chart-settings";
 import { routes } from "./fake-api";
 import { storedStrategy } from "./fixtures";
 
@@ -86,6 +90,7 @@ test("RSI の条件を持つ戦略の結果では、チャートの下に RSI �
 	});
 	onResults(api, runs, chart);
 	await page.goto("/backtest/runs/7");
+	await openChartValues(page);
 	await openChartSettings(page);
 	await page.getByLabel("足の粒度").selectOption("1h");
 	await expect(
@@ -113,6 +118,7 @@ test("ボリンジャーバンドの条件を持つ戦略の結果では、チ�
 	});
 	onResults(api, runs, chart);
 	await page.goto("/backtest/runs/7");
+	await openChartValues(page);
 	await openChartSettings(page);
 	await page.getByLabel("足の粒度").selectOption("1h");
 	await expect(
