@@ -2,7 +2,7 @@
 import type { Page } from "@playwright/test";
 import { strategyTemplate } from "@trading-studio/core";
 import { expect, test } from "./browser";
-import { openChartSettings } from "./chart-settings";
+import { openChartSettings, openChartValues } from "./chart-settings";
 import { templateStrategy, tradingRun } from "./fixtures";
 import { onHome } from "./home-api";
 
@@ -87,26 +87,30 @@ test("EMA は戦略で使っていれば表示して始まり、どの粒度で�
 	await openChartSettings(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "false");
 
-	// 本数を変えると表示し、再読み込みしても保つ
-	await page.getByRole("button", { name: "EMA の本数を変える" }).click();
+	// 表示すると設定の中に本数の欄が出る。正しい値を入れるとすぐ描き、再読み込みしても保つ
+	await page.keyboard.press("Escape");
+	await openChartValues(page);
+	await openChartSettings(page);
+	await expect(page.getByLabel("EMA 1本目の本数")).toHaveCount(0);
+	await ema.click();
 	await page.getByLabel("EMA 1本目の本数").fill("9");
 	await page.getByLabel("EMA 2本目の本数").fill("");
-	await page.getByRole("button", { name: "表示する" }).click();
-	await openChartSettings(page);
-	await expect(ema).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByTestId("chart-ema-9")).toHaveText(/^EMA9 [\d,]+$/);
+	// 誤った値の間は直前の正しい値のまま描く
+	await page.getByLabel("EMA 1本目の本数").fill("0");
+	await expect(page.getByRole("alert")).toBeVisible();
+	await expect(page.getByTestId("chart-ema-9")).toBeVisible();
+	await page.getByLabel("EMA 1本目の本数").fill("9");
 	await page.reload();
 	await openChartSettings(page);
 	await expect(ema).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByTestId("chart-ema-9")).toBeVisible();
-	await page.getByRole("button", { name: "EMA の本数を変える" }).click();
+	await expect(page.getByLabel("EMA 1本目の本数")).toHaveValue("9");
+	// 戻しても設定は閉じない
 	await page.getByRole("button", { name: "既定の値に戻す" }).click();
-	await openChartSettings(page);
-	await expect(ema).toHaveAttribute("aria-pressed", "true");
-	await page.getByRole("button", { name: "EMA の本数を変える" }).click();
 	await expect(page.getByLabel("EMA 1本目の本数")).toHaveValue("20");
 	await expect(page.getByLabel("EMA 2本目の本数")).toHaveValue("50");
-	await page.getByRole("button", { name: "やめる" }).click();
+	await expect(page.getByTestId("chart-ema-20")).toBeVisible();
 });
 
 test("RSI の条件を持つ戦略を選ぶと RSI の小窓と値が出て、ボタンで隠せる", async ({
@@ -142,6 +146,7 @@ test("RSI の条件を持つ戦略を選ぶと RSI の小窓と値が出て、�
 	await page.goto("/strategies/1");
 	const toggle = page.getByRole("button", { name: "RSI", exact: true });
 	const value = page.getByTestId("chart-rsi-2");
+	await openChartValues(page);
 	await openChartSettings(page);
 	await expect(toggle).toHaveAttribute("aria-pressed", "true");
 	await expect(value).toHaveText(/^RSI2 \d+\.\d$/);
@@ -164,6 +169,7 @@ test("ローソク足に切り替えると4本値が出て、再読み込み後�
 	await page.goto("/strategies/1");
 	await expect(page.getByTestId("chart-close")).toHaveText(PRICE);
 	const toggle = page.getByRole("button", { name: "ローソク足", exact: true });
+	await openChartValues(page);
 	await openChartSettings(page);
 	await expect(toggle).toHaveAttribute("aria-pressed", "false");
 	await toggle.click();
@@ -268,6 +274,7 @@ test("チャートに市場評価の背景と帯が出て、帯をタップす�
 		page.getByTestId("home-judge-sentiment").getByTestId("badge-sentiment"),
 	).toBeVisible();
 	// 上の値の表示の判定は短い観点名と、評価の色付きのバッジ
+	await openChartValues(page);
 	const sentiment = page.getByTestId("chart-judgment-sentiment");
 	await expect(sentiment).toContainText("センチ");
 	await expect(sentiment.getByTestId("badge-sentiment")).toBeVisible();
@@ -299,7 +306,7 @@ test("チャートに市場評価の背景と帯が出て、帯をタップす�
 	await expect(settings).toContainText("背景 リスク");
 });
 
-test("ボリンジャーバンドは戦略で使っていなければ隠して始まり、本数と σ を変えると表示する", async ({
+test("ボリンジャーバンドは戦略で使っていなければ隠して始まり、表示すると本数と σ を変えられる", async ({
 	page,
 	api,
 }) => {
@@ -311,24 +318,45 @@ test("ボリンジャーバンドは戦略で使っていなければ隠して�
 	await expect(bb).toHaveAttribute("aria-pressed", "false");
 	await expect(page.getByTestId("chart-bb")).toHaveCount(0);
 
-	await page.getByRole("button", { name: "BB の本数を変える" }).click();
+	await page.keyboard.press("Escape");
+	await openChartValues(page);
+	await openChartSettings(page);
+	await bb.click();
+	await expect(page.getByTestId("chart-bb")).toHaveText(/^BB20 /);
 	await page.getByLabel("ボリンジャーバンドの σ", { exact: true }).fill("2.05");
-	await expect(page.getByRole("button", { name: "表示する" })).toBeDisabled();
+	await expect(page.getByRole("alert")).toBeVisible();
 	await page.getByLabel("ボリンジャーバンドの本数", { exact: true }).fill("5");
 	await page.getByLabel("ボリンジャーバンドの σ", { exact: true }).fill("1.5");
-	await page.getByRole("button", { name: "表示する" }).click();
-	await openChartSettings(page);
-	await expect(bb).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByTestId("chart-bb")).toHaveText(
 		/^BB5 [\d,]+\/[\d,]+\/[\d,]+$/,
 	);
 
-	await page.getByRole("button", { name: "BB の本数を変える" }).click();
 	await page.getByRole("button", { name: "既定の値に戻す" }).click();
 	await expect(page.getByTestId("chart-bb")).toHaveText(/^BB20 /);
-	await openChartSettings(page);
 	await bb.click();
 	await expect(page.getByTestId("chart-bb")).toHaveCount(0);
+	await expect(page.getByLabel("ボリンジャーバンドの本数")).toHaveCount(0);
+});
+
+test("チャート上の値は最初は日時と終値だけで、広げると線の値も出て、再読み込み後も保たれる", async ({
+	page,
+	api,
+}) => {
+	onHome(api);
+	await page.goto("/strategies/1");
+	await expect(page.getByTestId("chart-close")).toHaveText(PRICE);
+	const toggle = page.getByRole("button", { name: "チャートの値" });
+	await expect(toggle).toHaveAttribute("aria-expanded", "false");
+	await expect(page.getByTestId("chart-judgment-sentiment")).toHaveCount(0);
+	await expect(page.getByTestId("chart-volume")).toHaveCount(0);
+	await toggle.click();
+	await expect(toggle).toHaveAttribute("aria-expanded", "true");
+	await expect(page.getByTestId("chart-judgment-sentiment")).toBeVisible();
+	await page.reload();
+	await expect(toggle).toHaveAttribute("aria-expanded", "true");
+	await toggle.click();
+	await expect(page.getByTestId("chart-judgment-sentiment")).toHaveCount(0);
+	await expect(page.getByTestId("chart-close")).toHaveText(PRICE);
 });
 
 test("次の動きと戦略の見張りが出て、グループの開閉を覚える", async ({

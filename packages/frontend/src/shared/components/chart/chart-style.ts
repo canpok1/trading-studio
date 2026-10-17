@@ -91,3 +91,25 @@ export function useShowTriggers(): [boolean, (on: boolean) => void] {
 	}, []);
 	return [on, set];
 }
+
+const VALUES_KEY = "chart-values";
+
+/** チャート上の値の表示で、日時と終値のほか（始値・高値・安値・出来高・市場評価・線の値）も出すか。既定は畳む。選んだものをブラウザに保存する */
+export function useShowValues(): [boolean, (on: boolean) => void] {
+	const [on, setOn] = useState(() => {
+		try {
+			return localStorage.getItem(VALUES_KEY) === "open";
+		} catch {
+			return false;
+		}
+	});
+	const set = useCallback((v: boolean) => {
+		setOn(v);
+		try {
+			localStorage.setItem(VALUES_KEY, v ? "open" : "closed");
+		} catch {
+			// 保存できない環境では、この画面を開いている間だけ効く
+		}
+	}, []);
+	return [on, set];
+}

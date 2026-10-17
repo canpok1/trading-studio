@@ -1,7 +1,8 @@
-// チャートの EMA・RSI・ボリンジャーバンドの本数を変えるモーダル
+// チャートの設定の中で、EMA・RSI・ボリンジャーバンドの本数を変える欄
 
 import { LIMITS } from "@trading-studio/core";
-import { useState } from "react";
+import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
 import type {
 	BbSetting,
 	EmaSetting,
@@ -9,230 +10,251 @@ import type {
 	RsiSetting,
 } from "../../lib/chart-indicators";
 import { validBb, validEma, validRsi } from "../../lib/chart-indicators";
-import { Modal } from "../Modal";
 import { NumberInput } from "../NumberInput";
-import { Button } from "../ui";
 
 const range = (r: { min: number; max: number }) => `${r.min}〜${r.max}`;
 
-const FIELD = "flex items-center justify-between gap-3 text-[15px]";
+const FIELD = "flex items-center gap-1.5 text-[13px]";
 
-function Footer({
+/**
+ * 入力中の値。正しい値になったらすぐ保存して描き直す。
+ * 外から値が変わったとき（戻す・戦略の切り替え）だけ合わせ直す。保存した値と同じ内容なら入力中の形を保つ（EMA は並べ替えて保存するので、打っている途中で欄が入れ替わらないように）
+ */
+function useDraft<D, V>(
+	value: D,
+	save: (v: V) => void,
+	toValue: (draft: D) => unknown,
+	valid: (v: unknown) => v is V,
+) {
+	const [draft, setDraft] = useState(value);
+	const key = JSON.stringify(normalize(toValue(value)));
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 保存した値が変わったときだけ見る
+	useEffect(() => {
+		setDraft((cur) => {
+			const v = toValue(cur);
+			return valid(v) && JSON.stringify(normalize(v)) === key ? cur : value;
+		});
+	}, [key]);
+	const change = (next: D) => {
+		setDraft(next);
+		const v = toValue(next);
+		if (valid(v)) save(v);
+	};
+	return { draft, setDraft, change, ok: valid(toValue(draft)) };
+}
+
+/** 保存のときと同じ形にそろえる（EMA は小さい順） */
+function normalize(v: unknown) {
+	return Array.isArray(v) ? [...v].sort((a, b) => a - b) : v;
+}
+
+/** 保存した値が戻す先と同じ（戦略を切り替えた後など）だと値が変わらず欄が合わせ直されないので、欄も直接戻す */
+function Reset({
 	control,
-	canApply,
-	onApply,
-	onClose,
+	onReset,
 }: {
 	control: Pick<IndicatorControl<null>, "custom" | "fromStrategy" | "save">;
-	canApply: boolean;
-	onApply: () => void;
-	onClose: () => void;
+	onReset: () => void;
 }) {
+	if (!control.custom) return null;
 	return (
-		<div className="flex flex-col gap-2">
-			<Button variant="primary" disabled={!canApply} onClick={onApply}>
-				表示する
-			</Button>
-			<Button
-				disabled={!control.custom}
-				onClick={() => {
-					control.save(null);
-					onClose();
-				}}
-			>
-				{control.fromStrategy ? "戦略の値に戻す" : "既定の値に戻す"}
-			</Button>
-			<Button variant="link" onClick={onClose}>
-				やめる
-			</Button>
-		</div>
+		<button
+			type="button"
+			onClick={() => {
+				control.save(null);
+				onReset();
+			}}
+			className="text-xs font-semibold text-accent underline"
+		>
+			{control.fromStrategy ? "戦略の値に戻す" : "既定の値に戻す"}
+		</button>
 	);
 }
 
-export function EmaSettingsModal({
+function Note({ children }: { children: ReactNode }) {
+	return <p className="text-xs text-text-2">{children}</p>;
+}
+
+function Invalid({ children }: { children: ReactNode }) {
+	return (
+		<p role="alert" className="text-xs font-semibold text-loss">
+			{children}
+		</p>
+	);
+}
+
+// 2本目は空欄なら1本だけ描く
+const emaValue = (d: [number, number]) =>
+	Number.isNaN(d[1]) ? [d[0]] : [d[0], d[1]];
+
+export function EmaFields({
 	control,
-	onClose,
 }: {
 	control: IndicatorControl<EmaSetting>;
-	onClose: () => void;
 }) {
-	const [first, setFirst] = useState(control.value[0] ?? Number.NaN);
-	const [second, setSecond] = useState(control.value[1] ?? Number.NaN);
-	// 2本目は空欄なら1本だけ描く
-	const next = Number.isNaN(second) ? [first] : [first, second];
-	const ok = validEma(next);
+	const pair = (v: EmaSetting): [number, number] => [
+		v[0] ?? Number.NaN,
+		v[1] ?? Number.NaN,
+	];
+	const { draft, setDraft, change, ok } = useDraft(
+		pair(control.value),
+		control.save,
+		emaValue,
+		validEma,
+	);
 	return (
-		<Modal title="EMA の本数" onClose={onClose}>
-			<p className="text-xs text-text-2">
-				{range(LIMITS.emaPeriod)} 本。2本目は空欄なら1本だけ描く。
-				{control.fromStrategy
-					? `戦略の値は ${control.base.join("・")} 本`
-					: `戦略で使っていないときの既定は ${control.base.join("・")} 本`}
-			</p>
-			<div className={FIELD}>
-				1本目
-				<NumberInput
-					value={first}
-					onChange={setFirst}
-					invalid={!ok}
-					inputMode="numeric"
-					aria-label="EMA 1本目の本数"
-					className="w-20"
-				/>
+		<>
+			<div className="flex flex-wrap items-center gap-3">
+				<span className={FIELD}>
+					1本目
+					<NumberInput
+						value={draft[0]}
+						onChange={(n) => change([n, draft[1]])}
+						invalid={!ok}
+						inputMode="numeric"
+						aria-label="EMA 1本目の本数"
+						className="w-16"
+					/>
+				</span>
+				<span className={FIELD}>
+					2本目
+					<NumberInput
+						value={draft[1]}
+						onChange={(n) => change([draft[0], n])}
+						invalid={!ok}
+						inputMode="numeric"
+						aria-label="EMA 2本目の本数"
+						className="w-16"
+					/>
+				</span>
+				<Reset control={control} onReset={() => setDraft(pair(control.base))} />
 			</div>
-			<div className={FIELD}>
-				2本目
-				<NumberInput
-					value={second}
-					onChange={setSecond}
-					invalid={!ok}
-					inputMode="numeric"
-					aria-label="EMA 2本目の本数"
-					className="w-20"
-				/>
-			</div>
-			{!ok && (
-				<p role="alert" className="text-xs font-semibold text-loss">
-					{range(LIMITS.emaPeriod)} の整数で、2本は別の値にする
-				</p>
+			{ok ? (
+				<Note>
+					{range(LIMITS.emaPeriod)} 本。2本目は空欄なら1本だけ描く。
+					{control.fromStrategy ? "戦略の値" : "既定"}は{" "}
+					{control.base.join("・")} 本
+				</Note>
+			) : (
+				<Invalid>{range(LIMITS.emaPeriod)} の整数で、2本は別の値にする</Invalid>
 			)}
-			<Footer
-				control={control}
-				canApply={ok}
-				onApply={() => {
-					control.save(next);
-					onClose();
-				}}
-				onClose={onClose}
-			/>
-		</Modal>
+		</>
 	);
 }
 
-export function RsiSettingsModal({
+export function RsiFields({
 	control,
-	onClose,
 }: {
 	control: IndicatorControl<RsiSetting>;
-	onClose: () => void;
 }) {
-	const [v, setV] = useState(control.value);
-	const ok = validRsi(v);
+	const { draft, setDraft, change, ok } = useDraft(
+		control.value,
+		control.save,
+		(d) => d,
+		validRsi,
+	);
 	const b = control.base;
 	return (
-		<Modal title="RSI の本数としきい値" onClose={onClose}>
-			<p className="text-xs text-text-2">
-				本数は {range(LIMITS.rsiPeriod)}、しきい値は{" "}
-				{range(LIMITS.rsiThreshold)}
-				。しきい値は小窓に点線で引く。
-				{control.fromStrategy ? "戦略の値" : "戦略で使っていないときの既定"}は{" "}
-				{b.period} 本・{b.lower}/{b.upper}
-			</p>
-			<div className={FIELD}>
-				本数
-				<NumberInput
-					value={v.period}
-					onChange={(period) => setV({ ...v, period })}
-					invalid={!ok}
-					inputMode="numeric"
-					aria-label="RSI の本数"
-					className="w-20"
-				/>
+		<>
+			<div className="flex flex-wrap items-center gap-3">
+				<span className={FIELD}>
+					本数
+					<NumberInput
+						value={draft.period}
+						onChange={(period) => change({ ...draft, period })}
+						invalid={!ok}
+						inputMode="numeric"
+						aria-label="RSI の本数"
+						className="w-14"
+					/>
+				</span>
+				<span className={FIELD}>
+					下
+					<NumberInput
+						value={draft.lower}
+						onChange={(lower) => change({ ...draft, lower })}
+						invalid={!ok}
+						inputMode="numeric"
+						aria-label="RSI の下のしきい値"
+						className="w-14"
+					/>
+				</span>
+				<span className={FIELD}>
+					上
+					<NumberInput
+						value={draft.upper}
+						onChange={(upper) => change({ ...draft, upper })}
+						invalid={!ok}
+						inputMode="numeric"
+						aria-label="RSI の上のしきい値"
+						className="w-14"
+					/>
+				</span>
+				<Reset control={control} onReset={() => setDraft(control.base)} />
 			</div>
-			<div className={FIELD}>
-				下のしきい値
-				<NumberInput
-					value={v.lower}
-					onChange={(lower) => setV({ ...v, lower })}
-					invalid={!ok}
-					inputMode="numeric"
-					aria-label="RSI の下のしきい値"
-					className="w-20"
-				/>
-			</div>
-			<div className={FIELD}>
-				上のしきい値
-				<NumberInput
-					value={v.upper}
-					onChange={(upper) => setV({ ...v, upper })}
-					invalid={!ok}
-					inputMode="numeric"
-					aria-label="RSI の上のしきい値"
-					className="w-20"
-				/>
-			</div>
-			{!ok && (
-				<p role="alert" className="text-xs font-semibold text-loss">
-					整数で入れ、下のしきい値は上より小さくする
-				</p>
+			{ok ? (
+				<Note>
+					本数は {range(LIMITS.rsiPeriod)}、下・上のしきい値は{" "}
+					{range(LIMITS.rsiThreshold)}。
+					{control.fromStrategy ? "戦略の値" : "既定"}は {b.period} 本・
+					{b.lower}/{b.upper}
+				</Note>
+			) : (
+				<Invalid>整数で入れ、下のしきい値は上より小さくする</Invalid>
 			)}
-			<Footer
-				control={control}
-				canApply={ok}
-				onApply={() => {
-					control.save(v);
-					onClose();
-				}}
-				onClose={onClose}
-			/>
-		</Modal>
+		</>
 	);
 }
 
-export function BbSettingsModal({
+export function BbFields({
 	control,
-	onClose,
 }: {
 	control: IndicatorControl<BbSetting>;
-	onClose: () => void;
 }) {
-	const [v, setV] = useState(control.value);
-	const ok = validBb(v);
+	const { draft, setDraft, change, ok } = useDraft(
+		control.value,
+		control.save,
+		(d) => d,
+		validBb,
+	);
 	const b = control.base;
 	return (
-		<Modal title="ボリンジャーバンドの本数と σ" onClose={onClose}>
-			<p className="text-xs text-text-2">
-				本数は {range(LIMITS.bollingerPeriod)}、σ は{" "}
-				{range(LIMITS.bollingerSigma)}（0.1 刻み）。
-				{control.fromStrategy ? "戦略の値" : "戦略で使っていないときの既定"}は{" "}
-				{b.period} 本・{b.sigma}σ
-			</p>
-			<div className={FIELD}>
-				本数
-				<NumberInput
-					value={v.period}
-					onChange={(period) => setV({ ...v, period })}
-					invalid={!ok}
-					inputMode="numeric"
-					aria-label="ボリンジャーバンドの本数"
-					className="w-20"
-				/>
+		<>
+			<div className="flex flex-wrap items-center gap-3">
+				<span className={FIELD}>
+					本数
+					<NumberInput
+						value={draft.period}
+						onChange={(period) => change({ ...draft, period })}
+						invalid={!ok}
+						inputMode="numeric"
+						aria-label="ボリンジャーバンドの本数"
+						className="w-14"
+					/>
+				</span>
+				<span className={FIELD}>
+					σ
+					<NumberInput
+						value={draft.sigma}
+						onChange={(sigma) => change({ ...draft, sigma })}
+						invalid={!ok}
+						inputMode="decimal"
+						aria-label="ボリンジャーバンドの σ"
+						className="w-14"
+					/>
+				</span>
+				<Reset control={control} onReset={() => setDraft(control.base)} />
 			</div>
-			<div className={FIELD}>
-				σ
-				<NumberInput
-					value={v.sigma}
-					onChange={(sigma) => setV({ ...v, sigma })}
-					invalid={!ok}
-					inputMode="decimal"
-					aria-label="ボリンジャーバンドの σ"
-					className="w-20"
-				/>
-			</div>
-			{!ok && (
-				<p role="alert" className="text-xs font-semibold text-loss">
-					本数は整数、σ は 0.1 刻みで範囲内に入れる
-				</p>
+			{ok ? (
+				<Note>
+					本数は {range(LIMITS.bollingerPeriod)}、σ は{" "}
+					{range(LIMITS.bollingerSigma)}（0.1 刻み）。
+					{control.fromStrategy ? "戦略の値" : "既定"}は {b.period} 本・
+					{b.sigma}σ
+				</Note>
+			) : (
+				<Invalid>本数は整数、σ は 0.1 刻みで範囲内に入れる</Invalid>
 			)}
-			<Footer
-				control={control}
-				canApply={ok}
-				onApply={() => {
-					control.save(v);
-					onClose();
-				}}
-				onClose={onClose}
-			/>
-		</Modal>
+		</>
 	);
 }
