@@ -31,15 +31,15 @@ type NavItem = {
 const NAV: NavItem[] = [
 	{ to: "/home", label: "ホーム", icon: <HomeIcon />, show: "both" },
 	{
-		to: "/backtest",
-		label: "バックテスト",
-		icon: <BacktestIcon />,
-		show: "both",
-	},
-	{
 		to: "/strategies",
 		label: "戦略",
 		icon: <StrategyIcon />,
+		show: "both",
+	},
+	{
+		to: "/backtest",
+		label: "バックテスト",
+		icon: <BacktestIcon />,
 		show: "both",
 	},
 	{ to: "/news", label: "ニュース", icon: <AiIcon />, show: "both" },
