@@ -4,8 +4,10 @@ import type { ConditionSet, DvolPoint, Timeframe } from "@trading-studio/core";
 import {
 	candleStart,
 	conditionStrategy,
+	dvolAverageSeries,
 	isCoarser,
 	isTimeframe,
+	LIMITS,
 } from "@trading-studio/core";
 import { CHART_RANGE_MS } from "../market/market-domain";
 import type { ChartRangeId } from "../market/types-domain";
@@ -18,6 +20,8 @@ export const FETCH_INTERVAL_MS = HOUR_MS;
 export const DVOL_FIRST_TIME = Date.UTC(2021, 2, 24);
 /** 1回の問い合わせで取る本数。Deribit は1回1000本まで返す */
 const WINDOW_BARS = 1000;
+/** 平均の日数の範囲。戦略の条件 DVOL（平均との比）と同じ */
+export const DVOL_AVERAGE_DAYS = LIMITS.dvolDays;
 /** 一度に返す足の上限 */
 export const DVOL_BARS_MAX = 50_000;
 
@@ -47,16 +51,54 @@ export function strategyDvol(
 /** 開始が [from, to] の1時間足を取る手段。テストでは偽物に差し替える */
 export type FetchDvol = (from: number, to: number) => Promise<DvolBar[]>;
 
-/** 期間の問い合わせ。from・to は必須の整数、timeframe は任意の足の粒度。形が違えば null */
-export function parseDvolBarsQuery(
-	q: Record<string, string | undefined>,
-): { from: number; to: number; timeframe?: Timeframe } | null {
+/**
+ * 期間の問い合わせ。from・to は必須の整数、timeframe は任意の足の粒度、averageDays は任意の平均の日数（戦略の条件と同じ範囲）。
+ * 形が違えば null
+ */
+export function parseDvolBarsQuery(q: Record<string, string | undefined>): {
+	from: number;
+	to: number;
+	timeframe?: Timeframe;
+	averageDays?: number;
+} | null {
 	const from = Number(q.from);
 	const to = Number(q.to);
 	if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to)) return null;
-	if (q.timeframe === undefined) return { from, to };
-	if (!isTimeframe(q.timeframe)) return null;
-	return { from, to, timeframe: q.timeframe };
+	let timeframe: Timeframe | undefined;
+	if (q.timeframe !== undefined) {
+		if (!isTimeframe(q.timeframe)) return null;
+		timeframe = q.timeframe;
+	}
+	let averageDays: number | undefined;
+	if (q.averageDays !== undefined) {
+		const d = Number(q.averageDays);
+		const r = DVOL_AVERAGE_DAYS;
+		if (!Number.isInteger(d) || d < r.min || d > r.max) return null;
+		averageDays = d;
+	}
+	return {
+		from,
+		to,
+		...(timeframe ? { timeframe } : {}),
+		...(averageDays ? { averageDays } : {}),
+	};
+}
+
+/**
+ * 足ごとに、その1時間足が終わった時点の直近 days 日の平均（×100）を付ける。足りなければ null。
+ * 条件の判定（core の dvolAverage）と同じ計算。points は平均に要る前の期間を含む1時間足（古い順）
+ */
+export function withAverage(
+	bars: DvolBar[],
+	points: readonly DvolBar[],
+	days: number,
+): DvolBar[] {
+	const avgs = dvolAverageSeries(
+		points,
+		bars.map((b) => b.time + HOUR_MS),
+		days,
+	);
+	return bars.map((b, i) => ({ ...b, average: avgs[i] ?? null }));
 }
 
 /** 1時間より粗い足では、足ごとに最後の1時間足だけ残す。チャートが使うのはそれだけで、全期間の日足でも本数を抑えるため */
@@ -76,8 +118,8 @@ export type DvolCollector = DvolService & {
 	tick(): void;
 	/** 取得を1回行う。すでに動いていれば、その回の終わりを待つ */
 	run(): Promise<void>;
-	/** MCP 用。期間の中の新しいほうから limit 本を古い順に */
-	recent(range: ChartRangeId, limit: number): DvolBar[];
+	/** MCP 用。期間の中の新しいほうから limit 本を古い順に。averageDays があれば足ごとの平均を付ける */
+	recent(range: ChartRangeId, limit: number, averageDays?: number): DvolBar[];
 };
 
 export function createDvolService({
@@ -144,21 +186,37 @@ export function createDvolService({
 				running: running !== null,
 			};
 		},
-		bars(from, to, timeframe) {
+		bars(from, to, timeframe, averageDays) {
 			if (timeframe === undefined || !isCoarser(timeframe, "1h")) {
 				const count = repo.count(from, to);
 				if (count > DVOL_BARS_MAX) {
 					return { ok: false, kind: "too_many", count, max: DVOL_BARS_MAX };
 				}
 			}
-			return { ok: true, bars: thin(repo.bars(from, to), timeframe) };
+			if (averageDays === undefined) {
+				return { ok: true, bars: thin(repo.bars(from, to), timeframe) };
+			}
+			const points = repo.bars(from - averageDays * 24 * HOUR_MS, to);
+			const bars = thin(
+				points.filter((b) => b.time >= from),
+				timeframe,
+			);
+			return { ok: true, bars: withAverage(bars, points, averageDays) };
 		},
-		recent(range, limit) {
+		recent(range, limit, averageDays) {
 			const t = now();
 			const from =
 				range === "all" ? Number.MIN_SAFE_INTEGER : t - CHART_RANGE_MS[range];
-			const bars = repo.bars(from, t + HOUR_MS);
-			return bars.slice(Math.max(0, bars.length - limit));
+			const points = repo.bars(
+				averageDays === undefined || range === "all"
+					? from
+					: from - averageDays * 24 * HOUR_MS,
+				t + HOUR_MS,
+			);
+			const bars = points.slice(Math.max(0, points.length - limit));
+			return averageDays === undefined
+				? bars
+				: withAverage(bars, points, averageDays);
 		},
 	};
 	return service;
