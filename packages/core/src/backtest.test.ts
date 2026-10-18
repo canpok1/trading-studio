@@ -41,6 +41,7 @@ const scripted: Strategy<Script> = {
 	requiredJudges: () => [],
 	candleNeeds: () => ({ "1h": 1 }),
 	recentMs: () => 0,
+	dvolMs: () => 0,
 	validate: () => [],
 	evaluate: ({ now, position, lots, openOrders, params, state }) => {
 		const next = { intents: [], nextEvalAt: now + H, state };
@@ -96,6 +97,7 @@ function config(
 	return {
 		strategy: scripted,
 		events: { events: [], covered: [] },
+		dvol: [],
 		params,
 		candles: { "1h": candles },
 		stepCandles: candles,
@@ -301,6 +303,7 @@ describe("期間と指標", () => {
 			...config(bars([flat, flat, flat, flat]), { buyPrice: 1 }),
 			strategy: spy,
 			events: { events: [], covered: [] },
+			dvol: [],
 			from: 2 * H,
 		});
 		expect(seen).toEqual([3, 3]);
@@ -342,6 +345,7 @@ describe("複数の足", () => {
 			...config(hours, { buyPrice: 1 }),
 			strategy: spy,
 			events: { events: [], covered: [] },
+			dvol: [],
 			candles: { "1h": hours, "4h": fours },
 			from: T + 4 * H,
 			to: T + 8 * H,
@@ -436,6 +440,7 @@ describe("判定頻度が条件の足より短い", () => {
 	const base = {
 		strategy: conditionStrategy,
 		events: { events: [], covered: [] },
+		dvol: [],
 		params,
 		candles: { "1h": hours },
 		dataTimeframe: "15m" as const,
@@ -515,6 +520,7 @@ describe("決定論", () => {
 			runBacktest({
 				strategy: conditionStrategy,
 				events: { events: [], covered: [] },
+				dvol: [],
 				params,
 				candles: { "1h": candles },
 				stepCandles: candles,
@@ -561,6 +567,7 @@ describe("AI 判定", () => {
 		runBacktest({
 			strategy: conditionStrategy,
 			events: { events: [], covered: [] },
+			dvol: [],
 			params,
 			candles: { "1h": flat },
 			stepCandles: flat,
@@ -606,6 +613,7 @@ describe("1日の損失上限", () => {
 		requiredJudges: () => [],
 		candleNeeds: () => ({ "1h": 1 }),
 		recentMs: () => 0,
+		dvolMs: () => 0,
 		validate: () => [],
 		evaluate: ({ now, position, lots, state }) => ({
 			intents: [
@@ -642,6 +650,7 @@ describe("1日の損失上限", () => {
 		const r = runBacktest({
 			strategy: churn,
 			events: { events: [], covered: [] },
+			dvol: [],
 			params: null,
 			candles: { "1h": candles },
 			stepCandles: candles,
@@ -711,6 +720,7 @@ describe("複数ポジション", () => {
 		const r = runBacktest({
 			strategy: conditionStrategy,
 			events: { events: [], covered: [] },
+			dvol: [],
 			params,
 			candles: { "1h": list },
 			stepCandles: list,
@@ -733,5 +743,63 @@ describe("複数ポジション", () => {
 		expect(r.summary.openPositionQuantity).toBe(0);
 		// 売りと同じ判定で買いの条件が成立しても、売る前の保有で枠が埋まっているので買わない
 		expect(r.decisions[3]?.note).toContain("最大ロット数 3 に達している");
+	});
+});
+
+describe("DVOL", () => {
+	const H = TIMEFRAME_MS["1h"];
+	const hours: Candle[] = [0, 1, 2, 3, 4].map((i) => ({
+		time: i * H,
+		open: 100,
+		high: 100,
+		low: 100,
+		close: 100,
+		volume: 0,
+	}));
+	// 期間の前から後まで1時間ごと
+	const dvol = [-2, -1, 0, 1, 2, 3, 4, 5].map((i) => ({
+		time: i * H,
+		close: 5000 + i,
+	}));
+	const run = (dvolMs: number) => {
+		const seen: number[][] = [];
+		const spy: Strategy<null> = {
+			id: "spy",
+			requiredJudges: () => [],
+			candleNeeds: () => ({ "1h": 1 }),
+			recentMs: () => 0,
+			dvolMs: () => dvolMs,
+			validate: () => [],
+			evaluate: ({ now, dvol, state }) => {
+				seen.push(dvol.map((d) => d.time));
+				return { intents: [], nextEvalAt: now, state };
+			},
+		};
+		runBacktest({
+			strategy: spy,
+			params: null,
+			events: { events: [], covered: [] },
+			dvol,
+			candles: { "1h": hours },
+			stepCandles: hours,
+			stepTimeframe: "1h",
+			dataTimeframe: "1h",
+			from: 0,
+			to: hours.length * H,
+			initialCash: 1_000_000,
+			fees: { limitPpm: 0, marketPpm: 0 },
+		});
+		return seen;
+	};
+
+	test("判定の時刻までに確定した足だけを、戦略が頼む長さだけ渡す", () => {
+		const seen = run(2 * H);
+		// 1本目の判定は 1H。確定しているのは開始が 0 までの足
+		expect(seen[0]).toEqual([-1 * H, 0]);
+		expect(seen.at(-1)).toEqual([3 * H, 4 * H]);
+	});
+
+	test("戦略が頼まなければ渡さない", () => {
+		expect(run(0).every((d) => d.length === 0)).toBe(true);
 	});
 });

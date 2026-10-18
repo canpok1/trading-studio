@@ -5,6 +5,7 @@ export * from "./candles";
 export * from "./condition-strategy";
 export * from "./csv";
 export * from "./dataset";
+export * from "./dvol";
 export * from "./event-calendar";
 export * from "./format";
 export * from "./grade";

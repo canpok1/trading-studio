@@ -69,6 +69,10 @@ function conditionBody(c: Condition): string {
 			return `買ってから ${c.bars} 本経った`;
 		case "eventWindow":
 			return `予定（${isEventImportance(c.minImportance) ? importanceText(c.minImportance) : c.minImportance}）の${eventSpanText(c.beforeHours, c.afterHours)}でない${c.allowNoCalendar ? "（暦切れのときは成立とみなす）" : ""}`;
+		case "dvol":
+			return `DVOL が ${c.threshold} ${c.direction === "above" ? "以上" : "以下"}`;
+		case "dvolAverage":
+			return `DVOL が直近 ${c.days} 日の平均の ${c.percent}% ${c.direction === "above" ? "以上" : "以下"}`;
 		case "judgment":
 			return `${JUDGE_LABELS[c.judge]}が ${c.values.map((v) => JUDGMENT_VALUE_LABELS[v] ?? v).join("・")} のどれか`;
 	}

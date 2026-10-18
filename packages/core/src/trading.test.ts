@@ -44,6 +44,7 @@ describe("バックテストとの一致", () => {
 		const bt = runBacktest({
 			strategy: conditionStrategy,
 			events: { events: [], covered: [] },
+			dvol: [],
 			params,
 			candles: { "1h": candles },
 			stepCandles: candles,
@@ -81,6 +82,7 @@ describe("バックテストとの一致", () => {
 					},
 					recent: { timeframeMs: H, candles: [bar] },
 					judgments: {},
+					dvol: [],
 				}),
 			});
 			account = out.account;
@@ -109,6 +111,7 @@ const fixed = (
 ): Strategy<null> => ({
 	id: "fixed",
 	requiredJudges: () => [],
+	dvolMs: () => 0,
 	candleNeeds: () => ({}),
 	recentMs: () => 0,
 	validate: () => [],
@@ -124,6 +127,7 @@ const decideWith = (strategy: Strategy<null>, account: Account) =>
 	decide({
 		strategy,
 		events: { events: [], covered: [] },
+		dvol: [],
 		params: null,
 		now: 10 * H,
 		price: 10_000_000,

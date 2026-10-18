@@ -492,6 +492,8 @@ export type DecideInput<P> = {
 	judgments: Readonly<Record<string, readonly Judgment[]>>;
 	/** 予定の暦 */
 	events: EventCalendar;
+	/** DVOL の1時間足 */
+	dvol: StrategyInput<P>["dvol"];
 	account: Account;
 	state: JsonValue;
 	fees: FeeRates;
@@ -529,6 +531,7 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 		recent: input.recent,
 		judgments: input.judgments,
 		events: input.events,
+		dvol: input.dvol,
 		position,
 		lots: publicLots(lots),
 		cash,
@@ -669,7 +672,7 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 
 export type StepInput<P> = Omit<
 	DecideInput<P>,
-	"candles" | "recent" | "judgments"
+	"candles" | "recent" | "judgments" | "dvol"
 > & {
 	/** 前回のステップからの約定の判定。time は約定の時刻 */
 	fill: { price: (order: Order) => number | null; time: number };
@@ -680,6 +683,7 @@ export type StepInput<P> = Omit<
 		candles: StrategyInput<P>["candles"];
 		recent: StrategyInput<P>["recent"];
 		judgments: Readonly<Record<string, readonly Judgment[]>>;
+		dvol: StrategyInput<P>["dvol"];
 	};
 };
 
