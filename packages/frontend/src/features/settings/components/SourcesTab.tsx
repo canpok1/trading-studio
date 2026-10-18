@@ -10,7 +10,13 @@ import { NumberInput } from "../../../shared/components/NumberInput";
 import { Button, Card } from "../../../shared/components/ui";
 import { useApi } from "../../../shared/lib/api";
 import { formatDateTime } from "../../../shared/lib/format";
-import { errorMessage, readJson, useAsync } from "../../../shared/lib/useAsync";
+import {
+	errorMessage,
+	readJson,
+	useAsync,
+	useInterval,
+	usePageVisible,
+} from "../../../shared/lib/useAsync";
 
 const INTERVAL = { min: 5, max: 1440 };
 const LANGUAGES = [
@@ -46,7 +52,9 @@ function DvolSource() {
 		() => api.api.dvol.status.$get().then((r) => readJson<DvolStatus>(r)),
 		[api],
 	);
-	const { state } = useAsync(load);
+	const { state, reload } = useAsync(load);
+	// 起動直後は過去分の取り込みが続くので、ニュースの取得の状態と同じく5秒ごとに読み直す
+	useInterval(reload, 5000, usePageVisible());
 	return (
 		<Card className="flex flex-col gap-1.5">
 			<div className="flex items-center gap-1.5">
@@ -75,9 +83,11 @@ function DvolStatusView({ status }: { status: DvolStatus }) {
 	return (
 		<>
 			<span className="num text-xs text-text-2">
-				{status.lastSuccessAt === null
-					? "まだ取得していない"
-					: `最後に取得: ${formatDateTime(status.lastSuccessAt)}`}
+				{status.running
+					? "取得中"
+					: status.lastSuccessAt === null
+						? "まだ取得していない"
+						: `最後に取得: ${formatDateTime(status.lastSuccessAt)}`}
 			</span>
 			{status.latestBarTime !== null && (
 				<span className="num text-xs text-text-2">

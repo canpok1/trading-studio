@@ -10,6 +10,8 @@ import {
 	JUDGES,
 	JUDGMENT_VALUES,
 	rsi,
+	TIMEFRAME_MS,
+	TIMEFRAMES,
 } from "@trading-studio/core";
 import type {
 	IChartApi,
@@ -345,12 +347,12 @@ export function PriceChart({
 	const showBb = indicators.bb.on && !hideIndicators;
 	const [dvolOn, setDvolOn] = useShowDvol();
 	const showDvol = dvolOn && !hideIndicators;
+	const barMs = barStep(barTimes);
 	const dvolBars = useDvolBars(
 		showDvol,
 		bars[0]?.time ?? null,
-		bars.length > 0
-			? (bars.at(-1) as ChartBar).time + (barStep(barTimes) ?? 0) + 1
-			: null,
+		bars.length > 0 ? (bars.at(-1) as ChartBar).time + (barMs ?? 0) + 1 : null,
+		TIMEFRAMES.find((tf) => TIMEFRAME_MS[tf] === barMs),
 	);
 	const dvolValues = useMemo(
 		() =>
@@ -737,8 +739,8 @@ export function PriceChart({
 	}, [slots, rsiValues, showRsi, rsiKey, themeTick]);
 
 	// DVOL の小窓。RSI の小窓の下（RSI を出していなければ価格の下）の区画に終値の線を描く。
-	// 空いた区画は描画ライブラリが消すので、RSI の出し入れのたびに付け直して位置を合わせる
-	// biome-ignore lint/correctness/useExhaustiveDependencies: themeTick の変化で色を読み直す
+	// 空いた区画は描画ライブラリが消すので、RSI の系列を付け直すたびに（出し入れ・本数の変更）こちらも付け直して位置を合わせる
+	// biome-ignore lint/correctness/useExhaustiveDependencies: themeTick の変化で色を読み直し、rsiValues・rsiKey の変化で RSI の後に付け直す
 	useEffect(() => {
 		const c = chartRef.current;
 		if (!c) return;
@@ -769,7 +771,7 @@ export function PriceChart({
 		for (const [i, p] of c.chart.panes().entries()) {
 			p.setStretchFactor(i === 0 ? PRICE_STRETCH : RSI_STRETCH);
 		}
-	}, [slots, dvolValues, showRsi, themeTick]);
+	}, [slots, dvolValues, showRsi, rsiValues, rsiKey, themeTick]);
 
 	// 注文のアイコン。themeTick は色を読み直すため
 	// biome-ignore lint/correctness/useExhaustiveDependencies: themeTick の変化で色を読み直し、marksTick の変化で置き直す

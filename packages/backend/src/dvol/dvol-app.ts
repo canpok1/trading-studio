@@ -11,13 +11,18 @@ export function dvolRoutes(service: DvolService) {
 			"/bars",
 			validator("query", (q, c) => {
 				const r = parseDvolBarsQuery(q as Record<string, string | undefined>);
-				if (!r) return c.json({ message: "期間を整数で指定する" }, 400);
+				if (!r) {
+					return c.json(
+						{ message: "期間を整数で、足の粒度を正しい値で指定する" },
+						400,
+					);
+				}
 				return r;
 			}),
 			compress(),
 			(c) => {
-				const { from, to } = c.req.valid("query");
-				const r = service.bars(from, to);
+				const { from, to, timeframe } = c.req.valid("query");
+				const r = service.bars(from, to, timeframe);
 				if (!r.ok) {
 					return c.json(
 						{

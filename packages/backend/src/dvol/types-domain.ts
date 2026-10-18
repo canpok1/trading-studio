@@ -1,3 +1,5 @@
+import type { Timeframe } from "@trading-studio/core";
+
 /** DVOL の1時間足。値は年率 % の ×100 の整数（55.23 → 5523） */
 export type DvolBar = {
 	/** 足の開始のエポックミリ秒 */
@@ -27,6 +29,6 @@ export type DvolBarsResult =
 
 export type DvolService = {
 	status(): DvolStatus;
-	/** 開始が [from, to) の足を古い順に */
-	bars(from: number, to: number): DvolBarsResult;
+	/** 開始が [from, to) の足を古い順に。1時間より粗い timeframe なら、その足ごとに最後の1時間足だけ */
+	bars(from: number, to: number, timeframe?: Timeframe): DvolBarsResult;
 };

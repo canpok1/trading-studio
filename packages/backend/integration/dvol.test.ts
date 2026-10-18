@@ -16,18 +16,16 @@ const bar = (time: number, close = 5000): DvolBar => ({
 	close,
 });
 
-/** 開始が [from, to] の1時間足を返す偽物。問い合わせの範囲を calls に残す */
+/** 開始が [from, to] の1時間足を返す偽物。Deribit と同じく1回に新しいほうから1000本までしか返さない */
 function hourlyFeed(close = (_t: number) => 5000) {
-	const calls: { from: number; to: number }[] = [];
 	const fetch = async (from: number, to: number) => {
-		calls.push({ from, to });
 		const out: DvolBar[] = [];
 		for (let t = Math.ceil(from / H) * H; t <= to; t += H) {
 			out.push(bar(t, close(t)));
 		}
-		return out;
+		return out.slice(-1000);
 	};
-	return { calls, fetch };
+	return { fetch };
 }
 
 function setup() {
@@ -65,8 +63,6 @@ describe("DVOL の取得", () => {
 		expect(got[0]).toBe(first);
 		expect(got.at(-1)).toBe(last);
 		expect(got).toHaveLength((last - first) / H + 1);
-		for (const c of feed.calls)
-			expect((c.to - c.from) / H + 1).toBeLessThanOrEqual(1000);
 		expect(await status()).toMatchObject({
 			lastSuccessAt: NOW,
 			lastError: null,
@@ -77,8 +73,8 @@ describe("DVOL の取得", () => {
 		});
 	});
 
-	test("保持が無期限なら 2021-03-25 から取る", async () => {
-		const { t } = setup();
+	test("保持が無期限なら Deribit が持つ最初の 2021-03-24 から取る", async () => {
+		const { t, times } = setup();
 		await t.app.request("/api/retention", {
 			method: "PUT",
 			headers: { "content-type": "application/json" },
@@ -92,11 +88,11 @@ describe("DVOL の取得", () => {
 		t.dvolFeed.fetch = feed.fetch;
 		t.clock.now = Date.UTC(2021, 2, 26);
 		await t.dvol.run();
-		expect(feed.calls[0]?.from).toBe(Date.UTC(2021, 2, 25));
+		expect(times()[0]).toBe(Date.UTC(2021, 2, 24));
 	});
 
 	test("1時間ごとに最後の足から取り直し、今の足は上書きする", async () => {
-		const { t, times } = setup();
+		const { t, times, status } = setup();
 		t.dvolRepo.save([
 			bar(Date.UTC(2026, 9, 18, 2)),
 			bar(Date.UTC(2026, 9, 18, 3), 4000),
@@ -108,22 +104,18 @@ describe("DVOL の取得", () => {
 
 		t.dvol.tick();
 		await t.dvol.run();
-		expect(feed.calls).toEqual([{ from: Date.UTC(2026, 9, 18, 3), to: NOW }]);
 		expect(t.dvolRepo.bars(Date.UTC(2026, 9, 18, 3), NOW)[0]?.close).toBe(4100);
 
 		// 1時間たつまでは取らない
 		t.clock.now = NOW + H - 1;
 		t.dvol.tick();
 		expect(t.dvol.status().running).toBe(false);
-		expect(feed.calls).toHaveLength(1);
+		expect((await status()).lastSuccessAt).toBe(NOW);
 
 		t.clock.now = NOW + H;
 		t.dvol.tick();
 		await t.dvol.run();
-		expect(feed.calls[1]).toEqual({
-			from: Date.UTC(2026, 9, 18, 3),
-			to: NOW + H,
-		});
+		expect((await status()).lastSuccessAt).toBe(NOW + H);
 		expect(times().at(-1)).toBe(Date.UTC(2026, 9, 18, 4));
 	});
 
@@ -173,6 +165,33 @@ describe("DVOL の取得", () => {
 		expect((await t.app.request("/api/dvol/bars?from=a&to=1")).status).toBe(
 			400,
 		);
+	});
+
+	test("1時間より粗い足の粒度を渡すと、足（JST の区切り）ごとに最後の1時間足だけ返す", async () => {
+		const { t } = setup();
+		// 2026-10-16 15:00 UTC（JST 10-17 0:00）から 3日分
+		const from = Date.UTC(2026, 9, 16, 15);
+		t.dvolRepo.save(
+			Array.from({ length: 72 }, (_, i) => bar(from + i * H, 5000 + i)),
+		);
+		const get = async (q: string) =>
+			(
+				(await (
+					await t.app.request(
+						`/api/dvol/bars?from=${from}&to=${from + 72 * H}${q}`,
+					)
+				).json()) as { bars: DvolBar[] }
+			).bars.map((b) => b.time);
+		expect(await get("&timeframe=1d")).toEqual([
+			from + 23 * H,
+			from + 47 * H,
+			from + 71 * H,
+		]);
+		expect(await get("&timeframe=4h")).toHaveLength(18);
+		expect(await get("&timeframe=1h")).toHaveLength(72);
+		expect(
+			(await t.app.request(`/api/dvol/bars?from=0&to=1&timeframe=2h`)).status,
+		).toBe(400);
 	});
 
 	test("毎日の削除で、境目より前で残す相場データの範囲（1時間足と同じ）の外の DVOL を消し、行数に出す", async () => {

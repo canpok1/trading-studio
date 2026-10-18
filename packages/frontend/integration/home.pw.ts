@@ -168,11 +168,8 @@ test("−・＋を「最新へ」と同じ行に出し、押しても最新の�
 	await expect(page.getByRole("button", { name: "最新へ" })).toBeDisabled();
 });
 
-test("チャートの設定で DVOL を出すと小窓と値が出て、再読み込み後も保たれる", async ({
-	page,
-	api,
-}) => {
-	onHome(api, { runs: fourRuns() });
+/** 1時間足ごとに DVOL 55.23% を返す偽物 */
+function onDvol(api: Parameters<typeof onHome>[0]) {
 	api.on(routes.api.dvol.bars, "$get", (req) => {
 		const from = Number(req.query.get("from"));
 		const to = Number(req.query.get("to"));
@@ -186,6 +183,14 @@ test("チャートの設定で DVOL を出すと小窓と値が出て、再読�
 		}
 		return { bars };
 	});
+}
+
+test("チャートの設定で DVOL を出すと小窓と値が出て、再読み込み後も保たれる", async ({
+	page,
+	api,
+}) => {
+	onHome(api, { runs: fourRuns() });
+	onDvol(api);
 	await page.goto("/home");
 	await openChartValues(page);
 	const value = page.getByTestId("chart-dvol");
