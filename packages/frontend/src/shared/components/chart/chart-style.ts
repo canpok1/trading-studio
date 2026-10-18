@@ -116,22 +116,38 @@ export function useShowValues(): [boolean, (on: boolean) => void] {
 
 const DVOL_KEY = "chart-dvol";
 
-/** DVOL の小窓を出すか。既定は出さない。選んだものをブラウザに保存する */
-export function useShowDvol(): [boolean, (on: boolean) => void] {
-	const [on, setOn] = useState(() => {
+/**
+ * DVOL の小窓を出すか。戦略で DVOL の条件を使っていれば最初は出し、そうでなければ最後に選んだもの（既定は出さない）。
+ * 選んだものをブラウザに保存する。戦略が DVOL を使うかが変わったら最初の状態へ戻す
+ */
+export function useShowDvol(
+	strategyUses: boolean,
+): [boolean, (on: boolean) => void] {
+	const [saved, setSaved] = useState(() => {
 		try {
 			return localStorage.getItem(DVOL_KEY) === "on";
 		} catch {
 			return false;
 		}
 	});
-	const set = useCallback((v: boolean) => {
-		setOn(v);
-		try {
-			localStorage.setItem(DVOL_KEY, v ? "on" : "off");
-		} catch {
-			// 保存できない環境では、この画面を開いている間だけ効く
-		}
-	}, []);
-	return [on, set];
+	// この画面で選んだ値と、そのときの strategyUses。strategyUses が変われば選んだ値を捨てる
+	const [chosen, setChosen] = useState<{ uses: boolean; on: boolean } | null>(
+		null,
+	);
+	const set = useCallback(
+		(v: boolean) => {
+			setChosen({ uses: strategyUses, on: v });
+			setSaved(v);
+			try {
+				localStorage.setItem(DVOL_KEY, v ? "on" : "off");
+			} catch {
+				// 保存できない環境では、この画面を開いている間だけ効く
+			}
+		},
+		[strategyUses],
+	);
+	return [
+		chosen && chosen.uses === strategyUses ? chosen.on : strategyUses || saved,
+		set,
+	];
 }

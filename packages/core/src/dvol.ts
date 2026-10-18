@@ -80,3 +80,25 @@ export function dvolAverage(
 	for (let i = from; i < to; i++) sum += (points[i] as DvolPoint).close;
 	return { ok: true, value: sum / n };
 }
+
+/**
+ * 時刻ごとの直近 days 日の平均（×100）。各時刻 t で dvolAverage(points, t, days) と同じ値で、足りなければ null。
+ * times は古い順。チャートの足ごとに平均を出すため、累積和で一度に計算する
+ */
+export function dvolAverageSeries(
+	points: readonly DvolPoint[],
+	times: readonly number[],
+	days: number,
+): (number | null)[] {
+	const sums = [0];
+	for (const p of points) sums.push((sums.at(-1) as number) + p.close);
+	const span = days * 24 * HOUR_MS;
+	const need = Math.ceil(days * 24 * DVOL_AVERAGE_COVERAGE);
+	return times.map((t) => {
+		const from = lowerBound(points, t - span - HOUR_MS + 1);
+		const to = lowerBound(points, t - HOUR_MS + 1);
+		const n = to - from;
+		if (n < need) return null;
+		return ((sums[to] as number) - (sums[from] as number)) / n;
+	});
+}

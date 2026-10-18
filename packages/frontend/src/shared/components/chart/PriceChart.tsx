@@ -14,6 +14,7 @@ import {
 	TIMEFRAMES,
 } from "@trading-studio/core";
 import type {
+	AutoscaleInfo,
 	IChartApi,
 	IPriceLine,
 	ISeriesApi,
@@ -65,7 +66,12 @@ import {
 	useShowVolume,
 } from "./chart-style";
 import { useDvolBars } from "./dvol-data";
-import { BbFields, EmaFields, RsiFields } from "./IndicatorSettings";
+import {
+	BbFields,
+	DvolAvgFields,
+	EmaFields,
+	RsiFields,
+} from "./IndicatorSettings";
 import { JudgeLayer, stripArea } from "./judge-layer";
 import type { BarJudgments, ChartBg } from "./judgment-data";
 import { slotAligned } from "./judgment-data";
@@ -298,7 +304,8 @@ export function PriceChart({
 		/** ボリンジャーバンドの上限・中央・下限 */
 		bbs: ISeriesApi<"Line">[];
 		rsis: ISeriesApi<"Line">[];
-		dvol: ISeriesApi<"Line"> | null;
+		/** DVOL の終値・平均・平均に対する下と上の % の線 */
+		dvol: ISeriesApi<"Line">[];
 		volume: ISeriesApi<"Histogram">;
 		layer: JudgeLayer;
 		/** 価格の軸の「現」「買」の値 */
@@ -345,20 +352,33 @@ export function PriceChart({
 	const showEma = indicators.ema.on && !hideIndicators;
 	const showRsi = indicators.rsi.on && !hideIndicators;
 	const showBb = indicators.bb.on && !hideIndicators;
-	const [dvolOn, setDvolOn] = useShowDvol();
+	const [dvolOn, setDvolOn] = useShowDvol(indicators.dvolUsed);
 	const showDvol = dvolOn && !hideIndicators;
+	const showDvolAvg = showDvol && indicators.dvolAvg.on;
+	const da = indicators.dvolAvg.value;
 	const barMs = barStep(barTimes);
-	const dvolBars = useDvolBars(
+	const dvol = useDvolBars(
 		showDvol,
 		bars[0]?.time ?? null,
 		bars.length > 0 ? (bars.at(-1) as ChartBar).time + (barMs ?? 0) + 1 : null,
 		TIMEFRAMES.find((tf) => TIMEFRAME_MS[tf] === barMs),
+		showDvolAvg ? da.days : null,
 	);
 	const dvolValues = useMemo(
 		() =>
-			showDvol ? dvolPerBar(barTimes, dvolBars).map((v) => v / 100) : null,
-		[showDvol, barTimes, dvolBars],
+			showDvol ? dvolPerBar(barTimes, dvol.bars).map((v) => v / 100) : null,
+		[showDvol, barTimes, dvol],
 	);
+	// 日数を変えた直後は、読み直すまで前の日数の平均なので出さない
+	const dvolAvgValues = useMemo(
+		() =>
+			showDvolAvg && dvol.averageDays === da.days
+				? dvolPerBar(barTimes, dvol.bars, (d) => d.average).map((v) => v / 100)
+				: null,
+		[showDvolAvg, barTimes, dvol, da.days],
+	);
+	const dvolAvgKey = showDvolAvg ? `${da.lower}/${da.upper}` : "";
+	const dvolLevels = indicators.dvolLevels;
 	const bb = indicators.bb.value;
 	const bbKey = showBb ? `${bb.period}:${bb.sigma}` : "";
 	// biome-ignore lint/correctness/useExhaustiveDependencies: 本数と σ の組は bbKey で見る
@@ -468,7 +488,7 @@ export function PriceChart({
 			emas: [],
 			bbs: [],
 			rsis: [],
-			dvol: null,
+			dvol: [],
 			volume,
 			layer,
 			tags,
@@ -744,34 +764,93 @@ export function PriceChart({
 	useEffect(() => {
 		const c = chartRef.current;
 		if (!c) return;
-		if (c.dvol) c.chart.removeSeries(c.dvol);
-		c.dvol = null;
+		for (const s of c.dvol) c.chart.removeSeries(s);
+		c.dvol = [];
 		if (!dvolValues) return;
-		const s = c.chart.addSeries(
-			LineSeries,
-			{
-				color: cssVar("--color-dvol"),
+		const pane = showRsi ? 2 : 1;
+		const add = (
+			values: readonly number[],
+			color: string,
+			lineStyle: LineStyle,
+		) => {
+			const s = c.chart.addSeries(
+				LineSeries,
+				{
+					color,
+					lineWidth: 1,
+					lineStyle,
+					priceLineVisible: false,
+					lastValueVisible: false,
+					crosshairMarkerVisible: false,
+					priceFormat: { type: "custom", formatter: formatDvol, minMove: 0.1 },
+				},
+				pane,
+			);
+			s.setData(
+				slots.map((slot) => {
+					const time = toChartTime(slot.time) as UTCTimestamp;
+					const v =
+						slot.bar === null ? Number.NaN : (values[slot.bar] as number);
+					return Number.isNaN(v) ? { time } : { time, value: v };
+				}),
+			);
+			c.dvol.push(s);
+			return s;
+		};
+		const main = add(dvolValues, cssVar("--color-dvol"), LineStyle.Solid);
+		// 価格線は縦の範囲に入らないので、しきい値が DVOL の値から離れていても見えるよう範囲に含める
+		if (dvolLevels.length > 0) {
+			main.applyOptions({
+				autoscaleInfoProvider: (base: () => AutoscaleInfo | null) => {
+					const r = base();
+					const lo = Math.min(...dvolLevels);
+					const hi = Math.max(...dvolLevels);
+					return {
+						...r,
+						priceRange: {
+							minValue: Math.min(r?.priceRange?.minValue ?? lo, lo),
+							maxValue: Math.max(r?.priceRange?.maxValue ?? hi, hi),
+						},
+					};
+				},
+			});
+		}
+		// 値の条件のしきい値は RSI のしきい値と同じ点線
+		for (const t of dvolLevels) {
+			main.createPriceLine({
+				price: t,
+				color: cssVar("--color-text-2"),
 				lineWidth: 1,
-				priceLineVisible: false,
-				lastValueVisible: false,
-				crosshairMarkerVisible: false,
-				priceFormat: { type: "custom", formatter: formatDvol, minMove: 0.1 },
-			},
-			showRsi ? 2 : 1,
-		);
-		s.setData(
-			slots.map((slot) => {
-				const time = toChartTime(slot.time) as UTCTimestamp;
-				const v =
-					slot.bar === null ? Number.NaN : (dvolValues[slot.bar] as number);
-				return Number.isNaN(v) ? { time } : { time, value: v };
-			}),
-		);
-		c.dvol = s;
+				lineStyle: LineStyle.Dashed,
+				axisLabelVisible: true,
+			});
+		}
+		// 平均は灰色の実線、平均に対する下・上の % は同じ色の点線。足ごとに平均が変わるので線で描く
+		if (dvolAvgValues) {
+			const gray = cssVar("--color-text-2");
+			add(dvolAvgValues, gray, LineStyle.Solid);
+			for (const pct of [da.lower, da.upper]) {
+				add(
+					dvolAvgValues.map((v) => (v * pct) / 100),
+					gray,
+					LineStyle.Dotted,
+				);
+			}
+		}
 		for (const [i, p] of c.chart.panes().entries()) {
 			p.setStretchFactor(i === 0 ? PRICE_STRETCH : RSI_STRETCH);
 		}
-	}, [slots, dvolValues, showRsi, rsiValues, rsiKey, themeTick]);
+	}, [
+		slots,
+		dvolValues,
+		dvolAvgValues,
+		dvolAvgKey,
+		dvolLevels,
+		showRsi,
+		rsiValues,
+		rsiKey,
+		themeTick,
+	]);
 
 	// 注文のアイコン。themeTick は色を読み直すため
 	// biome-ignore lint/correctness/useExhaustiveDependencies: themeTick の変化で色を読み直し、marksTick の変化で置き直す
@@ -1048,15 +1127,29 @@ export function PriceChart({
 	);
 	// 本数の欄は表示しているときだけ出し、モーダルが縦に伸びすぎないようにする
 	const dvolRow = (
-		<button
-			key="dvol"
-			type="button"
-			aria-pressed={dvolOn}
-			onClick={() => setDvolOn(!dvolOn)}
-			className={`${CHIP} self-start`}
-		>
-			DVOL
-		</button>
+		<div key="dvol" className="flex flex-col gap-1.5">
+			<button
+				type="button"
+				aria-pressed={dvolOn}
+				onClick={() => setDvolOn(!dvolOn)}
+				className={`${CHIP} self-start`}
+			>
+				DVOL
+			</button>
+			{dvolOn && (
+				<button
+					type="button"
+					aria-pressed={indicators.dvolAvg.on}
+					onClick={() => indicators.dvolAvg.setOn(!indicators.dvolAvg.on)}
+					className={`${CHIP} self-start`}
+				>
+					DVOL の平均
+				</button>
+			)}
+			{dvolOn && indicators.dvolAvg.on && (
+				<DvolAvgFields control={indicators.dvolAvg} />
+			)}
+		</div>
 	);
 	const indicatorRows = (["ema", "bb", "rsi"] as const).map((k) => {
 		const c = indicators[k];
@@ -1165,6 +1258,18 @@ export function PriceChart({
 						/>
 						DVOL
 					</span>
+					{showDvolAvg && (
+						<span className="flex items-center gap-1">
+							<i
+								className="inline-block h-[3px] w-3"
+								style={{ background: "var(--color-text-2)" }}
+							/>
+							{da.days} 日平均（点線は {da.lower}%・{da.upper}%）
+						</span>
+					)}
+					{dvolLevels.length > 0 && (
+						<span>点線 {dvolLevels.join("・")} は戦略のしきい値</span>
+					)}
 				</LegendRow>
 			)}
 			{judgments &&
@@ -1354,6 +1459,25 @@ export function PriceChart({
 							DVOL {(() => {
 								const v = dvolValues[shown as number];
 								return v === undefined || Number.isNaN(v) ? "—" : formatDvol(v);
+							})()}
+						</span>
+					)}
+					{dvolValues && dvolAvgValues && (
+						<span
+							data-testid="chart-dvol-average"
+							className="flex items-center gap-1"
+						>
+							<i
+								className="inline-block h-[3px] w-2.5"
+								style={{ background: "var(--color-text-2)" }}
+							/>
+							平均{da.days}日 {(() => {
+								const a = dvolAvgValues[shown as number];
+								const v = dvolValues[shown as number];
+								if (a === undefined || Number.isNaN(a)) return "—";
+								return v === undefined || Number.isNaN(v)
+									? formatDvol(a)
+									: `${formatDvol(a)}（${((v / a) * 100).toFixed(0)}%）`;
 							})()}
 						</span>
 					)}

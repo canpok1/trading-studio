@@ -8,6 +8,8 @@ export type DvolBar = {
 	high: number;
 	low: number;
 	close: number;
+	/** 問い合わせで平均の日数を指定したときだけ。この足が終わった時点の直近 N 日の終値の平均（×100）。足りなければ null */
+	average?: number | null;
 };
 
 /** 取得の状態。設定の取得元タブに出す */
@@ -29,6 +31,14 @@ export type DvolBarsResult =
 
 export type DvolService = {
 	status(): DvolStatus;
-	/** 開始が [from, to) の足を古い順に。1時間より粗い timeframe なら、その足ごとに最後の1時間足だけ */
-	bars(from: number, to: number, timeframe?: Timeframe): DvolBarsResult;
+	/**
+	 * 開始が [from, to) の足を古い順に。1時間より粗い timeframe なら、その足ごとに最後の1時間足だけ。
+	 * averageDays があれば足ごとに直近 averageDays 日の平均を付ける
+	 */
+	bars(
+		from: number,
+		to: number,
+		timeframe?: Timeframe,
+		averageDays?: number,
+	): DvolBarsResult;
 };

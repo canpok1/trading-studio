@@ -191,3 +191,51 @@ test("別の AI で作るとき、資料をサーバーが付けた名前で保�
 	await dialog.getByRole("button", { name: "資料をダウンロード" }).click();
 	expect((await download).suggestedFilename()).toBe("backtest-7.md");
 });
+
+test("戦略で DVOL の平均との比を使っていれば、DVOL の小窓と平均を最初から出し、値は戦略の日数", async ({
+	page,
+	api,
+}) => {
+	const { runs, chart } = result({
+		params: params([
+			{ type: "dvolAverage", days: 14, percent: 110, direction: "below" },
+		]),
+	});
+	onResults(api, runs, chart);
+	api.on(routes.api.dvol.bars, "$get", (req) => {
+		// 頼まれた日数ごとに違う平均を返し、戦略の日数で頼んだことを表示で確かめる
+		const days = Number(req.query.get("averageDays"));
+		const bars = [];
+		for (
+			let t = Number(req.query.get("from"));
+			t < Number(req.query.get("to"));
+			t += 3_600_000
+		) {
+			bars.push({
+				time: t,
+				open: 5500,
+				high: 5600,
+				low: 5400,
+				close: 5523,
+				average: days === 14 ? 5021 : 9999,
+			});
+		}
+		return { bars };
+	});
+	await page.goto("/backtest/runs/7");
+	await openChartValues(page);
+	await expect(page.getByTestId("chart-dvol")).toHaveText("DVOL 55.2");
+	await expect(page.getByTestId("chart-dvol-average")).toHaveText(
+		"平均14日 50.2（110%）",
+	);
+	await openChartSettings(page);
+	await expect(
+		page.getByRole("button", { name: "DVOL の平均" }),
+	).toHaveAttribute("aria-pressed", "true");
+	await expect(
+		page.getByRole("textbox", { name: "DVOL の平均に対する下の %" }),
+	).toHaveValue("110");
+	await expect(
+		page.getByRole("textbox", { name: "DVOL の平均に対する上の %" }),
+	).toHaveValue("150");
+});

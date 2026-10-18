@@ -13,7 +13,10 @@ export function dvolRoutes(service: DvolService) {
 				const r = parseDvolBarsQuery(q as Record<string, string | undefined>);
 				if (!r) {
 					return c.json(
-						{ message: "期間を整数で、足の粒度を正しい値で指定する" },
+						{
+							message:
+								"期間を整数で、足の粒度を正しい値で、平均の日数を 1〜30 の整数で指定する",
+						},
 						400,
 					);
 				}
@@ -21,8 +24,8 @@ export function dvolRoutes(service: DvolService) {
 			}),
 			compress(),
 			(c) => {
-				const { from, to, timeframe } = c.req.valid("query");
-				const r = service.bars(from, to, timeframe);
+				const { from, to, timeframe, averageDays } = c.req.valid("query");
+				const r = service.bars(from, to, timeframe, averageDays);
 				if (!r.ok) {
 					return c.json(
 						{
