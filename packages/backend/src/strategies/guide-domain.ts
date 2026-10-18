@@ -72,7 +72,7 @@ export function conditionSetGuide(): string {
 		"",
 		"## バックテストの既定",
 		`- 手数料率は ppm（100 万分率）。既定は指値 ${DEFAULT_FEE_RATES.limitPpm}・成行 ${DEFAULT_FEE_RATES.marketPpm}（Coincheck の取引所の BTC/JPY と同じ）`,
-		"- 使える期間と粒度は get_data_coverage で確かめる。期間より前の足も指標の計算に使う（EMA・RSI・ATR は本数の10倍、ボリンジャーバンドは本数ぶん）",
+		"- 使える期間と粒度は get_data_coverage で確かめる。期間より前の足も指標の計算に使う（EMA・RSI・ATR・ADX は始めの値の影響が 0.25% 以下になる本数を足す。EMA 200 は800本、RSI 14 は96本。ボリンジャーバンドは本数ぶん）",
 		"",
 		"## ひな形",
 		...templates,

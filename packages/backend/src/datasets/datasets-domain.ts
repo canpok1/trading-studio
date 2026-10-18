@@ -4,6 +4,7 @@ import type { DatasetMember } from "@trading-studio/core";
 import {
 	eventWindowHours,
 	MAX_DATASET_SEGMENTS,
+	RUN_LIMITS,
 	summarizeDataset,
 	validateConditionSet,
 } from "@trading-studio/core";
@@ -296,7 +297,7 @@ export function createDatasetService({
 						"データセットの相場データがすべて消えている。相場データを選び直す",
 				});
 			}
-			const errors = validateConditionSet(input.params);
+			const errors = validateConditionSet(input.params, RUN_LIMITS);
 			if (errors.length > 0) return fail({ kind: "invalid_params", errors });
 			// 実行の途中で使用中の版を切り替えても相場データごとに版が混ざらないよう、始めるときに決める
 			const eventCriteriaVersion =

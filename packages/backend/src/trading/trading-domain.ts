@@ -22,6 +22,7 @@ import {
 	newAccount,
 	nextMoves,
 	publicLots,
+	RUN_LIMITS,
 	realizedPnlOn,
 	settleFills,
 	TIMEFRAME_MS,
@@ -503,7 +504,7 @@ export function createTradingService({
 					`同時に動かせる戦略は ${TRADING_LIMITS.running} つまで。ほかの戦略を停止してから開始する`,
 				);
 			}
-			const errors = validateConditionSet(s.params);
+			const errors = validateConditionSet(s.params, RUN_LIMITS);
 			if (errors.length > 0) {
 				return {
 					ok: false,

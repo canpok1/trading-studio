@@ -383,21 +383,21 @@ function allGroups(p: ConditionSet): ConditionGroup[] {
 }
 
 export const LIMITS = {
-	emaPeriod: { min: 2, max: 500 },
-	lookback: { min: 2, max: 1000 },
-	rsiPeriod: { min: 2, max: 100 },
+	emaPeriod: { min: 2, max: 200 },
+	lookback: { min: 2, max: 200 },
+	rsiPeriod: { min: 2, max: 50 },
 	rsiThreshold: { min: 1, max: 99 },
 	/** RSI のクロスを何本以内で見るか */
-	rsiCrossBars: { min: 1, max: 100 },
-	bollingerPeriod: { min: 2, max: 500 },
+	rsiCrossBars: { min: 1, max: 50 },
+	bollingerPeriod: { min: 2, max: 100 },
 	/** ボリンジャーバンドの σ。0.1 刻み */
 	bollingerSigma: { min: 0.1, max: 5 },
-	adxPeriod: { min: 2, max: 100 },
+	adxPeriod: { min: 2, max: 50 },
 	adxThreshold: { min: 1, max: 99 },
 	percent: { min: 0.1, max: 100 },
 	/** トレーリングストップを発動する、最高値の買値からの %。0 は買った直後から */
 	trailingActivatePercent: { min: 0, max: 100 },
-	atrPeriod: { min: 2, max: 100 },
+	atrPeriod: { min: 2, max: 50 },
 	/** ATR の何倍か。0.1 刻み */
 	atrMultiple: { min: 0.1, max: 20 },
 	/** ATR のトレーリングを発動する、最高値の買値からの ATR の倍数。0 は買った直後から。0.1 刻み */
@@ -405,7 +405,7 @@ export const LIMITS = {
 	/** 一部利確で売る割合（%、整数） */
 	partialSellPercent: { min: 1, max: 99 },
 	/** EMA の傾きで何本前と比べるか */
-	emaSlopeBars: { min: 1, max: 500 },
+	emaSlopeBars: { min: 1, max: 50 },
 	/** EMA の傾きの %。0.01 刻み */
 	emaSlopePercent: { min: 0, max: 100 },
 	holdingBars: { min: 1, max: 1000 },
@@ -436,8 +436,40 @@ export const DEFAULT_DAILY_LOSS_LIMIT = 30_000;
 /** 損切り後に買わない本数の既定。これを持たない保存済みの戦略もこの本数（止めない）で読む */
 export const DEFAULT_STOP_LOSS_COOLDOWN_BARS = 0;
 
-/** EMA・RSI・ADX（平滑化を重ねる指標）を途中から計算しても値がほぼ一致するよう、本数のこの倍の足を渡してもらう */
-const EMA_HISTORY_FACTOR = 10;
+export type Limits = {
+	readonly [K in keyof typeof LIMITS]: {
+		readonly [P in keyof (typeof LIMITS)[K]]: number;
+	};
+};
+
+/**
+ * 上限を下げる前（ADR 0033）の上限。保存済みの戦略・バックテスト結果を実行するときはこの範囲で検査する。
+ * 入力・保存は LIMITS で検査する
+ */
+export const RUN_LIMITS: Limits = {
+	...LIMITS,
+	emaPeriod: { min: 2, max: 500 },
+	lookback: { min: 2, max: 1000 },
+	rsiPeriod: { min: 2, max: 100 },
+	rsiCrossBars: { min: 1, max: 100 },
+	bollingerPeriod: { min: 2, max: 500 },
+	adxPeriod: { min: 2, max: 100 },
+	atrPeriod: { min: 2, max: 100 },
+	emaSlopeBars: { min: 1, max: 500 },
+};
+
+/** 不安定期間: 始めの仮の値が今の値に残る割合をこれ以下にする（ADR 0033） */
+const UNSTABLE_RESIDUAL = 0.0025;
+
+/** 前の値に 1 − alpha を掛けて足していく指標の不安定期間の本数 */
+function unstableBars(alpha: number): number {
+	return Math.ceil(Math.log(UNSTABLE_RESIDUAL) / Math.log(1 - alpha));
+}
+const unstableEma = (n: number) => unstableBars(2 / (n + 1));
+const unstableWilder = (n: number) => unstableBars(1 / n);
+
+/** LIMITS の範囲の条件で要る前の足の最大（EMA の傾きの上限）。保持の削除で残す助走の本数に使う */
+export const MAX_CANDLE_NEED = 850;
 
 /** insufficient は判定できない理由。note はその前置き（無ければ指標の本数が足りない） */
 export type Hit =
@@ -1150,17 +1182,25 @@ export function candleNeeds(
 function candleNeed(c: CandleCondition): number {
 	switch (c.type) {
 		case "emaCross":
-			return c.slow * EMA_HISTORY_FACTOR + 1;
+			return c.slow + unstableEma(c.slow) + 1;
 		case "emaPosition":
+			return c.period + unstableEma(c.period);
+		case "emaSlope":
+			return c.period + unstableEma(c.period) + c.bars;
 		case "rsi":
 		case "entryAtr":
 		case "trailingAtr":
-			return c.period * EMA_HISTORY_FACTOR + 1;
-		case "emaSlope":
+			return c.period + 1 + unstableWilder(c.period);
 		case "rsiCross":
-			return c.period * EMA_HISTORY_FACTOR + c.bars + 1;
+			return c.period + 1 + unstableWilder(c.period) + c.bars;
 		case "adx":
-			return 2 * c.period * EMA_HISTORY_FACTOR + 1;
+			// DI の平滑と、DX の平均の2段
+			return (
+				c.period +
+				1 +
+				unstableWilder(c.period) +
+				(c.period + unstableWilder(c.period))
+			);
 		case "breakout":
 			return c.lookback + 1;
 		case "bollinger":
@@ -1189,36 +1229,39 @@ function isNumIn(v: unknown, r: { min: number; max: number }): v is number {
 }
 
 /** 条件セットの入力検証。path は「buys.0.buy.conditions.0.fast」のようにフォームの項目を指す */
-export function validateConditionSet(p: ConditionSet): ValidationError[] {
+export function validateConditionSet(
+	p: ConditionSet,
+	limits: Limits = LIMITS,
+): ValidationError[] {
 	const errors: ValidationError[] = [];
 	const err = (path: string, message: string) => errors.push({ path, message });
 
-	if (!isIntIn(p.stopLossCooldownBars, LIMITS.stopLossCooldownBars)) {
-		const r = LIMITS.stopLossCooldownBars;
+	if (!isIntIn(p.stopLossCooldownBars, limits.stopLossCooldownBars)) {
+		const r = limits.stopLossCooldownBars;
 		err("stopLossCooldownBars", `${r.min}〜${r.max} の整数で入れる`);
 	}
 	if (!isTimeframe(p.stopLossCooldownTimeframe)) {
 		err("stopLossCooldownTimeframe", "足を選ぶ");
 	}
-	if (!isIntIn(p.dailyLossLimit, LIMITS.dailyLossLimit)) {
+	if (!isIntIn(p.dailyLossLimit, limits.dailyLossLimit)) {
 		err(
 			"dailyLossLimit",
-			`${formatYen(LIMITS.dailyLossLimit.min)}〜${formatYen(LIMITS.dailyLossLimit.max)} 円の整数で入れる`,
+			`${formatYen(limits.dailyLossLimit.min)}〜${formatYen(limits.dailyLossLimit.max)} 円の整数で入れる`,
 		);
 	}
 	for (const k of ["flat", "holding"] as const) {
 		const f = p.frequency[k];
-		if (!isIntIn(f.value, LIMITS.frequency)) {
+		if (!isIntIn(f.value, limits.frequency)) {
 			err(
 				`frequency.${k}`,
-				`${LIMITS.frequency.min}〜${LIMITS.frequency.max} の整数で入れる`,
+				`${limits.frequency.min}〜${limits.frequency.max} の整数で入れる`,
 			);
 		}
 		if (!FREQUENCY_UNITS.includes(f.unit)) {
 			err(`frequency.${k}`, "単位を選ぶ");
 		}
 	}
-	const n = LIMITS.buys;
+	const n = limits.buys;
 	if (p.buys.length < n.min || p.buys.length > n.max) {
 		err("buys", `買いは ${n.min}〜${n.max} 個にする`);
 	}
@@ -1232,14 +1275,14 @@ export function validateConditionSet(p: ConditionSet): ValidationError[] {
 		}
 		ids.add(b.id);
 		const name = b.name.trim();
-		const r = LIMITS.buyName;
+		const r = limits.buyName;
 		if (name.length < r.min || name.length > r.max) {
 			err(`${at}.name`, `${r.min}〜${r.max} 文字で入れる`);
 		} else if (names.has(name)) {
 			err(`${at}.name`, "ほかの買いと違う名前にする");
 		}
 		names.add(name);
-		validateBuyRule(b, at, err);
+		validateBuyRule(b, at, err, limits);
 	});
 	return errors;
 }
@@ -1249,10 +1292,11 @@ function validateBuyRule(
 	p: BuyRule,
 	prefix: string,
 	report: (path: string, message: string) => void,
+	limits: Limits,
 ) {
 	const err = (path: string, message: string) =>
 		report(`${prefix}.${path}`, message);
-	const size = LIMITS.orderSize;
+	const size = limits.orderSize;
 	if (!isIntIn(p.orderSize, size)) {
 		err(
 			"orderSize",
@@ -1268,7 +1312,7 @@ function validateBuyRule(
 			}
 			switch (c.type) {
 				case "emaCross": {
-					const r = LIMITS.emaPeriod;
+					const r = limits.emaPeriod;
 					const fastOk = isIntIn(c.fast, r);
 					const slowOk = isIntIn(c.slow, r);
 					if (!fastOk) err(`${at}.fast`, `${range(r)} の整数で入れる`);
@@ -1279,33 +1323,33 @@ function validateBuyRule(
 					break;
 				}
 				case "breakout":
-					if (!isIntIn(c.lookback, LIMITS.lookback)) {
-						err(`${at}.lookback`, `${range(LIMITS.lookback)} の整数で入れる`);
+					if (!isIntIn(c.lookback, limits.lookback)) {
+						err(`${at}.lookback`, `${range(limits.lookback)} の整数で入れる`);
 					}
 					break;
 				case "rsi":
-					if (!isIntIn(c.period, LIMITS.rsiPeriod)) {
-						err(`${at}.period`, `${range(LIMITS.rsiPeriod)} の整数で入れる`);
+					if (!isIntIn(c.period, limits.rsiPeriod)) {
+						err(`${at}.period`, `${range(limits.rsiPeriod)} の整数で入れる`);
 					}
-					if (!isIntIn(c.threshold, LIMITS.rsiThreshold)) {
+					if (!isIntIn(c.threshold, limits.rsiThreshold)) {
 						err(
 							`${at}.threshold`,
-							`${range(LIMITS.rsiThreshold)} の整数で入れる`,
+							`${range(limits.rsiThreshold)} の整数で入れる`,
 						);
 					}
 					break;
 				case "rsiCross":
-					if (!isIntIn(c.period, LIMITS.rsiPeriod)) {
-						err(`${at}.period`, `${range(LIMITS.rsiPeriod)} の整数で入れる`);
+					if (!isIntIn(c.period, limits.rsiPeriod)) {
+						err(`${at}.period`, `${range(limits.rsiPeriod)} の整数で入れる`);
 					}
-					if (!isIntIn(c.threshold, LIMITS.rsiThreshold)) {
+					if (!isIntIn(c.threshold, limits.rsiThreshold)) {
 						err(
 							`${at}.threshold`,
-							`${range(LIMITS.rsiThreshold)} の整数で入れる`,
+							`${range(limits.rsiThreshold)} の整数で入れる`,
 						);
 					}
-					if (!isIntIn(c.bars, LIMITS.rsiCrossBars)) {
-						err(`${at}.bars`, `${range(LIMITS.rsiCrossBars)} の整数で入れる`);
+					if (!isIntIn(c.bars, limits.rsiCrossBars)) {
+						err(`${at}.bars`, `${range(limits.rsiCrossBars)} の整数で入れる`);
 					}
 					break;
 				case "judgment": {
@@ -1325,18 +1369,18 @@ function validateBuyRule(
 					break;
 				}
 				case "emaPosition":
-					if (!isIntIn(c.period, LIMITS.emaPeriod)) {
-						err(`${at}.period`, `${range(LIMITS.emaPeriod)} の整数で入れる`);
+					if (!isIntIn(c.period, limits.emaPeriod)) {
+						err(`${at}.period`, `${range(limits.emaPeriod)} の整数で入れる`);
 					}
 					break;
 				case "emaSlope": {
-					if (!isIntIn(c.period, LIMITS.emaPeriod)) {
-						err(`${at}.period`, `${range(LIMITS.emaPeriod)} の整数で入れる`);
+					if (!isIntIn(c.period, limits.emaPeriod)) {
+						err(`${at}.period`, `${range(limits.emaPeriod)} の整数で入れる`);
 					}
-					if (!isIntIn(c.bars, LIMITS.emaSlopeBars)) {
-						err(`${at}.bars`, `${range(LIMITS.emaSlopeBars)} の整数で入れる`);
+					if (!isIntIn(c.bars, limits.emaSlopeBars)) {
+						err(`${at}.bars`, `${range(limits.emaSlopeBars)} の整数で入れる`);
 					}
-					const r = LIMITS.emaSlopePercent;
+					const r = limits.emaSlopePercent;
 					if (
 						!isNumIn(c.percent, r) ||
 						Math.abs(c.percent * 100 - Math.round(c.percent * 100)) > 1e-9
@@ -1346,24 +1390,24 @@ function validateBuyRule(
 					break;
 				}
 				case "adx":
-					if (!isIntIn(c.period, LIMITS.adxPeriod)) {
-						err(`${at}.period`, `${range(LIMITS.adxPeriod)} の整数で入れる`);
+					if (!isIntIn(c.period, limits.adxPeriod)) {
+						err(`${at}.period`, `${range(limits.adxPeriod)} の整数で入れる`);
 					}
-					if (!isIntIn(c.threshold, LIMITS.adxThreshold)) {
+					if (!isIntIn(c.threshold, limits.adxThreshold)) {
 						err(
 							`${at}.threshold`,
-							`${range(LIMITS.adxThreshold)} の整数で入れる`,
+							`${range(limits.adxThreshold)} の整数で入れる`,
 						);
 					}
 					break;
 				case "bollinger": {
-					if (!isIntIn(c.period, LIMITS.bollingerPeriod)) {
+					if (!isIntIn(c.period, limits.bollingerPeriod)) {
 						err(
 							`${at}.period`,
-							`${range(LIMITS.bollingerPeriod)} の整数で入れる`,
+							`${range(limits.bollingerPeriod)} の整数で入れる`,
 						);
 					}
-					const r = LIMITS.bollingerSigma;
+					const r = limits.bollingerSigma;
 					if (
 						!isNumIn(c.sigma, r) ||
 						Math.abs(c.sigma * 10 - Math.round(c.sigma * 10)) > 1e-9
@@ -1375,8 +1419,8 @@ function validateBuyRule(
 				case "entryChange":
 					if (g === "buy") {
 						err(at, "買値からの % は売りの条件だけで使える");
-					} else if (!isNumIn(c.percent, LIMITS.percent)) {
-						err(`${at}.percent`, `${range(LIMITS.percent)} の範囲で入れる`);
+					} else if (!isNumIn(c.percent, limits.percent)) {
+						err(`${at}.percent`, `${range(limits.percent)} の範囲で入れる`);
 					}
 					break;
 				case "trailingStop": {
@@ -1384,10 +1428,10 @@ function validateBuyRule(
 						err(at, "最高値からの % は売りの条件だけで使える");
 						break;
 					}
-					if (!isNumIn(c.percent, LIMITS.percent)) {
-						err(`${at}.percent`, `${range(LIMITS.percent)} の範囲で入れる`);
+					if (!isNumIn(c.percent, limits.percent)) {
+						err(`${at}.percent`, `${range(limits.percent)} の範囲で入れる`);
 					}
-					const r = LIMITS.trailingActivatePercent;
+					const r = limits.trailingActivatePercent;
 					if (
 						!isNumIn(c.activatePercent, r) ||
 						Math.abs(
@@ -1404,16 +1448,16 @@ function validateBuyRule(
 						err(at, "ATR の条件は売りの条件だけで使える");
 						break;
 					}
-					if (!isIntIn(c.period, LIMITS.atrPeriod)) {
-						err(`${at}.period`, `${range(LIMITS.atrPeriod)} の整数で入れる`);
+					if (!isIntIn(c.period, limits.atrPeriod)) {
+						err(`${at}.period`, `${range(limits.atrPeriod)} の整数で入れる`);
 					}
 					const tenth = (v: number) =>
 						Math.abs(v * 10 - Math.round(v * 10)) <= 1e-9;
-					const m = LIMITS.atrMultiple;
+					const m = limits.atrMultiple;
 					if (!isNumIn(c.multiple, m) || !tenth(c.multiple)) {
 						err(`${at}.multiple`, `${range(m)}、0.1 刻みで入れる`);
 					}
-					const r = LIMITS.atrActivateMultiple;
+					const r = limits.atrActivateMultiple;
 					if (
 						c.type === "trailingAtr" &&
 						(!isNumIn(c.activateMultiple, r) || !tenth(c.activateMultiple))
@@ -1430,7 +1474,7 @@ function validateBuyRule(
 					if (!isEventImportance(c.minImportance)) {
 						err(`${at}.minImportance`, "選べない値");
 					}
-					const r = LIMITS.eventHours;
+					const r = limits.eventHours;
 					if (!isIntIn(c.beforeHours, r)) {
 						err(`${at}.beforeHours`, `${range(r)} の整数で入れる`);
 					}
@@ -1445,8 +1489,8 @@ function validateBuyRule(
 				case "holdingBars":
 					if (g === "buy") {
 						err(at, "保有本数は売りの条件だけで使える");
-					} else if (!isIntIn(c.bars, LIMITS.holdingBars)) {
-						err(`${at}.bars`, `${range(LIMITS.holdingBars)} の整数で入れる`);
+					} else if (!isIntIn(c.bars, limits.holdingBars)) {
+						err(`${at}.bars`, `${range(limits.holdingBars)} の整数で入れる`);
 					}
 					break;
 			}
@@ -1455,12 +1499,12 @@ function validateBuyRule(
 	if (p.buy.conditions.length === 0) {
 		err("buy", "買い注文の条件を1つ以上追加する");
 	}
-	if (!isIntIn(p.maxPositions, LIMITS.maxPositions)) {
-		const r = LIMITS.maxPositions;
+	if (!isIntIn(p.maxPositions, limits.maxPositions)) {
+		const r = limits.maxPositions;
 		err("maxPositions", `${r.min}〜${r.max} の整数で入れる`);
 	}
 	const lines = p.buyOrder.lines;
-	const nLines = LIMITS.buyOrderLines;
+	const nLines = limits.buyOrderLines;
 	if (lines.length < nLines.min || lines.length > nLines.max) {
 		err("buyOrder.lines", `注文は ${nLines.min}〜${nLines.max} 件にする`);
 	}
@@ -1472,7 +1516,7 @@ function validateBuyRule(
 			return;
 		}
 		const below = line.belowPercent;
-		const r = LIMITS.buyBelowPercent;
+		const r = limits.buyBelowPercent;
 		if (
 			!Number.isFinite(below) ||
 			below < r.min ||
@@ -1493,9 +1537,9 @@ function validateBuyRule(
 	});
 	if (
 		lines.some((l) => l.type === "limit") &&
-		!isIntIn(p.buyOrder.expireBars, LIMITS.buyExpireBars)
+		!isIntIn(p.buyOrder.expireBars, limits.buyExpireBars)
 	) {
-		const e = LIMITS.buyExpireBars;
+		const e = limits.buyExpireBars;
 		err("buyOrder.expireBars", `${e.min}〜${e.max} の整数で入れる`);
 	}
 	if (!isTimeframe(p.buyOrder.expireTimeframe)) {
@@ -1508,8 +1552,8 @@ function validateBuyRule(
 		);
 	}
 	const ps = p.partialSell;
-	if (!isIntIn(ps.percent, LIMITS.partialSellPercent)) {
-		const r = LIMITS.partialSellPercent;
+	if (!isIntIn(ps.percent, limits.partialSellPercent)) {
+		const r = limits.partialSellPercent;
 		err("partialSell.percent", `${r.min}〜${r.max} の整数で入れる`);
 	} else if (
 		p.partialTakeProfit.conditions.length > 0 &&

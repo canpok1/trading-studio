@@ -28,9 +28,11 @@ import {
 	HOUR_MS,
 	historyShortfalls,
 	isCoarser,
+	LIMITS,
 	parseConditionSet,
 	percentToPpm,
 	ppmToPercent,
+	RUN_LIMITS,
 	strategyTemplate,
 	TEMPLATE_IDS,
 	TIMEFRAME_LABELS,
@@ -502,7 +504,11 @@ function RunForm({
 	const edited =
 		template !== null && JSON.stringify(template.params) !== JSON.stringify(p);
 	const nameError = checkName(draft.name);
-	const errors = useMemo(() => validateConditionSet(p), [p]);
+	// 選んだ保存済みの戦略をそのまま実行するときは、上限を下げる前の範囲で検査する（ADR 0033）
+	const errors = useMemo(
+		() => validateConditionSet(p, template && !edited ? RUN_LIMITS : LIMITS),
+		[p, template, edited],
+	);
 
 	// 期間。未指定ならその足のデータの最後から1か月
 	const periodCov = coverage.find((c) => c.timeframe === periodTf);

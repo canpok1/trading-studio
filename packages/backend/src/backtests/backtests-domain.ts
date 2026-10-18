@@ -13,6 +13,7 @@ import {
 	isTimeframe,
 	maxWindowMs,
 	parseConditionSet,
+	RUN_LIMITS,
 	TIMEFRAME_MS,
 	validateConditionSet,
 	withSellDetails,
@@ -217,7 +218,7 @@ export function createBacktestService({
 		const input = segment
 			? { ...requested, from: segment.from, to: segment.to }
 			: requested;
-		const errors = validateConditionSet(input.params);
+		const errors = validateConditionSet(input.params, RUN_LIMITS);
 		if (errors.length > 0) return planFail({ kind: "invalid_params", errors });
 		const invalid = checkInput(input);
 		if (invalid) return planFail(invalid);
