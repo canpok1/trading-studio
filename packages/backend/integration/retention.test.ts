@@ -106,6 +106,7 @@ describe("古いデータの定期削除", () => {
 			backtests: 0,
 			segments: 0,
 			candles: 0,
+			dvol: 0,
 			news: 0,
 			error: null,
 		});

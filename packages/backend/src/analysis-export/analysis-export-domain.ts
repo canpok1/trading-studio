@@ -24,6 +24,8 @@ import {
 } from "@trading-studio/core";
 import type { BacktestRepository } from "../backtests/repository-domain";
 import type { BacktestRun } from "../backtests/types-domain";
+import type { DvolRepository } from "../dvol/repository-domain";
+import type { DvolBar } from "../dvol/types-domain";
 import type { MarketDataService } from "../market-data/types-domain";
 import type { ScoreRepository } from "../news/score-repository-domain";
 import type {
@@ -650,6 +652,18 @@ const backtestDecisionsTable: Table<RunDecision> = {
 	],
 };
 
+const dvolTable: Table<DvolBar> = {
+	file: "dvol_1h.csv",
+	desc: "Deribit の DVOL（BTC オプションから計算した30日の予想ボラ、年率 %）の1時間足。開始時刻が期間内のもの。最後の足は確定前のことがある",
+	columns: [
+		...time<DvolBar>("time", "足の開始時刻", (r) => r.time),
+		col("open", "始値（年率 %、小数2桁）", (r) => r.open / 100),
+		col("high", "高値（年率 %、小数2桁）", (r) => r.high / 100),
+		col("low", "安値（年率 %、小数2桁）", (r) => r.low / 100),
+		col("close", "終値（年率 %、小数2桁）", (r) => r.close / 100),
+	],
+};
+
 const CANDLE_FILE = "candles_1m.csv";
 
 /** README に載せる表と行数 */
@@ -692,6 +706,7 @@ function readme({
 		"",
 		`- news.csv: 新しさの時刻（公開時刻と取得時刻の早いほう）が、期間の始まりの ${maxWindowMs(rule) / HOUR} 時間（一番長い半減期の ${HALF_LIVES_IN_WINDOW} 倍。集計に使う一番長い長さ）前から期間の終わりまでのもの。期間の最初の判定に使うニュースも入れるため`,
 		"- judgments.csv: 期間内の1時間足の終わりの時刻。書き出した時刻より後は入れない",
+		"- dvol_1h.csv: 開始時刻が期間内の1時間足",
 		`- ${CANDLE_FILE}: 開始時刻が期間内の1分足`,
 		"- paper_decisions.csv: 判断した時刻が期間内のもの。paper_orders.csv: 発注した時刻が期間内のもの",
 		"- scoring_criteria.csv・aggregation_rule.csv・strategies.csv: 期間に関係なく今あるもの全部",
@@ -740,6 +755,7 @@ export function createAnalysisExportService({
 	scoreRepo,
 	backtestRepo,
 	marketData,
+	dvol,
 	zip,
 	now = Date.now,
 }: {
@@ -758,6 +774,7 @@ export function createAnalysisExportService({
 		"contents" | "get" | "listDoneStartedBetween"
 	>;
 	marketData: Pick<MarketDataService, "exportCandles">;
+	dvol: Pick<DvolRepository, "bars">;
 	/** ファイルを ZIP にまとめる。now はファイルの更新時刻 */
 	zip: CreateZip;
 	now?: () => number;
@@ -815,6 +832,8 @@ export function createAnalysisExportService({
 					),
 				),
 			);
+
+			add(dvolTable, dvol.bars(from, to));
 
 			const candles = marketData.exportCandles("1m", from, to);
 			const lines = [CSV_HEADER];

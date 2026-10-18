@@ -11,6 +11,8 @@ import { calendarRoutes } from "./calendar/calendar-app";
 import type { CalendarService } from "./calendar/types-domain";
 import { datasetRoutes, datasetRunRoutes } from "./datasets/datasets-app";
 import type { DatasetService } from "./datasets/types-domain";
+import { dvolRoutes } from "./dvol/dvol-app";
+import type { DvolService } from "./dvol/types-domain";
 import { judgmentRoutes } from "./judgments/judgments-app";
 import type { JudgmentService } from "./judgments/types-domain";
 import { marketRoutes } from "./market/market-app";
@@ -50,6 +52,7 @@ export type AppDeps = {
 	datasets: DatasetService;
 	compatible: CompatibleService;
 	calendar: CalendarService;
+	dvol: DvolService;
 };
 
 // frontend は Hono RPC でこの型を使う。Bun 固有の API はここに持ち込まない（frontend の型チェックに Bun の型を入れないため）
@@ -72,6 +75,7 @@ export function createApp({
 	datasets,
 	compatible,
 	calendar,
+	dvol,
 }: AppDeps) {
 	const api = new Hono()
 		.get("/health", (c) =>
@@ -92,6 +96,7 @@ export function createApp({
 		.route("/ai", aiRoutes(compatible))
 		.route("/news", newsRoutes(news))
 		.route("/calendar", calendarRoutes(calendar))
+		.route("/dvol", dvolRoutes(dvol))
 		.route("/scoring", scoringRoutes(scoring, accuracy))
 		.route("/judgments", judgmentRoutes(judgments))
 		.route("/trading", tradingRoutes(trading))

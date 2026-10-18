@@ -8,5 +8,6 @@ process.env.DB_PATH = `${dir}/test.db`;
 process.env.HOST = "127.0.0.1";
 process.env.MARKET_FEED = "demo";
 process.env.NEWS_FEED = "demo";
+process.env.DVOL_FEED = "demo";
 process.env.SCORING_MODEL = "demo";
 await import("../../backend/src/main");

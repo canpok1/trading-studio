@@ -24,6 +24,7 @@ const TABLES: readonly [string, string][] = [
 	["trading_orders", "自動取引の注文"],
 	["backtest_runs", "バックテストの実行"],
 	["candles", "足"],
+	["dvol_bars", "DVOL"],
 	["segments", "相場データ"],
 	["news", "ニュース"],
 ];

@@ -6,6 +6,7 @@ import {
 	SEGMENT_LEAD_MS,
 	TIMEFRAMES,
 } from "@trading-studio/core";
+import type { DvolRepository } from "../dvol/repository-domain";
 import type { MarketDataRepository } from "../market-data/repository-domain";
 import type { RetentionRepository } from "./repository-domain";
 import type {
@@ -46,15 +47,19 @@ export type RetentionEngine = RetentionService & {
 	tick(): void;
 	/** テストで削除の完了を待つために使う */
 	running(): Promise<void> | null;
+	/** 足・ニュース・採点の保持の境目（今の N 年前）。無期限は null */
+	marketDataKeepFrom(): number | null;
 };
 
 export function createRetentionService({
 	repo,
 	marketData,
+	dvol,
 	now = Date.now,
 }: {
 	repo: RetentionRepository;
 	marketData: Pick<MarketDataRepository, "deleteCandles">;
+	dvol: Pick<DvolRepository, "deleteBars">;
 	now?: () => number;
 }): RetentionEngine {
 	let current: Promise<void> | null = null;
@@ -75,6 +80,7 @@ export function createRetentionService({
 			backtests: 0,
 			segments: 0,
 			candles: 0,
+			dvol: 0,
 			news: 0,
 			error: null,
 		};
@@ -125,6 +131,16 @@ export function createRetentionService({
 						);
 					}
 				}
+				// DVOL は1時間足と同じ範囲を残す。価格が無い期間の DVOL は使えないため（ADR 0032）
+				for (const r of rangesOutside(
+					before,
+					repo.keptRanges(candleLeadMs("1h")),
+				)) {
+					result.dvol += await drain(
+						(n) => dvol.deleteBars(r.from, r.to, n),
+						CANDLE_CHUNK,
+					);
+				}
 				for (const r of rangesOutside(
 					before,
 					repo.keptRanges(SEGMENT_LEAD_MS),
@@ -171,6 +187,10 @@ export function createRetentionService({
 			});
 		},
 		running: () => current,
+		marketDataKeepFrom() {
+			const years = repo.settings().marketDataYears;
+			return years === null ? null : yearsBefore(now(), years);
+		},
 		status() {
 			return {
 				settings: repo.settings(),

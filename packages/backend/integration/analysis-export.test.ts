@@ -208,6 +208,16 @@ describe("分析用エクスポート", () => {
 			id,
 		);
 		const run = addBacktest(t, DAY + H);
+		// 期間の前の DVOL は入れない
+		t.dvolRepo.save(
+			[-H, 0, H].map((d) => ({
+				time: DAY + d,
+				open: 5523,
+				high: 5600,
+				low: 5500,
+				close: 5550,
+			})),
+		);
 
 		const res = await download(
 			t,
@@ -225,6 +235,7 @@ describe("分析用エクスポート", () => {
 			"scoring_criteria.csv",
 			"aggregation_rule.csv",
 			"judgments.csv",
+			"dvol_1h.csv",
 			"candles_1m.csv",
 			"strategies.csv",
 			"paper_decisions.csv",
@@ -291,6 +302,18 @@ describe("分析用エクスポート", () => {
 				"",
 			].join("\n"),
 		);
+
+		const dvol = rows(files.get("dvol_1h.csv") as string);
+		expect(dvol.map((d) => d.time_jst)).toEqual([
+			"2026-09-26T00:00:00.000+09:00",
+			"2026-09-26T01:00:00.000+09:00",
+		]);
+		expect(dvol[0]).toMatchObject({
+			open: "55.23",
+			high: "56",
+			low: "55",
+			close: "55.5",
+		});
 
 		const criteria = rows(files.get("scoring_criteria.csv") as string);
 		expect(criteria[0]).toMatchObject({ version: "1", active: "true" });
