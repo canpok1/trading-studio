@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	candleLeadMs,
 	classifyMarket,
 	judgmentRecordStart,
 	rangesOutside,
@@ -118,5 +119,16 @@ describe("rangesOutside", () => {
 			{ from: MIN, to: 100 },
 		]);
 		expect(rangesOutside(100, [])).toEqual([{ from: MIN, to: 100 }]);
+	});
+});
+
+describe("candleLeadMs", () => {
+	test("粒度ごとに 850 本と31日の長いほう", () => {
+		const day = 86_400_000;
+		expect(candleLeadMs("1m")).toBe(31 * day);
+		expect(candleLeadMs("15m")).toBe(31 * day);
+		expect(candleLeadMs("1h")).toBe(850 * 3_600_000);
+		expect(candleLeadMs("4h")).toBe(850 * 4 * 3_600_000);
+		expect(candleLeadMs("1d")).toBe(850 * day);
 	});
 });

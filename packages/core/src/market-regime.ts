@@ -1,6 +1,10 @@
 // 相場データに付ける相場のラベル。閾値は GMO の BTC/JPY 日足（2021-10〜2026-10）の2か月の窓で、
 // 乱高下が1割弱・残りがおよそ3等分になるように決めた（docs/adr/0024）
 
+import { MAX_CANDLE_NEED } from "./condition-strategy";
+import type { Timeframe } from "./timeframe";
+import { TIMEFRAME_MS } from "./timeframe";
+
 export type MarketRegime = "up" | "down" | "range" | "volatile";
 
 export const MARKET_REGIMES: readonly MarketRegime[] = [
@@ -100,6 +104,14 @@ export function segmentPeriods(
  * 市場評価は公開から長期の半減期の4倍まで遡って記事を使い、指標は期間より前の足で計算し始めるため
  */
 export const SEGMENT_LEAD_MS = 31 * 86_400_000;
+
+/**
+ * 残す相場データの開始より前に、その粒度の足を残す長さ。指標の上限で要る前の足（MAX_CANDLE_NEED 本）と
+ * SEGMENT_LEAD_MS の長いほう（ADR 0034）
+ */
+export function candleLeadMs(timeframe: Timeframe): number {
+	return Math.max(SEGMENT_LEAD_MS, MAX_CANDLE_NEED * TIMEFRAME_MS[timeframe]);
+}
 
 /**
  * 市場評価の記録の始まり。古いニュースを消した後は、消した境目から SEGMENT_LEAD_MS たつまでは

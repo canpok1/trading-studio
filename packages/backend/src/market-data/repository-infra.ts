@@ -276,17 +276,19 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 		this.gapCache.clear();
 	}
 
-	/**
-	 * [from, to) の1分・5分・15分足を最大 limit 本消し、消した本数を返す。
-	 * 粗い足は小さいので残し、長い期間のバックテストに使う
-	 */
-	deleteFineCandles(from: number, to: number, limit: number): number {
+	/** [from, to) のその粒度の足を最大 limit 本消し、消した本数を返す */
+	deleteCandles(
+		timeframe: Timeframe,
+		from: number,
+		to: number,
+		limit: number,
+	): number {
 		const n = this.sql.run(
 			`delete from candles where rowid in (
 			   select rowid from candles
-			   where timeframe in ('1m', '5m', '15m') and time >= ? and time < ?
+			   where timeframe = ? and time >= ? and time < ?
 			   limit ?)`,
-			[from, to, limit],
+			[timeframe, from, to, limit],
 		).changes;
 		if (n > 0) this.gapCache.clear();
 		return n;

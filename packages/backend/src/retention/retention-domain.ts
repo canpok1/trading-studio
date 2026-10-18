@@ -1,6 +1,11 @@
 // 古いデータの定期削除。毎日 4:00（JST）に、保持期間を過ぎた判断の記録・バックテストの実行・足・ニュースを消す
 
-import { rangesOutside } from "@trading-studio/core";
+import {
+	candleLeadMs,
+	rangesOutside,
+	SEGMENT_LEAD_MS,
+	TIMEFRAMES,
+} from "@trading-studio/core";
 import type { MarketDataRepository } from "../market-data/repository-domain";
 import type { RetentionRepository } from "./repository-domain";
 import type {
@@ -49,7 +54,7 @@ export function createRetentionService({
 	now = Date.now,
 }: {
 	repo: RetentionRepository;
-	marketData: Pick<MarketDataRepository, "deleteFineCandles">;
+	marketData: Pick<MarketDataRepository, "deleteCandles">;
 	now?: () => number;
 }): RetentionEngine {
 	let current: Promise<void> | null = null;
@@ -107,13 +112,23 @@ export function createRetentionService({
 				const before = yearsBefore(at, s.marketDataYears);
 				// 消している途中や失敗で止まったときも、消した期間を記録の始まりより前として扱うため、先に覚える
 				repo.markNewsDeletedBefore(before);
-				// 先に相場データを減らす。残った相場データの期間の足とニュースは消さない
+				// 先に相場データを減らす。残った相場データの期間と、その前の助走の足とニュースは消さない
 				result.segments = repo.pruneSegments(before);
-				for (const r of rangesOutside(before, repo.keptRanges())) {
-					result.candles += await drain(
-						(n) => marketData.deleteFineCandles(r.from, r.to, n),
-						CANDLE_CHUNK,
-					);
+				for (const tf of TIMEFRAMES) {
+					for (const r of rangesOutside(
+						before,
+						repo.keptRanges(candleLeadMs(tf)),
+					)) {
+						result.candles += await drain(
+							(n) => marketData.deleteCandles(tf, r.from, r.to, n),
+							CANDLE_CHUNK,
+						);
+					}
+				}
+				for (const r of rangesOutside(
+					before,
+					repo.keptRanges(SEGMENT_LEAD_MS),
+				)) {
 					result.news += await drain(
 						(n) => repo.deleteNews(r.from, r.to, n),
 						NEWS_CHUNK,

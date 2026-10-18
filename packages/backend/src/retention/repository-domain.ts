@@ -13,10 +13,10 @@ export interface RetentionRepository {
 	deleteDecisions(before: number, limit: number): number;
 	/** before より前に始めたバックテストの実行を最大 limit 件、結果・アドバイスごと消す。含む実行が無くなったまとめた実行も消す。実行中・アドバイスの生成中は残す */
 	deleteBacktests(before: number, limit: number): number;
-	/** 開始が before より前の相場データを、相場ごとに最新の1件を残して消す。消した件数を返す */
+	/** 開始が before より前の相場データを、相場ごとに最新の1件とデータセットに入っているものを残して消す。消した件数を返す */
 	pruneSegments(before: number): number;
-	/** 残っている相場データのために残す範囲（開始の SEGMENT_LEAD_MS 前から終了まで） */
-	keptRanges(): {
+	/** 残っている相場データのために残す範囲（開始の leadMs 前から終了まで） */
+	keptRanges(leadMs: number): {
 		from: number;
 		to: number;
 	}[];

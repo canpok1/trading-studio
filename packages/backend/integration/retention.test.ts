@@ -269,7 +269,7 @@ describe("古いデータの定期削除", () => {
 			s.sql.query<{ n: number }, []>(`select count(*) as n from ${where}`).get()
 				?.n;
 
-		test("5年より前の相場データは相場ごとに最新だけ残し、その期間の足とニュースを残す", async () => {
+		test("5年より前の相場データは相場ごとに最新だけ残し、その期間と粒度ごとの助走の足とニュースを残す", async () => {
 			const s = setup();
 			const { candle, segment, news } = seed(s);
 			const oldUp = segment(CUT - 300 * DAY, CUT - 240 * DAY, "up");
@@ -286,6 +286,12 @@ describe("古いデータの定期削除", () => {
 			]) {
 				for (const tf of ["1m", "15m", "1h"]) candle(tf, t);
 			}
+			// 1分足は31日前まで、1時間足は850本（約35.4日）前まで、日足は850日前まで残す
+			candle("1m", CUT - 233 * DAY);
+			candle("1h", CUT - 233 * DAY);
+			candle("1h", CUT - 236 * DAY);
+			candle("1d", CUT - 1240 * DAY);
+			candle("1d", CUT - 1260 * DAY);
 			const gone = news(CUT - 280 * DAY);
 			// 相場データの開始の31日前までは残す
 			const lead = news(CUT - 230 * DAY);
@@ -295,22 +301,33 @@ describe("古いデータの定期削除", () => {
 			await s.runNow();
 			expect(s.ids("segments")).toEqual([keptUp, keptDown, recent]);
 			expect(oldUp).toBeLessThan(keptUp);
-			// 1時間足は残し、1分・15分足は残す相場データの期間と境目の後だけ残す
-			expect(count(s, "candles where timeframe = '1h'")).toBe(5);
-			expect(
+			const times = (tf: string) =>
 				s.sql
-					.query<{ time: number }, []>(
-						"select distinct time from candles where timeframe in ('1m', '15m') order by time",
+					.query<{ time: number }, [string]>(
+						"select time from candles where timeframe = ? order by time",
 					)
-					.all()
-					.map((r) => r.time),
-			).toEqual([CUT - 390 * DAY, CUT - 220 * DAY, CUT - 190 * DAY, CUT + DAY]);
+					.all(tf)
+					.map((r) => r.time);
+			const kept = [
+				CUT - 390 * DAY,
+				CUT - 220 * DAY,
+				CUT - 190 * DAY,
+				CUT + DAY,
+			];
+			expect(times("1m")).toEqual(kept);
+			expect(times("15m")).toEqual(kept);
+			expect(times("1h")).toEqual([
+				CUT - 390 * DAY,
+				CUT - 233 * DAY,
+				...kept.slice(1),
+			]);
+			expect(times("1d")).toEqual([CUT - 1240 * DAY]);
 			expect(s.ids("news")).toEqual([lead, inKept, after]);
 			expect(gone).toBeLessThan(lead);
 			expect(count(s, "news_scores")).toBe(3);
 			expect((await s.status()).lastRun).toMatchObject({
 				segments: 1,
-				candles: 2,
+				candles: 6,
 				news: 1,
 			});
 
@@ -319,6 +336,21 @@ describe("古いデータの定期削除", () => {
 			expect(s.t.judgments.firstScoredAt(CUT - 200 * DAY)).toBe(
 				CUT - 200 * DAY,
 			);
+		});
+
+		test("データセットに入っている相場データは、最新でなくても残す", async () => {
+			const s = setup();
+			const { segment } = seed(s);
+			const inDataset = segment(CUT - 300 * DAY, CUT - 240 * DAY, "up");
+			const gone = segment(CUT - 280 * DAY, CUT - 220 * DAY, "up");
+			const latest = segment(CUT - 200 * DAY, CUT - 140 * DAY, "up");
+			s.sql.run(
+				"insert into datasets (name, segment_ids, created_at, updated_at) values ('d', ?, 0, 0)",
+				[JSON.stringify([inDataset])],
+			);
+			await s.runNow();
+			expect(s.ids("segments")).toEqual([inDataset, latest]);
+			expect(gone).toBeGreaterThan(inDataset);
 		});
 
 		test("無期限にすると消さない", async () => {
