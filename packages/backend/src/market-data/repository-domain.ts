@@ -36,11 +36,13 @@ export interface MarketDataRepository {
 	} | null;
 	/** 取り込みを取り消す。その取り込みで保存した足を消す */
 	deleteImported(importId: number): void;
-	/**
-	 * [from, to) の1分・5分・15分足を最大 limit 本消し、消した本数を返す。
-	 * 粗い足は小さいので残し、長い期間のバックテストに使う
-	 */
-	deleteFineCandles(from: number, to: number, limit: number): number;
+	/** [from, to) のその粒度の足を最大 limit 本消し、消した本数を返す */
+	deleteCandles(
+		timeframe: Timeframe,
+		from: number,
+		to: number,
+		limit: number,
+	): number;
 	loadCandles(timeframe: Timeframe, from: number, to: number): Candle[];
 	/** 書き出す期間 [from, to) の足を古い順に最大 limit 本。少しずつ読むのに使う */
 	loadExportPage(

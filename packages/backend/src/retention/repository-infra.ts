@@ -1,6 +1,5 @@
 // 古いデータの削除。保持期間の設定と前回の結果は settings に持つ
 
-import { SEGMENT_LEAD_MS } from "@trading-studio/core";
 import type { Db } from "../db/open-infra";
 import { NEWS_DELETED_BEFORE_KEY } from "../news/score-repository-infra";
 import type { RetentionRepository } from "./repository-domain";
@@ -119,23 +118,24 @@ export class SqliteRetentionRepository implements RetentionRepository {
 		return ids.length;
 	}
 
-	/** 開始が before より前の相場データを、相場ごとに最新の1件を残して消す。消した件数を返す */
+	/** 開始が before より前の相場データを、相場ごとに最新の1件とデータセットに入っているものを残して消す。消した件数を返す */
 	pruneSegments(before: number): number {
 		return this.sql.run(
 			`delete from segments where from_time < ?1 and from_time < (
-			   select max(k.from_time) from segments k where k.regime = segments.regime and k.from_time < ?1)`,
+			   select max(k.from_time) from segments k where k.regime = segments.regime and k.from_time < ?1)
+			 and id not in (select j.value from datasets d, json_each(d.segment_ids) j)`,
 			[before],
 		).changes;
 	}
 
-	/** 残っている相場データのために残す範囲（開始の SEGMENT_LEAD_MS 前から終了まで） */
-	keptRanges(): { from: number; to: number }[] {
+	/** 残っている相場データのために残す範囲（開始の leadMs 前から終了まで） */
+	keptRanges(leadMs: number): { from: number; to: number }[] {
 		return this.sql
 			.query<{ from_time: number; to_time: number }, []>(
 				"select from_time, to_time from segments",
 			)
 			.all()
-			.map((d) => ({ from: d.from_time - SEGMENT_LEAD_MS, to: d.to_time }));
+			.map((d) => ({ from: d.from_time - leadMs, to: d.to_time }));
 	}
 
 	/** 公開が [from, to) のニュースを最大 limit 件、採点・採点し直しごと消す。消した件数を返す */
