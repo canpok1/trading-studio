@@ -26,6 +26,9 @@ import { createDatasetService } from "../src/datasets/datasets-domain";
 import { SqliteDatasetRepository } from "../src/datasets/repository-infra";
 import type { Db } from "../src/db/open-infra";
 import { createTestDb } from "../src/db/test-db-infra";
+import type { FetchDvol } from "../src/dvol/dvol-domain";
+import { createDvolService } from "../src/dvol/dvol-domain";
+import { SqliteDvolRepository } from "../src/dvol/repository-infra";
 import { createJudgmentService } from "../src/judgments/judgments-domain";
 import { createMarketService } from "../src/market/market-domain";
 import { createMarketDataService } from "../src/market-data/market-data-domain";
@@ -196,18 +199,29 @@ export function createTestApp(
 		now: () => clock.now,
 		fees: TEST_FEE_RATES,
 	});
+	const dvolRepo = new SqliteDvolRepository(db);
 	const analysisExport = createAnalysisExportService({
 		repo: new SqliteAnalysisExportRepository(db),
 		zip: createZip,
 		scoreRepo,
 		backtestRepo,
 		marketData,
+		dvol: dvolRepo,
 		now: () => clock.now,
 	});
 	// 定期の削除は動かさず、テストから retention.tick() を呼ぶ
 	const retention = createRetentionService({
 		repo: new SqliteRetentionRepository(db),
 		marketData: marketDataRepo,
+		dvol: dvolRepo,
+		now: () => clock.now,
+	});
+	// 取得は自動では動かさず、テストから dvol.run() を呼ぶ。取得元の中身は dvolFeed.fetch を差し替える
+	const dvolFeed: { fetch: FetchDvol } = { fetch: async () => [] };
+	const dvol = createDvolService({
+		repo: dvolRepo,
+		fetchDvol: (from, to) => dvolFeed.fetch(from, to),
+		keepFrom: () => retention.marketDataKeepFrom(),
 		now: () => clock.now,
 	});
 	const scoringAnalysis = createScoringAnalysis({
@@ -242,6 +256,7 @@ export function createTestApp(
 		datasets,
 		compatible,
 		calendar,
+		dvol,
 		...over,
 	});
 	return {
@@ -274,5 +289,8 @@ export function createTestApp(
 		calendar,
 		icalFeeds,
 		eventJobs,
+		dvol,
+		dvolRepo,
+		dvolFeed,
 	};
 }

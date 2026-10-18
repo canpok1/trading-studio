@@ -57,6 +57,16 @@ export const candles = sqliteTable(
 	],
 );
 
+/** Deribit の DVOL（BTC の30日の予想ボラ、年率 %）の1時間足。値は ×100 の整数（55.23 → 5523） */
+export const dvolBars = sqliteTable("dvol_bars", {
+	/** 足の開始のエポックミリ秒 */
+	time: integer("time").primaryKey(),
+	open: integer("open").notNull(),
+	high: integer("high").notNull(),
+	low: integer("low").notNull(),
+	close: integer("close").notNull(),
+});
+
 /** 相場データ。足は写さず、期間と相場のラベルだけを持つ。毎月、直近2か月ぶんを作る */
 export const segments = sqliteTable(
 	"segments",

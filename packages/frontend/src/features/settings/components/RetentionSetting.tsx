@@ -174,7 +174,7 @@ function RetentionInfo({ status }: { status: RetentionStatus }) {
 					? "まだ削除していない"
 					: last.error !== null
 						? `${formatDateTime(last.at)} 失敗（${last.error}）`
-						: `${formatDateTime(last.at)} 判断の記録 ${last.decisions.toLocaleString()} 件・バックテスト ${last.backtests.toLocaleString()} 件${last.candles === undefined ? "" : `・足 ${last.candles.toLocaleString()} 本・ニュース ${(last.news ?? 0).toLocaleString()} 件・相場データ ${(last.segments ?? 0).toLocaleString()} 件`}`}
+						: `${formatDateTime(last.at)} 判断の記録 ${last.decisions.toLocaleString()} 件・バックテスト ${last.backtests.toLocaleString()} 件${last.candles === undefined ? "" : `・足 ${last.candles.toLocaleString()} 本・ニュース ${(last.news ?? 0).toLocaleString()} 件・相場データ ${(last.segments ?? 0).toLocaleString()} 件`}${last.dvol === undefined ? "" : `・DVOL ${last.dvol.toLocaleString()} 本`}`}
 			</p>
 			<p>
 				DB の大きさ: {formatBytes(status.dbBytes)}（うち削除で空いた{" "}

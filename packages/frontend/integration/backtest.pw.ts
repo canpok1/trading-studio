@@ -101,6 +101,45 @@ test("RSI の条件を持つ戦略の結果では、チャートの下に RSI �
 	await expect(page.getByText(/点線はしきい値/)).toBeVisible();
 });
 
+test("RSI と DVOL を両方出して RSI の本数を変えても、小窓は2つのまま", async ({
+	page,
+	api,
+}) => {
+	const { runs, chart } = result();
+	onResults(api, runs, chart);
+	api.on(routes.api.dvol.bars, "$get", (req) => {
+		const bars = [];
+		for (
+			let t = Number(req.query.get("from"));
+			t < Number(req.query.get("to"));
+			t += 3_600_000
+		) {
+			bars.push({ time: t, open: 5500, high: 5600, low: 5400, close: 5523 });
+		}
+		return { bars };
+	});
+	await page.goto("/backtest/runs/7");
+	await openChartValues(page);
+	await openChartSettings(page);
+	await page.getByLabel("足の粒度").selectOption("1h");
+	await page.getByRole("button", { name: "DVOL", exact: true }).click();
+	const rsi = page.getByRole("button", { name: "RSI", exact: true });
+	if ((await rsi.getAttribute("aria-pressed")) !== "true") await rsi.click();
+	// 描画ライブラリは区画ごと（と区画の間の線・時間軸）に表の行を作る
+	const rows = page
+		.locator("table")
+		.filter({ has: page.locator("canvas") })
+		.locator("tr");
+	// 価格・線・RSI・線・DVOL・時間軸
+	await expect(rows).toHaveCount(6);
+	await page.getByLabel("RSI の本数").fill("21");
+	await expect(page.getByTestId("chart-rsi-21")).toHaveCount(1);
+	await expect(rows).toHaveCount(6);
+	await expect(page.getByTestId("chart-dvol")).toHaveText("DVOL 55.2");
+	await page.getByRole("button", { name: "DVOL", exact: true }).click();
+	await expect(rows).toHaveCount(4);
+});
+
 test("ボリンジャーバンドの条件を持つ戦略の結果では、チャートにバンドと値が出る", async ({
 	page,
 	api,

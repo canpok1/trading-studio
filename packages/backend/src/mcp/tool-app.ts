@@ -5,6 +5,7 @@ import type { AdviceService } from "../advice/types-domain";
 import type { BacktestService } from "../backtests/types-domain";
 import type { CalendarService } from "../calendar/types-domain";
 import type { DatasetService } from "../datasets/types-domain";
+import type { DvolCollector } from "../dvol/dvol-domain";
 import type { JudgmentService } from "../judgments/types-domain";
 import type { MarketService } from "../market/types-domain";
 import type { MarketDataService } from "../market-data/types-domain";
@@ -48,6 +49,8 @@ export type McpDeps = {
 		CalendarService,
 		"listSources" | "status" | "criteria" | "listEvents"
 	>;
+	/** DVOL。読むだけ */
+	dvol: Pick<DvolCollector, "recent">;
 	/** run_backtest が終わりを待つ時間。過ぎたら実行中のまま返し、get_backtest で続きを見てもらう */
 	backtestWaitMs?: number;
 	sleep?: (ms: number) => Promise<void>;

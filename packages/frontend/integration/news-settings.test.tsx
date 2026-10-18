@@ -430,6 +430,28 @@ describe("取得", () => {
 		);
 		expect(api.requests.some((r) => r.method === "DELETE")).toBe(true);
 	});
+
+	test("DVOL の取得の状態が出て、失敗が続いていればいつからかと理由が出る", async () => {
+		const at = Date.UTC(2026, 9, 18, 3);
+		const api = settingsApi().on(routes.api.dvol.status, "$get", () => ({
+			lastSuccessAt: at,
+			lastError: "HTTP 503",
+			errorSince: at + 3_600_000,
+			latestBarTime: at,
+			nextRunAt: at + 7_200_000,
+			running: false,
+		}));
+		const view = renderApp("/settings?section=news&tab=sources", api);
+		const card = (await view.findByText("DVOL（Deribit）")).closest(
+			"div.rounded-xl",
+		) as HTMLElement;
+		await waitFor(() =>
+			expect(card.textContent).toContain(
+				"2026/10/18 13:00:00 から失敗: HTTP 503",
+			),
+		);
+		expect(card.textContent).toContain("最後に取得: 2026/10/18 12:00:00");
+	});
 });
 
 describe("AI の接続", () => {

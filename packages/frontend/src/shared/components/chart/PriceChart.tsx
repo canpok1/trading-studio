@@ -10,6 +10,8 @@ import {
 	JUDGES,
 	JUDGMENT_VALUES,
 	rsi,
+	TIMEFRAME_MS,
+	TIMEFRAMES,
 } from "@trading-studio/core";
 import type {
 	IChartApi,
@@ -41,6 +43,7 @@ import { Modal } from "../Modal";
 import type { ChartBar, ChartMarker } from "./chart-data";
 import {
 	barStep,
+	dvolPerBar,
 	fromChartTime,
 	hasOhlc,
 	initialRange,
@@ -55,11 +58,13 @@ import {
 } from "./chart-data";
 import {
 	useChartStyle,
+	useShowDvol,
 	useShowEntry,
 	useShowTriggers,
 	useShowValues,
 	useShowVolume,
 } from "./chart-style";
+import { useDvolBars } from "./dvol-data";
 import { BbFields, EmaFields, RsiFields } from "./IndicatorSettings";
 import { JudgeLayer, stripArea } from "./judge-layer";
 import type { BarJudgments, ChartBg } from "./judgment-data";
@@ -163,6 +168,31 @@ const volumeColor = () => withAlpha(cssVar("--color-text-2"), 0.35);
 /** RSI の小窓の高さの割合。価格 : RSI = 3 : 1 */
 const PRICE_STRETCH = 3;
 const RSI_STRETCH = 1;
+
+/** チャートの高さ。小窓（RSI・DVOL）1つにつき価格の区画の3分の1ずつ伸ばす */
+function chartHeight(short: boolean, compact: boolean, subPanes: number) {
+	if (short) {
+		return [
+			"h-[200px] lg:h-[340px]",
+			"h-[270px] lg:h-[460px]",
+			"h-[340px] lg:h-[580px]",
+		][subPanes];
+	}
+	return compact
+		? [
+				"h-[260px] lg:h-[480px]",
+				"h-[347px] lg:h-[640px]",
+				"h-[434px] lg:h-[800px]",
+			][subPanes]
+		: [
+				"h-[260px] lg:h-[360px]",
+				"h-[347px] lg:h-[480px]",
+				"h-[434px] lg:h-[600px]",
+			][subPanes];
+}
+
+/** DVOL（年率 %）は小数1桁で出し、単位は付けない（チャート上の指標の値） */
+const formatDvol = (v: number) => v.toFixed(1);
 
 // Tailwind のクラスはキャンバスに効かないので、テーマの CSS 変数を読んで渡す
 function cssVar(name: string): string {
@@ -268,6 +298,7 @@ export function PriceChart({
 		/** ボリンジャーバンドの上限・中央・下限 */
 		bbs: ISeriesApi<"Line">[];
 		rsis: ISeriesApi<"Line">[];
+		dvol: ISeriesApi<"Line"> | null;
 		volume: ISeriesApi<"Histogram">;
 		layer: JudgeLayer;
 		/** 価格の軸の「現」「買」の値 */
@@ -314,6 +345,20 @@ export function PriceChart({
 	const showEma = indicators.ema.on && !hideIndicators;
 	const showRsi = indicators.rsi.on && !hideIndicators;
 	const showBb = indicators.bb.on && !hideIndicators;
+	const [dvolOn, setDvolOn] = useShowDvol();
+	const showDvol = dvolOn && !hideIndicators;
+	const barMs = barStep(barTimes);
+	const dvolBars = useDvolBars(
+		showDvol,
+		bars[0]?.time ?? null,
+		bars.length > 0 ? (bars.at(-1) as ChartBar).time + (barMs ?? 0) + 1 : null,
+		TIMEFRAMES.find((tf) => TIMEFRAME_MS[tf] === barMs),
+	);
+	const dvolValues = useMemo(
+		() =>
+			showDvol ? dvolPerBar(barTimes, dvolBars).map((v) => v / 100) : null,
+		[showDvol, barTimes, dvolBars],
+	);
 	const bb = indicators.bb.value;
 	const bbKey = showBb ? `${bb.period}:${bb.sigma}` : "";
 	// biome-ignore lint/correctness/useExhaustiveDependencies: 本数と σ の組は bbKey で見る
@@ -423,6 +468,7 @@ export function PriceChart({
 			emas: [],
 			bbs: [],
 			rsis: [],
+			dvol: null,
 			volume,
 			layer,
 			tags,
@@ -487,8 +533,8 @@ export function PriceChart({
 		};
 	}, []);
 
-	// 価格の区画の高さを測る。画面幅と RSI の小窓の有無で変わる
-	// biome-ignore lint/correctness/useExhaustiveDependencies: RSI の小窓を出し入れしたら測り直す
+	// 価格の区画の高さを測る。画面幅と RSI・DVOL の小窓の有無で変わる
+	// biome-ignore lint/correctness/useExhaustiveDependencies: RSI・DVOL の小窓を出し入れしたら測り直す
 	useEffect(() => {
 		const el = box.current;
 		if (!el) return;
@@ -508,7 +554,7 @@ export function PriceChart({
 			ro.disconnect();
 			cancelAnimationFrame(frame);
 		};
-	}, [showRsi]);
+	}, [showRsi, showDvol]);
 
 	// 価格。線とローソク足の両方に入れておき、見せる方だけを表示する
 	useEffect(() => {
@@ -691,6 +737,41 @@ export function PriceChart({
 		panes[0]?.setStretchFactor(PRICE_STRETCH);
 		panes[1]?.setStretchFactor(RSI_STRETCH);
 	}, [slots, rsiValues, showRsi, rsiKey, themeTick]);
+
+	// DVOL の小窓。RSI の小窓の下（RSI を出していなければ価格の下）の区画に終値の線を描く。
+	// 空いた区画は描画ライブラリが消すので、RSI の系列を付け直すたびに（出し入れ・本数の変更）こちらも付け直して位置を合わせる
+	// biome-ignore lint/correctness/useExhaustiveDependencies: themeTick の変化で色を読み直し、rsiValues・rsiKey の変化で RSI の後に付け直す
+	useEffect(() => {
+		const c = chartRef.current;
+		if (!c) return;
+		if (c.dvol) c.chart.removeSeries(c.dvol);
+		c.dvol = null;
+		if (!dvolValues) return;
+		const s = c.chart.addSeries(
+			LineSeries,
+			{
+				color: cssVar("--color-dvol"),
+				lineWidth: 1,
+				priceLineVisible: false,
+				lastValueVisible: false,
+				crosshairMarkerVisible: false,
+				priceFormat: { type: "custom", formatter: formatDvol, minMove: 0.1 },
+			},
+			showRsi ? 2 : 1,
+		);
+		s.setData(
+			slots.map((slot) => {
+				const time = toChartTime(slot.time) as UTCTimestamp;
+				const v =
+					slot.bar === null ? Number.NaN : (dvolValues[slot.bar] as number);
+				return Number.isNaN(v) ? { time } : { time, value: v };
+			}),
+		);
+		c.dvol = s;
+		for (const [i, p] of c.chart.panes().entries()) {
+			p.setStretchFactor(i === 0 ? PRICE_STRETCH : RSI_STRETCH);
+		}
+	}, [slots, dvolValues, showRsi, rsiValues, rsiKey, themeTick]);
 
 	// 注文のアイコン。themeTick は色を読み直すため
 	// biome-ignore lint/correctness/useExhaustiveDependencies: themeTick の変化で色を読み直し、marksTick の変化で置き直す
@@ -966,6 +1047,17 @@ export function PriceChart({
 		</>
 	);
 	// 本数の欄は表示しているときだけ出し、モーダルが縦に伸びすぎないようにする
+	const dvolRow = (
+		<button
+			key="dvol"
+			type="button"
+			aria-pressed={dvolOn}
+			onClick={() => setDvolOn(!dvolOn)}
+			className={`${CHIP} self-start`}
+		>
+			DVOL
+		</button>
+	);
 	const indicatorRows = (["ema", "bb", "rsi"] as const).map((k) => {
 		const c = indicators[k];
 		return (
@@ -985,7 +1077,14 @@ export function PriceChart({
 		);
 	});
 	// 凡例の中身。場所を取らないよう「？」の吹き出しの中で見せる
-	const hasLegend = !!(onMarker || showEma || showBb || showRsi || judgments);
+	const hasLegend = !!(
+		onMarker ||
+		showEma ||
+		showBb ||
+		showRsi ||
+		showDvol ||
+		judgments
+	);
 	const legendBody = (
 		<div className="flex flex-col gap-2">
 			{onMarker && (
@@ -1054,6 +1153,20 @@ export function PriceChart({
 					))}
 				</LegendRow>
 			)}
+			{showDvol && (
+				<LegendRow
+					title="DVOL"
+					note="Deribit の BTC の30日の予想ボラ（年率 %）。下の小窓に1時間足の終値を描く。粗い足ではその足の最後の1時間の値"
+				>
+					<span className="flex items-center gap-1">
+						<i
+							className="inline-block h-[3px] w-3"
+							style={{ background: "var(--color-dvol)" }}
+						/>
+						DVOL
+					</span>
+				</LegendRow>
+			)}
 			{judgments &&
 				JUDGES.map((j) => (
 					<LegendRow
@@ -1115,6 +1228,7 @@ export function PriceChart({
 					<div className="flex flex-col gap-2.5">
 						<span className="text-xs text-text-2">指標</span>
 						{indicatorRows}
+						{dvolRow}
 					</div>
 					<button
 						type="button"
@@ -1231,6 +1345,18 @@ export function PriceChart({
 								</span>
 							);
 						})}
+					{dvolValues && (
+						<span data-testid="chart-dvol" className="flex items-center gap-1">
+							<i
+								className="inline-block h-[3px] w-2.5"
+								style={{ background: "var(--color-dvol)" }}
+							/>
+							DVOL {(() => {
+								const v = dvolValues[shown as number];
+								return v === undefined || Number.isNaN(v) ? "—" : formatDvol(v);
+							})()}
+						</span>
+					)}
 				</>
 			)}
 			{slot && (
@@ -1307,15 +1433,7 @@ export function PriceChart({
 				ref={box}
 				role="img"
 				aria-label="価格チャート"
-				className={`w-full ${
-					short
-						? showRsi
-							? "h-[270px] lg:h-[460px]"
-							: "h-[200px] lg:h-[340px]"
-						: showRsi
-							? `h-[347px] ${compact ? "lg:h-[640px]" : "lg:h-[480px]"}`
-							: `h-[260px] ${compact ? "lg:h-[480px]" : "lg:h-[360px]"}`
-				}`}
+				className={`w-full ${chartHeight(short, compact, (showRsi ? 1 : 0) + (showDvol ? 1 : 0))}`}
 			/>
 		</>
 	);

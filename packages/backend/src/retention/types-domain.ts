@@ -20,6 +20,8 @@ export type RetentionRun = {
 	segments?: number;
 	candles?: number;
 	news?: number;
+	/** 消した DVOL の足の数。DVOL を持つ前の結果には無い */
+	dvol?: number;
 	/** 失敗したときの理由 */
 	error: string | null;
 };

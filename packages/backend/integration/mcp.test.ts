@@ -83,6 +83,7 @@ async function setup() {
 			market: t.market,
 			advice: t.advice,
 			calendar: t.calendar,
+			dvol: t.dvol,
 			sleep: async () => {},
 		}),
 	);
@@ -117,6 +118,7 @@ describe("MCP", () => {
 			"get_backtest_orders",
 			"get_data_coverage",
 			"get_dataset_run",
+			"get_dvol_bars",
 			"get_event_setup",
 			"get_guide",
 			"get_market_evaluation",
@@ -476,6 +478,29 @@ describe("MCP", () => {
 				{ close: P, volume: 2_000_000, marketEvaluation: { sentiment: null } },
 				{},
 				{ time: jst(T0 - M) },
+			],
+		});
+	});
+
+	test("get_dvol_bars は期間の新しいほうから limit 本を、JST の時刻と年率 % で古い順に返す", async () => {
+		const { t, call } = await setup();
+		const H = 3_600_000;
+		const now = Date.UTC(2026, 9, 18, 3);
+		t.clock.now = now;
+		t.dvolRepo.save(
+			[3, 2, 1, 30].map((k) => ({
+				time: now - k * H,
+				open: 5000,
+				high: 5100,
+				low: 4900,
+				close: 5000 + k,
+			})),
+		);
+		const r = await call("get_dvol_bars", { range: "1d", limit: 2 });
+		expect(r.json).toMatchObject({
+			bars: [
+				{ time: jst(now - 2 * H), open: 50, high: 51, low: 49, close: 50.02 },
+				{ time: jst(now - H), open: 50, high: 51, low: 49, close: 50.01 },
 			],
 		});
 	});

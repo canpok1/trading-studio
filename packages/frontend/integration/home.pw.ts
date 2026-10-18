@@ -1,5 +1,7 @@
 // ホーム（チャートと稼働中の戦略のカード）。チャート（lightweight-charts）は canvas に描くので happy-dom では動かず、実ブラウザで確かめる
 import { expect, test } from "./browser";
+import { openChartSettings, openChartValues } from "./chart-settings";
+import { routes } from "./fake-api";
 import { tradingRun } from "./fixtures";
 import { onHome } from "./home-api";
 
@@ -164,4 +166,39 @@ test("−・＋を「最新へ」と同じ行に出し、押しても最新の�
 	await plus.click();
 	await minus.click();
 	await expect(page.getByRole("button", { name: "最新へ" })).toBeDisabled();
+});
+
+/** 1時間足ごとに DVOL 55.23% を返す偽物 */
+function onDvol(api: Parameters<typeof onHome>[0]) {
+	api.on(routes.api.dvol.bars, "$get", (req) => {
+		const from = Number(req.query.get("from"));
+		const to = Number(req.query.get("to"));
+		const bars = [];
+		for (
+			let t = Math.ceil(from / 3_600_000) * 3_600_000;
+			t < to;
+			t += 3_600_000
+		) {
+			bars.push({ time: t, open: 5500, high: 5600, low: 5400, close: 5523 });
+		}
+		return { bars };
+	});
+}
+
+test("チャートの設定で DVOL を出すと小窓と値が出て、再読み込み後も保たれる", async ({
+	page,
+	api,
+}) => {
+	onHome(api, { runs: fourRuns() });
+	onDvol(api);
+	await page.goto("/home");
+	await openChartValues(page);
+	const value = page.getByTestId("chart-dvol");
+	await expect(value).toHaveCount(0);
+	await openChartSettings(page);
+	await page.getByRole("button", { name: "DVOL", exact: true }).click();
+	await page.keyboard.press("Escape");
+	await expect(value).toHaveText("DVOL 55.2");
+	await page.reload();
+	await expect(page.getByTestId("chart-dvol")).toHaveText("DVOL 55.2");
 });

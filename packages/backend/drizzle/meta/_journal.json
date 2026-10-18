@@ -204,6 +204,13 @@
       "when": 1792159373409,
       "tag": "0028_trading_run_per_strategy",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1792284590714,
+      "tag": "0029_dvol_bars",
+      "breakpoints": true
     }
   ]
 }

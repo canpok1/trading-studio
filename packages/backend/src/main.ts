@@ -31,6 +31,10 @@ import { createDatasetService } from "./datasets/datasets-domain";
 import { SqliteDatasetRepository } from "./datasets/repository-infra";
 import { migrateDb } from "./db/migrate-infra";
 import { isDbReachable, openDb } from "./db/open-infra";
+import { deribitDvol } from "./dvol/deribit-infra";
+import { createDvolService } from "./dvol/dvol-domain";
+import { demoDvol } from "./dvol/fake-deribit-infra";
+import { SqliteDvolRepository } from "./dvol/repository-infra";
 import { createJudgmentService } from "./judgments/judgments-domain";
 import { createMarketService } from "./market/market-domain";
 import { createMarketDataService } from "./market-data/market-data-domain";
@@ -171,12 +175,24 @@ const tradingEngine = createTradingService({
 trading = tradingEngine;
 const tradingTimer = setInterval(() => tradingEngine.tick(), 1_000);
 
+const dvolRepo = new SqliteDvolRepository(db);
 const retention = createRetentionService({
 	repo: new SqliteRetentionRepository(db),
 	marketData: marketDataRepo,
+	dvol: dvolRepo,
 });
 const retentionTimer = setInterval(() => retention.tick(), 60_000);
 retention.tick();
+
+// 起動時に欠けている過去分を取り込み、その後は1時間ごとに取る
+const dvol = createDvolService({
+	repo: dvolRepo,
+	// E2E では Deribit へつながず、偽物の足を返す
+	fetchDvol: process.env.DVOL_FEED === "demo" ? demoDvol() : deribitDvol,
+	keepFrom: () => retention.marketDataKeepFrom(),
+});
+const dvolTimer = setInterval(() => dvol.tick(), 60_000);
+dvol.tick();
 
 const segments = createSegmentService({
 	repo: new SqliteSegmentRepository(db),
@@ -276,6 +292,7 @@ const server = new Hono()
 			market,
 			advice,
 			calendar,
+			dvol,
 		}),
 	)
 	.route(
@@ -298,6 +315,7 @@ const server = new Hono()
 				scoreRepo,
 				backtestRepo,
 				marketData,
+				dvol: dvolRepo,
 			}),
 			retention,
 			accuracy: scoringAnalysis,
@@ -305,6 +323,7 @@ const server = new Hono()
 			datasets,
 			compatible,
 			calendar,
+			dvol,
 		}),
 	);
 serveFrontend(server, distDir);
@@ -335,6 +354,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
 		clearInterval(tradingTimer);
 		clearInterval(retentionTimer);
 		clearInterval(segmentTimer);
+		clearInterval(dvolTimer);
 		stopLagWatch();
 		collector.stop();
 		await http.stop();

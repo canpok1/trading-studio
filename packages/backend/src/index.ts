@@ -35,6 +35,7 @@ export type {
 	HistoryEntry,
 	HistoryResult,
 } from "./datasets/types-domain";
+export type { DvolBar, DvolStatus } from "./dvol/types-domain";
 export type { CurrentJudgment, JudgmentSeries } from "./judgments/types-domain";
 export type { ChartRangeId, LatestMarket } from "./market/types-domain";
 export type { ImportJob, TimeframeCoverage } from "./market-data/types-domain";
