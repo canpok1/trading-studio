@@ -200,10 +200,6 @@ function chartHeight(short: boolean, compact: boolean, subPanes: number) {
 /** DVOL（年率 %）は小数1桁で出し、単位は付けない（チャート上の指標の値） */
 const formatDvol = (v: number) => v.toFixed(1);
 
-/** RSI・DVOL の軸の値。しきい値（整数）はそのまま、ほかは小数1桁 */
-const formatPaneValue = (v: number) =>
-	Number.isInteger(v) ? String(v) : v.toFixed(1);
-
 /** 最後の足の値。最後の足に値が無ければ（指標の本数が足りないなど）、値のある一番新しい足 */
 function lastValue(values: readonly number[]): number | null {
 	for (let i = values.length - 1; i >= 0; i--) {
@@ -213,20 +209,18 @@ function lastValue(values: readonly number[]): number | null {
 	return null;
 }
 
-/** 小窓の今の値。線と同じ色で塗る */
-const nowTag = (price: number, color: string): PriceTag => ({
-	price,
-	label: "現",
-	color,
-	textColor: cssVar("--color-surface"),
-});
-
-/** 小窓のしきい値・平均の値。灰色で塗る */
-const grayTag = (price: number, label: string): PriceTag => ({
+/** 小窓の軸の値。今の値は線と同じ色、しきい値・平均の % は灰色で塗る。text を渡せばそのまま出す */
+const paneTag = (
+	price: number,
+	label: string,
+	color: string,
+	text?: string,
+): PriceTag => ({
 	price,
 	label,
-	color: cssVar("--color-text-2"),
+	color,
 	textColor: cssVar("--color-surface"),
+	...(text === undefined ? {} : { text }),
 });
 
 // Tailwind のクラスはキャンバスに効かないので、テーマの CSS 変数を読んで渡す
@@ -776,14 +770,15 @@ export function PriceChart({
 					axisLabelVisible: false,
 				});
 			}
-			const tags = new PriceTags(formatPaneValue);
+			const tags = new PriceTags(formatRsi);
 			first.attachPrimitive(tags);
 			const now = lastValue(rsiValues[0] ?? []);
+			// しきい値は設定で必ず下 < 上の2つ
 			const sorted = [...thresholds].sort((a, b) => a - b);
 			tags.setTags([
-				...(now === null ? [] : [nowTag(now, cssVar(rsiVar(0)))]),
+				...(now === null ? [] : [paneTag(now, "現", cssVar(rsiVar(0)))]),
 				...sorted.map((t, i) =>
-					grayTag(t, sorted.length > 1 && i === 0 ? "下" : "上"),
+					paneTag(t, i === 0 ? "下" : "上", gray, String(t)),
 				),
 			]);
 		}
@@ -806,8 +801,8 @@ export function PriceChart({
 			values: readonly number[],
 			color: string,
 			lineStyle: LineStyle,
+			main = false,
 		) => {
-			const main = c.dvol.length === 0;
 			const s = c.chart.addSeries(
 				LineSeries,
 				{
@@ -836,7 +831,7 @@ export function PriceChart({
 		};
 		const blue = cssVar("--color-dvol");
 		const gray = cssVar("--color-text-2");
-		const main = add(dvolValues, blue, LineStyle.Solid);
+		const main = add(dvolValues, blue, LineStyle.Solid, true);
 		// 値の条件のしきい値は RSI のしきい値と同じ破線。価格線は縦の範囲に入らない
 		for (const t of dvolLevels) {
 			main.createPriceLine({
@@ -852,7 +847,7 @@ export function PriceChart({
 		if (dvolAvgValues) {
 			add(dvolAvgValues, blue, LineStyle.Dashed);
 			const avg = lastValue(dvolAvgValues);
-			if (avg !== null) avgTags.push({ ...grayTag(avg, "平"), color: blue });
+			if (avg !== null) avgTags.push(paneTag(avg, "平", blue));
 			for (const [pct, label] of [
 				[da.lower, "下"],
 				[da.upper, "上"],
@@ -862,16 +857,16 @@ export function PriceChart({
 					gray,
 					LineStyle.Dashed,
 				);
-				if (avg !== null) avgTags.push(grayTag((avg * pct) / 100, label));
+				if (avg !== null) avgTags.push(paneTag((avg * pct) / 100, label, gray));
 			}
 		}
-		const tags = new PriceTags(formatPaneValue);
+		const tags = new PriceTags(formatDvol);
 		main.attachPrimitive(tags);
 		const now = lastValue(dvolValues);
 		tags.setTags([
-			...(now === null ? [] : [nowTag(now, blue)]),
+			...(now === null ? [] : [paneTag(now, "現", blue)]),
 			...avgTags,
-			...dvolLevels.map((t) => grayTag(t, "条")),
+			...dvolLevels.map((t) => paneTag(t, "条", gray, String(t))),
 		]);
 		for (const [i, p] of c.chart.panes().entries()) {
 			p.setStretchFactor(i === 0 ? PRICE_STRETCH : RSI_STRETCH);

@@ -18,6 +18,8 @@ export type PriceTag = {
 	price: number;
 	/** 値の前に付ける1文字 */
 	label: string;
+	/** 値の見せ方を変えるとき（しきい値を入れたとおりに出すなど）。省けば PriceTags の format */
+	text?: string;
 	color: string;
 	textColor: string;
 };
@@ -50,7 +52,7 @@ export class PriceTags implements ISeriesPrimitive<Time> {
 			// 位置は layout() で決めた固定の座標を使う。自動の配置で空きを作らないよう、こちらは画面外にする
 			coordinate: () => -1000,
 			fixedCoordinate: () => this.layout()[i],
-			text: () => `${t.label} ${this.format(t.price)}`,
+			text: () => `${t.label} ${t.text ?? this.format(t.price)}`,
 			textColor: () => t.textColor,
 			backColor: () => t.color,
 		}));

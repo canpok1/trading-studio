@@ -12,13 +12,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 /** EMA の本数（1〜2本、小さい順） */
 export type EmaSetting = number[];
-/** RSI の本数と、点線を引く下・上のしきい値 */
+/** RSI の本数と、破線を引く下・上のしきい値 */
 export type RsiSetting = { period: number; lower: number; upper: number };
 
 /** ボリンジャーバンドの本数と σ */
 export type BbSetting = { period: number; sigma: number };
 
-/** DVOL の平均の日数と、点線を引く平均に対する下・上の % */
+/** DVOL の平均の日数と、破線を引く平均に対する下・上の % */
 export type DvolAvgSetting = { days: number; lower: number; upper: number };
 
 /** 戦略で使っていないときの値 */
@@ -223,11 +223,11 @@ export type ChartIndicators = {
 	ema: IndicatorControl<EmaSetting>;
 	rsi: IndicatorControl<RsiSetting>;
 	bb: IndicatorControl<BbSetting>;
-	/** DVOL の平均の線と、平均に対する % の点線。描くのは DVOL の小窓を出しているときだけ */
+	/** DVOL の平均の線と、平均に対する % の破線。描くのは DVOL の小窓を出しているときだけ */
 	dvolAvg: IndicatorControl<DvolAvgSetting>;
 	/** 戦略で DVOL の条件を使っているか（使っていれば DVOL の小窓を最初から出す） */
 	dvolUsed: boolean;
-	/** 戦略の DVOL の値の条件のしきい値。小窓に点線を引く */
+	/** 戦略の DVOL の値の条件のしきい値。小窓に破線を引く */
 	dvolLevels: number[];
 };
 
