@@ -468,7 +468,7 @@ function unstableBars(alpha: number): number {
 const unstableEma = (n: number) => unstableBars(2 / (n + 1));
 const unstableWilder = (n: number) => unstableBars(1 / n);
 
-/** LIMITS の範囲の条件で要る前の足の最大（EMA の傾きの上限）。保持の削除で残す助走の本数に使う */
+/** LIMITS の範囲の条件で要る前の足の最大（EMA の傾きの上限） */
 export const MAX_CANDLE_NEED = 850;
 
 /** insufficient は判定できない理由。note はその前置き（無ければ指標の本数が足りない） */
