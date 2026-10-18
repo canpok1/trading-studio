@@ -6,6 +6,7 @@ import {
 	conditionStrategy,
 	DEFAULT_BUY_ORDER,
 	DEFAULT_PARTIAL_SELL,
+	MARKET_BUY_ORDER,
 	singleBuy,
 } from "./condition-strategy";
 import { DEFAULT_AGGREGATION_RULE } from "./news-judgment";
@@ -756,28 +757,32 @@ describe("DVOL", () => {
 		close: 100,
 		volume: 0,
 	}));
-	// 期間の前から後まで1時間ごと
-	const dvol = [-2, -1, 0, 1, 2, 3, 4, 5].map((i) => ({
-		time: i * H,
-		close: 5000 + i,
-	}));
-	const run = (dvolMs: number) => {
-		const seen: number[][] = [];
-		const spy: Strategy<null> = {
-			id: "spy",
-			requiredJudges: () => [],
-			candleNeeds: () => ({ "1h": 1 }),
-			recentMs: () => 0,
-			dvolMs: () => dvolMs,
-			validate: () => [],
-			evaluate: ({ now, dvol, state }) => {
-				seen.push(dvol.map((d) => d.time));
-				return { intents: [], nextEvalAt: now, state };
+
+	test("判定の時刻までに終わった DVOL の足だけで判定する（終わる前の足の値を先読みしない）", () => {
+		// 開始が 2H の足だけ低い。その足が終わる 3H の判定で初めて買う
+		const dvol = [-1, 0, 1, 2, 3, 4].map((i) => ({
+			time: i * H,
+			close: i === 2 ? 4000 : 7000,
+		}));
+		const base = strategyTemplate("trend").params;
+		const params: ConditionSet = {
+			...base,
+			frequency: {
+				flat: { value: 1, unit: "h" },
+				holding: { value: 1, unit: "h" },
 			},
+			buys: base.buys.slice(0, 1).map((b) => ({
+				...b,
+				buy: {
+					match: "all",
+					conditions: [{ type: "dvol", threshold: 50, direction: "below" }],
+				},
+				buyOrder: MARKET_BUY_ORDER,
+			})),
 		};
-		runBacktest({
-			strategy: spy,
-			params: null,
+		const r = runBacktest({
+			strategy: conditionStrategy,
+			params,
 			events: { events: [], covered: [] },
 			dvol,
 			candles: { "1h": hours },
@@ -786,20 +791,11 @@ describe("DVOL", () => {
 			dataTimeframe: "1h",
 			from: 0,
 			to: hours.length * H,
-			initialCash: 1_000_000,
+			initialCash: 10_000_000,
 			fees: { limitPpm: 0, marketPpm: 0 },
 		});
-		return seen;
-	};
-
-	test("判定の時刻までに確定した足だけを、戦略が頼む長さだけ渡す", () => {
-		const seen = run(2 * H);
-		// 1本目の判定は 1H。確定しているのは開始が 0 までの足
-		expect(seen[0]).toEqual([-1 * H, 0]);
-		expect(seen.at(-1)).toEqual([3 * H, 4 * H]);
-	});
-
-	test("戦略が頼まなければ渡さない", () => {
-		expect(run(0).every((d) => d.length === 0)).toBe(true);
+		expect(
+			r.orders.filter((o) => o.side === "buy").map((o) => o.placedAt),
+		).toEqual([3 * H]);
 	});
 });

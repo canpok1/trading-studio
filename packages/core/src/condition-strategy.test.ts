@@ -2777,16 +2777,22 @@ describe("DVOL", () => {
 		).toHaveLength(0);
 	});
 
+	test("0.1 刻みのしきい値は、ちょうどの値で以上・以下とも成立する", () => {
+		// 32.2 × 100 は浮動小数で 3220 をわずかに超える
+		expect(run(value(32.2, "above"), dvolBars([3220])).intents).toHaveLength(1);
+		expect(run(value(32.2, "below"), dvolBars([3220])).intents).toHaveLength(1);
+	});
+
 	test("途中の足（終わりが判定の時刻より後）は使わない", () => {
 		const forming = [...dvolBars([5000]), { time: now - H / 2, close: 9000 }];
 		expect(run(value(60, "below"), forming).intents).toHaveLength(1);
 	});
 
 	test("最新の足が古い・DVOL が無いときは成立しない", () => {
-		const stale = dvolBars([5000], now - 2 * H - 1);
+		const stale = dvolBars([5000], now - 3 * H - 1);
 		expect(run(value(60, "below"), stale).intents).toHaveLength(0);
 		expect(
-			run(value(60, "below"), dvolBars([5000], now - 2 * H)).intents,
+			run(value(60, "below"), dvolBars([5000], now - 3 * H)).intents,
 		).toHaveLength(1);
 		expect(run(value(60, "below"), []).intents).toHaveLength(0);
 		// どれか1つのグループでは、ほかの条件で成立できる
@@ -2878,7 +2884,7 @@ describe("DVOL", () => {
 
 	test("渡してほしい DVOL の長さは、平均の日数の最大に確定待ちと取得の遅れを足したもの。JSON から読み戻せる", () => {
 		expect(dvolMs(buyWith())).toBe(0);
-		expect(dvolMs(buyWith(value(60, "below")))).toBe(3 * H);
+		expect(dvolMs(buyWith(value(60, "below")))).toBe(4 * H);
 		const p = params({
 			buy: { match: "all", conditions: [average(120, "below")] },
 			stopLoss: {
@@ -2888,7 +2894,7 @@ describe("DVOL", () => {
 				],
 			},
 		});
-		expect(dvolMs(p)).toBe(30 * 24 * H + 3 * H);
+		expect(dvolMs(p)).toBe(30 * 24 * H + 4 * H);
 		expect(parseConditionSet(JSON.parse(JSON.stringify(p)))).toEqual(p);
 	});
 

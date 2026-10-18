@@ -1,7 +1,13 @@
 // 画面で作る「条件のセット」を実行する汎用の条件戦略
 
 import type { DvolPoint } from "./dvol";
-import { DVOL_STALE_MS, dvolAt, dvolAverage, formatDvol } from "./dvol";
+import {
+	DVOL_STALE_MS,
+	dvolAt,
+	dvolAverage,
+	dvolRatioPercent,
+	formatDvol,
+} from "./dvol";
 import type { EventCalendar, EventImportance } from "./event-calendar";
 import {
 	calendarGap,
@@ -1000,7 +1006,8 @@ function checkOther(c: Exclude<Condition, CandleCondition>, ctx: Ctx): Hit {
 		case "dvol": {
 			const v = dvolAt(ctx.dvol, ctx.now);
 			if (!v.ok) return { ok: false };
-			const t = c.threshold * 100;
+			// 0.1 刻みのしきい値を ×100 すると浮動小数の誤差で境界がずれるので丸める
+			const t = Math.round(c.threshold * 100);
 			const hit = c.direction === "above" ? v.value >= t : v.value <= t;
 			return hit
 				? {
@@ -1013,7 +1020,7 @@ function checkOther(c: Exclude<Condition, CandleCondition>, ctx: Ctx): Hit {
 			const v = dvolAt(ctx.dvol, ctx.now);
 			const avg = dvolAverage(ctx.dvol, ctx.now, c.days);
 			if (!v.ok || !avg.ok) return { ok: false };
-			const ratio = (v.value / avg.value) * 100;
+			const ratio = dvolRatioPercent(v.value, avg.value);
 			const hit =
 				c.direction === "above" ? ratio >= c.percent : ratio <= c.percent;
 			return hit

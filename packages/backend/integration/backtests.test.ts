@@ -778,7 +778,8 @@ describe("相場データで期間を選ぶ", () => {
 
 describe("DVOL の条件", () => {
 	// 期間とその前の1時間ごとの DVOL
-	const saveDvol = (t: T, close: number) =>
+	const saveDvol = (t: T, close: number) => {
+		t.dvolRepo.recordSuccess(START + DAYS * 24 * H);
 		t.dvolRepo.save(
 			Array.from({ length: DAYS * 24 }, (_, i) => ({
 				time: START + i * H,
@@ -788,6 +789,7 @@ describe("DVOL の条件", () => {
 				close,
 			})),
 		);
+	};
 	const withDvol: ConditionSet = singleBuy({
 		...FLAT,
 		buy: {

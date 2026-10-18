@@ -91,9 +91,7 @@ const CONDITION: ResponseSchema = {
 		slow: opt(int("長期EMAの本数")),
 		lookback: opt(int("直近の本数")),
 		period: opt(int("RSI・EMA・ボリンジャーバンド・ADX・ATR の本数")),
-		threshold: opt(
-			num("RSI・ADX のしきい値（整数）・DVOL のしきい値（0.1 刻み）"),
-		),
+		threshold: opt(int("RSI・ADX・DVOL のしきい値")),
 		sigma: opt(num("ボリンジャーバンドの σ")),
 		band: opt(str("ボリンジャーバンドの上限・下限", ["upper", "lower"])),
 		percent: opt(num("%")),

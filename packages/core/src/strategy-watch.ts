@@ -31,7 +31,7 @@ import {
 	usesAtr,
 	usesPeaks,
 } from "./condition-strategy";
-import { dvolAt, dvolAverage, formatDvol } from "./dvol";
+import { dvolAt, dvolAverage, dvolRatioPercent, formatDvol } from "./dvol";
 import type { ScheduledEvent } from "./event-calendar";
 import {
 	calendarGap,
@@ -266,7 +266,7 @@ function detailOf(c: Condition, ctx: Ctx): string {
 		if (c.type === "dvol") return `今 ${formatDvol(v.value)}`;
 		const avg = dvolAverage(ctx.dvol, ctx.now, c.days);
 		if (!avg.ok) return avg.reason;
-		return `今 ${formatDvol(v.value)} ・ 平均 ${formatDvol(avg.value)}（${((v.value / avg.value) * 100).toFixed(0)}%）`;
+		return `今 ${formatDvol(v.value)} ・ 平均 ${formatDvol(avg.value)}（${dvolRatioPercent(v.value, avg.value).toFixed(0)}%）`;
 	}
 	if (!needsCandles(c)) return "";
 	const sr = ctx.series(c.timeframe);

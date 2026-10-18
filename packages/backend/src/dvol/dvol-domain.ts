@@ -1,7 +1,12 @@
 // DVOL（Deribit の BTC の30日の予想ボラ）の1時間足の取得。1時間ごとに、最後に保存した足から今までを取る（docs/adr/0032）
 
-import type { Timeframe } from "@trading-studio/core";
-import { candleStart, isCoarser, isTimeframe } from "@trading-studio/core";
+import type { ConditionSet, DvolPoint, Timeframe } from "@trading-studio/core";
+import {
+	candleStart,
+	conditionStrategy,
+	isCoarser,
+	isTimeframe,
+} from "@trading-studio/core";
 import { CHART_RANGE_MS } from "../market/market-domain";
 import type { ChartRangeId } from "../market/types-domain";
 import type { DvolRepository } from "./repository-domain";
@@ -15,6 +20,29 @@ export const DVOL_FIRST_TIME = Date.UTC(2021, 2, 24);
 const WINDOW_BARS = 1000;
 /** 一度に返す足の上限 */
 export const DVOL_BARS_MAX = 50_000;
+
+/** 取得の終わりの記録は取得を始めた後なので、この分だけ前を取得の時刻とみなす */
+const FETCH_MARGIN_MS = 5 * 60_000;
+
+/**
+ * 戦略の DVOL の条件に渡す1時間足。範囲は、判定の時刻 [from, to] に戦略が頼む長さを前に足したもの。
+ * 最後に取得した時点で終わっていた足だけを返す（終わる前に取った足は途中の値のまま保存されているため）。条件が無ければ空
+ */
+export function strategyDvol(
+	repo: Pick<DvolRepository, "bars" | "fetchState">,
+	params: ConditionSet,
+	from: number,
+	to: number,
+): DvolPoint[] {
+	const ms = conditionStrategy.dvolMs(params);
+	if (ms === 0) return [];
+	const fetched = repo.fetchState().lastSuccessAt;
+	if (fetched === null) return [];
+	const end = Math.min(to, fetched - FETCH_MARGIN_MS - HOUR_MS + 1);
+	return repo
+		.bars(from - ms, end)
+		.map((b) => ({ time: b.time, close: b.close }));
+}
 
 /** 開始が [from, to] の1時間足を取る手段。テストでは偽物に差し替える */
 export type FetchDvol = (from: number, to: number) => Promise<DvolBar[]>;

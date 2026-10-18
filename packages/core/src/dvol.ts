@@ -5,8 +5,11 @@ import { HOUR_MS, jstDateTime } from "./event-calendar";
 /** DVOL の1時間足。close は年率 % の ×100 の整数（55.23 → 5523） */
 export type DvolPoint = { time: number; close: number };
 
-/** 最新の確定した足がこれより古ければ、取得が止まっているとみなす */
-export const DVOL_STALE_MS = 2 * HOUR_MS;
+/**
+ * 最新の確定した足の終わりがこれより古ければ、取得が止まっているとみなす。
+ * 1時間ごとの取得で、取得の時点で終わっていた足だけを使うと、取得が動いていても最大で約2時間古いため、余裕を足す
+ */
+export const DVOL_STALE_MS = 3 * HOUR_MS;
 
 /** 平均を出すのに、期間の足の数のうちこの割合が要る（取得の抜けを少しだけ許す） */
 export const DVOL_AVERAGE_COVERAGE = 0.9;
@@ -51,6 +54,10 @@ export function dvolAt(points: readonly DvolPoint[], now: number): DvolNow {
 	}
 	return { ok: true, value: last.close };
 }
+
+/** 最新の値の、平均に対する %（四捨五入しない） */
+export const dvolRatioPercent = (value: number, average: number) =>
+	(value / average) * 100;
 
 /** now の時点で確定している直近 days 日の足の平均（×100）。足が足りなければ理由 */
 export function dvolAverage(
