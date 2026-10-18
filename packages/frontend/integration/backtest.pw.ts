@@ -202,9 +202,9 @@ test("戦略で DVOL の平均との比を使っていれば、DVOL の小窓と
 		]),
 	});
 	onResults(api, runs, chart);
-	const asked: string[] = [];
 	api.on(routes.api.dvol.bars, "$get", (req) => {
-		asked.push(req.query.get("averageDays") ?? "");
+		// 頼まれた日数ごとに違う平均を返し、戦略の日数で頼んだことを表示で確かめる
+		const days = Number(req.query.get("averageDays"));
 		const bars = [];
 		for (
 			let t = Number(req.query.get("from"));
@@ -217,7 +217,7 @@ test("戦略で DVOL の平均との比を使っていれば、DVOL の小窓と
 				high: 5600,
 				low: 5400,
 				close: 5523,
-				average: 5021,
+				average: days === 14 ? 5021 : 9999,
 			});
 		}
 		return { bars };
@@ -228,7 +228,6 @@ test("戦略で DVOL の平均との比を使っていれば、DVOL の小窓と
 	await expect(page.getByTestId("chart-dvol-average")).toHaveText(
 		"平均14日 50.2（110%）",
 	);
-	expect(asked).toContain("14");
 	await openChartSettings(page);
 	await expect(
 		page.getByRole("button", { name: "DVOL の平均" }),

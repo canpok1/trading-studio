@@ -14,6 +14,7 @@ import {
 	TIMEFRAMES,
 } from "@trading-studio/core";
 import type {
+	AutoscaleInfo,
 	IChartApi,
 	IPriceLine,
 	ISeriesApi,
@@ -356,7 +357,7 @@ export function PriceChart({
 	const showDvolAvg = showDvol && indicators.dvolAvg.on;
 	const da = indicators.dvolAvg.value;
 	const barMs = barStep(barTimes);
-	const dvolBars = useDvolBars(
+	const dvol = useDvolBars(
 		showDvol,
 		bars[0]?.time ?? null,
 		bars.length > 0 ? (bars.at(-1) as ChartBar).time + (barMs ?? 0) + 1 : null,
@@ -365,16 +366,16 @@ export function PriceChart({
 	);
 	const dvolValues = useMemo(
 		() =>
-			showDvol ? dvolPerBar(barTimes, dvolBars).map((v) => v / 100) : null,
-		[showDvol, barTimes, dvolBars],
+			showDvol ? dvolPerBar(barTimes, dvol.bars).map((v) => v / 100) : null,
+		[showDvol, barTimes, dvol],
 	);
-	// 読み直すまでは前に読んだ足の平均で描く（平均を出した直後は平均が無く、線は出ない）
+	// 日数を変えた直後は、読み直すまで前の日数の平均なので出さない
 	const dvolAvgValues = useMemo(
 		() =>
-			showDvolAvg
-				? dvolPerBar(barTimes, dvolBars, (d) => d.average).map((v) => v / 100)
+			showDvolAvg && dvol.averageDays === da.days
+				? dvolPerBar(barTimes, dvol.bars, (d) => d.average).map((v) => v / 100)
 				: null,
-		[showDvolAvg, barTimes, dvolBars],
+		[showDvolAvg, barTimes, dvol, da.days],
 	);
 	const dvolAvgKey = showDvolAvg ? `${da.lower}/${da.upper}` : "";
 	const dvolLevels = indicators.dvolLevels;
@@ -797,6 +798,23 @@ export function PriceChart({
 			return s;
 		};
 		const main = add(dvolValues, cssVar("--color-dvol"), LineStyle.Solid);
+		// 価格線は縦の範囲に入らないので、しきい値が DVOL の値から離れていても見えるよう範囲に含める
+		if (dvolLevels.length > 0) {
+			main.applyOptions({
+				autoscaleInfoProvider: (base: () => AutoscaleInfo | null) => {
+					const r = base();
+					const lo = Math.min(...dvolLevels);
+					const hi = Math.max(...dvolLevels);
+					return {
+						...r,
+						priceRange: {
+							minValue: Math.min(r?.priceRange?.minValue ?? lo, lo),
+							maxValue: Math.max(r?.priceRange?.maxValue ?? hi, hi),
+						},
+					};
+				},
+			});
+		}
 		// 値の条件のしきい値は RSI のしきい値と同じ点線
 		for (const t of dvolLevels) {
 			main.createPriceLine({

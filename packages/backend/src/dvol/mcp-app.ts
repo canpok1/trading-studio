@@ -2,10 +2,10 @@
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod";
+import { dvolAverageDaysSchema } from "../mcp/schemas-domain";
 import type { ToolDeps } from "../mcp/tool-app";
 import { readOnly, text } from "../mcp/tool-app";
 import { jst } from "../mcp/views-domain";
-import { DVOL_AVERAGE_DAYS } from "./dvol-domain";
 
 /** get_dvol_bars で一度に返す足の上限 */
 const BARS_MAX = 2_000;
@@ -22,11 +22,7 @@ export function registerDvolTools(server: McpServer, { dvol }: ToolDeps) {
 					.default("1w")
 					.describe("1d=1日・1w=1週間・1m=30日・all=全期間"),
 				limit: z.number().int().min(1).max(BARS_MAX).default(200),
-				averageDays: z
-					.number()
-					.int()
-					.min(DVOL_AVERAGE_DAYS.min)
-					.max(DVOL_AVERAGE_DAYS.max)
+				averageDays: dvolAverageDaysSchema
 					.optional()
 					.describe("平均の日数（1〜30）。チャートの DVOL の平均の線と同じ"),
 			},

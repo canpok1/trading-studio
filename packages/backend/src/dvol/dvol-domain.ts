@@ -20,8 +20,6 @@ export const FETCH_INTERVAL_MS = HOUR_MS;
 export const DVOL_FIRST_TIME = Date.UTC(2021, 2, 24);
 /** 1回の問い合わせで取る本数。Deribit は1回1000本まで返す */
 const WINDOW_BARS = 1000;
-/** 平均の日数の範囲。戦略の条件 DVOL（平均との比）と同じ */
-export const DVOL_AVERAGE_DAYS = LIMITS.dvolDays;
 /** 一度に返す足の上限 */
 export const DVOL_BARS_MAX = 50_000;
 
@@ -72,7 +70,7 @@ export function parseDvolBarsQuery(q: Record<string, string | undefined>): {
 	let averageDays: number | undefined;
 	if (q.averageDays !== undefined) {
 		const d = Number(q.averageDays);
-		const r = DVOL_AVERAGE_DAYS;
+		const r = LIMITS.dvolDays;
 		if (!Number.isInteger(d) || d < r.min || d > r.max) return null;
 		averageDays = d;
 	}
@@ -213,7 +211,9 @@ export function createDvolService({
 					: from - averageDays * 24 * HOUR_MS,
 				t + HOUR_MS,
 			);
-			const bars = points.slice(Math.max(0, points.length - limit));
+			// 平均のために前へ広げた分は返さない
+			const inRange = points.filter((b) => b.time >= from);
+			const bars = inRange.slice(Math.max(0, inRange.length - limit));
 			return averageDays === undefined
 				? bars
 				: withAverage(bars, points, averageDays);

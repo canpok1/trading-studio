@@ -1,6 +1,6 @@
 // 価格の描き方（線 / ローソク足）。選んだものをブラウザに保存し、ホームとバックテスト結果で共有する
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import type { ChartStyle } from "./chart-data";
 
 const STORAGE_KEY = "chart-style";
@@ -123,25 +123,31 @@ const DVOL_KEY = "chart-dvol";
 export function useShowDvol(
 	strategyUses: boolean,
 ): [boolean, (on: boolean) => void] {
-	const [on, setOn] = useState<boolean | null>(null);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: 戦略が DVOL を使うかが変わったときだけ戻す
-	useEffect(() => {
-		setOn(null);
-	}, [strategyUses]);
-	const saved = () => {
+	const [saved, setSaved] = useState(() => {
 		try {
 			return localStorage.getItem(DVOL_KEY) === "on";
 		} catch {
 			return false;
 		}
-	};
-	const set = useCallback((v: boolean) => {
-		setOn(v);
-		try {
-			localStorage.setItem(DVOL_KEY, v ? "on" : "off");
-		} catch {
-			// 保存できない環境では、この画面を開いている間だけ効く
-		}
-	}, []);
-	return [on ?? (strategyUses || saved()), set];
+	});
+	// この画面で選んだ値と、そのときの strategyUses。strategyUses が変われば選んだ値を捨てる
+	const [chosen, setChosen] = useState<{ uses: boolean; on: boolean } | null>(
+		null,
+	);
+	const set = useCallback(
+		(v: boolean) => {
+			setChosen({ uses: strategyUses, on: v });
+			setSaved(v);
+			try {
+				localStorage.setItem(DVOL_KEY, v ? "on" : "off");
+			} catch {
+				// 保存できない環境では、この画面を開いている間だけ効く
+			}
+		},
+		[strategyUses],
+	);
+	return [
+		chosen && chosen.uses === strategyUses ? chosen.on : strategyUses || saved,
+		set,
+	];
 }

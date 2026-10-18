@@ -4,6 +4,7 @@ import type { MarketRegime, Timeframe } from "@trading-studio/core";
 import {
 	DEFAULT_FEE_RATES,
 	DURATIONS,
+	LIMITS,
 	MARKET_REGIMES,
 	TIMEFRAMES,
 } from "@trading-studio/core";
@@ -18,6 +19,13 @@ export const timeframeSchema = z.enum(
 );
 
 export const durationSchema = z.enum(DURATIONS);
+
+/** DVOL の平均の日数。戦略の条件 DVOL（平均との比）と同じ範囲 */
+export const dvolAverageDaysSchema = z
+	.number()
+	.int()
+	.min(LIMITS.dvolDays.min)
+	.max(LIMITS.dvolDays.max);
 
 /** 手数料率（ppm）。省けば既定の率 */
 export const feeSchema = {

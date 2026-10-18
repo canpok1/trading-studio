@@ -25,6 +25,13 @@ describe("dvolAverageSeries", () => {
 		expect(got.some((v) => v !== null)).toBe(true);
 	});
 
+	test("同じ入力なら同じ結果", () => {
+		const times = [T0 + 30 * H, T0 + 50 * H];
+		expect(dvolAverageSeries(points, times, 1)).toEqual(
+			dvolAverageSeries(points, times, 1),
+		);
+	});
+
 	test("足が無ければすべて null", () => {
 		expect(dvolAverageSeries([], [T0, T0 + H], 1)).toEqual([null, null]);
 	});

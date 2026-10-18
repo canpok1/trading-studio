@@ -5,6 +5,13 @@ import { ApiContext } from "../../lib/api";
 import { readJson, useInterval } from "../../lib/useAsync";
 
 const HOUR_MS = 3_600_000;
+
+/** 読んだ足と、その足の平均の日数（平均を頼まなければ null） */
+export type DvolBars = {
+	bars: readonly DvolBar[];
+	averageDays: number | null;
+};
+const EMPTY: DvolBars = { bars: [], averageDays: null };
 /** 読み直す間隔。取得は1時間ごとだが時刻の区切りに揃っていないので、新しい足と確定した値を早めに拾う */
 const RELOAD_MS = 5 * 60_000;
 
@@ -18,16 +25,16 @@ export function useDvolBars(
 	to: number | null,
 	timeframe: Timeframe | undefined,
 	averageDays: number | null,
-): readonly DvolBar[] {
+): DvolBars {
 	const api = useContext(ApiContext);
-	const [bars, setBars] = useState<readonly DvolBar[]>([]);
+	const [bars, setBars] = useState<DvolBars>(EMPTY);
 	const toHour = to === null ? null : Math.ceil(to / HOUR_MS) * HOUR_MS;
 	const [tick, setTick] = useState(0);
 	useInterval(() => setTick((n) => n + 1), RELOAD_MS, on);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: tick の変化で読み直す
 	useEffect(() => {
 		if (!on || !api || from === null || toHour === null) {
-			setBars([]);
+			setBars(EMPTY);
 			return;
 		}
 		let alive = true;
@@ -41,8 +48,8 @@ export function useDvolBars(
 				},
 			})
 			.then((r) => readJson<{ bars: DvolBar[] }>(r))
-			.then((r) => alive && setBars(r.bars))
-			.catch(() => alive && setBars([]));
+			.then((r) => alive && setBars({ bars: r.bars, averageDays }))
+			.catch(() => alive && setBars(EMPTY));
 		return () => {
 			alive = false;
 		};
