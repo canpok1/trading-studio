@@ -28,9 +28,11 @@ import {
 	HOUR_MS,
 	historyShortfalls,
 	isCoarser,
+	LIMITS,
 	parseConditionSet,
 	percentToPpm,
 	ppmToPercent,
+	RUN_LIMITS,
 	strategyTemplate,
 	TEMPLATE_IDS,
 	TIMEFRAME_LABELS,
@@ -120,6 +122,8 @@ export type BacktestDraft = {
 	/** 適用したテンプレート。「戦略設定」の見出しの横に出す。結果から再実行したときは無い */
 	template: Template | null;
 	params: ConditionSet;
+	/** バックテスト結果から再実行したときの、その結果の条件。これと同じ間は上限を下げる前の範囲で検査する（ADR 0033） */
+	savedParams?: ConditionSet | null;
 	/** AI アドバイスの改善版から来たとき、元の実行からの変更点。「戦略設定」の下に出す。閉じるかテンプレートを読み込むと消す */
 	improvement?: { changes: ConditionSetChange[] } | null;
 	/** JST の日付（終了日を含む）。null はデータの最後から1か月 */
@@ -143,8 +147,9 @@ export type BacktestDraft = {
 function loadDraft(strategies: StoredStrategy[]): BacktestDraft | null {
 	try {
 		const v = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as
-			| (Omit<BacktestDraft, "params" | "template"> & {
+			| (Omit<BacktestDraft, "params" | "template" | "savedParams"> & {
 					params: unknown;
+					savedParams?: unknown;
 					template?: (Template & { params: unknown }) | null;
 					strategyId?: number | null;
 			  })
@@ -163,6 +168,7 @@ function loadDraft(strategies: StoredStrategy[]): BacktestDraft | null {
 			name: v.name ?? template?.label ?? BLANK_NAME,
 			template,
 			params,
+			savedParams: v.savedParams ? parseConditionSet(v.savedParams) : null,
 			improvement: v.improvement ?? null,
 			fromDate: v.fromDate,
 			toDate: v.toDate,
@@ -338,6 +344,9 @@ export function BacktestRunPage() {
 				name: passed?.name ?? template?.label ?? BLANK_NAME,
 				template,
 				params: passedParams,
+				savedParams: passed?.savedParams
+					? parseConditionSet(passed.savedParams)
+					: null,
 				improvement: passed?.improvement ?? null,
 				fromDate: passed?.fromDate ?? base?.fromDate ?? null,
 				toDate: passed?.toDate ?? base?.toDate ?? null,
@@ -502,7 +511,15 @@ function RunForm({
 	const edited =
 		template !== null && JSON.stringify(template.params) !== JSON.stringify(p);
 	const nameError = checkName(draft.name);
-	const errors = useMemo(() => validateConditionSet(p), [p]);
+	// 保存済みの戦略・結果の条件をそのまま実行するときは、上限を下げる前の範囲で検査する（ADR 0033）
+	const unchanged =
+		(template !== null && !edited) ||
+		(draft.savedParams != null &&
+			JSON.stringify(draft.savedParams) === JSON.stringify(p));
+	const errors = useMemo(
+		() => validateConditionSet(p, unchanged ? RUN_LIMITS : LIMITS),
+		[p, unchanged],
+	);
 
 	// 期間。未指定ならその足のデータの最後から1か月
 	const periodCov = coverage.find((c) => c.timeframe === periodTf);
@@ -1376,6 +1393,7 @@ function RunForm({
 						update({
 							template: t,
 							params: t.params,
+							savedParams: null,
 							improvement: null,
 							...(rename ? { name: nameFor(t) } : {}),
 						});

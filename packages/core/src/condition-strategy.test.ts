@@ -3,6 +3,7 @@ import type {
 	BuyOrderLine,
 	Condition,
 	ConditionSet,
+	Limits,
 	SingleBuyConditionSet,
 } from "./condition-strategy";
 import {
@@ -17,8 +18,11 @@ import {
 	evaluateConditionSet,
 	eventWindowHours as eventWindowHoursOf,
 	historyShortfalls as historyShortfallsOf,
+	LIMITS,
 	MARKET_BUY_ORDER,
+	MAX_CANDLE_NEED,
 	parseConditionSet as parseConditionSetOf,
+	RUN_LIMITS,
 	recentMs as recentMsOf,
 	rsiLines as rsiLinesOf,
 	singleBuy,
@@ -65,8 +69,8 @@ const historyShortfalls = (
 ) => historyShortfallsOf(toSet(p), ...rest);
 const recentMs = (p: Flat) => recentMsOf(toSet(p));
 const rsiLines = (p: Flat) => rsiLinesOf(toSet(p));
-const validateConditionSet = (p: Flat | ConditionSet) =>
-	validateConditionSetOf(toSet(p)).map((e) => ({
+const validateConditionSet = (p: Flat | ConditionSet, limits?: Limits) =>
+	validateConditionSetOf(toSet(p), limits).map((e) => ({
 		...e,
 		path: e.path.replace(/^buys\.0\./, ""),
 	}));
@@ -259,9 +263,14 @@ describe("RSI", () => {
 		expect(errs).toContain("buy.conditions.0.threshold");
 		expect(
 			validateConditionSet(
-				buyWith({ ...below, period: 100, threshold: 99 }),
+				buyWith({ ...below, period: 50, threshold: 99 }),
 			).filter((e) => e.path.startsWith("buy.conditions")),
 		).toEqual([]);
+		expect(
+			validateConditionSet(buyWith({ ...below, period: 51 })).map(
+				(e) => e.path,
+			),
+		).toContain("buy.conditions.0.period");
 	});
 
 	test("チャートに出す RSI は本数ごとに、条件のしきい値をまとめる", () => {
@@ -286,8 +295,8 @@ describe("RSI", () => {
 		expect(rsiLines(buyWith())).toEqual([]);
 	});
 
-	test("必要な足の本数は期間の 10 倍 + 1", () => {
-		expect(candleNeeds(buyWith({ ...below, period: 14 }))["1h"]).toBe(141);
+	test("必要な足の本数は 期間 + 1 + 不安定期間", () => {
+		expect(candleNeeds(buyWith({ ...below, period: 14 }))["1h"]).toBe(96);
 	});
 
 	test("JSON から読み戻せる", () => {
@@ -668,11 +677,101 @@ describe("validateConditionSet", () => {
 	});
 });
 
+describe("指標の上限", () => {
+	const tf = "1h" as const;
+	const atLimits: Condition[] = [
+		{
+			type: "emaCross",
+			timeframe: tf,
+			fast: LIMITS.emaPeriod.max - 1,
+			slow: LIMITS.emaPeriod.max,
+			direction: "up",
+		},
+		{
+			type: "breakout",
+			timeframe: tf,
+			lookback: LIMITS.lookback.max,
+			direction: "high",
+		},
+		{
+			type: "rsi",
+			timeframe: tf,
+			period: LIMITS.rsiPeriod.max,
+			threshold: 30,
+			direction: "below",
+		},
+		{
+			type: "rsiCross",
+			timeframe: tf,
+			period: LIMITS.rsiPeriod.max,
+			threshold: 30,
+			bars: LIMITS.rsiCrossBars.max,
+			direction: "up",
+		},
+		{
+			type: "emaPosition",
+			timeframe: tf,
+			period: LIMITS.emaPeriod.max,
+			direction: "above",
+		},
+		{
+			type: "emaSlope",
+			timeframe: tf,
+			period: LIMITS.emaPeriod.max,
+			bars: LIMITS.emaSlopeBars.max,
+			percent: 0,
+			direction: "up",
+		},
+		{
+			type: "bollinger",
+			timeframe: tf,
+			period: LIMITS.bollingerPeriod.max,
+			sigma: 2,
+			band: "lower",
+		},
+		{
+			type: "adx",
+			timeframe: tf,
+			period: LIMITS.adxPeriod.max,
+			threshold: 20,
+			direction: "above",
+		},
+	];
+
+	test("上限での必要な足の本数の最大は MAX_CANDLE_NEED（EMA の傾き）", () => {
+		const needs = atLimits.map((c) => candleNeeds(buyWith(c))[tf] ?? 0);
+		expect(Math.max(...needs)).toBe(MAX_CANDLE_NEED);
+		expect(MAX_CANDLE_NEED).toBe(850);
+		for (const c of atLimits) {
+			expect(
+				validateConditionSet(buyWith(c)).filter((e) =>
+					e.path.startsWith("buy.conditions"),
+				),
+			).toEqual([]);
+		}
+	});
+
+	test("上限を下げる前の値は、入力・保存では弾き、実行（RUN_LIMITS）では通す", () => {
+		const old = buyWith({
+			type: "emaPosition",
+			timeframe: tf,
+			period: 500,
+			direction: "above",
+		});
+		const conditionErrors = (limits?: Limits) =>
+			validateConditionSet(old, limits)
+				.map((e) => e.path)
+				.filter((path) => path.startsWith("buy.conditions"));
+		expect(conditionErrors()).toEqual(["buy.conditions.0.period"]);
+		expect(conditionErrors(RUN_LIMITS)).toEqual([]);
+	});
+});
+
 describe("emaPeriods / candleNeeds", () => {
 	test("条件に出てくる EMA の本数と、必要な足の本数", () => {
 		const p = strategyTemplate("trend").params;
 		expect(emaPeriods(p)).toEqual([12, 48]);
-		expect(candleNeeds(p)["1h"]).toBe(481);
+		expect(candleNeeds(p)["1h"]).toBe(193);
 	});
 
 	test("ひな形を書き換えても次に取るひな形は変わらない", () => {
@@ -1176,16 +1275,16 @@ describe("終値と EMA の位置", () => {
 	test("チャートの EMA と必要な足の本数に含め、JSON から読み戻せる", () => {
 		const p = buyWith({ ...above, period: 200 });
 		expect(emaPeriods(p)).toEqual([200]);
-		expect(candleNeeds(p)["1h"]).toBe(2001);
+		expect(candleNeeds(p)["1h"]).toBe(800);
 		expect(parseConditionSet(JSON.parse(JSON.stringify(p)))?.buy).toEqual(
 			p.buy,
 		);
 	});
 
-	test("本数は 2〜500 の整数", () => {
+	test("本数は 2〜200 の整数", () => {
 		const errs = validateConditionSet(
 			params({
-				buy: { match: "all", conditions: [{ ...above, period: 501 }] },
+				buy: { match: "all", conditions: [{ ...above, period: 201 }] },
 				stopLoss: { match: "any", conditions: [{ ...above, period: 1 }] },
 			}),
 		);
@@ -1251,7 +1350,7 @@ describe("EMA の傾き", () => {
 	test("チャートの EMA と必要な足の本数に含め、JSON から読み戻せる", () => {
 		const p = buyWith({ ...up, period: 50, bars: 5, percent: 0.25 });
 		expect(emaPeriods(p)).toEqual([50]);
-		expect(candleNeeds(p)["1h"]).toBe(506);
+		expect(candleNeeds(p)["1h"]).toBe(205);
 		expect(parseConditionSet(JSON.parse(JSON.stringify(p)))?.buy).toEqual(
 			p.buy,
 		);
@@ -1318,7 +1417,7 @@ describe("ボリンジャーバンド", () => {
 		expect(out.note).toContain("ボリンジャーバンド(3) に 3 本必要");
 	});
 
-	test("本数は 2〜500 の整数、σ は 0.1〜5 の 0.1 刻み", () => {
+	test("本数は 2〜100 の整数、σ は 0.1〜5 の 0.1 刻み", () => {
 		const errs = validateConditionSet(
 			params({
 				buy: {
@@ -1327,7 +1426,7 @@ describe("ボリンジャーバンド", () => {
 						{ ...lower, period: 1 },
 						{ ...lower, sigma: 0.15 },
 						{ ...lower, sigma: 5.1 },
-						{ ...lower, period: 500, sigma: 2.5 },
+						{ ...lower, period: 100, sigma: 2.5 },
 					],
 				},
 				stopLoss: { match: "any", conditions: [lower] },
@@ -1399,7 +1498,7 @@ describe("ADX", () => {
 		expect(out.note).toContain("ADX(2) に 5 本必要、現在 4 本");
 	});
 
-	test("期間は 2〜100、しきい値は 1〜99 の整数", () => {
+	test("期間は 2〜50、しきい値は 1〜99 の整数", () => {
 		const errs = validateConditionSet(
 			params({
 				buy: {
@@ -1408,7 +1507,7 @@ describe("ADX", () => {
 						{ ...above, period: 1 },
 						{ ...above, threshold: 100 },
 						{ ...above, threshold: 20.5 },
-						{ ...above, period: 100, threshold: 99 },
+						{ ...above, period: 50, threshold: 99 },
 						{ ...above, period: 2, threshold: 1 },
 					],
 				},
@@ -1422,9 +1521,10 @@ describe("ADX", () => {
 		]);
 	});
 
-	test("必要な足の本数は 2 × 期間 × 10 + 1。JSON から読み戻せる", () => {
+	test("必要な足の本数は DI の平滑と DX の平均の2段の不安定期間を含む。JSON から読み戻せる", () => {
 		const p = buyWith({ ...above, period: 14 });
-		expect(candleNeeds(p)["1h"]).toBe(281);
+		expect(candleNeeds(p)["1h"]).toBe(191);
+		expect(candleNeeds(buyWith({ ...above, period: 50 }))["1h"]).toBe(695);
 		expect(parseConditionSet(JSON.parse(JSON.stringify(p)))).toEqual(p);
 		expect(
 			parseConditionSet(
@@ -1835,7 +1935,7 @@ describe("RSI のクロス", () => {
 		expect(errs).toContain("buy.conditions.0.bars");
 		expect(
 			validateConditionSet(
-				buyWith({ ...up, period: 100, threshold: 99, bars: 100 }),
+				buyWith({ ...up, period: 50, threshold: 99, bars: 50 }),
 			).filter((e) => e.path.startsWith("buy.conditions")),
 		).toEqual([]);
 	});
@@ -1843,7 +1943,7 @@ describe("RSI のクロス", () => {
 	test("チャートの RSI と必要な足の本数に含め、JSON から読み戻せる", () => {
 		const p = buyWith({ ...up, period: 14, bars: 3 });
 		expect(rsiLines(p)).toEqual([{ period: 14, thresholds: [30] }]);
-		expect(candleNeeds(p)["1h"]).toBe(144);
+		expect(candleNeeds(p)["1h"]).toBe(99);
 		expect(parseConditionSet(JSON.parse(JSON.stringify(p)))).toEqual(p);
 	});
 });
@@ -2022,7 +2122,7 @@ describe("条件ごとの足", () => {
 				],
 			},
 		});
-		expect(candleNeeds(p)).toEqual({ "1d": 31, "1h": 31, "4h": 6 });
+		expect(candleNeeds(p)).toEqual({ "1d": 12, "1h": 12, "4h": 6 });
 		expect(candleTimeframes(p)).toEqual(["1h", "4h", "1d"]);
 	});
 
@@ -2454,12 +2554,12 @@ describe("ATR の条件", () => {
 		expect(evaluateConditionSet(make())).toEqual(evaluateConditionSet(make()));
 	});
 
-	test("本数が足りなければ判定しない。渡してほしい本数は本数の10倍＋1", () => {
+	test("本数が足りなければ判定しない。渡してほしい本数は 期間 + 1 + 不安定期間", () => {
 		const out = evaluateConditionSet(
 			input([bar(0, 10), bar(1, 10)], sellOn(down), { lots: [lot(0)] }),
 		);
 		expect(out.note).toContain("1時間足のATR(2) に 3 本必要、現在 2 本");
-		expect(candleNeeds(sellOn({ ...down, period: 14 }))["1h"]).toBe(141);
+		expect(candleNeeds(sellOn({ ...down, period: 14 }))["1h"]).toBe(96);
 		expect(recentMs(sellOn(trail))).toBe(15 * 60_000);
 		expect(recentMs(sellOn(down))).toBe(0);
 	});

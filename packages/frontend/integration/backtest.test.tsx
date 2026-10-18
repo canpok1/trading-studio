@@ -185,6 +185,33 @@ describe("実行の画面", () => {
 		]);
 	});
 
+	test("上限を下げる前の保存済みの戦略・結果は、条件を変えなければ実行でき、変えると入力を直すまで実行できない", async () => {
+		const old = params([
+			{ type: "breakout", timeframe: "1h", lookback: 500, direction: "high" },
+		]);
+		const api = runPageApi({
+			strategies: [storedStrategy({ id: 1, name: "古い", params: old })],
+		});
+		const view = await openRunPage(api, "2026-05-03", "2026-05-25");
+		expect(runButton(view).textContent).toBe("バックテストを実行");
+		fireEvent.click(view.getByRole("button", { name: "0.001 増やす" }));
+		expect(runButton(view).textContent).toBe("入力を直すと実行できる");
+		cleanup();
+
+		const run = resultRun({ id: 8, name: "古い 試し", params: old });
+		const rerun = withResults(runPageApi(), new Map([[run.id, run]]));
+		const result = renderApp("/backtest/runs/8", rerun);
+		fireEvent.click(
+			(
+				await result.findAllByRole("button", { name: "条件を変えて再実行" })
+			)[0] as HTMLElement,
+		);
+		await result.findByLabelText("バックテスト名");
+		expect(runButton(result).textContent).toBe("バックテストを実行");
+		fireEvent.click(result.getByRole("button", { name: "0.001 増やす" }));
+		expect(runButton(result).textContent).toBe("入力を直すと実行できる");
+	});
+
 	test("期間に欠損があると確認が出て、飛ばして実行できる", async () => {
 		const runs = new Map<number, BacktestRun>();
 		const api = withResults(runPageApi({ gap: true }), runs).on(
