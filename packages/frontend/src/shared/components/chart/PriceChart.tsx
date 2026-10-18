@@ -14,7 +14,6 @@ import {
 	TIMEFRAMES,
 } from "@trading-studio/core";
 import type {
-	AutoscaleInfo,
 	IChartApi,
 	IPriceLine,
 	ISeriesApi,
@@ -75,6 +74,7 @@ import {
 import { JudgeLayer, stripArea } from "./judge-layer";
 import type { BarJudgments, ChartBg } from "./judgment-data";
 import { slotAligned } from "./judgment-data";
+import type { PriceTag } from "./price-tags";
 import { PriceTags } from "./price-tags";
 
 type Props = {
@@ -199,6 +199,29 @@ function chartHeight(short: boolean, compact: boolean, subPanes: number) {
 
 /** DVOL（年率 %）は小数1桁で出し、単位は付けない（チャート上の指標の値） */
 const formatDvol = (v: number) => v.toFixed(1);
+
+/** 最後の足の値。最後の足に値が無ければ（指標の本数が足りないなど）、値のある一番新しい足 */
+function lastValue(values: readonly number[]): number | null {
+	for (let i = values.length - 1; i >= 0; i--) {
+		const v = values[i] as number;
+		if (!Number.isNaN(v)) return v;
+	}
+	return null;
+}
+
+/** 小窓の軸の値。今の値は線と同じ色、しきい値・平均の % は灰色で塗る。text を渡せばそのまま出す */
+const paneTag = (
+	price: number,
+	label: string,
+	color: string,
+	text?: string,
+): PriceTag => ({
+	price,
+	label,
+	color,
+	textColor: cssVar("--color-surface"),
+	...(text === undefined ? {} : { text }),
+});
 
 // Tailwind のクラスはキャンバスに効かないので、テーマの CSS 変数を読んで渡す
 function cssVar(name: string): string {
@@ -703,7 +726,8 @@ export function PriceChart({
 		}
 	}, [slots, bbValues]);
 
-	// RSI の小窓。価格の下の別の区画に 0〜100 で描き、条件のしきい値を点線で引く
+	// RSI の小窓。価格の下の別の区画に描き、しきい値を破線で引く。軸に「現」「下」「上」の値を出す。
+	// 縦の範囲は RSI の値動きだけで決める（0〜100 やしきい値まで含めると拡大しても変化が潰れる）
 	// biome-ignore lint/correctness/useExhaustiveDependencies: rsiLines の中身は rsiKey で見る
 	useEffect(() => {
 		const c = chartRef.current;
@@ -721,9 +745,6 @@ export function PriceChart({
 					priceLineVisible: false,
 					lastValueVisible: false,
 					crosshairMarkerVisible: false,
-					autoscaleInfoProvider: () => ({
-						priceRange: { minValue: 0, maxValue: 100 },
-					}),
 				},
 				1,
 			);
@@ -739,19 +760,27 @@ export function PriceChart({
 		});
 		const first = c.rsis[0];
 		if (first) {
-			// 0〜100 の外に目盛りが出ないよう、余白を小さくする
-			first
-				.priceScale()
-				.applyOptions({ scaleMargins: { top: 0.05, bottom: 0.05 } });
+			const gray = cssVar("--color-text-2");
 			for (const t of thresholds) {
 				first.createPriceLine({
 					price: t,
-					color: cssVar("--color-text-2"),
-					lineWidth: 1,
+					color: gray,
+					lineWidth: 2,
 					lineStyle: LineStyle.Dashed,
-					axisLabelVisible: true,
+					axisLabelVisible: false,
 				});
 			}
+			const tags = new PriceTags(formatRsi);
+			first.attachPrimitive(tags);
+			const now = lastValue(rsiValues[0] ?? []);
+			// しきい値は設定で必ず下 < 上の2つ
+			const sorted = [...thresholds].sort((a, b) => a - b);
+			tags.setTags([
+				...(now === null ? [] : [paneTag(now, "現", cssVar(rsiVar(0)))]),
+				...sorted.map((t, i) =>
+					paneTag(t, i === 0 ? "下" : "上", gray, String(t)),
+				),
+			]);
 		}
 		const panes = c.chart.panes();
 		panes[0]?.setStretchFactor(PRICE_STRETCH);
@@ -772,17 +801,20 @@ export function PriceChart({
 			values: readonly number[],
 			color: string,
 			lineStyle: LineStyle,
+			main = false,
 		) => {
 			const s = c.chart.addSeries(
 				LineSeries,
 				{
 					color,
-					lineWidth: 1,
+					lineWidth: main ? 1 : 2,
 					lineStyle,
 					priceLineVisible: false,
 					lastValueVisible: false,
 					crosshairMarkerVisible: false,
 					priceFormat: { type: "custom", formatter: formatDvol, minMove: 0.1 },
+					// 縦の範囲は DVOL の値動きだけで決める（離れた平均の % まで含めると拡大しても変化が潰れる）
+					...(main ? {} : { autoscaleInfoProvider: () => null }),
 				},
 				pane,
 			);
@@ -797,46 +829,45 @@ export function PriceChart({
 			c.dvol.push(s);
 			return s;
 		};
-		const main = add(dvolValues, cssVar("--color-dvol"), LineStyle.Solid);
-		// 価格線は縦の範囲に入らないので、しきい値が DVOL の値から離れていても見えるよう範囲に含める
-		if (dvolLevels.length > 0) {
-			main.applyOptions({
-				autoscaleInfoProvider: (base: () => AutoscaleInfo | null) => {
-					const r = base();
-					const lo = Math.min(...dvolLevels);
-					const hi = Math.max(...dvolLevels);
-					return {
-						...r,
-						priceRange: {
-							minValue: Math.min(r?.priceRange?.minValue ?? lo, lo),
-							maxValue: Math.max(r?.priceRange?.maxValue ?? hi, hi),
-						},
-					};
-				},
-			});
-		}
-		// 値の条件のしきい値は RSI のしきい値と同じ点線
+		const blue = cssVar("--color-dvol");
+		const gray = cssVar("--color-text-2");
+		const main = add(dvolValues, blue, LineStyle.Solid, true);
+		// 値の条件のしきい値は RSI のしきい値と同じ破線。価格線は縦の範囲に入らない
 		for (const t of dvolLevels) {
 			main.createPriceLine({
 				price: t,
-				color: cssVar("--color-text-2"),
-				lineWidth: 1,
+				color: gray,
+				lineWidth: 2,
 				lineStyle: LineStyle.Dashed,
-				axisLabelVisible: true,
+				axisLabelVisible: false,
 			});
 		}
-		// 平均は灰色の実線、平均に対する下・上の % は同じ色の点線。足ごとに平均が変わるので線で描く
+		// 平均は DVOL と同じ色の破線、平均に対する下・上の % は灰色の破線。足ごとに平均が変わるので線で描く
+		const avgTags: PriceTag[] = [];
 		if (dvolAvgValues) {
-			const gray = cssVar("--color-text-2");
-			add(dvolAvgValues, gray, LineStyle.Solid);
-			for (const pct of [da.lower, da.upper]) {
+			add(dvolAvgValues, blue, LineStyle.Dashed);
+			const avg = lastValue(dvolAvgValues);
+			if (avg !== null) avgTags.push(paneTag(avg, "平", blue));
+			for (const [pct, label] of [
+				[da.lower, "下"],
+				[da.upper, "上"],
+			] as const) {
 				add(
 					dvolAvgValues.map((v) => (v * pct) / 100),
 					gray,
-					LineStyle.Dotted,
+					LineStyle.Dashed,
 				);
+				if (avg !== null) avgTags.push(paneTag((avg * pct) / 100, label, gray));
 			}
 		}
+		const tags = new PriceTags(formatDvol);
+		main.attachPrimitive(tags);
+		const now = lastValue(dvolValues);
+		tags.setTags([
+			...(now === null ? [] : [paneTag(now, "現", blue)]),
+			...avgTags,
+			...dvolLevels.map((t) => paneTag(t, "条", gray, String(t))),
+		]);
 		for (const [i, p] of c.chart.panes().entries()) {
 			p.setStretchFactor(i === 0 ? PRICE_STRETCH : RSI_STRETCH);
 		}
@@ -1233,7 +1264,7 @@ export function PriceChart({
 			{showRsi && (
 				<LegendRow
 					title="RSI"
-					note="下の小窓に 0〜100 で描き、点線はしきい値。本数・しきい値は歯車で変えられる"
+					note="下の小窓に描き、灰色の破線はしきい値（軸の「下」「上」）。軸の「現」は今の値。本数・しきい値は歯車で変えられる"
 				>
 					{rsiLines.map((l, j) => (
 						<span key={l.period} className="flex items-center gap-1">
@@ -1262,13 +1293,17 @@ export function PriceChart({
 						<span className="flex items-center gap-1">
 							<i
 								className="inline-block h-[3px] w-3"
-								style={{ background: "var(--color-text-2)" }}
+								style={{ background: "var(--color-dvol)" }}
 							/>
-							{da.days} 日平均（点線は {da.lower}%・{da.upper}%）
+							{da.days}{" "}
+							日平均（青の破線・軸の「平」。灰色の破線「下」「上」は平均の{" "}
+							{da.lower}%・{da.upper}%）
 						</span>
 					)}
 					{dvolLevels.length > 0 && (
-						<span>点線 {dvolLevels.join("・")} は戦略のしきい値</span>
+						<span>
+							灰色の破線「条」{dvolLevels.join("・")} は戦略のしきい値
+						</span>
 					)}
 				</LegendRow>
 			)}
@@ -1469,7 +1504,7 @@ export function PriceChart({
 						>
 							<i
 								className="inline-block h-[3px] w-2.5"
-								style={{ background: "var(--color-text-2)" }}
+								style={{ background: "var(--color-dvol)" }}
 							/>
 							平均{da.days}日 {(() => {
 								const a = dvolAvgValues[shown as number];

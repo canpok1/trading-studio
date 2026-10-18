@@ -318,7 +318,7 @@ export function DvolAvgFields({
 			{ok ? (
 				<Note>
 					日数は {range(LIMITS.dvolDays)}、% は {range(LIMITS.dvolPercent)}
-					。平均の線と、平均の下・上の % の点線を描く。
+					。平均の線と、平均の下・上の % の破線を描く。
 					{control.fromStrategy ? "戦略の値" : "既定"}は {b.days} 日・
 					{b.lower}%/{b.upper}%
 				</Note>
