@@ -4,9 +4,13 @@ import { strategyTemplate } from "@trading-studio/core";
 import {
 	parseSaved,
 	strategyBb,
+	strategyDvolAvg,
+	strategyDvolLevels,
 	strategyEma,
 	strategyRsi,
+	usesDvol,
 	validBb,
+	validDvolAvg,
 	validEma,
 	validRsi,
 } from "./chart-indicators";
@@ -159,5 +163,66 @@ describe("チャートの EMA・RSI の設定", () => {
 		expect(validBb({ period: 20, sigma: 2.05 })).toBe(false);
 		expect(validBb({ period: 1, sigma: 2 })).toBe(false);
 		expect(validBb({ period: 20, sigma: 6 })).toBe(false);
+	});
+});
+
+describe("チャートの DVOL の平均", () => {
+	const avg = (days: number, percent: number, direction: "above" | "below") =>
+		({ type: "dvolAverage", days, percent, direction }) as const;
+
+	test("戦略で使っていなければ null・空", () => {
+		expect(strategyDvolAvg(base)).toBeNull();
+		expect(strategyDvolLevels(base)).toEqual([]);
+		expect(usesDvol(base)).toBe(false);
+		expect(usesDvol(null)).toBe(false);
+	});
+
+	test("日数は短い方、% はその日数の条件の最小と最大", () => {
+		const p = withBuy([
+			avg(30, 130, "below"),
+			avg(14, 110, "below"),
+			avg(14, 160, "above"),
+		]);
+		expect(strategyDvolAvg(p)).toEqual({ days: 14, lower: 110, upper: 160 });
+		expect(usesDvol(p)).toBe(true);
+	});
+
+	test("% が1つなら、150 より下なら下側、それ以外は上側に置き、もう片方は既定", () => {
+		expect(strategyDvolAvg(withBuy([avg(30, 90, "below")]))).toEqual({
+			days: 30,
+			lower: 90,
+			upper: 150,
+		});
+		expect(strategyDvolAvg(withBuy([avg(30, 200, "above")]))).toEqual({
+			days: 30,
+			lower: 120,
+			upper: 200,
+		});
+	});
+
+	test("値の条件はしきい値を小さい順・重複なしで返し、平均は持たない", () => {
+		const p = withBuy([
+			{ type: "dvol", threshold: 70, direction: "above" },
+			{ type: "dvol", threshold: 45.5, direction: "below" },
+			{ type: "dvol", threshold: 70, direction: "below" },
+		]);
+		expect(strategyDvolLevels(p)).toEqual([45.5, 70]);
+		expect(strategyDvolAvg(p)).toBeNull();
+		expect(usesDvol(p)).toBe(true);
+	});
+
+	test("入力の検査と保存した値の読み込み", () => {
+		expect(validDvolAvg({ days: 30, lower: 120, upper: 150 })).toBe(true);
+		expect(validDvolAvg({ days: 31, lower: 120, upper: 150 })).toBe(false);
+		expect(validDvolAvg({ days: 30, lower: 150, upper: 150 })).toBe(false);
+		expect(validDvolAvg({ days: 30, lower: 0, upper: 150 })).toBe(false);
+		expect(
+			parseSaved(
+				JSON.stringify({ dvolAvg: { days: 7, lower: 80, upper: 140 } }),
+			).dvolAvg,
+		).toEqual({ days: 7, lower: 80, upper: 140 });
+		expect(parseSaved(JSON.stringify({ dvolAvg: { days: 0 } })).dvolAvg).toBe(
+			undefined,
+		);
 	});
 });

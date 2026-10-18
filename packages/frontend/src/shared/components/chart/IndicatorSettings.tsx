@@ -1,15 +1,21 @@
-// チャートの設定の中で、EMA・RSI・ボリンジャーバンドの本数を変える欄
+// チャートの設定の中で、EMA・RSI・ボリンジャーバンドの本数と DVOL の平均の日数を変える欄
 
 import { LIMITS } from "@trading-studio/core";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import type {
 	BbSetting,
+	DvolAvgSetting,
 	EmaSetting,
 	IndicatorControl,
 	RsiSetting,
 } from "../../lib/chart-indicators";
-import { validBb, validEma, validRsi } from "../../lib/chart-indicators";
+import {
+	validBb,
+	validDvolAvg,
+	validEma,
+	validRsi,
+} from "../../lib/chart-indicators";
 import { NumberInput } from "../NumberInput";
 
 const range = (r: { min: number; max: number }) => `${r.min}〜${r.max}`;
@@ -254,6 +260,70 @@ export function BbFields({
 				</Note>
 			) : (
 				<Invalid>本数は整数、σ は 0.1 刻みで範囲内に入れる</Invalid>
+			)}
+		</>
+	);
+}
+
+export function DvolAvgFields({
+	control,
+}: {
+	control: IndicatorControl<DvolAvgSetting>;
+}) {
+	const { draft, setDraft, change, ok } = useDraft(
+		control.value,
+		control.save,
+		(d) => d,
+		validDvolAvg,
+	);
+	const b = control.base;
+	return (
+		<>
+			<div className="flex flex-wrap items-center gap-3">
+				<span className={FIELD}>
+					日数
+					<NumberInput
+						value={draft.days}
+						onChange={(days) => change({ ...draft, days })}
+						invalid={!ok}
+						inputMode="numeric"
+						aria-label="DVOL の平均の日数"
+						className="w-14"
+					/>
+				</span>
+				<span className={FIELD}>
+					下（%）
+					<NumberInput
+						value={draft.lower}
+						onChange={(lower) => change({ ...draft, lower })}
+						invalid={!ok}
+						inputMode="numeric"
+						aria-label="DVOL の平均に対する下の %"
+						className="w-16"
+					/>
+				</span>
+				<span className={FIELD}>
+					上（%）
+					<NumberInput
+						value={draft.upper}
+						onChange={(upper) => change({ ...draft, upper })}
+						invalid={!ok}
+						inputMode="numeric"
+						aria-label="DVOL の平均に対する上の %"
+						className="w-16"
+					/>
+				</span>
+				<Reset control={control} onReset={() => setDraft(control.base)} />
+			</div>
+			{ok ? (
+				<Note>
+					日数は {range(LIMITS.dvolDays)}、% は {range(LIMITS.dvolPercent)}
+					。平均の線と、平均の下・上の % の点線を描く。
+					{control.fromStrategy ? "戦略の値" : "既定"}は {b.days} 日・
+					{b.lower}%/{b.upper}%
+				</Note>
+			) : (
+				<Invalid>整数で入れ、下の % は上より小さくする</Invalid>
 			)}
 		</>
 	);

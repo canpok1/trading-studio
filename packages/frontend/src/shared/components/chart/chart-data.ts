@@ -210,12 +210,13 @@ export function showsLatest(range: LogicalRange, barCount: number): boolean {
 const HOUR_MS = 3_600_000;
 
 /**
- * 足ごとの DVOL（1時間足の終値）。足の期間と重なる1時間足のうち最後のもの（日足ならその日の最後の1時間）。
- * 重なる1時間足が無ければ NaN。dvol は古い順
+ * 足ごとの DVOL（既定は1時間足の終値、pick で平均なども）。足の期間と重なる1時間足のうち最後のもの（日足ならその日の最後の1時間）。
+ * 重なる1時間足が無い・pick が null なら NaN。dvol は古い順
  */
-export function dvolPerBar(
+export function dvolPerBar<D extends { time: number; close: number }>(
 	times: readonly number[],
-	dvol: readonly { time: number; close: number }[],
+	dvol: readonly D[],
+	pick: (d: D) => number | null | undefined = (d) => d.close,
 ): number[] {
 	const step = barStep(times) ?? HOUR_MS;
 	const out: number[] = [];
@@ -225,7 +226,8 @@ export function dvolPerBar(
 		while (j + 1 < dvol.length && (dvol[j + 1] as { time: number }).time < end)
 			j++;
 		const d = dvol[j];
-		out.push(d && d.time < end && d.time + HOUR_MS > t ? d.close : Number.NaN);
+		const v = d && d.time < end && d.time + HOUR_MS > t ? pick(d) : null;
+		out.push(v ?? Number.NaN);
 	}
 	return out;
 }

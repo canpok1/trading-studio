@@ -9,7 +9,7 @@ const HOUR_MS = 3_600_000;
 const RELOAD_MS = 5 * 60_000;
 
 /**
- * 開始が [from, to) の DVOL の1時間足。on の間だけ読む。読めなければ空にする（小窓に線を出さないだけで、チャートは描く）。
+ * 開始が [from, to) の DVOL の1時間足。averageDays があれば足ごとに直近その日数の平均も付く。on の間だけ読む。読めなければ空にする（小窓に線を出さないだけで、チャートは描く）。
  * to は時間単位に丸めて見るので、ホームで数秒ごとに最新の足が変わっても読み直すのは5分ごと（と期間が変わったとき）だけ
  */
 export function useDvolBars(
@@ -17,6 +17,7 @@ export function useDvolBars(
 	from: number | null,
 	to: number | null,
 	timeframe: Timeframe | undefined,
+	averageDays: number | null,
 ): readonly DvolBar[] {
 	const api = useContext(ApiContext);
 	const [bars, setBars] = useState<readonly DvolBar[]>([]);
@@ -36,6 +37,7 @@ export function useDvolBars(
 					from: String(from),
 					to: String(toHour),
 					...(timeframe ? { timeframe } : {}),
+					...(averageDays ? { averageDays } : {}),
 				},
 			})
 			.then((r) => readJson<{ bars: DvolBar[] }>(r))
@@ -44,6 +46,6 @@ export function useDvolBars(
 		return () => {
 			alive = false;
 		};
-	}, [api, on, from, toHour, timeframe, tick]);
+	}, [api, on, from, toHour, timeframe, averageDays, tick]);
 	return bars;
 }

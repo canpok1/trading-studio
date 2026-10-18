@@ -168,18 +168,26 @@ test("−・＋を「最新へ」と同じ行に出し、押しても最新の�
 	await expect(page.getByRole("button", { name: "最新へ" })).toBeDisabled();
 });
 
-/** 1時間足ごとに DVOL 55.23% を返す偽物 */
+/** 1時間足ごとに DVOL 55.23% を返す偽物。平均の日数を頼まれたら平均 46.03% を付ける */
 function onDvol(api: Parameters<typeof onHome>[0]) {
 	api.on(routes.api.dvol.bars, "$get", (req) => {
 		const from = Number(req.query.get("from"));
 		const to = Number(req.query.get("to"));
+		const withAvg = req.query.get("averageDays") !== null;
 		const bars = [];
 		for (
 			let t = Math.ceil(from / 3_600_000) * 3_600_000;
 			t < to;
 			t += 3_600_000
 		) {
-			bars.push({ time: t, open: 5500, high: 5600, low: 5400, close: 5523 });
+			bars.push({
+				time: t,
+				open: 5500,
+				high: 5600,
+				low: 5400,
+				close: 5523,
+				...(withAvg ? { average: 4603 } : {}),
+			});
 		}
 		return { bars };
 	});
@@ -201,4 +209,28 @@ test("チャートの設定で DVOL を出すと小窓と値が出て、再読�
 	await expect(value).toHaveText("DVOL 55.2");
 	await page.reload();
 	await expect(page.getByTestId("chart-dvol")).toHaveText("DVOL 55.2");
+});
+
+test("チャートの設定で DVOL の平均を出すと平均と比が出て、日数を変えると頼み直す", async ({
+	page,
+	api,
+}) => {
+	onHome(api, { runs: fourRuns() });
+	onDvol(api);
+	await page.goto("/home");
+	await openChartValues(page);
+	await openChartSettings(page);
+	await page.getByRole("button", { name: "DVOL", exact: true }).click();
+	const avgButton = page.getByRole("button", { name: "DVOL の平均" });
+	await expect(avgButton).toHaveAttribute("aria-pressed", "false");
+	await avgButton.click();
+	const days = page.getByRole("textbox", { name: "DVOL の平均の日数" });
+	await expect(days).toHaveValue("30");
+	const asked = page.waitForRequest((r) => r.url().includes("averageDays=7"));
+	await days.fill("7");
+	await asked;
+	await page.keyboard.press("Escape");
+	await expect(page.getByTestId("chart-dvol-average")).toHaveText(
+		"平均7日 46.0（120%）",
+	);
 });

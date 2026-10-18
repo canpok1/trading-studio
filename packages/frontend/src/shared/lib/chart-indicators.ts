@@ -1,7 +1,7 @@
-// チャートに重ねる EMA・RSI・ボリンジャーバンドの本数。既定は戦略の条件の値で、画面で変えた値はブラウザに保存し、
+// チャートに重ねる EMA・RSI・ボリンジャーバンドの本数と DVOL の平均。既定は戦略の条件の値で、画面で変えた値はブラウザに保存し、
 // ホームとバックテスト結果で共有する
 
-import type { ConditionSet } from "@trading-studio/core";
+import type { Condition, ConditionSet } from "@trading-studio/core";
 import {
 	CONDITION_GROUPS,
 	emaPeriods,
@@ -18,10 +18,19 @@ export type RsiSetting = { period: number; lower: number; upper: number };
 /** ボリンジャーバンドの本数と σ */
 export type BbSetting = { period: number; sigma: number };
 
+/** DVOL の平均の日数と、点線を引く平均に対する下・上の % */
+export type DvolAvgSetting = { days: number; lower: number; upper: number };
+
 /** 戦略で使っていないときの値 */
 export const DEFAULT_EMA: EmaSetting = [20, 50];
 export const DEFAULT_RSI: RsiSetting = { period: 14, lower: 30, upper: 70 };
 export const DEFAULT_BB: BbSetting = { period: 20, sigma: 2 };
+/** 条件を追加するときの既定（買い 120% 以下・売り 150% 以上）に合わせる */
+export const DEFAULT_DVOL_AVG: DvolAvgSetting = {
+	days: 30,
+	lower: 120,
+	upper: 150,
+};
 
 /** EMA の線は2色なので2本まで */
 export const MAX_EMA_LINES = 2;
@@ -65,6 +74,61 @@ export function validBb(v: unknown): v is BbSetting {
 	);
 }
 
+export function validDvolAvg(v: unknown): v is DvolAvgSetting {
+	if (typeof v !== "object" || v === null) return false;
+	const r = v as Record<string, unknown>;
+	return (
+		isIntIn(r.days, LIMITS.dvolDays) &&
+		isIntIn(r.lower, LIMITS.dvolPercent) &&
+		isIntIn(r.upper, LIMITS.dvolPercent) &&
+		(r.lower as number) < (r.upper as number)
+	);
+}
+
+/** 戦略の条件をすべて（買いごと・グループごと） */
+const allConditions = (params: ConditionSet | null): Condition[] =>
+	params
+		? params.buys.flatMap((b) =>
+				CONDITION_GROUPS.flatMap((k) => b[k].conditions),
+			)
+		: [];
+
+/** 戦略で DVOL の条件（値・平均との比）を使っているか */
+export const usesDvol = (params: ConditionSet | null) =>
+	allConditions(params).some(
+		(c) => c.type === "dvol" || c.type === "dvolAverage",
+	);
+
+/**
+ * 戦略の DVOL の平均。使っていなければ null。日数が複数あれば短い方を使い、その日数の条件の % の最小・最大を下・上にする。
+ * % が1つだけなら、既定の上（150）より下なら下側、それ以外は上側に置き、もう片方は既定の値にする
+ */
+export function strategyDvolAvg(
+	params: ConditionSet | null,
+): DvolAvgSetting | null {
+	const cs = allConditions(params).flatMap((c) =>
+		c.type === "dvolAverage" ? [c] : [],
+	);
+	if (cs.length === 0) return null;
+	const days = Math.min(...cs.map((c) => c.days));
+	const ps = cs.filter((c) => c.days === days).map((c) => c.percent);
+	const lo = Math.min(...ps);
+	const hi = Math.max(...ps);
+	if (lo !== hi) return { days, lower: lo, upper: hi };
+	const d = DEFAULT_DVOL_AVG;
+	return lo < d.upper
+		? { days, lower: lo, upper: d.upper }
+		: { days, lower: d.lower, upper: lo };
+}
+
+/** 戦略の DVOL の値の条件のしきい値（年率 %、小さい順・重複なし） */
+export function strategyDvolLevels(params: ConditionSet | null): number[] {
+	const ts = allConditions(params).flatMap((c) =>
+		c.type === "dvol" ? [c.threshold] : [],
+	);
+	return [...new Set(ts)].sort((a, b) => a - b);
+}
+
 /** 戦略の EMA の本数。使っていなければ null。3本以上あれば短い方から2本 */
 export function strategyEma(params: ConditionSet | null): EmaSetting | null {
 	const ps = params ? emaPeriods(params) : [];
@@ -89,19 +153,19 @@ export function strategyRsi(params: ConditionSet | null): RsiSetting | null {
 
 /** 戦略のボリンジャーバンド。使っていなければ null。複数あれば本数が短い方（同じ本数なら σ が小さい方） */
 export function strategyBb(params: ConditionSet | null): BbSetting | null {
-	if (!params) return null;
-	const all = params.buys.flatMap((b) =>
-		CONDITION_GROUPS.flatMap((k) =>
-			b[k].conditions.flatMap((c) =>
-				c.type === "bollinger" ? [{ period: c.period, sigma: c.sigma }] : [],
-			),
-		),
+	const all = allConditions(params).flatMap((c) =>
+		c.type === "bollinger" ? [{ period: c.period, sigma: c.sigma }] : [],
 	);
 	all.sort((a, b) => a.period - b.period || a.sigma - b.sigma);
 	return all[0] ?? null;
 }
 
-type Saved = { ema?: EmaSetting; rsi?: RsiSetting; bb?: BbSetting };
+type Saved = {
+	ema?: EmaSetting;
+	rsi?: RsiSetting;
+	bb?: BbSetting;
+	dvolAvg?: DvolAvgSetting;
+};
 
 /** 保存した値。壊れている項目は捨てる */
 export function parseSaved(raw: string | null): Saved {
@@ -111,6 +175,7 @@ export function parseSaved(raw: string | null): Saved {
 			ema: validEma(v.ema) ? v.ema : undefined,
 			rsi: validRsi(v.rsi) ? v.rsi : undefined,
 			bb: validBb(v.bb) ? v.bb : undefined,
+			dvolAvg: validDvolAvg(v.dvolAvg) ? v.dvolAvg : undefined,
 		};
 	} catch {
 		return {};
@@ -158,10 +223,16 @@ export type ChartIndicators = {
 	ema: IndicatorControl<EmaSetting>;
 	rsi: IndicatorControl<RsiSetting>;
 	bb: IndicatorControl<BbSetting>;
+	/** DVOL の平均の線と、平均に対する % の点線。描くのは DVOL の小窓を出しているときだけ */
+	dvolAvg: IndicatorControl<DvolAvgSetting>;
+	/** 戦略で DVOL の条件を使っているか（使っていれば DVOL の小窓を最初から出す） */
+	dvolUsed: boolean;
+	/** 戦略の DVOL の値の条件のしきい値。小窓に点線を引く */
+	dvolLevels: number[];
 };
 
 /**
- * チャートの EMA・RSI・ボリンジャーバンドの設定。最初は、戦略で使っているか値を保存していれば表示し、そうでなければ隠す。
+ * チャートの EMA・RSI・ボリンジャーバンド・DVOL の平均の設定。最初は、戦略で使っているか値を保存していれば表示し、そうでなければ隠す。
  * 戦略が変わったら表示の有無を最初の状態へ戻す
  */
 export function useChartIndicators(
@@ -171,16 +242,26 @@ export function useChartIndicators(
 	const sEma = useMemo(() => strategyEma(params), [params]);
 	const sRsi = useMemo(() => strategyRsi(params), [params]);
 	const sBb = useMemo(() => strategyBb(params), [params]);
-	const strategyKey = JSON.stringify([sEma, sRsi, sBb]);
+	const sDvolAvg = useMemo(() => strategyDvolAvg(params), [params]);
+	const dvolUsed = useMemo(() => usesDvol(params), [params]);
+	const levelsKey = JSON.stringify(strategyDvolLevels(params));
+	// 中身が同じなら同じ配列を返し、チャートを描き直さない
+	const dvolLevels = useMemo(
+		() => JSON.parse(levelsKey) as number[],
+		[levelsKey],
+	);
+	const strategyKey = JSON.stringify([sEma, sRsi, sBb, sDvolAvg]);
 	// null は「最初の状態」（戦略で使っているか、値を保存していれば表示）
 	const [emaOn, setEmaOn] = useState<boolean | null>(null);
 	const [rsiOn, setRsiOn] = useState<boolean | null>(null);
 	const [bbOn, setBbOn] = useState<boolean | null>(null);
+	const [dvolAvgOn, setDvolAvgOn] = useState<boolean | null>(null);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: 戦略の値が変わったときだけ戻す
 	useEffect(() => {
 		setEmaOn(null);
 		setRsiOn(null);
 		setBbOn(null);
+		setDvolAvgOn(null);
 	}, [strategyKey]);
 
 	const update = useCallback((patch: Saved) => {
@@ -194,6 +275,7 @@ export function useChartIndicators(
 	const emaBase = sEma ?? DEFAULT_EMA;
 	const rsiBase = sRsi ?? DEFAULT_RSI;
 	const bbBase = sBb ?? DEFAULT_BB;
+	const dvolAvgBase = sDvolAvg ?? DEFAULT_DVOL_AVG;
 	return {
 		ema: {
 			value: saved.ema ?? emaBase,
@@ -234,5 +316,21 @@ export function useChartIndicators(
 				setBbOn(true);
 			},
 		},
+		dvolAvg: {
+			value: saved.dvolAvg ?? dvolAvgBase,
+			base: dvolAvgBase,
+			fromStrategy: sDvolAvg !== null,
+			custom: saved.dvolAvg !== undefined,
+			on: dvolAvgOn ?? (sDvolAvg !== null || saved.dvolAvg !== undefined),
+			setOn: setDvolAvgOn,
+			save: (v) => {
+				update({
+					dvolAvg: sameValue(v, dvolAvgBase) ? undefined : (v ?? undefined),
+				});
+				setDvolAvgOn(true);
+			},
+		},
+		dvolUsed,
+		dvolLevels,
 	};
 }
