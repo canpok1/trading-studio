@@ -152,6 +152,7 @@ export function createTestApp(
 		newsDeletedBefore: () => scoreRepo.newsDeletedBefore(),
 		now: () => clock.now,
 	});
+	const dvolRepo = new SqliteDvolRepository(db);
 	const backtestRepo = new SqliteBacktestRepository(db);
 	const backtests = createBacktestService({
 		repo: backtestRepo,
@@ -162,6 +163,7 @@ export function createTestApp(
 		scoring,
 		segments,
 		calendar,
+		dvol: dvolRepo,
 		now: () => 3_000,
 	});
 	const datasets = createDatasetService({
@@ -194,12 +196,12 @@ export function createTestApp(
 		strategies,
 		judgments,
 		calendar,
+		dvol: dvolRepo,
 		marketData: marketDataRepo,
 		market: () => live.current,
 		now: () => clock.now,
 		fees: TEST_FEE_RATES,
 	});
-	const dvolRepo = new SqliteDvolRepository(db);
 	const analysisExport = createAnalysisExportService({
 		repo: new SqliteAnalysisExportRepository(db),
 		zip: createZip,

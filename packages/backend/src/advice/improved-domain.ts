@@ -57,6 +57,8 @@ const CONDITION: ResponseSchema = {
 				"trailingAtr=買ってからの最高値から、買った時点の timeframe の足の ATR period 本の multiple 倍 下がった。最高値が買値から ATR の activateMultiple 倍以上になってから発動（0 は買った直後から）。売りの条件だけ。",
 				"holdingBars=買ってから timeframe の足で bars 本経った。売りの条件だけ。",
 				"eventWindow=重要度が minImportance 以上の予定の beforeHours 時間前から afterHours 時間後までに当たらない。買いの条件だけ。",
+				"dvol=DVOL（BTC の予想ボラ、年率 %）が threshold 以上(direction=above)/以下(below)。",
+				"dvolAverage=DVOL が直近 days 日の平均の percent % 以上(direction=above)/以下(below)。",
 				"judgment=judge の判定が values のどれか",
 			].join(""),
 			[
@@ -74,6 +76,8 @@ const CONDITION: ResponseSchema = {
 				"trailingAtr",
 				"holdingBars",
 				"eventWindow",
+				"dvol",
+				"dvolAverage",
 				"judgment",
 			],
 		),
@@ -87,10 +91,13 @@ const CONDITION: ResponseSchema = {
 		slow: opt(int("長期EMAの本数")),
 		lookback: opt(int("直近の本数")),
 		period: opt(int("RSI・EMA・ボリンジャーバンド・ADX・ATR の本数")),
-		threshold: opt(int("RSI・ADX のしきい値")),
+		threshold: opt(
+			num("RSI・ADX のしきい値（整数）・DVOL のしきい値（0.1 刻み）"),
+		),
 		sigma: opt(num("ボリンジャーバンドの σ")),
 		band: opt(str("ボリンジャーバンドの上限・下限", ["upper", "lower"])),
 		percent: opt(num("%")),
+		days: opt(int("dvolAverage で平均を取る日数")),
 		activatePercent: opt(
 			num("trailingStop を発動する、最高値の買値からの %。0 は買った直後から"),
 		),

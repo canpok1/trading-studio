@@ -1,6 +1,11 @@
 // バックテストの実行ジョブ。同時に動かすのは1つだけで、画面は進捗を定期的に問い合わせる
 
-import type { AggregationRule, Candle, Timeframe } from "@trading-studio/core";
+import type {
+	AggregationRule,
+	Candle,
+	ConditionSet,
+	Timeframe,
+} from "@trading-studio/core";
 import {
 	acceptsNoJudgment,
 	BacktestError,
@@ -19,6 +24,7 @@ import {
 	withSellDetails,
 } from "@trading-studio/core";
 import type { CalendarService } from "../calendar/types-domain";
+import type { DvolRepository } from "../dvol/repository-domain";
 import type { JudgmentService } from "../judgments/types-domain";
 import { MAX_CHART_BARS } from "../market/market-domain";
 import type { MarketDataRepository } from "../market-data/repository-domain";
@@ -122,6 +128,7 @@ export type BacktestServiceDeps = {
 		CalendarService,
 		"calendar" | "activeVersion" | "judgmentCoverage"
 	>;
+	dvol: Pick<DvolRepository, "bars">;
 	now?: () => number;
 };
 
@@ -189,10 +196,20 @@ export function createBacktestService({
 	scoring,
 	segments,
 	calendar,
+	dvol,
 	now = Date.now,
 }: BacktestServiceDeps): BacktestService & { running(): Promise<void> | null } {
 	let current: { id: number; job: RunningJob; done: Promise<void> } | null =
 		null;
+
+	/** DVOL の条件が使う、期間とその前の DVOL の1時間足。条件が無ければ空 */
+	const dvolBars = (params: ConditionSet, from: number, to: number) => {
+		const ms = conditionStrategy.dvolMs(params);
+		if (ms === 0) return [];
+		return dvol
+			.bars(from - ms, to)
+			.map((b) => ({ time: b.time, close: b.close }));
+	};
 
 	const withProgress = (run: BacktestRun): BacktestRun =>
 		current?.id === run.id && run.status === "running"
@@ -452,6 +469,7 @@ export function createBacktestService({
 						: null,
 					// 予定の前後の条件が無ければ暦は見ない
 					events: calendar.calendar(eventCriteriaVersion ?? undefined),
+					dvol: dvolBars(params, from, to),
 				});
 			} catch (e) {
 				console.error("backtest failed to start", e);

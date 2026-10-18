@@ -164,18 +164,19 @@ const judgments = createJudgmentService({
 	newsDelayMs: () => newsDelayMs(newsRepo),
 });
 
+const dvolRepo = new SqliteDvolRepository(db);
 const tradingEngine = createTradingService({
 	repo: new SqliteTradingRepository(db),
 	strategies,
 	judgments,
 	calendar,
+	dvol: dvolRepo,
 	marketData: marketDataRepo,
 	market: () => collector.live(),
 });
 trading = tradingEngine;
 const tradingTimer = setInterval(() => tradingEngine.tick(), 1_000);
 
-const dvolRepo = new SqliteDvolRepository(db);
 const retention = createRetentionService({
 	repo: new SqliteRetentionRepository(db),
 	marketData: marketDataRepo,
@@ -234,6 +235,7 @@ const backtests = createBacktestService({
 	scoring,
 	segments,
 	calendar,
+	dvol: dvolRepo,
 });
 const datasetRepo = new SqliteDatasetRepository(db, backtestRepo);
 datasetRepo.failInterrupted(Date.now());

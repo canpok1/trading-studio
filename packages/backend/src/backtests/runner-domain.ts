@@ -5,6 +5,7 @@ import type {
 	BacktestSummary,
 	Candle,
 	ConditionSet,
+	DvolPoint,
 	EventCalendar,
 	FeeRates,
 	ScoredNews,
@@ -31,6 +32,8 @@ export type RunnerJob = {
 	} | null;
 	/** 予定の暦 */
 	events: EventCalendar;
+	/** DVOL の1時間足。DVOL の条件が使う期間より前も含む。条件が無ければ空 */
+	dvol: DvolPoint[];
 };
 
 /** 保存する結果。中身は gzip した JSON */

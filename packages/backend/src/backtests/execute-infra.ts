@@ -30,6 +30,7 @@ export function execute(
 			fees: job.fees,
 			judgments: job.judgments ?? undefined,
 			events: job.events,
+			dvol: job.dvol,
 			onProgress,
 			shouldAbort,
 		});

@@ -3,6 +3,7 @@
 
 import type {
 	Candle,
+	DvolPoint,
 	FeeRates,
 	MarketTrade,
 	Timeframe,
@@ -33,6 +34,7 @@ import {
 } from "@trading-studio/core";
 import type { CalendarService } from "../calendar/types-domain";
 import type { LiveMarket } from "../collector/collector-domain";
+import type { DvolRepository } from "../dvol/repository-domain";
 import type { JudgmentService } from "../judgments/types-domain";
 import type { MarketDataRepository } from "../market-data/repository-domain";
 import type {
@@ -68,6 +70,7 @@ export function createTradingService({
 	strategies,
 	judgments,
 	calendar,
+	dvol,
 	marketData,
 	market,
 	now = Date.now,
@@ -77,6 +80,7 @@ export function createTradingService({
 	strategies: Pick<StrategyService, "get" | "list" | "create" | "remove">;
 	judgments: Pick<JudgmentService, "current">;
 	calendar: Pick<CalendarService, "calendar">;
+	dvol: Pick<DvolRepository, "bars">;
 	marketData: Pick<
 		MarketDataRepository,
 		"candlesBefore" | "loadCandles" | "lastCandle"
@@ -105,6 +109,13 @@ export function createTradingService({
 			strategyId: origin.strategy?.id ?? null,
 			strategyName: origin.strategy?.name ?? "",
 		});
+	};
+
+	/** 戦略が頼む長さの DVOL の1時間足 */
+	const dvolAt = (s: StoredStrategy, t: number): DvolPoint[] => {
+		const ms = conditionStrategy.dvolMs(s.params);
+		if (ms === 0) return [];
+		return dvol.bars(t - ms, t).map((b) => ({ time: b.time, close: b.close }));
 	};
 
 	/**
@@ -204,6 +215,7 @@ export function createTradingService({
 			...candlesAt(s, t, live),
 			judgments: judgmentInput(values, t),
 			events: calendar.calendar(),
+			dvol: dvolAt(s, t),
 			account: expired.account,
 			state: row.state,
 			fees,
@@ -424,6 +436,7 @@ export function createTradingService({
 					...candlesAt(s, t, live),
 					judgments: judgmentInput(judgmentValues(), t),
 					events: calendar.calendar(),
+					dvol: dvolAt(s, t),
 					lots: publicLots(a.lots),
 					cash: a.cash,
 					openOrders: a.openOrders.map((x) => ({ ...x.order })),

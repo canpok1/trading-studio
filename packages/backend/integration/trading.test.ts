@@ -410,6 +410,7 @@ describe("止まっていた間と再起動", () => {
 				},
 			},
 			calendar: t.calendar,
+			dvol: t.dvolRepo,
 			marketData: t.marketDataRepo,
 			market: () => t.live.current,
 			fees: TEST_FEE_RATES,

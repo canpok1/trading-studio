@@ -775,3 +775,50 @@ describe("相場データで期間を選ぶ", () => {
 		expect(r.json).toMatchObject({ kind: "invalid_input", field: "segment" });
 	});
 });
+
+describe("DVOL の条件", () => {
+	// 期間とその前の1時間ごとの DVOL
+	const saveDvol = (t: T, close: number) =>
+		t.dvolRepo.save(
+			Array.from({ length: DAYS * 24 }, (_, i) => ({
+				time: START + i * H,
+				open: close,
+				high: close,
+				low: close,
+				close,
+			})),
+		);
+	const withDvol: ConditionSet = singleBuy({
+		...FLAT,
+		buy: {
+			match: "all",
+			conditions: [
+				...FLAT.buy.conditions,
+				{ type: "dvol", threshold: 50, direction: "below" },
+			],
+		},
+	});
+	const trades = async (t: T) => {
+		const r = await post(t, body({ params: withDvol }));
+		expect(r.status).toBe(202);
+		await t.backtests.running();
+		const done = (
+			await getJson<{ run: BacktestRun }>(
+				t,
+				`/api/backtests/${(r.json.run as BacktestRun).id}`,
+			)
+		).run;
+		expect(done.status).toBe("done");
+		return done.summary?.trades;
+	};
+
+	test("保存した DVOL で判定し、条件に合わなければ・DVOL が無ければ買わない", async () => {
+		const low = setup();
+		saveDvol(low, 4000);
+		expect(await trades(low)).toBeGreaterThan(0);
+		const high = setup();
+		saveDvol(high, 7000);
+		expect(await trades(high)).toBe(0);
+		expect(await trades(setup())).toBe(0);
+	});
+});
