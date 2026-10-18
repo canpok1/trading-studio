@@ -28,7 +28,7 @@
 | [0022](0022-mcp-matches-screen.md) | MCP の道具は画面の機能と一致させ、MCP 独自の分析はやめる | 採用 | 2026-10-08 |
 | [0023](0023-news-timing-by-published-at.md) | 記事の精度と分析は公開時刻から測り、バックテストは公開から取得の間隔の後に記事を使う | 採用 | 2026-10-08 |
 | [0024](0024-dataset-as-period-with-rule-based-regime.md) | データセットは足を写さず期間と相場のラベルで持ち、ラベルはルールで付ける | 採用 | 2026-10-08 |
-| [0025](0025-delete-old-market-data-keeping-datasets.md) | 古い足・ニュース・採点は5年で消し、期間を過ぎたデータセットは相場ごとに最新だけ残す | 採用 | 2026-10-08 |
+| [0025](0025-delete-old-market-data-keeping-datasets.md) | 古い足・ニュース・採点は5年で消し、期間を過ぎたデータセットは相場ごとに最新だけ残す | 採用（粗い足を残す点・残す範囲は 0034 で置き換え） | 2026-10-08 |
 | [0026](0026-dataset-groups-segments-run-separately.md) | データセットは相場データを束ねたものにし、相場データごとに別々に実行して成績を合算する | 採用 | 2026-10-10 |
 | [0027](0027-openai-compatible-connection-per-model.md) | Gemini 直結に加えて OpenAI 互換の接続先を持ち、モデルを選ぶと接続先も決まるようにする | 採用 | 2026-10-11 |
 | [0028](0028-test-scope-and-layers.md) | テストのスコープを層をまたぐかで決め、backend は DDD の3層・frontend は Bulletproof React の構成にする | 採用 | 2026-10-13 |
@@ -36,3 +36,5 @@
 | [0030](0030-event-importance-by-ai.md) | 予定は種類を固定せず取得した予定を AI が重要度で判断し、条件は重要度で指定する | 採用 | 2026-10-16 |
 | [0031](0031-strategy-owns-trading-account.md) | 戦略と運用を1つにし、戦略1つが自動取引の口座1つを持つ | 採用 | 2026-10-16 |
 | [0032](0032-collect-dvol-hourly-from-deribit.md) | Deribit の DVOL を1時間足で収集し、足と同じ条件で消す | 採用 | 2026-10-17 |
+| [0033](0033-indicator-limits-and-unstable-period.md) | 指標の期間の上限を定番の値に下げ、不安定期間は始めの値の影響が 0.25% 以下になる本数にする | 採用 | 2026-10-18 |
+| [0034](0034-delete-all-timeframes-keep-lead-by-timeframe.md) | 保持の削除を全粒度で同じ条件にし、残す相場データの前は粒度ごとに必要な本数を残す | 採用 | 2026-10-18 |
