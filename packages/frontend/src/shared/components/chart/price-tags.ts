@@ -1,4 +1,4 @@
-// 価格の軸に「現」「買」のような1文字付きの値を出す描画拡張。
+// 価格・RSI・DVOL の軸に「現」「買」のような1文字付きの値を出す描画拡張。
 // 組み込みの価格線の名前は描画領域の内側に出て最新の足に重なるため、名前ごと軸のラベルに入れる
 
 import type {
@@ -27,6 +27,8 @@ export class PriceTags implements ISeriesPrimitive<Time> {
 	private requestUpdate: (() => void) | null = null;
 	private tags: PriceTag[] = [];
 
+	constructor(private readonly format: (v: number) => string = formatInt) {}
+
 	attached(p: SeriesAttachedParameter<Time>) {
 		this.series = p.series;
 		this.requestUpdate = p.requestUpdate;
@@ -48,7 +50,7 @@ export class PriceTags implements ISeriesPrimitive<Time> {
 			// 位置は layout() で決めた固定の座標を使う。自動の配置で空きを作らないよう、こちらは画面外にする
 			coordinate: () => -1000,
 			fixedCoordinate: () => this.layout()[i],
-			text: () => `${t.label} ${formatInt(t.price)}`,
+			text: () => `${t.label} ${this.format(t.price)}`,
 			textColor: () => t.textColor,
 			backColor: () => t.color,
 		}));

@@ -98,7 +98,7 @@ test("RSI の条件を持つ戦略の結果では、チャートの下に RSI �
 	).toHaveAttribute("aria-pressed", "true");
 	await expect(page.getByTestId("chart-rsi-14")).toHaveText(/^RSI14 \d+\.\d$/);
 	await openChartLegend(page);
-	await expect(page.getByText(/点線はしきい値/)).toBeVisible();
+	await expect(page.getByText(/灰色の破線はしきい値/)).toBeVisible();
 });
 
 test("RSI と DVOL を両方出して RSI の本数を変えても、小窓は2つのまま", async ({
