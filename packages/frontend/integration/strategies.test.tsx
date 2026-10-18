@@ -404,6 +404,40 @@ describe("戦略の編集", () => {
 		expect(value(s().getByLabelText("以上・以下"))).toBe("below");
 	});
 
+	test("DVOL は買いと売りに出て、既定は平均との比（30 日・120% 以下/150% 以上）。値に切り替えて保存できる", async () => {
+		let view = await open(strategiesApi());
+		await createFromTemplate(view, "DVOL", /^トレンド追随/);
+		const buy = "買い注文する条件";
+		const sl = "売り注文（損切り）する条件";
+
+		addCondition(view, buy, /^DVOL/);
+		const b = () => row(view, buy, "DVOL の見方");
+		expect(value(b().getByLabelText("DVOL の見方"))).toBe("dvolAverage");
+		expect(value(b().getByLabelText("DVOL の平均を取る日数"))).toBe("30");
+		expect(value(b().getByLabelText("DVOL の平均に対する %"))).toBe("120");
+		expect(value(b().getByLabelText("以上・以下"))).toBe("below");
+		addCondition(view, sl, /^DVOL/);
+		const s = () => row(view, sl, "DVOL の見方");
+		expect(value(s().getByLabelText("DVOL の平均に対する %"))).toBe("150");
+		expect(value(s().getByLabelText("以上・以下"))).toBe("above");
+
+		changeValue(b().getByLabelText("DVOL の平均を取る日数"), "31");
+		expect(b().getByText("1〜30 の整数で入れる")).toBeTruthy();
+		expect(blocked(view)).toBe(true);
+		fireEvent.change(b().getByLabelText("DVOL の見方"), {
+			target: { value: "dvol" },
+		});
+		expect(value(b().getByLabelText("DVOL のしきい値"))).toBe("60");
+		expect(value(b().getByLabelText("以上・以下"))).toBe("below");
+		changeValue(b().getByLabelText("DVOL のしきい値"), "55.5");
+		await save(view);
+
+		view = await reopen(view);
+		expect(value(b().getByLabelText("DVOL の見方"))).toBe("dvol");
+		expect(value(b().getByLabelText("DVOL のしきい値"))).toBe("55.5");
+		expect(value(s().getByLabelText("DVOL の見方"))).toBe("dvolAverage");
+	});
+
 	test("予定の前後は買いだけに出て、既定は重要度 高・後 24 時間。範囲外の時間は保存できない", async () => {
 		let view = await open(strategiesApi());
 		await createFromTemplate(view, "イベント", /^トレンド追随/);

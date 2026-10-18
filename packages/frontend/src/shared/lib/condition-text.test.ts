@@ -23,6 +23,17 @@ describe("条件の文字列", () => {
 				direction: "below",
 			}),
 		).toBe("4時間足 ADX14 20以下");
+		expect(
+			conditionText({ type: "dvol", threshold: 60, direction: "below" }),
+		).toBe("DVOL 60以下");
+		expect(
+			conditionText({
+				type: "dvolAverage",
+				days: 30,
+				percent: 150,
+				direction: "above",
+			}),
+		).toBe("DVOL 30日平均の150%以上");
 	});
 
 	test("予定の前後は重要度の下限と前後の時間", () => {

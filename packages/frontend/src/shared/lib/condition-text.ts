@@ -68,6 +68,10 @@ function conditionBody(c: Condition): string {
 			return `${c.bars}本保有`;
 		case "eventWindow":
 			return `予定（${importanceText(c.minImportance)}）の${eventSpanText(c.beforeHours, c.afterHours)}でない${c.allowNoCalendar ? "（暦切れは成立）" : ""}`;
+		case "dvol":
+			return `DVOL ${c.threshold}${c.direction === "above" ? "以上" : "以下"}`;
+		case "dvolAverage":
+			return `DVOL ${c.days}日平均の${c.percent}%${c.direction === "above" ? "以上" : "以下"}`;
 		case "judgment":
 			return `${JUDGE_SHORT[c.judge]} ${c.values.map((v) => JUDGMENT_VALUE_LABELS[v] ?? v).join("/")}`;
 	}
