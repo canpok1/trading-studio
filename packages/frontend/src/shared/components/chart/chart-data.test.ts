@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	barStep,
+	dvolPerBar,
 	fromChartTime,
 	hasOhlc,
 	initialRange,
@@ -126,5 +127,29 @@ describe("欠損の空白", () => {
 		expect(
 			toSlots([0, H, 3 * H], 3).filter((s) => s.bar === null),
 		).toHaveLength(1);
+	});
+});
+
+describe("dvolPerBar", () => {
+	const H = 3_600_000;
+	const M = 60_000;
+	const d = (h: number, close: number) => ({ time: h * H, close });
+	const dvol = [d(0, 10), d(1, 11), d(2, 12), d(26, 20)];
+
+	test("1分足はその時間の1時間足、日足はその日の最後の1時間足", () => {
+		expect(dvolPerBar([0, 30 * M, 60 * M, 61 * M], dvol)).toEqual([
+			10, 10, 11, 11,
+		]);
+		expect(dvolPerBar([0, 24 * H], dvol)).toEqual([12, 20]);
+	});
+
+	test("重なる1時間足が無い足は NaN", () => {
+		expect(dvolPerBar([-2 * H, -H, 5 * H, 6 * H], dvol)).toEqual([
+			Number.NaN,
+			Number.NaN,
+			Number.NaN,
+			Number.NaN,
+		]);
+		expect(dvolPerBar([0, H], [])).toEqual([Number.NaN, Number.NaN]);
 	});
 });

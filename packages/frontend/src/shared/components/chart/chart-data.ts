@@ -206,3 +206,26 @@ export function zoomRange(
 export function showsLatest(range: LogicalRange, barCount: number): boolean {
 	return barCount === 0 || range.to >= barCount - 1;
 }
+
+const HOUR_MS = 3_600_000;
+
+/**
+ * 足ごとの DVOL（1時間足の終値）。足の期間と重なる1時間足のうち最後のもの（日足ならその日の最後の1時間）。
+ * 重なる1時間足が無ければ NaN。dvol は古い順
+ */
+export function dvolPerBar(
+	times: readonly number[],
+	dvol: readonly { time: number; close: number }[],
+): number[] {
+	const step = barStep(times) ?? HOUR_MS;
+	const out: number[] = [];
+	let j = 0;
+	for (const t of times) {
+		const end = t + step;
+		while (j + 1 < dvol.length && (dvol[j + 1] as { time: number }).time < end)
+			j++;
+		const d = dvol[j];
+		out.push(d && d.time < end && d.time + HOUR_MS > t ? d.close : Number.NaN);
+	}
+	return out;
+}

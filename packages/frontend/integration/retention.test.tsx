@@ -12,10 +12,10 @@ afterEach(async () => {
 	cleanup();
 });
 
-function setup() {
+function setup(lastRun: RetentionStatus["lastRun"] = null) {
 	const status: RetentionStatus = {
 		settings: { decisionsDays: 90, backtestsDays: null, marketDataYears: 5 },
-		lastRun: null,
+		lastRun,
 		nextRunAt: Date.UTC(2026, 8, 27, 19),
 		running: false,
 		dbBytes: 3 * 1024 * 1024,
@@ -77,4 +77,18 @@ test("保持期間を変えて保存すると送られ、保存後の値が出�
 	});
 	expect(decisions.value).toBe("180");
 	expect(save.disabled).toBe(true);
+});
+
+test("前回の削除の件数に DVOL の本数が出る", async () => {
+	const view = setup({
+		at: Date.UTC(2026, 9, 17, 19),
+		decisions: 1,
+		backtests: 0,
+		candles: 2,
+		news: 3,
+		segments: 0,
+		dvol: 1200,
+		error: null,
+	});
+	expect(await view.findByText(/・DVOL 1,200 本/)).toBeTruthy();
 });

@@ -24,6 +24,7 @@
 	--color-rsi1: #7a4fc4;
 	--color-rsi2: #b0417f;
 	--color-bb: #5f6f94;
+	--color-dvol: #2b7bd0;
 	/* テーマカラー（青みの深緑）。ボタン・選択中の印に使う。利益・上昇の緑とは明るさで分ける */
 	--color-accent: #0f4c4a;
 	/* 件数の濃淡で塗る表のマス（評価×値動き）。テーマカラーを明るくした色 */
@@ -122,6 +123,7 @@
 	--color-rsi1: #b595f0;
 	--color-rsi2: #e58fbf;
 	--color-bb: #a3b3d6;
+	--color-dvol: #73aef0;
 	--color-accent: #5fb0ac;
 	--color-heat: #3cc7bc;
 	--color-heat-ink: #0e1012;

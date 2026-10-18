@@ -1,12 +1,16 @@
-import type { NewsCollectorStatus, NewsSource } from "@trading-studio/backend";
-import { useState } from "react";
+import type {
+	DvolStatus,
+	NewsCollectorStatus,
+	NewsSource,
+} from "@trading-studio/backend";
+import { useCallback, useState } from "react";
 import { Help } from "../../../shared/components/Help";
 import { Modal } from "../../../shared/components/Modal";
 import { NumberInput } from "../../../shared/components/NumberInput";
 import { Button, Card } from "../../../shared/components/ui";
 import { useApi } from "../../../shared/lib/api";
 import { formatDateTime } from "../../../shared/lib/format";
-import { errorMessage, readJson } from "../../../shared/lib/useAsync";
+import { errorMessage, readJson, useAsync } from "../../../shared/lib/useAsync";
 
 const INTERVAL = { min: 5, max: 1440 };
 const LANGUAGES = [
@@ -30,6 +34,68 @@ export function SourcesTab({
 				nextRunAt={collector.nextRunAt}
 				onChanged={onChanged}
 			/>
+			<DvolSource />
+		</>
+	);
+}
+
+/** DVOL は設定項目が無く、取得の状態だけを出す */
+function DvolSource() {
+	const api = useApi();
+	const load = useCallback(
+		() => api.api.dvol.status.$get().then((r) => readJson<DvolStatus>(r)),
+		[api],
+	);
+	const { state } = useAsync(load);
+	return (
+		<Card className="flex flex-col gap-1.5">
+			<div className="flex items-center gap-1.5">
+				<h2 className="text-[15px] font-bold">DVOL（Deribit）</h2>
+				<Help label="DVOL（Deribit）">
+					<p>
+						BTC のオプションから求めた今後30日の予想変動率（年率
+						%）。1時間ごとに1時間足で取得し、チャートの小窓で見られる。
+					</p>
+				</Help>
+			</div>
+			{state.kind === "loading" && (
+				<span className="text-xs text-text-2">読み込み中</span>
+			)}
+			{state.kind === "error" && (
+				<span role="alert" className="text-xs font-semibold text-loss">
+					状態を読み込めなかった: {state.message}
+				</span>
+			)}
+			{state.kind === "ok" && <DvolStatusView status={state.data} />}
+		</Card>
+	);
+}
+
+function DvolStatusView({ status }: { status: DvolStatus }) {
+	return (
+		<>
+			<span className="num text-xs text-text-2">
+				{status.lastSuccessAt === null
+					? "まだ取得していない"
+					: `最後に取得: ${formatDateTime(status.lastSuccessAt)}`}
+			</span>
+			{status.latestBarTime !== null && (
+				<span className="num text-xs text-text-2">
+					最新の足: {formatDateTime(status.latestBarTime)}
+				</span>
+			)}
+			{status.lastError && (
+				<span className="text-xs font-semibold text-loss">
+					{status.errorSince !== null &&
+						`${formatDateTime(status.errorSince)} から失敗: `}
+					{status.lastError}
+				</span>
+			)}
+			{status.nextRunAt !== null && (
+				<span className="num text-xs text-text-2">
+					次の取得: {formatDateTime(status.nextRunAt)}
+				</span>
+			)}
 		</>
 	);
 }

@@ -113,3 +113,25 @@ export function useShowValues(): [boolean, (on: boolean) => void] {
 	}, []);
 	return [on, set];
 }
+
+const DVOL_KEY = "chart-dvol";
+
+/** DVOL の小窓を出すか。既定は出さない。選んだものをブラウザに保存する */
+export function useShowDvol(): [boolean, (on: boolean) => void] {
+	const [on, setOn] = useState(() => {
+		try {
+			return localStorage.getItem(DVOL_KEY) === "on";
+		} catch {
+			return false;
+		}
+	});
+	const set = useCallback((v: boolean) => {
+		setOn(v);
+		try {
+			localStorage.setItem(DVOL_KEY, v ? "on" : "off");
+		} catch {
+			// 保存できない環境では、この画面を開いている間だけ効く
+		}
+	}, []);
+	return [on, set];
+}
