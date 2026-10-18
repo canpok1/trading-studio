@@ -65,6 +65,7 @@ function input(p: ConditionSet, over: Partial<WatchInput> = {}): WatchInput {
 		now: closes.length * H,
 		price,
 		events: { events: [], covered: [] },
+		dvol: [],
 		candles: { "1h": candles(closes) },
 		recent: { timeframeMs: TIMEFRAME_MS["1m"], candles: [] },
 		judgments: {},
@@ -185,6 +186,45 @@ describe("watchConditionSet", () => {
 			// 価格に対して単調でないので発動価格を探さない
 			edge: null,
 		});
+	});
+
+	test("DVOL は今の値と平均を出し、価格で変わらないので発動価格を出さない。取得が止まっていればその旨", () => {
+		const now = closes.length * H;
+		const dvol = Array.from({ length: 24 }, (_, i) => ({
+			time: now - (24 - i) * H,
+			close: i === 23 ? 7400 : 5000,
+		}));
+		const watch = (over: Partial<WatchInput>) =>
+			watchConditionSet(
+				input(
+					params([
+						rule({
+							buy: {
+								match: "all",
+								conditions: [
+									{ type: "dvol", threshold: 60, direction: "below" },
+									{
+										type: "dvolAverage",
+										days: 1,
+										percent: 120,
+										direction: "below",
+									},
+								],
+							},
+						}),
+					]),
+					over,
+				),
+			).buys[0]?.buy;
+		expect(watch({ dvol })?.conditions).toMatchObject([
+			{ met: false, detail: "今 74.00", edge: null },
+			{ met: false, detail: "今 74.00 ・ 平均 51.00（145%）", edge: null },
+		]);
+		expect(watch({ dvol: dvol.slice(0, 20) })?.conditions[0]).toMatchObject({
+			met: false,
+			detail: expect.stringContaining("DVOL の取得が止まっている（最新は"),
+		});
+		expect(watch({ dvol: [] })?.conditions[1]?.detail).toBe("DVOL が無い");
 	});
 
 	test("すべて満たすのグループは、価格で変わらない条件が不成立なら発動価格を出さない", () => {

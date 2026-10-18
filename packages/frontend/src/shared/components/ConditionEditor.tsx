@@ -368,9 +368,9 @@ const GROUP_BORDER: Record<ConditionGroupKey, string> = {
 	stopLoss: "border-l-loss",
 };
 
-/** 追加の選択肢。市場評価は観点ごとに別の選択肢にする */
+/** 追加の選択肢。市場評価は観点ごとに別の選択肢にする。DVOL は値と平均との比を1つにし、追加した後に見方を選ぶ */
 type ConditionKind =
-	| Exclude<Condition["type"], "judgment">
+	| Exclude<Condition["type"], "judgment" | "dvolAverage">
 	| `judgment:${Judge}`;
 
 const CONDITION_NAMES: Record<ConditionKind, string> = {
@@ -388,6 +388,7 @@ const CONDITION_NAMES: Record<ConditionKind, string> = {
 	trailingAtr: "買ってからの最高値からの ATR の倍数",
 	holdingBars: "買ってからの本数",
 	eventWindow: "予定の前後でない",
+	dvol: "DVOL（BTC の予想ボラ）",
 	"judgment:sentiment": "センチメントが指定のどれか",
 	"judgment:risk": "リスクが指定のどれか",
 };
@@ -425,6 +426,8 @@ const PRICE_KINDS: Record<ConditionGroupKey, ConditionKind[]> = {
 };
 
 const JUDGMENT_KINDS = JUDGES.map((j) => `judgment:${j}` as const);
+
+const VOLATILITY_KINDS: ConditionKind[] = ["dvol"];
 
 const EVENT_KINDS: Record<ConditionGroupKey, ConditionKind[]> = {
 	buy: ["eventWindow"],
@@ -540,6 +543,11 @@ function defaultCondition(
 			};
 		case "holdingBars":
 			return { type: kind, timeframe, bars: 24 };
+		case "dvol":
+			// 水準は年で大きく違うので、平均との比を既定にする
+			return sell
+				? { type: "dvolAverage", days: 30, percent: 150, direction: "above" }
+				: { type: "dvolAverage", days: 30, percent: 120, direction: "below" };
 		case "eventWindow":
 			return {
 				type: kind,
@@ -1062,6 +1070,88 @@ function ConditionRow({
 			);
 			break;
 		}
+		case "dvol":
+		case "dvolAverage": {
+			const basis = (
+				<select
+					aria-label="DVOL の見方"
+					value={c.type}
+					onChange={(e) =>
+						onChange(
+							e.target.value === "dvol"
+								? { type: "dvol", threshold: 60, direction: c.direction }
+								: {
+										type: "dvolAverage",
+										days: 30,
+										percent: c.direction === "above" ? 150 : 120,
+										direction: c.direction,
+									},
+						)
+					}
+					className={selectClass}
+				>
+					<option value="dvolAverage">平均との比</option>
+					<option value="dvol">値</option>
+				</select>
+			);
+			const direction = (
+				<select
+					aria-label="以上・以下"
+					value={c.direction}
+					onChange={(e) =>
+						onChange({
+							...c,
+							direction: e.target.value as "above" | "below",
+						})
+					}
+					className={selectClass}
+				>
+					<option value="above">以上</option>
+					<option value="below">以下</option>
+				</select>
+			);
+			body =
+				c.type === "dvol" ? (
+					<>
+						{basis}
+						<span>で DVOL が</span>
+						<NumberInput
+							value={c.threshold}
+							onChange={(threshold) => onChange({ ...c, threshold })}
+							invalid={bad("threshold")}
+							inputMode="decimal"
+							aria-label="DVOL のしきい値"
+							className="w-16"
+						/>
+						{direction}
+					</>
+				) : (
+					<>
+						{basis}
+						<span>で DVOL が直近</span>
+						<NumberInput
+							value={c.days}
+							onChange={(days) => onChange({ ...c, days })}
+							invalid={bad("days")}
+							inputMode="numeric"
+							aria-label="DVOL の平均を取る日数"
+							className="w-16"
+						/>
+						<span>日の平均の</span>
+						<NumberInput
+							value={c.percent}
+							onChange={(percent) => onChange({ ...c, percent })}
+							invalid={bad("percent")}
+							inputMode="numeric"
+							aria-label="DVOL の平均に対する %"
+							className="w-16"
+						/>
+						<span>%</span>
+						{direction}
+					</>
+				);
+			break;
+		}
 		case "judgment": {
 			const all = JUDGMENT_CONDITION_VALUES[
 				c.judge
@@ -1505,6 +1595,7 @@ function RuleGroups({
 						[
 							["価格・保有", PRICE_KINDS[adding]],
 							["市場評価", JUDGMENT_KINDS],
+							["ボラティリティ", VOLATILITY_KINDS],
 							["予定", EVENT_KINDS[adding]],
 						] as const
 					)

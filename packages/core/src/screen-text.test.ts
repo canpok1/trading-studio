@@ -143,6 +143,20 @@ describe("条件の文言", () => {
 		);
 	});
 
+	test("DVOL は値か平均との比で書く", () => {
+		expect(
+			conditionScreenText({ type: "dvol", threshold: 60, direction: "below" }),
+		).toBe("DVOL が 60 以下");
+		expect(
+			conditionScreenText({
+				type: "dvolAverage",
+				days: 30,
+				percent: 150,
+				direction: "above",
+			}),
+		).toBe("DVOL が直近 30 日の平均の 150% 以上");
+	});
+
 	test("ADX は足・本数・しきい値・以上/以下で書く", () => {
 		expect(
 			conditionScreenText({

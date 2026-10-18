@@ -1,5 +1,13 @@
 // 画面で作る「条件のセット」を実行する汎用の条件戦略
 
+import type { DvolPoint } from "./dvol";
+import {
+	DVOL_STALE_MS,
+	dvolAt,
+	dvolAverage,
+	dvolRatioPercent,
+	formatDvol,
+} from "./dvol";
 import type { EventCalendar, EventImportance } from "./event-calendar";
 import {
 	calendarGap,
@@ -165,6 +173,18 @@ export type Condition =
 			beforeHours: number;
 			afterHours: number;
 			allowNoCalendar: boolean;
+	  }
+	/** DVOL（×100 ではなく年率 % で入れる）が threshold 以上（above）/ 以下（below）。どのグループでも使える。DVOL が無ければ成立しない */
+	| { type: "dvol"; threshold: number; direction: "above" | "below" }
+	/**
+	 * DVOL が直近 days 日の平均の percent % 以上（above）/ 以下（below）。どのグループでも使える。
+	 * DVOL が無い・平均に足が足りなければ成立しない
+	 */
+	| {
+			type: "dvolAverage";
+			days: number;
+			percent: number;
+			direction: "above" | "below";
 	  }
 	/** AI の判定が values のどれか。判定がまだ無いときは values に NO_JUDGMENT があれば成立。どのグループでも使える */
 	| { type: "judgment"; judge: Judge; values: JudgmentConditionValue[] };
@@ -411,6 +431,12 @@ export const LIMITS = {
 	holdingBars: { min: 1, max: 1000 },
 	/** 予定の前後の時間 */
 	eventHours: { min: 0, max: 168 },
+	/** DVOL のしきい値（年率 %、0.1 刻み） */
+	dvolThreshold: { min: 1, max: 300 },
+	/** DVOL の平均を取る日数。古い相場データの前に残す DVOL（1時間足と同じ850時間）に収める */
+	dvolDays: { min: 1, max: 30 },
+	/** DVOL の平均に対する % */
+	dvolPercent: { min: 1, max: 1000 },
 	/** 買い指値を現在値から下げる %。0 以上 100 未満、0.01 刻み */
 	buyBelowPercent: { min: 0, maxExclusive: 100 },
 	buyExpireBars: { min: 1, max: 100 },
@@ -500,6 +526,8 @@ export type Ctx = {
 	judgments: Partial<Record<Judge, JudgmentValue>>;
 	/** 予定の暦 */
 	events: EventCalendar;
+	/** DVOL の1時間足（古い順） */
+	dvol: readonly DvolPoint[];
 	price: number;
 	now: number;
 	/** 売りの判定中のロット。買いの判定では null */
@@ -975,6 +1003,33 @@ function checkOther(c: Exclude<Condition, CandleCondition>, ctx: Ctx): Hit {
 			}
 			return { ok: true, why: `予定（${names}）の${span}に当たらない` };
 		}
+		case "dvol": {
+			const v = dvolAt(ctx.dvol, ctx.now);
+			if (!v.ok) return { ok: false };
+			// 0.1 刻みのしきい値を ×100 すると浮動小数の誤差で境界がずれるので丸める
+			const t = Math.round(c.threshold * 100);
+			const hit = c.direction === "above" ? v.value >= t : v.value <= t;
+			return hit
+				? {
+						ok: true,
+						why: `DVOL ${formatDvol(v.value)} が ${c.threshold} ${c.direction === "above" ? "以上" : "以下"}`,
+					}
+				: { ok: false };
+		}
+		case "dvolAverage": {
+			const v = dvolAt(ctx.dvol, ctx.now);
+			const avg = dvolAverage(ctx.dvol, ctx.now, c.days);
+			if (!v.ok || !avg.ok) return { ok: false };
+			const ratio = dvolRatioPercent(v.value, avg.value);
+			const hit =
+				c.direction === "above" ? ratio >= c.percent : ratio <= c.percent;
+			return hit
+				? {
+						ok: true,
+						why: `DVOL ${formatDvol(v.value)} が直近 ${c.days} 日の平均 ${formatDvol(avg.value)} の ${ratio.toFixed(0)}%（${c.percent}% ${c.direction === "above" ? "以上" : "以下"}）`,
+					}
+				: { ok: false };
+		}
 		case "holdingBars": {
 			if (ctx.lot === null) {
 				return { ok: false };
@@ -1206,6 +1261,20 @@ function candleNeed(c: CandleCondition): number {
 		case "bollinger":
 			return c.period;
 	}
+}
+
+/** 判定に渡してほしい DVOL の時間の長さ（判定の時刻から遡る）。DVOL の条件が無ければ 0 */
+export function dvolMs(params: ConditionSet): number {
+	let days = -1;
+	for (const g of allGroups(params)) {
+		for (const c of g.conditions) {
+			if (c.type === "dvol") days = Math.max(days, 0);
+			else if (c.type === "dvolAverage") days = Math.max(days, c.days);
+		}
+	}
+	if (days < 0) return 0;
+	// 最新の足が確定してから取得が止まったとみなすまでの分も含める
+	return days * 24 * HOUR_MS + HOUR_MS + DVOL_STALE_MS;
 }
 
 /**
@@ -1486,6 +1555,24 @@ function validateBuyRule(
 					}
 					break;
 				}
+				case "dvol": {
+					const r = limits.dvolThreshold;
+					if (
+						!isNumIn(c.threshold, r) ||
+						Math.abs(c.threshold * 10 - Math.round(c.threshold * 10)) > 1e-9
+					) {
+						err(`${at}.threshold`, `${range(r)}、0.1 刻みで入れる`);
+					}
+					break;
+				}
+				case "dvolAverage":
+					if (!isIntIn(c.days, limits.dvolDays)) {
+						err(`${at}.days`, `${range(limits.dvolDays)} の整数で入れる`);
+					}
+					if (!isIntIn(c.percent, limits.dvolPercent)) {
+						err(`${at}.percent`, `${range(limits.dvolPercent)} の整数で入れる`);
+					}
+					break;
 				case "holdingBars":
 					if (g === "buy") {
 						err(at, "保有本数は売りの条件だけで使える");
@@ -1761,6 +1848,7 @@ export function evaluateConditionSet(
 		lot: null,
 		judgments: latestJudgments(judgments),
 		events: input.events,
+		dvol: input.dvol,
 	};
 	// 買いが1つなら、理由に買いの名前を出さない（買いを複数持つ前と同じ文）
 	const multi = p.buys.length >= 2;
@@ -2012,6 +2100,7 @@ export const conditionStrategy: Strategy<ConditionSet> = {
 	requiredJudges,
 	candleNeeds,
 	recentMs,
+	dvolMs,
 	validate: validateConditionSet,
 	evaluate: evaluateConditionSet,
 	dailyLossLimit: (p) => p.dailyLossLimit,
@@ -2167,6 +2256,21 @@ function parseCondition(
 			};
 		case "holdingBars":
 			return { type: "holdingBars", timeframe, bars: num(v.bars) };
+		case "dvol":
+			if (v.direction !== "above" && v.direction !== "below") return null;
+			return {
+				type: "dvol",
+				threshold: num(v.threshold),
+				direction: v.direction,
+			};
+		case "dvolAverage":
+			if (v.direction !== "above" && v.direction !== "below") return null;
+			return {
+				type: "dvolAverage",
+				days: num(v.days),
+				percent: num(v.percent),
+				direction: v.direction,
+			};
 		case "eventWindow":
 			return {
 				type: "eventWindow",

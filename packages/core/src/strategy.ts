@@ -1,6 +1,7 @@
 // 戦略のインターフェース。戦略は純関数で、現在時刻・乱数・外部アクセスを使わない。
 // 状態は変数に持たず、入出力の state で受け渡す（再起動やバックテストで結果が変わらないようにするため）
 
+import type { DvolPoint } from "./dvol";
 import type { EventCalendar } from "./event-calendar";
 import type { Timeframe } from "./timeframe";
 import type {
@@ -29,6 +30,8 @@ export type StrategyInput<P> = {
 	judgments: Readonly<Record<string, readonly Judgment[]>>;
 	/** 予定の暦 */
 	events: EventCalendar;
+	/** DVOL の1時間足（古い順）。この時刻までに確定した足のうち、少なくとも dvolMs の時間ぶん。dvolMs が 0 なら空でよい */
+	dvol: readonly DvolPoint[];
 	/** 保有の合計 */
 	position: Position;
 	/** 保有中のロット（買いの約定順） */
@@ -61,6 +64,8 @@ export type Strategy<P> = {
 	candleNeeds(params: P): Partial<Record<Timeframe, number>>;
 	/** 判定に渡してほしい直近の細かい足の時間の長さ（ミリ秒）。要らなければ 0 */
 	recentMs(params: P): number;
+	/** 判定に渡してほしい DVOL の時間の長さ（ミリ秒）。要らなければ 0 */
+	dvolMs(params: P): number;
 	/** パラメータの入力検証。問題が無ければ空配列 */
 	validate(params: P): ValidationError[];
 	evaluate(input: StrategyInput<P>): StrategyOutput;

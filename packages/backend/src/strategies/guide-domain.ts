@@ -3,6 +3,9 @@
 import type { ConditionType, Judge } from "@trading-studio/core";
 import {
 	DEFAULT_FEE_RATES,
+	DVOL_AVERAGE_COVERAGE,
+	DVOL_STALE_MS,
+	HOUR_MS,
 	JUDGMENT_VALUE_LABELS,
 	JUDGMENT_VALUES,
 	LIMITS,
@@ -28,6 +31,8 @@ const CONDITIONS: Record<ConditionType, string> = {
 	trailingAtr: `- \`{"type":"trailingAtr","timeframe":"1h","period":14,"multiple":3,"activateMultiple":0}\` 現在値がそのロットを買ってからの最高値から、買った時点の ATR の multiple 倍以上下がった。最高値の求め方は trailingStop と同じ。最高値が買値から ATR の activateMultiple 倍以上になるまでは成立しない（0 は買った直後から、${LIMITS.atrActivateMultiple.min}〜${LIMITS.atrActivateMultiple.max}、0.1 刻み）。売りのグループだけ。period・multiple は entryAtr と同じ`,
 	holdingBars: `- \`{"type":"holdingBars","timeframe":"1h","bars":24}\` そのロットの買いの約定から、timeframe の足で N 本ぶんの時間が経った（足のデータは使わず時間で数える）。売りのグループだけ。${LIMITS.holdingBars.min}〜${LIMITS.holdingBars.max}`,
 	eventWindow: `- \`{"type":"eventWindow","minImportance":"high","beforeHours":0,"afterHours":24,"allowNoCalendar":false}\` 判定の時刻 t について、[t − afterHours 時間, t + beforeHours 時間] に重要度が minImportance 以上の予定が無い（予定の afterHours 時間後までと beforeHours 時間前からは買わない）。minImportance は high（高）・medium（中以上）・low（すべての予定）。予定は設定の取得元（iCal）から取得したものと、アプリが持つ 2022〜2026 年の FOMC 声明・議事要旨・米 CPI・米雇用統計・日銀会合で、重要度は予定の評価基準（設定の「ニュース」の「予定」）で AI が判断する。終日の予定は JST の日の 0:00〜24:00 を予定の時間とする。暦がそろっていない期間に掛かるか、重要度が未判断の予定に掛かる判定（暦切れ）では、allowNoCalendar が true なら成立とみなし、false なら買いを判定しない。買いのグループだけ。beforeHours・afterHours は ${LIMITS.eventHours.min}〜${LIMITS.eventHours.max} の整数`,
+	dvol: `- \`{"type":"dvol","threshold":60,"direction":"above"|"below"}\` DVOL（Deribit の BTC オプションから計算した30日の予想ボラ、年率 %。get_dvol_bars の値）が threshold 以上・以下。判定の時刻までに確定した最新の1時間足の終値で見る。最新の足の終わりが判定の時刻より ${DVOL_STALE_MS / HOUR_MS} 時間を超えて古い（取得が止まっている）・DVOL が無い（2021-03-24 より前）ときは成立しない。どのグループでも使える。threshold ${LIMITS.dvolThreshold.min}〜${LIMITS.dvolThreshold.max}（0.1 刻み）。DVOL の水準は年で大きく違う（中央値は 2021 年が約 90、2026 年が約 40）ので、長い期間のバックテストでは dvolAverage が向く`,
+	dvolAverage: `- \`{"type":"dvolAverage","days":30,"percent":120,"direction":"above"|"below"}\` 最新の DVOL が、判定の時刻までに確定した直近 days 日の1時間足の終値の平均の percent% 以上・以下。最新の値の求め方と、無いときに成立しないのは dvol と同じ。直近 days 日の足が ${DVOL_AVERAGE_COVERAGE * 100}% に足りないときも成立しない。どのグループでも使える。days ${LIMITS.dvolDays.min}〜${LIMITS.dvolDays.max}、percent ${LIMITS.dvolPercent.min}〜${LIMITS.dvolPercent.max} の整数`,
 	judgment: `- \`{"type":"judgment","judge":"sentiment"|"risk","values":[...]}\` ニュースの市場評価（センチメント・リスク）が values のどれか。values は sentiment: ${values("sentiment")}（BTC の価格にとって強気材料か弱気材料か）、risk: ${values("risk")}（画面の名前を括弧に添えた）。どの判定でも ${NO_JUDGMENT}（データなし＝採点の記録が始まる前）を足せる。データなしのとき ${NO_JUDGMENT} を含まない条件は満たさない。記録開始前を含む期間のバックテストは、判定の条件のどれかに ${NO_JUDGMENT} があるときだけ実行できる`,
 };
 

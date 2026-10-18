@@ -19,6 +19,8 @@ import {
 	withSellDetails,
 } from "@trading-studio/core";
 import type { CalendarService } from "../calendar/types-domain";
+import { strategyDvol } from "../dvol/dvol-domain";
+import type { DvolRepository } from "../dvol/repository-domain";
 import type { JudgmentService } from "../judgments/types-domain";
 import { MAX_CHART_BARS } from "../market/market-domain";
 import type { MarketDataRepository } from "../market-data/repository-domain";
@@ -122,6 +124,7 @@ export type BacktestServiceDeps = {
 		CalendarService,
 		"calendar" | "activeVersion" | "judgmentCoverage"
 	>;
+	dvol: Pick<DvolRepository, "bars" | "fetchState">;
 	now?: () => number;
 };
 
@@ -189,6 +192,7 @@ export function createBacktestService({
 	scoring,
 	segments,
 	calendar,
+	dvol,
 	now = Date.now,
 }: BacktestServiceDeps): BacktestService & { running(): Promise<void> | null } {
 	let current: { id: number; job: RunningJob; done: Promise<void> } | null =
@@ -452,6 +456,7 @@ export function createBacktestService({
 						: null,
 					// 予定の前後の条件が無ければ暦は見ない
 					events: calendar.calendar(eventCriteriaVersion ?? undefined),
+					dvol: strategyDvol(dvol, params, from, to),
 				});
 			} catch (e) {
 				console.error("backtest failed to start", e);

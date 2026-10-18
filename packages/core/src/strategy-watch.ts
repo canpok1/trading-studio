@@ -31,6 +31,7 @@ import {
 	usesAtr,
 	usesPeaks,
 } from "./condition-strategy";
+import { dvolAt, dvolAverage, dvolRatioPercent, formatDvol } from "./dvol";
 import type { ScheduledEvent } from "./event-calendar";
 import {
 	calendarGap,
@@ -259,6 +260,14 @@ function detailOf(c: Condition, ctx: Ctx): string {
 		return `${bars} 本経過`;
 	}
 	if (c.type === "eventWindow") return eventWindowDetail(c, ctx);
+	if (c.type === "dvol" || c.type === "dvolAverage") {
+		const v = dvolAt(ctx.dvol, ctx.now);
+		if (!v.ok) return v.reason;
+		if (c.type === "dvol") return `今 ${formatDvol(v.value)}`;
+		const avg = dvolAverage(ctx.dvol, ctx.now, c.days);
+		if (!avg.ok) return avg.reason;
+		return `今 ${formatDvol(v.value)} ・ 平均 ${formatDvol(avg.value)}（${dvolRatioPercent(v.value, avg.value).toFixed(0)}%）`;
+	}
 	if (!needsCandles(c)) return "";
 	const sr = ctx.series(c.timeframe);
 	const n = sr.candles.length;
@@ -471,6 +480,7 @@ export function watchConditionSet(input: WatchInput): StrategyWatch {
 		lot: null,
 		judgments: latestJudgments(input.judgments),
 		events: input.events,
+		dvol: input.dvol,
 	};
 	const peaks = usesPeaks(p) ? lotPeaks(lots, input.recent, state) : null;
 	const entryAtrs = usesAtr(p)

@@ -1,7 +1,9 @@
 // バックテストエンジン。過去の足の上で戦略を動かし、注文・約定・成績を計算する
 
 import { aggregateCandles } from "./candles";
+import type { DvolPoint } from "./dvol";
 import type { EventCalendar } from "./event-calendar";
+import { HOUR_MS } from "./event-calendar";
 import { notionalYen } from "./money";
 import type { AggregationRule, ScoredNews } from "./news-judgment";
 import { judgmentCursor } from "./news-judgment";
@@ -65,6 +67,8 @@ export type BacktestConfig<P> = {
 	 */
 	/** 予定の暦 */
 	events: EventCalendar;
+	/** DVOL の1時間足（古い順）。期間より前も戦略の dvolMs の分だけ含める。DVOL の条件が無ければ空でよい */
+	dvol: readonly DvolPoint[];
 	judgments?: {
 		news: readonly ScoredNews[];
 		rule: AggregationRule;
@@ -156,6 +160,27 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 	const stepMs = TIMEFRAME_MS[stepTimeframe];
 	// 直近の細かい足として、判定に使う足をこの本数だけ渡す
 	const recentBars = Math.ceil(strategy.recentMs(params) / stepMs) + 1;
+	const dvolMs = strategy.dvolMs(params);
+	// 判定の時刻までに確定した DVOL の足の数（先頭から）と、渡す範囲の先頭
+	let dvolDone = 0;
+	let dvolFrom = 0;
+	const dvolAt = (now: number): readonly DvolPoint[] => {
+		if (dvolMs === 0) return [];
+		const all = config.dvol;
+		while (
+			dvolDone < all.length &&
+			(all[dvolDone] as DvolPoint).time + HOUR_MS <= now
+		) {
+			dvolDone++;
+		}
+		while (
+			dvolFrom < dvolDone &&
+			(all[dvolFrom] as DvolPoint).time + HOUR_MS <= now - dvolMs
+		) {
+			dvolFrom++;
+		}
+		return all.slice(dvolFrom, dvolDone);
+	};
 	const judges = strategy.requiredJudges(params);
 	if (judges.length > 0 && !config.judgments) {
 		throw new BacktestError(
@@ -269,6 +294,7 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 						candles: steps.slice(Math.max(0, i + 1 - recentBars), i + 1),
 					},
 					judgments: judgmentsAt(closeAt),
+					dvol: dvolAt(closeAt),
 				};
 			},
 		});

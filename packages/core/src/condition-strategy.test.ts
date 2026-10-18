@@ -14,6 +14,7 @@ import {
 	conditionStrategy as conditionStrategyOf,
 	DEFAULT_BUY_ORDER,
 	DEFAULT_PARTIAL_SELL,
+	dvolMs as dvolMsOf,
 	emaPeriods as emaPeriodsOf,
 	evaluateConditionSet,
 	eventWindowHours as eventWindowHoursOf,
@@ -68,6 +69,7 @@ const historyShortfalls = (
 		: never
 ) => historyShortfallsOf(toSet(p), ...rest);
 const recentMs = (p: Flat) => recentMsOf(toSet(p));
+const dvolMs = (p: Flat) => dvolMsOf(toSet(p));
 const rsiLines = (p: Flat) => rsiLinesOf(toSet(p));
 const validateConditionSet = (p: Flat | ConditionSet, limits?: Limits) =>
 	validateConditionSetOf(toSet(p), limits).map((e) => ({
@@ -130,6 +132,7 @@ function input(
 		now: ((cs.at(-1)?.time ?? 0) as number) + H,
 		price: cs.at(-1)?.close ?? 0,
 		events: { events: [], covered: [] },
+		dvol: [],
 		candles: { "1h": cs },
 		recent: { timeframeMs: H, candles: cs },
 		judgments: {},
@@ -2742,5 +2745,163 @@ describe("予定の前後", () => {
 
 	test("同じ入力なら同じ結果", () => {
 		expect(at(fomc + H)).toEqual(at(fomc + H));
+	});
+});
+
+describe("DVOL", () => {
+	const cs = candles([10, 10, 10]);
+	const now = 3 * H;
+	// 判定の時刻 now までに確定した1時間足を、新しい足が values の最後になるように並べる
+	const dvolBars = (values: number[], lastEnd = now) =>
+		values.map((close, i) => ({
+			time: lastEnd - (values.length - i) * H,
+			close,
+		}));
+	const value = (
+		threshold: number,
+		direction: "above" | "below",
+	): Condition => ({ type: "dvol", threshold, direction });
+	const average = (
+		percent: number,
+		direction: "above" | "below",
+	): Condition => ({ type: "dvolAverage", days: 1, percent, direction });
+	const run = (c: Condition, dvol: { time: number; close: number }[]) =>
+		evaluateConditionSet(input(cs, buyWith(c), { dvol }));
+
+	test("確定した最新の足の値でしきい値と比べ、値を記録に残す", () => {
+		const out = run(value(55, "below"), dvolBars([6000, 5500]));
+		expect(out.intents).toHaveLength(1);
+		expect(out.note).toContain("DVOL 55.00 が 55 以下");
+		expect(
+			run(value(55.1, "above"), dvolBars([6000, 5500])).intents,
+		).toHaveLength(0);
+	});
+
+	test("0.1 刻みのしきい値は、ちょうどの値で以上・以下とも成立する", () => {
+		// 32.2 × 100 は浮動小数で 3220 をわずかに超える
+		expect(run(value(32.2, "above"), dvolBars([3220])).intents).toHaveLength(1);
+		expect(run(value(32.2, "below"), dvolBars([3220])).intents).toHaveLength(1);
+	});
+
+	test("途中の足（終わりが判定の時刻より後）は使わない", () => {
+		const forming = [...dvolBars([5000]), { time: now - H / 2, close: 9000 }];
+		expect(run(value(60, "below"), forming).intents).toHaveLength(1);
+	});
+
+	test("最新の足が古い・DVOL が無いときは成立しない", () => {
+		const stale = dvolBars([5000], now - 3 * H - 1);
+		expect(run(value(60, "below"), stale).intents).toHaveLength(0);
+		expect(
+			run(value(60, "below"), dvolBars([5000], now - 3 * H)).intents,
+		).toHaveLength(1);
+		expect(run(value(60, "below"), []).intents).toHaveLength(0);
+		// どれか1つのグループでは、ほかの条件で成立できる
+		const any = params({
+			buy: {
+				match: "any",
+				conditions: [
+					value(60, "below"),
+					{
+						type: "rsi",
+						timeframe: "1h",
+						period: 2,
+						threshold: 99,
+						direction: "below",
+					},
+				],
+			},
+		});
+		expect(
+			evaluateConditionSet(input(cs, any, { dvol: [] })).intents,
+		).toHaveLength(1);
+	});
+
+	test("平均との比は、直近の日数の足の平均に対する最新の足の割合で見る", () => {
+		// 23 本が 50、最新が 74 → 平均 51、比 145%
+		const bars = dvolBars([...Array(23).fill(5000), 7400]);
+		const out = run(average(140, "above"), bars);
+		expect(out.intents).toHaveLength(1);
+		expect(out.note).toContain(
+			"DVOL 74.00 が直近 1 日の平均 51.00 の 145%（140% 以上）",
+		);
+		expect(run(average(146, "above"), bars).intents).toHaveLength(0);
+		expect(run(average(145, "below"), bars).intents).toHaveLength(0);
+		// 期間より前の足は平均に入れない
+		const older = [{ time: now - 30 * H, close: 100_000 }, ...bars];
+		expect(run(average(140, "above"), older).intents).toHaveLength(1);
+	});
+
+	test("平均の期間の足が9割に足りなければ成立しない", () => {
+		const need = Math.ceil(24 * 0.9);
+		expect(
+			run(average(1, "above"), dvolBars(Array(need).fill(5000))).intents,
+		).toHaveLength(1);
+		expect(
+			run(average(1, "above"), dvolBars(Array(need - 1).fill(5000))).intents,
+		).toHaveLength(0);
+	});
+
+	test("どのグループでも使え、しきい値は 1〜300 の 0.1 刻み、日数は 1〜30・% は 1〜1000 の整数", () => {
+		const errs = validateConditionSet(
+			params({
+				buy: {
+					match: "all",
+					conditions: [
+						value(0.9, "above"),
+						value(300.1, "above"),
+						value(55.25, "above"),
+						value(55.5, "below"),
+						{ type: "dvolAverage", days: 0, percent: 120, direction: "above" },
+						{
+							type: "dvolAverage",
+							days: 31,
+							percent: 1001,
+							direction: "above",
+						},
+						{
+							type: "dvolAverage",
+							days: 30,
+							percent: 1000,
+							direction: "below",
+						},
+					],
+				},
+				stopLoss: {
+					match: "any",
+					conditions: [value(80, "above"), average(150, "above")],
+				},
+			}),
+		);
+		expect(errs.map((e) => e.path)).toEqual([
+			"buy.conditions.0.threshold",
+			"buy.conditions.1.threshold",
+			"buy.conditions.2.threshold",
+			"buy.conditions.4.days",
+			"buy.conditions.5.days",
+			"buy.conditions.5.percent",
+		]);
+	});
+
+	test("渡してほしい DVOL の長さは、平均の日数の最大に確定待ちと取得の遅れを足したもの。JSON から読み戻せる", () => {
+		expect(dvolMs(buyWith())).toBe(0);
+		expect(dvolMs(buyWith(value(60, "below")))).toBe(4 * H);
+		const p = params({
+			buy: { match: "all", conditions: [average(120, "below")] },
+			stopLoss: {
+				match: "any",
+				conditions: [
+					{ type: "dvolAverage", days: 30, percent: 150, direction: "above" },
+				],
+			},
+		});
+		expect(dvolMs(p)).toBe(30 * 24 * H + 4 * H);
+		expect(parseConditionSet(JSON.parse(JSON.stringify(p)))).toEqual(p);
+	});
+
+	test("同じ入力で2回実行して結果が一致する", () => {
+		const bars = dvolBars([...Array(23).fill(5000), 7400]);
+		expect(run(average(140, "above"), bars)).toEqual(
+			run(average(140, "above"), bars),
+		);
 	});
 });
