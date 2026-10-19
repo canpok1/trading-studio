@@ -93,62 +93,74 @@ export function metCount(g: WatchGroup): { met: number; total: number } {
 /** オフの戦略は判定しないが、出している注文は約定する */
 export const STOPPED_TEXT = "停止中のため新しい注文は出さない";
 
-/** 次の動き1行のきっかけ部分。icon は行頭の記号、text は「〜で」まで */
+/** 次の動き1行のきっかけ部分。icon は行頭の記号。「text（note）suffix」の順に並べる */
 export type TriggerView = {
 	icon: "●" | "↑" | "↓" | "⏱" | "◇" | "…";
 	text: string;
 	/** 円の差・今の値など。戦略の画面だけで出す */
 	note: string | null;
+	suffix: "で" | " から";
 	/** 出している注文 */
 	ordered: boolean;
 };
 
-/** 例: 「+10.00%で」「センチメント やや強気で」「あと 2 条件で」 */
+/** 例: 「+10.00%（+1,000,000 円）で」「センチメント やや強気（今 中立）で」「あと 2 条件で」 */
 export function triggerView(t: WatchTrigger, price: number): TriggerView {
 	const priced = (p: number, ordered: boolean): TriggerView => {
 		const m = moveText(p, price);
 		return {
 			icon: p > price ? "↑" : "↓",
-			text: `${m.percent}で`,
+			text: m.percent,
 			note: m.yen,
+			suffix: "で",
 			ordered,
 		};
 	};
 	switch (t.kind) {
 		case "now":
-			return { icon: "●", text: "次の判定で", note: null, ordered: false };
+			return {
+				icon: "●",
+				text: "次の判定",
+				note: null,
+				suffix: "で",
+				ordered: false,
+			};
 		case "order":
 			return t.price === null
-				? { icon: "●", text: "成行で", note: null, ordered: true }
+				? { icon: "●", text: "成行", note: null, suffix: "で", ordered: true }
 				: priced(t.price, true);
 		case "price":
 			return priced(t.price, false);
 		case "bars":
 			return {
 				icon: "⏱",
-				text: `あと ${t.bars} 本（${TIMEFRAME_LABELS[t.timeframe]}）で`,
+				text: `あと ${t.bars} 本（${TIMEFRAME_LABELS[t.timeframe]}）`,
 				note: null,
+				suffix: "で",
 				ordered: false,
 			};
 		case "time":
 			return {
 				icon: "⏱",
-				text: `${jstDateTime(t.at)} から`,
+				text: jstDateTime(t.at),
 				note: null,
+				suffix: " から",
 				ordered: false,
 			};
 		case "condition":
 			return {
 				icon: "◇",
-				text: `${conditionText(t.condition)}で`,
+				text: conditionText(t.condition),
 				note: t.detail || null,
+				suffix: "で",
 				ordered: false,
 			};
 		case "remaining":
 			return {
 				icon: "…",
-				text: `あと ${t.count} 条件で`,
+				text: `あと ${t.count} 条件`,
 				note: null,
+				suffix: "で",
 				ordered: false,
 			};
 	}

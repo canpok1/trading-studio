@@ -489,6 +489,15 @@ describe("次の動き", () => {
 		]);
 	});
 
+	test("価格の条件が揃う価格が無ければ出さない", () => {
+		const breakdown = { ...breakout, direction: "low" as const };
+		expect(
+			movesOf([
+				rule({ buy: { match: "all", conditions: [breakout, breakdown] } }),
+			]),
+		).toEqual([]);
+	});
+
 	test("価格以外が残り1つなら条件をきっかけにし、価格の条件も残っていれば あと N 条件", () => {
 		const one = movesOf(
 			[rule({ buy: { match: "all", conditions: [bullish] } })],

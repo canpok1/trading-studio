@@ -480,19 +480,23 @@ function groupTrigger(g: WatchGroup, ctx: Ctx): WatchTrigger | null {
 	const nearest = (xs: number[]) =>
 		[...xs].sort((a, b) => Math.abs(a - p) - Math.abs(b - p))[0];
 	if (g.match === "any") {
-		// どれか1つ: 1つ揃えば起きるので、一番近い条件だけを見る
+		// どれか1つ: 1つ揃えば起きるので、一番早く揃いそうな条件だけを見る
 		const t = nearest(g.triggers);
 		if (t !== undefined) return { kind: "price", price: t };
-		const c = g.conditions.find((x) => x.met === false);
-		return c ? conditionTrigger(c, ctx) : null;
+		return (
+			g.conditions
+				.filter((x) => x.met === false)
+				.map((x) => conditionTrigger(x, ctx))
+				.sort(compareTriggers(p, ctx.now))[0] ?? null
+		);
 	}
 	const blocking = g.conditions.filter((c) => c.met === false && !c.edge);
 	const priced = g.conditions.filter((c) => c.met === false && c.edge);
 	const t = rangeTrigger(g.conditions, p);
-	// 価格の条件は、全部が揃う価格が1つあれば1つと数える
-	const pricedCount =
-		priced.length === 0 ? 0 : typeof t === "number" ? 1 : priced.length;
-	const remaining = blocking.length + pricedCount;
+	// 価格の条件どうしの成立する範囲が重ならなければ、ほかが揃っても起きない
+	if (priced.length > 0 && typeof t !== "number") return null;
+	// 価格の条件は、全部が揃う価格が1つあるので1つと数える
+	const remaining = blocking.length + (priced.length > 0 ? 1 : 0);
 	if (remaining !== 1) return { kind: "remaining", count: remaining };
 	const [only] = blocking;
 	if (only) return conditionTrigger(only, ctx);
@@ -518,26 +522,34 @@ const KIND_RANK: Record<WatchMove["kind"], number> = {
 };
 
 /**
- * 次の動きの優先度の比較（小さいほど上）。成立 > 注文中 > 価格（幅の小さい順）> 時間 > 価格以外 > あと N 条件（少ない順）。
- * 同じなら 損切り > 利確 > 一部利確 > 買い（判定で同時に成り立ったときの売りの優先と合わせる）
+ * きっかけの優先度の比較（小さいほど上）。成立 > 注文中 > 価格（幅の小さい順）> 時間（早い順）> 価格以外 > あと N 条件（少ない順）
  */
-function compareMoves(price: number) {
+function compareTriggers(price: number, now: number) {
 	const sub = (t: WatchTrigger): number => {
 		switch (t.kind) {
 			case "order":
 				return t.price === null ? 0 : Math.abs(t.price / price - 1);
 			case "price":
 				return Math.abs(t.price / price - 1);
+			case "bars":
+				return t.bars * TIMEFRAME_MS[t.timeframe];
+			case "time":
+				return t.at - now;
 			case "remaining":
 				return t.count;
 			default:
 				return 0;
 		}
 	};
+	return (a: WatchTrigger, b: WatchTrigger) =>
+		TRIGGER_TIER[a.kind] - TRIGGER_TIER[b.kind] || sub(a) - sub(b);
+}
+
+/** 次の動きの比較。きっかけが同じなら 損切り > 利確 > 一部利確 > 買い（判定で同時に成り立ったときの売りの優先と合わせる） */
+function compareMoves(price: number, now: number) {
+	const byTrigger = compareTriggers(price, now);
 	return (a: WatchMove, b: WatchMove) =>
-		TRIGGER_TIER[a.trigger.kind] - TRIGGER_TIER[b.trigger.kind] ||
-		sub(a.trigger) - sub(b.trigger) ||
-		KIND_RANK[a.kind] - KIND_RANK[b.kind];
+		byTrigger(a.trigger, b.trigger) || KIND_RANK[a.kind] - KIND_RANK[b.kind];
 }
 
 /** 買いが次の判定で買わない理由（evaluateConditionSet の買いの判定と同じ順で見る） */
@@ -637,7 +649,7 @@ export function watchConditionSet(input: WatchInput): StrategyWatch {
 	);
 
 	const actions: WatchAction[] = [];
-	const compare = compareMoves(price);
+	const compare = compareMoves(price, now);
 	// 行動（買い × 種類）ごとに一番優先度の高いきっかけを残す。売りはロットの中で一番のもの
 	const best = new Map<string, WatchMove>();
 	const offer = (m: WatchMove) => {

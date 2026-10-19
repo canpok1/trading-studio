@@ -50,7 +50,7 @@ export function registerTradingTools(
 		"get_strategy_watch",
 		{
 			description:
-				"戦略の画面の「次の動き」「戦略の見張り」。戦略を今の価格で試算した、買いとロットごとの条件の成立・今の値・発動価格（価格がいくらになれば成立するか）。actions は起きうる売買で、price が null なら今の価格のまま次の判定で起きる。nextMoves は画面の「次の動き」で、行動（買いごとの 買い・一部利確・利確・損切り、出している注文）ごとのきっかけを優先度の高い順に並べたもの（trigger.kind: now=次の判定で起きる・order=注文中・price=この価格で全条件が揃う・bars=あと何本・time=この時刻に予定の前後が明ける・condition=価格以外の条件が残り1つ・remaining=未成立が count 個）。distancePercent は今の価格からの幅。注文はしない。リアルは画面と同じく出さない",
+				"戦略の画面の「次の動き」「戦略の見張り」。戦略を今の価格で試算した、買いとロットごとの条件の成立・今の値・発動価格（価格がいくらになれば成立するか）。actions は起きうる売買で、price が null なら今の価格のまま次の判定で起きる。nextMoves は画面の「次の動き」で、行動（買いごとの 買い・一部利確・利確・損切り、出している注文）ごとのきっかけを優先度の高い順に並べたもの（trigger.kind: now=次の判定で起きる・order=注文中・price=この価格で全条件が揃う・bars=あと何本・time=この時刻に予定の前後が明ける・condition=発動価格を求められない条件（市場評価・DVOL・±50% で届かない RSI など）が残り1つ・remaining=未成立が count 個）。distancePercent は今の価格からの幅。注文はしない。リアルは画面と同じく出さない",
 			inputSchema: {
 				strategyId: z.number().int().describe("戦略の id（list_strategies）"),
 			},

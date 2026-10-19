@@ -414,33 +414,21 @@ const withDistance = (price: number) => (a: WatchAction) => ({
 /** 次の動き。価格のあるきっかけに今の価格からの幅（%）を足し、条件は画面と同じ文にする */
 const moveView = (price: number) => (m: WatchMove) => {
 	const t = m.trigger;
-	switch (t.kind) {
-		case "price":
-			return {
-				...m,
-				trigger: { ...t, distancePercent: distancePercent(t.price, price) },
-			};
-		case "order":
-			return {
-				...m,
-				trigger: {
-					...t,
-					distancePercent:
-						t.price === null ? null : distancePercent(t.price, price),
-				},
-			};
-		case "condition":
-			return {
-				...m,
-				trigger: {
-					kind: t.kind,
-					text: conditionScreenText(t.condition),
-					detail: t.detail,
-				},
-			};
-		default:
-			return m;
+	if (t.kind === "price" || t.kind === "order") {
+		const d = t.price === null ? null : distancePercent(t.price, price);
+		return { ...m, trigger: { ...t, distancePercent: d } };
 	}
+	if (t.kind === "condition") {
+		return {
+			...m,
+			trigger: {
+				kind: t.kind,
+				text: conditionScreenText(t.condition),
+				detail: t.detail,
+			},
+		};
+	}
+	return m;
 };
 
 /** ホームのカード1枚ぶん。比べる値（通算損益・含み損益・確定損益・勝率・PF・最大DD・取引回数）と次の動き */
@@ -456,7 +444,7 @@ export function strategySummaryView(s: StrategySummary) {
 			n?.price ?? s.performance?.price ?? null,
 		),
 		lots: lots.length,
-		nextMoves: n && n.moves.map(moveView(n.price)),
+		nextMoves: n?.moves.map(moveView(n.price)) ?? null,
 	};
 }
 

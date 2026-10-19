@@ -63,7 +63,7 @@ const ICON_CLASS: Record<TriggerView["icon"], string> = {
 };
 
 /**
- * 次の動き1行。「↑ +10.00%で 一部利確」。detailed（戦略の画面）なら円の差・今の値も添える。
+ * 次の動き1行。「↑ +10.00%で 一部利確」。detailed（戦略の画面）なら円の差・今の値も添える（「+10.00%（+1,000,000 円）で」）。
  * 買いが2つ以上なら種類に買いの名前を添える
  */
 export function MoveRow({
@@ -94,6 +94,7 @@ export function MoveRow({
 				{detailed && t.note && (
 					<span className="text-xs text-text-2">（{t.note}）</span>
 				)}
+				{t.suffix}
 			</span>
 			<KindBadge kind={move.kind} buyName={move.buyName} multi={multi} />
 			{t.ordered && <span className="text-text-2">（注文中）</span>}
