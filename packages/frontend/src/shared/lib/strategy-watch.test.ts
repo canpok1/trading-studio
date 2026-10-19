@@ -1,17 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type {
-	StrategyWatch,
-	WatchAction,
-	WatchCondition,
-	WatchWait,
-} from "@trading-studio/core";
+import type { StrategyWatch, WatchAction } from "@trading-studio/core";
 import {
 	chartTriggers,
 	distanceText,
 	moveText,
-	pendingOrderWaits,
-	waitLines,
-	waitText,
+	triggerView,
 } from "./strategy-watch";
 
 const act = (
@@ -24,7 +17,7 @@ const watch = (actions: WatchAction[]): StrategyWatch => ({
 	price: 1_000,
 	buys: [],
 	actions,
-	waits: [],
+	moves: [],
 });
 
 describe("chartTriggers", () => {
@@ -64,100 +57,55 @@ test("moveText は今の価格からの幅を符号付きの % と円の差で�
 	});
 });
 
-describe("waitText", () => {
-	const wait = (
-		reason: WatchWait["reason"],
-		over: Partial<WatchWait> = {},
-	): WatchWait => ({
-		kind: "entry",
-		buyId: "b1",
-		buyName: "買い1",
-		lotId: null,
-		reason,
-		...over,
-	});
-	const sentiment: WatchCondition = {
-		condition: { type: "judgment", judge: "sentiment", values: ["+1"] },
-		met: false,
-		detail: "今 中立",
-		edge: null,
-	};
-	const rsi: WatchCondition = {
-		condition: {
-			type: "rsi",
-			timeframe: "1h",
-			period: 14,
-			threshold: 30,
-			direction: "below",
-		},
-		met: false,
-		detail: "今 46.2",
-		edge: null,
-	};
-	const cond = (conditions: WatchCondition[], at: number | "now" | null) =>
-		wait({ kind: "conditions", conditions, at });
-
-	test("価格と関係ない条件は、揃えば届く幅・次の判定・待つ のどれかで書く", () => {
-		expect(waitText(cond([sentiment], 988), 1_000)).toBe(
-			"センチメント やや強気（今 中立）が揃えば −1.20%で",
-		);
-		expect(waitText(cond([sentiment], "now"), 1_000)).toBe(
-			"センチメント やや強気（今 中立）が揃えば次の判定で",
-		);
-		expect(waitText(cond([sentiment], null), 1_000)).toBe(
-			"センチメント やや強気（今 中立）を待つ",
+describe("triggerView", () => {
+	test("価格・注文は向きの矢印と幅、円の差は添え書き", () => {
+		expect(triggerView({ kind: "price", price: 1_100 }, 1_000)).toEqual({
+			icon: "↑",
+			text: "+10.00%",
+			note: "+100 円",
+			suffix: "で",
+			ordered: false,
+		});
+		expect(triggerView({ kind: "order", price: 985 }, 1_000)).toEqual({
+			icon: "↓",
+			text: "−1.50%",
+			note: "−15 円",
+			suffix: "で",
+			ordered: true,
+		});
+		expect(triggerView({ kind: "order", price: null }, 1_000).text).toBe(
+			"成行",
 		);
 	});
 
-	test("価格で決まる条件は発動価格を求められないと書き、価格と関係ない条件と混ざれば分けて書く", () => {
-		expect(waitText(cond([rsi], null), 1_000)).toBe(
-			"発動価格を求められない（1時間足 RSI14 30以下（今 46.2））",
-		);
-		expect(waitText(cond([sentiment, rsi], null), 1_000)).toBe(
-			"センチメント やや強気（今 中立）を待つ・発動価格を求められない（1時間足 RSI14 30以下（今 46.2））",
-		);
-		expect(waitText(cond([], null), 1_000)).toBe(
-			"価格では届かない（条件の成立する価格が重ならない）",
-		);
-	});
-
-	test("買いが止まっている・売り注文の約定待ち・判定できない", () => {
+	test("時間・価格以外・あと N 条件", () => {
 		expect(
-			waitText(
-				wait({
-					kind: "buyStatus",
-					status: { kind: "cooldown", barsLeft: 3, timeframe: "1h" },
-				}),
+			triggerView({ kind: "bars", bars: 5, timeframe: "1h" }, 1_000).text,
+		).toBe("あと 5 本（1時間足）");
+		expect(
+			triggerView(
+				{ kind: "time", at: Date.parse("2026-10-29T19:00:00Z") },
 				1_000,
 			),
-		).toBe("損切り後の待ち（1時間足であと 3 本）");
-		expect(waitText(wait({ kind: "selling" }, { kind: "sell" }), 1_000)).toBe(
-			"売り注文の約定待ち",
-		);
+		).toMatchObject({ text: "10/30 4:00", suffix: " から" });
 		expect(
-			waitText(wait({ kind: "insufficient", reason: "足が足りない" }), 1_000),
-		).toBe("判定できない（足が足りない）");
-	});
-
-	test("pendingOrderWaits は約定待ちの注文だけを返す（オフでも約定するため）", () => {
-		const selling = wait({ kind: "selling" }, { kind: "sell" });
-		const fill = wait({ kind: "buyStatus", status: { kind: "waitingFill" } });
-		const full = wait({ kind: "buyStatus", status: { kind: "full" } });
-		expect(
-			pendingOrderWaits([selling, fill, full, cond([sentiment], null)]),
-		).toEqual([selling, fill]);
-	});
-
-	test("waitLines は同じ買い・種類・理由のロットを1行にまとめる", () => {
-		const a = cond([sentiment], null);
-		const lines = waitLines(
-			[
-				{ ...a, kind: "takeProfit", lotId: "o1" },
-				{ ...a, kind: "takeProfit", lotId: "o2" },
-				{ ...a, kind: "stopLoss", lotId: "o1" },
-			],
-			1_000,
+			triggerView(
+				{
+					kind: "condition",
+					condition: { type: "judgment", judge: "sentiment", values: ["+1"] },
+					detail: "今 中立",
+				},
+				1_000,
+			),
+		).toEqual({
+			icon: "◇",
+			text: "センチメント やや強気",
+			note: "今 中立",
+			suffix: "で",
+			ordered: false,
+		});
+		expect(triggerView({ kind: "remaining", count: 2 }, 1_000).text).toBe(
+			"あと 2 条件",
 		);
-		expect(lines.map((l) => l.kind)).toEqual(["takeProfit", "stopLoss"]);
 	});
 });

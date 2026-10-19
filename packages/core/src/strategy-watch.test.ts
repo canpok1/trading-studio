@@ -3,14 +3,8 @@ import type { BuyRule, ConditionSet } from "./condition-strategy";
 import { DEFAULT_BUY_ORDER, DEFAULT_PARTIAL_SELL } from "./condition-strategy";
 import type { EventCalendar } from "./event-calendar";
 import { adx, rsi } from "./indicators";
-import type {
-	StrategyWatch,
-	WatchAction,
-	WatchCondition,
-	WatchInput,
-	WatchWait,
-} from "./strategy-watch";
-import { nextMoves, watchConditionSet } from "./strategy-watch";
+import type { WatchInput, WatchMove } from "./strategy-watch";
+import { watchConditionSet } from "./strategy-watch";
 import { TIMEFRAME_MS } from "./timeframe";
 import type { Candle, Lot, Order } from "./types";
 
@@ -461,75 +455,7 @@ describe("watchConditionSet", () => {
 	});
 });
 
-const act = (
-	kind: WatchAction["kind"],
-	price: number | null,
-	lotId: string | null = null,
-): WatchAction => ({ kind, price, buyId: "b1", buyName: "買い1", lotId });
-
-const watchOf = (
-	actions: WatchAction[],
-	waits: WatchWait[] = [],
-): StrategyWatch => ({
-	price: 1_000,
-	buys: [],
-	actions,
-	waits,
-});
-
-describe("nextMoves", () => {
-	test("上側・下側で一番近い発動価格を1つずつと、次の判定で起きるものを返す", () => {
-		const w = watchOf([
-			act("takeProfit", 1_100, "o1"),
-			act("entry", 1_050),
-			act("stopLoss", 900, "o1"),
-			act("partialTakeProfit", 950, "o1"),
-			act("stopLoss", null, "o2"),
-		]);
-		const m = nextMoves(w);
-		expect(m.up).toEqual(act("entry", 1_050));
-		expect(m.down).toEqual(act("partialTakeProfit", 950, "o1"));
-		expect(m.now).toEqual([act("stopLoss", null, "o2")]);
-	});
-
-	test("同じ価格なら損切りを先に選ぶ", () => {
-		const m = nextMoves(
-			watchOf([act("entry", 900), act("stopLoss", 900, "o1")]),
-		);
-		expect(m.down?.kind).toBe("stopLoss");
-	});
-
-	test("価格で起きない理由は 売り注文の約定待ち > 損切り > 利確 > 一部利確 > 買い の順", () => {
-		const wait = (kind: WatchWait["kind"]): WatchWait => ({
-			kind,
-			buyId: "b1",
-			buyName: "買い1",
-			lotId: null,
-			reason: { kind: "conditions", conditions: [], at: null },
-		});
-		const m = nextMoves(
-			watchOf(
-				[],
-				[
-					wait("entry"),
-					wait("partialTakeProfit"),
-					wait("takeProfit"),
-					wait("stopLoss"),
-					wait("sell"),
-				],
-			),
-		);
-		expect(m.waits.map((w) => w.kind)).toEqual([
-			"sell",
-			"stopLoss",
-			"takeProfit",
-			"partialTakeProfit",
-			"entry",
-		]);
-	});
-});
-
-describe("価格で起きない売買の理由", () => {
+describe("次の動き", () => {
 	const bullish = {
 		type: "judgment" as const,
 		judge: "sentiment" as const,
@@ -544,91 +470,137 @@ describe("価格で起きない売買の理由", () => {
 	const neutral = {
 		sentiment: [{ judge: "sentiment" as const, time: 0, label: "0" }],
 	};
+	const high = (closes.at(-2) as number) + 1;
+	const movesOf = (
+		buys: BuyRule[],
+		over: Partial<WatchInput> = {},
+	): WatchMove[] => watchConditionSet(input(params(buys), over)).moves;
 
-	test("価格と関係ない条件だけが足りなければ、揃ったときに届く価格を添える", () => {
-		const w = watchConditionSet(
-			input(
-				params([
-					rule({ buy: { match: "all", conditions: [bullish, breakout] } }),
-				]),
-				{ judgments: neutral },
-			),
-		);
-		expect(w.actions).toEqual([]);
-		expect(w.waits).toEqual([
+	test("残りが価格の条件だけなら、揃う価格をきっかけにする", () => {
+		expect(
+			movesOf([rule({ buy: { match: "all", conditions: [breakout] } })]),
+		).toEqual([
 			{
 				kind: "entry",
 				buyId: "b1",
 				buyName: "買い1",
-				lotId: null,
-				reason: {
-					kind: "conditions",
-					conditions: [w.buys[0]?.buy.conditions[0] as WatchCondition],
-					at: (closes.at(-2) as number) + 1,
+				trigger: { kind: "price", price: high },
+			},
+		]);
+	});
+
+	test("価格の条件が揃う価格が無ければ出さない", () => {
+		const breakdown = { ...breakout, direction: "low" as const };
+		expect(
+			movesOf([
+				rule({ buy: { match: "all", conditions: [breakout, breakdown] } }),
+			]),
+		).toEqual([]);
+	});
+
+	test("価格以外が残り1つなら条件をきっかけにし、価格の条件も残っていれば あと N 条件", () => {
+		const one = movesOf(
+			[rule({ buy: { match: "all", conditions: [bullish] } })],
+			{
+				judgments: neutral,
+			},
+		);
+		expect(one[0]?.trigger).toEqual({
+			kind: "condition",
+			condition: bullish,
+			detail: "今 中立",
+		});
+		const two = movesOf(
+			[rule({ buy: { match: "all", conditions: [bullish, breakout] } })],
+			{ judgments: neutral },
+		);
+		expect(two[0]?.trigger).toEqual({ kind: "remaining", count: 2 });
+	});
+
+	test("どれか1つは一番近い条件だけを見る", () => {
+		const m = movesOf(
+			[rule({ buy: { match: "any", conditions: [bullish, breakout] } })],
+			{ judgments: neutral },
+		);
+		expect(m[0]?.trigger).toEqual({ kind: "price", price: high });
+	});
+
+	test("全条件が成立していれば次の判定で起きる", () => {
+		const m = movesOf(
+			[rule({ buy: { match: "all", conditions: [bullish] } })],
+			{
+				judgments: {
+					sentiment: [{ judge: "sentiment" as const, time: 0, label: "+1" }],
 				},
 			},
+		);
+		expect(m[0]?.trigger).toEqual({ kind: "now" });
+	});
+
+	test("買えない買いは出さず、売りはロットのうち一番近いものを行動ごとに1つ、幅の小さい順に出す", () => {
+		const m = movesOf(
+			[
+				rule({
+					maxPositions: 2,
+					buy: { match: "all", conditions: [breakout] },
+					takeProfit: {
+						match: "any",
+						conditions: [{ type: "entryChange", percent: 5, direction: "up" }],
+					},
+				}),
+			],
+			{ lots: [lot(price), lot(price * 1.01, { id: "o2" })] },
+		);
+		expect(m.map((x) => [x.kind, x.trigger])).toEqual([
+			// 損切りは −2%。買値の高い o2 のほうが近い
+			["stopLoss", { kind: "price", price: Math.ceil(price * 1.01 * 0.98) }],
+			["takeProfit", { kind: "price", price: Math.ceil(price * 1.05) }],
 		]);
 	});
 
-	test("価格の条件を満たしていれば、価格と関係ない条件が揃えば次の判定で起きる", () => {
-		const w = watchConditionSet(
-			input(params([rule({ buy: { match: "all", conditions: [bullish] } })]), {
-				judgments: neutral,
-			}),
-		);
-		expect(w.waits[0]?.reason).toMatchObject({ kind: "conditions", at: "now" });
-	});
-
-	test("どれか1つのグループは、揃えば届く価格を出さない", () => {
-		const w = watchConditionSet(
-			input(params([rule({ buy: { match: "any", conditions: [bullish] } })]), {
-				judgments: neutral,
-			}),
-		);
-		expect(w.waits[0]?.reason).toMatchObject({ kind: "conditions", at: null });
-	});
-
-	test("買いが止まっていれば理由を出し、発動価格のある損切りや空の利確は理由を出さない", () => {
-		const w = watchConditionSet(
-			input(params([rule({ buy: { match: "all", conditions: [breakout] } })]), {
-				lots: [lot(price)],
-			}),
-		);
-		expect(w.waits).toEqual([
-			{
-				kind: "entry",
-				buyId: "b1",
-				buyName: "買い1",
-				lotId: null,
-				reason: { kind: "buyStatus", status: { kind: "full" } },
-			},
-		]);
-	});
-
-	test("売り注文の約定待ちのロットはその旨を出す", () => {
-		const sell: Order = {
-			id: "s1",
-			side: "sell",
+	test("出している注文は、価格のきっかけより先に出す", () => {
+		const order = (over: Partial<Order>): Order => ({
+			id: "x",
+			side: "buy",
 			type: "limit",
-			price: price + 100_000,
+			price: price - 100_000,
 			quantity: BTC / 100,
 			placedAt: 0,
 			expiresAt: null,
 			status: "open",
-			lotId: "o1",
-		};
-		const w = watchConditionSet(
-			input(params([rule({ maxPositions: 2 })]), {
-				lots: [lot(price)],
-				openOrders: [sell],
-			}),
-		);
-		expect(w.waits).toContainEqual({
-			kind: "sell",
 			buyId: "b1",
-			buyName: "買い1",
-			lotId: "o1",
-			reason: { kind: "selling" },
+			...over,
+		});
+		const m = movesOf([rule({ maxPositions: 2 })], {
+			lots: [lot(price)],
+			openOrders: [
+				order({}),
+				order({ id: "s", side: "sell", price: price + 50_000, lotId: "o1" }),
+			],
+		});
+		expect(m.map((x) => [x.kind, x.trigger])).toEqual([
+			["sell", { kind: "order", price: price + 50_000 }],
+			["entry", { kind: "order", price: price - 100_000 }],
+		]);
+	});
+
+	test("保有本数が残り1つなら、あと何本かをきっかけにする", () => {
+		const m = movesOf(
+			[
+				rule({
+					stopLoss: { match: "any", conditions: [] },
+					takeProfit: {
+						match: "all",
+						conditions: [{ type: "holdingBars", timeframe: "1h", bars: 50 }],
+					},
+				}),
+			],
+			{ lots: [lot(price, { openedAt: 0 })] },
+		);
+		expect(m[0]?.trigger).toEqual({
+			kind: "bars",
+			bars: 50 - closes.length,
+			timeframe: "1h",
 		});
 	});
 });
@@ -737,6 +709,13 @@ describe("予定の前後の見張り", () => {
 			watch(Date.parse("2026-06-16T00:00:00Z"), q).buys[0]?.buy.conditions[0]
 				?.detail,
 		).toBe("「BOJ」の前後（6/20 3:00 まで）");
+	});
+
+	test("当たっている間は、明ける時刻を次の動きのきっかけにする", () => {
+		expect(watch(cpi + H).moves[0]?.trigger).toEqual({
+			kind: "time",
+			at: cpi + 24 * H,
+		});
 	});
 
 	test("当たっていなければ、重要度が下限以上の次の予定を出す", () => {

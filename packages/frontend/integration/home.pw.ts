@@ -54,47 +54,52 @@ test("オンの戦略とオフでも保有がある戦略を作った順にカ�
 	await expect(page).toHaveURL(/\/strategies$/);
 });
 
-test("次の動きは、発動価格の無い向きと価格で起きない売買を文で出し、オフの戦略は売買しないと出す", async ({
+test("次の動きは優先度の高い上位2つだけ出し、オフの戦略は注文中のものだけ出す", async ({
 	page,
 	api,
 }) => {
-	const wait = (kind: "entry" | "takeProfit", lotId: string | null) => ({
-		kind,
-		buyId: "b1",
-		buyName: "買い1",
-		lotId,
-		reason: {
-			kind: "conditions" as const,
-			conditions: [
-				{
-					condition: {
-						type: "judgment" as const,
-						judge: "sentiment" as const,
-						values: ["+1" as const],
-					},
-					met: false,
-					detail: "今 中立",
-					edge: null,
-				},
-			],
-			at: null,
-		},
-	});
+	const P = 10_000_000;
 	onHome(api, {
 		runs: fourRuns(),
-		waits: [wait("takeProfit", "o1"), wait("entry", null)],
+		moves: [
+			{
+				kind: "entry",
+				buyId: "b1",
+				buyName: "買い1",
+				trigger: { kind: "order", price: P - 150_000 },
+			},
+			{
+				kind: "partialTakeProfit",
+				buyId: "b1",
+				buyName: "買い1",
+				trigger: { kind: "price", price: P + 1_000_000 },
+			},
+			{
+				kind: "takeProfit",
+				buyId: "b1",
+				buyName: "買い1",
+				trigger: { kind: "remaining", count: 2 },
+			},
+		],
 	});
 	await page.goto("/home");
 	const cards = page.getByTestId("home-strategy");
-	await expect(cards.nth(0)).toContainText("上がっても売買なし");
-	await expect(cards.nth(0)).not.toContainText("—");
-	// 価格で起きない売買は先頭の1行だけ（利確が買いより先）、残りは件数
-	await expect(cards.nth(0)).toContainText(
-		"利確センチメント やや強気（今 中立）を待つ",
-	);
-	await expect(cards.nth(0)).toContainText("他 1 件");
+	await expect(cards.nth(0)).toContainText("−1.50%で買い（注文中）");
+	await expect(cards.nth(0)).toContainText("+10.00%で一部利確");
+	await expect(cards.nth(0)).not.toContainText("あと 2 条件");
+	// 円の差はカードでは出さない
+	await expect(cards.nth(0)).not.toContainText("1,000,000");
 	await expect(cards.nth(2)).toContainText("停止中のため新しい注文は出さない");
-	await expect(cards.nth(2)).not.toContainText("−2.00%で");
+	await expect(cards.nth(2)).toContainText("−1.50%で買い（注文中）");
+	await expect(cards.nth(2)).not.toContainText("一部利確");
+});
+
+test("次の動きが無ければ「次の動きなし」と出す", async ({ page, api }) => {
+	onHome(api, { runs: fourRuns(), moves: [] });
+	await page.goto("/home");
+	await expect(page.getByTestId("home-strategy").nth(0)).toContainText(
+		"次の動きなし",
+	);
 });
 
 test("比べる値を切り替えると全カードの値が変わり、再読み込み後も保たれる", async ({
