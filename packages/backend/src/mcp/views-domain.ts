@@ -9,7 +9,7 @@ import type {
 	Timeframe,
 	WatchAction,
 	WatchGroup,
-	WatchWait,
+	WatchMove,
 } from "@trading-studio/core";
 import {
 	conditionScreenText,
@@ -24,7 +24,6 @@ import {
 	JUDGMENT_VALUES,
 	LIVE_AVAILABLE,
 	MARKET_REGIME_LABELS,
-	nextMoves,
 	TIMEFRAME_MS,
 	unrealizedPnl,
 } from "@trading-studio/core";
@@ -412,30 +411,42 @@ const withDistance = (price: number) => (a: WatchAction) => ({
 	distancePercent: a.price === null ? null : distancePercent(a.price, price),
 });
 
-/** 価格で起きない理由。揃えば届く価格に今の価格からの幅（%）を足す */
-const waitView = (price: number) => (w: WatchWait) =>
-	w.reason.kind === "conditions"
-		? {
-				...w,
-				reason: {
-					...w.reason,
-					conditions: w.reason.conditions.map((c) => ({
-						text: conditionScreenText(c.condition),
-						detail: c.detail,
-					})),
-					atDistancePercent:
-						typeof w.reason.at === "number"
-							? distancePercent(w.reason.at, price)
-							: null,
+/** 次の動き。価格のあるきっかけに今の価格からの幅（%）を足し、条件は画面と同じ文にする */
+const moveView = (price: number) => (m: WatchMove) => {
+	const t = m.trigger;
+	switch (t.kind) {
+		case "price":
+			return {
+				...m,
+				trigger: { ...t, distancePercent: distancePercent(t.price, price) },
+			};
+		case "order":
+			return {
+				...m,
+				trigger: {
+					...t,
+					distancePercent:
+						t.price === null ? null : distancePercent(t.price, price),
 				},
-			}
-		: w;
+			};
+		case "condition":
+			return {
+				...m,
+				trigger: {
+					kind: t.kind,
+					text: conditionScreenText(t.condition),
+					detail: t.detail,
+				},
+			};
+		default:
+			return m;
+	}
+};
 
 /** ホームのカード1枚ぶん。比べる値（通算損益・含み損益・確定損益・勝率・PF・最大DD・取引回数）と次の動き */
 export function strategySummaryView(s: StrategySummary) {
 	const { position, lots } = s.status.account;
 	const n = s.nextMoves;
-	const action = n && withDistance(n.price);
 	return {
 		...tradingRunView(s.status),
 		performance: s.performance && tradingPerformanceView(s.performance),
@@ -445,27 +456,15 @@ export function strategySummaryView(s: StrategySummary) {
 			n?.price ?? s.performance?.price ?? null,
 		),
 		lots: lots.length,
-		nextMoves: n &&
-			action && {
-				now: n.now.map(action),
-				up: n.up && action(n.up),
-				down: n.down && action(n.down),
-				waits: n.waits.map(waitView(n.price)),
-			},
+		nextMoves: n && n.moves.map(moveView(n.price)),
 	};
 }
 
 export function watchView(w: StrategyWatch) {
 	const action = withDistance(w.price);
-	const next = nextMoves(w);
 	return {
 		price: w.price,
-		nextMoves: {
-			now: next.now.map(action),
-			up: next.up && action(next.up),
-			down: next.down && action(next.down),
-			waits: next.waits.map(waitView(w.price)),
-		},
+		nextMoves: w.moves.map(moveView(w.price)),
 		actions: w.actions.map(action),
 		buys: w.buys.map((b) => ({
 			...b,

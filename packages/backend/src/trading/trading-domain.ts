@@ -20,7 +20,6 @@ import {
 	idealStepTimeframe,
 	JUDGES,
 	newAccount,
-	nextMoves,
 	publicLots,
 	RUN_LIMITS,
 	realizedPnlOn,
@@ -453,7 +452,7 @@ export function createTradingService({
 					return {
 						status,
 						performance: this.performance(status.id),
-						nextMoves: w && { price: w.price, ...nextMoves(w), multiBuy },
+						nextMoves: w && { price: w.price, moves: w.moves, multiBuy },
 					};
 				});
 		},

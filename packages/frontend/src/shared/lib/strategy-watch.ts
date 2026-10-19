@@ -5,9 +5,9 @@ import type {
 	WatchActionKind,
 	WatchBuyStatus,
 	WatchGroup,
-	WatchWait,
+	WatchTrigger,
 } from "@trading-studio/core";
-import { PRICE_FREE, TIMEFRAME_LABELS } from "@trading-studio/core";
+import { jstDateTime, TIMEFRAME_LABELS } from "@trading-studio/core";
 import { conditionText } from "./condition-text";
 import { formatInt } from "./number";
 
@@ -17,7 +17,8 @@ export type ChartTrigger = {
 	kind: WatchActionKind;
 };
 
-export const ACTION_LABELS: Record<WatchActionKind, string> = {
+export const ACTION_LABELS: Record<WatchActionKind | "sell", string> = {
+	sell: "売り",
 	entry: "買い",
 	partialTakeProfit: "一部利確",
 	takeProfit: "利確",
@@ -89,73 +90,66 @@ export function metCount(g: WatchGroup): { met: number; total: number } {
 	};
 }
 
-/** 価格で起きない売買1行ぶん。同じ買い・種類・理由のロットは1行にまとめる */
-export type WaitLine = {
-	key: string;
-	kind: WatchWait["kind"];
-	buyName: string;
+/** オフの戦略は判定しないが、出している注文は約定する */
+export const STOPPED_TEXT = "停止中のため新しい注文は出さない";
+
+/** 次の動き1行のきっかけ部分。icon は行頭の記号、text は「〜で」まで */
+export type TriggerView = {
+	icon: "●" | "↑" | "↓" | "⏱" | "◇" | "…";
 	text: string;
+	/** 円の差・今の値など。戦略の画面だけで出す */
+	note: string | null;
+	/** 出している注文 */
+	ordered: boolean;
 };
 
-export function waitLines(waits: WatchWait[], price: number): WaitLine[] {
-	const out: WaitLine[] = [];
-	const seen = new Set<string>();
-	for (const w of waits) {
-		const text = waitText(w, price);
-		const key = `${w.kind}:${w.buyId}:${text}`;
-		if (seen.has(key)) continue;
-		seen.add(key);
-		out.push({ key, kind: w.kind, buyName: w.buyName, text });
+/** 例: 「+10.00%で」「センチメント やや強気で」「あと 2 条件で」 */
+export function triggerView(t: WatchTrigger, price: number): TriggerView {
+	const priced = (p: number, ordered: boolean): TriggerView => {
+		const m = moveText(p, price);
+		return {
+			icon: p > price ? "↑" : "↓",
+			text: `${m.percent}で`,
+			note: m.yen,
+			ordered,
+		};
+	};
+	switch (t.kind) {
+		case "now":
+			return { icon: "●", text: "次の判定で", note: null, ordered: false };
+		case "order":
+			return t.price === null
+				? { icon: "●", text: "成行で", note: null, ordered: true }
+				: priced(t.price, true);
+		case "price":
+			return priced(t.price, false);
+		case "bars":
+			return {
+				icon: "⏱",
+				text: `あと ${t.bars} 本（${TIMEFRAME_LABELS[t.timeframe]}）で`,
+				note: null,
+				ordered: false,
+			};
+		case "time":
+			return {
+				icon: "⏱",
+				text: `${jstDateTime(t.at)} から`,
+				note: null,
+				ordered: false,
+			};
+		case "condition":
+			return {
+				icon: "◇",
+				text: `${conditionText(t.condition)}で`,
+				note: t.detail || null,
+				ordered: false,
+			};
+		case "remaining":
+			return {
+				icon: "…",
+				text: `あと ${t.count} 条件で`,
+				note: null,
+				ordered: false,
+			};
 	}
-	return out;
 }
-
-/** 価格で起きない理由。例: 「センチメント +1（今 中立）が揃えば −1.20%で」 */
-export function waitText(w: WatchWait, price: number): string {
-	const r = w.reason;
-	switch (r.kind) {
-		case "buyStatus":
-			return buyStatusText(r.status) ?? "";
-		case "selling":
-			return "売り注文の約定待ち";
-		case "insufficient":
-			return r.reason ? `判定できない（${r.reason}）` : "判定できない";
-		case "conditions": {
-			if (r.conditions.length === 0) {
-				return "価格では届かない（条件の成立する価格が重ならない）";
-			}
-			const list = (cs: typeof r.conditions) =>
-				cs
-					.map((c) => {
-						const t = conditionText(c.condition);
-						return c.detail ? `${t}（${c.detail}）` : t;
-					})
-					.join("・");
-			if (r.at === "now") return `${list(r.conditions)}が揃えば次の判定で`;
-			if (r.at !== null) {
-				return `${list(r.conditions)}が揃えば ${distanceText(r.at, price)}で`;
-			}
-			const free = r.conditions.filter((c) => PRICE_FREE.has(c.condition.type));
-			const priced = r.conditions.filter(
-				(c) => !PRICE_FREE.has(c.condition.type),
-			);
-			// 価格で決まる条件は、±50% で届かない・上下どちらでも入れ替わる・ADX（探さない）のどれかで発動価格が無い
-			const noPrice = `発動価格を求められない（${list(priced)}）`;
-			if (free.length === 0) return noPrice;
-			return priced.length === 0
-				? `${list(free)}を待つ`
-				: `${list(free)}を待つ・${noPrice}`;
-		}
-	}
-}
-
-/** オフでも約定しうる未約定の注文（買いの約定待ち・売りの約定待ち）。オフは判定しないが、注文は約定する */
-export function pendingOrderWaits(waits: WatchWait[]): WatchWait[] {
-	return waits.filter(
-		(w) =>
-			w.reason.kind === "selling" ||
-			(w.reason.kind === "buyStatus" && w.reason.status.kind === "waitingFill"),
-	);
-}
-
-export const STOPPED_TEXT = "停止中のため新しい注文は出さない";

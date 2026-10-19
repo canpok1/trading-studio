@@ -432,16 +432,25 @@ describe("MCP", () => {
 				unrealizedPnl: 500,
 				lots: 1,
 				performance: { trades: 0 },
-				nextMoves: { up: { kind: "takeProfit", distancePercent: 0.5 } },
 			},
 		]);
+		// 利確（買値 +1%）が損切り（買値 −1%）より今の価格に近いので先に並ぶ
+		const takeProfit = {
+			kind: "takeProfit",
+			trigger: { kind: "price", distancePercent: 0.5 },
+		};
+		expect((home as { nextMoves: unknown[] }[])[0]?.nextMoves[0]).toMatchObject(
+			takeProfit,
+		);
 		const watch = await call("get_strategy_watch", { strategyId });
 		expect(watch.isError).toBe(false);
 		expect(watch.json).toMatchObject({
 			price: P + 50_000,
-			nextMoves: { up: { kind: "takeProfit", distancePercent: 0.5 } },
 			buys: [{ lots: [{ entryPrice: P }] }],
 		});
+		expect((watch.json as { nextMoves: unknown[] }).nextMoves[0]).toMatchObject(
+			takeProfit,
+		);
 		expect(watch.text).toContain("買値から 1% 下がった");
 		expect(
 			(await call("list_trading_orders", { strategyId: 99 })).isError,
