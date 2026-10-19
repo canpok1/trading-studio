@@ -17,12 +17,10 @@ import {
 } from "../../../shared/lib/useAsync";
 import type { CompareKey } from "../utils/compare";
 import {
-	barOf,
 	COMPARE_KEYS,
 	COMPARE_LABELS,
 	compared,
 	isCompareKey,
-	SIGNED,
 } from "../utils/compare";
 import { MoveRow } from "./StrategyWatch";
 
@@ -125,9 +123,6 @@ export function HomeStrategies({
 	const shownIds = new Set(summaries?.map((s) => s.status.id));
 	const stopped =
 		runs && summaries ? runs.filter((r) => !shownIds.has(r.id)).length : 0;
-	const values = summaries?.map((s) => compared(s, key)) ?? [];
-	// 勝率は 0〜100% の中で比べる。他は並べたカードの一番大きい値を目いっぱいにする
-	const scale = key === "winRate" ? [100] : values.map((v) => v.amount);
 
 	return (
 		<section
@@ -182,12 +177,11 @@ export function HomeStrategies({
 				</div>
 			) : (
 				<ul className="grid grid-cols-2 gap-2.5 lg:grid-cols-4 xl:grid-cols-5">
-					{summaries.map((s, i) => (
+					{summaries.map((s) => (
 						<StrategyCard
 							key={s.status.id}
 							summary={s}
-							value={values[i] ?? compared(s, key)}
-							bar={barOf(values[i]?.amount ?? null, scale, SIGNED[key])}
+							value={compared(s, key)}
 							selected={s.status.id === markId}
 							onSelect={() => onMark(s.status.id)}
 						/>
@@ -206,13 +200,11 @@ export function HomeStrategies({
 function StrategyCard({
 	summary: s,
 	value,
-	bar,
 	selected,
 	onSelect,
 }: {
 	summary: StrategySummary;
 	value: ReturnType<typeof compared>;
-	bar: { left: number; width: number } | null;
 	selected: boolean;
 	onSelect: () => void;
 }) {
@@ -260,17 +252,6 @@ function StrategyCard({
 					{value.text}
 				</span>
 				<span className="num text-xs text-text-2">{value.sub}</span>
-				<span
-					aria-hidden
-					className="relative my-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-2"
-				>
-					{bar && (
-						<span
-							className={`absolute inset-y-0 ${value.tone === "loss" ? "bg-loss" : "bg-profit"}`}
-							style={{ left: `${bar.left}%`, width: `${bar.width}%` }}
-						/>
-					)}
-				</span>
 				<CardMoves summary={s} />
 			</button>
 			{selected && (
