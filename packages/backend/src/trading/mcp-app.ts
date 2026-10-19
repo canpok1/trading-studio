@@ -40,7 +40,7 @@ export function registerTradingTools(
 		"list_home_strategies",
 		{
 			description:
-				"ホームのカード。デモで、オンか、オフでも保有か未約定の注文がある戦略の要約（作った順）。画面の「比べる値」（通算損益=performance.pnl・含み損益=unrealizedPnl・確定損益=performance.realizedPnl・勝率・PF・最大DD・取引回数）と保有ロット数、次の動き（次の判定で起きるものと、上側・下側それぞれ最も近い発動価格。distancePercent は今の価格からの幅。waits は価格で起きない売買の理由で、画面のカードは先頭の1件だけ出す。オフの戦略は判定しないので画面では「停止中のため売買しない」と出す）。条件ごとの詳細は get_strategy_watch",
+				"ホームのカード。デモで、オンか、オフでも保有か未約定の注文がある戦略の要約（作った順）。画面の「比べる値」（通算損益=performance.pnl・含み損益=unrealizedPnl・確定損益=performance.realizedPnl・勝率・PF・最大DD・取引回数）と保有ロット数、次の動き（次の判定で起きるものと、上側・下側それぞれ最も近い発動価格。distancePercent は今の価格からの幅。waits は価格で起きない売買の理由で、画面のカードは先頭の1件だけ出す。オフの戦略は判定しないので、画面では「停止中のため新しい注文は出さない」と約定待ちの注文だけを出す）。条件ごとの詳細は get_strategy_watch",
 			annotations: readOnly,
 		},
 		() => text(trading.summaries().map(strategySummaryView)),

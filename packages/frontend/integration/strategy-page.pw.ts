@@ -372,7 +372,7 @@ test("次の動きと戦略の見張りが出て、グループの開閉を覚�
 	await expect(page.getByTestId("chart-close")).toHaveText(PRICE);
 	// オフの戦略は判定しないので試算を出さない
 	await expect(page.getByRole("region", { name: "次の動き" })).toContainText(
-		"停止中のため売買しない",
+		"停止中のため新しい注文は出さない",
 	);
 	const panel = page.getByRole("region", { name: "戦略の見張り" });
 	await expect(panel).toContainText("買い1");

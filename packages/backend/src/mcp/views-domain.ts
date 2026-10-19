@@ -402,11 +402,14 @@ export function watchGroupView(g: WatchGroup) {
 	};
 }
 
+/** 今の価格からの幅（%、小数2桁） */
+const distancePercent = (x: number, price: number) =>
+	Math.round((x / price - 1) * 10_000) / 100;
+
 /** 発動価格の今の価格からの幅（%）を足す。次の判定で起きるもの（価格なし）は null */
 const withDistance = (price: number) => (a: WatchAction) => ({
 	...a,
-	distancePercent:
-		a.price === null ? null : Math.round((a.price / price - 1) * 10_000) / 100,
+	distancePercent: a.price === null ? null : distancePercent(a.price, price),
 });
 
 /** 価格で起きない理由。揃えば届く価格に今の価格からの幅（%）を足す */
@@ -422,7 +425,7 @@ const waitView = (price: number) => (w: WatchWait) =>
 					})),
 					atDistancePercent:
 						typeof w.reason.at === "number"
-							? Math.round((w.reason.at / price - 1) * 10_000) / 100
+							? distancePercent(w.reason.at, price)
 							: null,
 				},
 			}

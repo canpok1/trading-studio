@@ -9,6 +9,7 @@ import {
 	chartTriggers,
 	distanceText,
 	moveText,
+	pendingOrderWaits,
 	waitLines,
 	waitText,
 } from "./strategy-watch";
@@ -108,9 +109,12 @@ describe("waitText", () => {
 		);
 	});
 
-	test("価格で決まる条件だけなら、価格では届かないと書く", () => {
+	test("価格で決まる条件は発動価格を求められないと書き、価格と関係ない条件と混ざれば分けて書く", () => {
 		expect(waitText(cond([rsi], null), 1_000)).toBe(
-			"価格では届かない（1時間足 RSI14 30以下（今 46.2））",
+			"発動価格を求められない（1時間足 RSI14 30以下（今 46.2））",
+		);
+		expect(waitText(cond([sentiment, rsi], null), 1_000)).toBe(
+			"センチメント やや強気（今 中立）を待つ・発動価格を求められない（1時間足 RSI14 30以下（今 46.2））",
 		);
 		expect(waitText(cond([], null), 1_000)).toBe(
 			"価格では届かない（条件の成立する価格が重ならない）",
@@ -133,6 +137,15 @@ describe("waitText", () => {
 		expect(
 			waitText(wait({ kind: "insufficient", reason: "足が足りない" }), 1_000),
 		).toBe("判定できない（足が足りない）");
+	});
+
+	test("pendingOrderWaits は約定待ちの注文だけを返す（オフでも約定するため）", () => {
+		const selling = wait({ kind: "selling" }, { kind: "sell" });
+		const fill = wait({ kind: "buyStatus", status: { kind: "waitingFill" } });
+		const full = wait({ kind: "buyStatus", status: { kind: "full" } });
+		expect(
+			pendingOrderWaits([selling, fill, full, cond([sentiment], null)]),
+		).toEqual([selling, fill]);
 	});
 
 	test("waitLines は同じ買い・種類・理由のロットを1行にまとめる", () => {

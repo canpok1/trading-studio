@@ -124,18 +124,38 @@ export function waitText(w: WatchWait, price: number): string {
 			if (r.conditions.length === 0) {
 				return "価格では届かない（条件の成立する価格が重ならない）";
 			}
-			const list = r.conditions
-				.map((c) => {
-					const t = conditionText(c.condition);
-					return c.detail ? `${t}（${c.detail}）` : t;
-				})
-				.join("・");
-			if (r.at === "now") return `${list}が揃えば次の判定で`;
-			if (r.at !== null)
-				return `${list}が揃えば ${distanceText(r.at, price)}で`;
-			return r.conditions.every((c) => !PRICE_FREE.has(c.condition.type))
-				? `価格では届かない（${list}）`
-				: `${list}を待つ`;
+			const list = (cs: typeof r.conditions) =>
+				cs
+					.map((c) => {
+						const t = conditionText(c.condition);
+						return c.detail ? `${t}（${c.detail}）` : t;
+					})
+					.join("・");
+			if (r.at === "now") return `${list(r.conditions)}が揃えば次の判定で`;
+			if (r.at !== null) {
+				return `${list(r.conditions)}が揃えば ${distanceText(r.at, price)}で`;
+			}
+			const free = r.conditions.filter((c) => PRICE_FREE.has(c.condition.type));
+			const priced = r.conditions.filter(
+				(c) => !PRICE_FREE.has(c.condition.type),
+			);
+			// 価格で決まる条件は、±50% で届かない・上下どちらでも入れ替わる・ADX（探さない）のどれかで発動価格が無い
+			const noPrice = `発動価格を求められない（${list(priced)}）`;
+			if (free.length === 0) return noPrice;
+			return priced.length === 0
+				? `${list(free)}を待つ`
+				: `${list(free)}を待つ・${noPrice}`;
 		}
 	}
 }
+
+/** オフでも約定しうる未約定の注文（買いの約定待ち・売りの約定待ち）。オフは判定しないが、注文は約定する */
+export function pendingOrderWaits(waits: WatchWait[]): WatchWait[] {
+	return waits.filter(
+		(w) =>
+			w.reason.kind === "selling" ||
+			(w.reason.kind === "buyStatus" && w.reason.status.kind === "waitingFill"),
+	);
+}
+
+export const STOPPED_TEXT = "停止中のため新しい注文は出さない";

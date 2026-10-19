@@ -22,6 +22,8 @@ import {
 	distanceText,
 	metCount,
 	moveText,
+	pendingOrderWaits,
+	STOPPED_TEXT,
 	waitLines,
 } from "../../../shared/lib/strategy-watch";
 import { PANEL } from "./Panel";
@@ -88,7 +90,7 @@ export function NextMovesCard({
 	className = "",
 }: {
 	watch: StrategyWatch;
-	/** オフ。判定しないので試算を出さない */
+	/** オフ。判定しないので試算を出さず、約定しうる未約定の注文だけ出す */
 	stopped: boolean;
 	className?: string;
 }) {
@@ -112,7 +114,14 @@ export function NextMovesCard({
 				</Help>
 			</div>
 			{stopped ? (
-				<p className="text-sm text-text-2">停止中のため売買しない</p>
+				<ul className="flex flex-col gap-1.5 text-sm">
+					<li className="text-text-2">{STOPPED_TEXT}</li>
+					{waitLines(pendingOrderWaits(waits), watch.price).map((l) => (
+						<li key={l.key}>
+							<WaitRow line={l} multi={multi} />
+						</li>
+					))}
+				</ul>
 			) : (
 				<ul className="flex flex-col gap-1.5 text-sm">
 					{now.map((a) => (

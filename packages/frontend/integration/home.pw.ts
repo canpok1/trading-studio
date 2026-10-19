@@ -93,7 +93,7 @@ test("次の動きは、発動価格の無い向きと価格で起きない売�
 		"利確センチメント やや強気（今 中立）を待つ",
 	);
 	await expect(cards.nth(0)).toContainText("他 1 件");
-	await expect(cards.nth(2)).toContainText("停止中のため売買しない");
+	await expect(cards.nth(2)).toContainText("停止中のため新しい注文は出さない");
 	await expect(cards.nth(2)).not.toContainText("−2.00%で");
 });
 

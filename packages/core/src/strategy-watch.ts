@@ -462,13 +462,18 @@ function groupWait(g: WatchGroup, p: number): WatchWaitReason | null {
 	}
 	const blocking = g.conditions.filter((c) => c.met === false && !c.edge);
 	// 価格と関係ない条件だけが足りないなら、それが揃ったときに届く価格まで示す
-	const at =
+	if (
 		g.match === "all" &&
 		blocking.length > 0 &&
 		blocking.every((c) => PRICE_FREE.has(c.condition.type))
-			? rangeTrigger(g.conditions, p)
-			: null;
-	return { kind: "conditions", conditions: blocking, at };
+	) {
+		const at = rangeTrigger(g.conditions, p);
+		// 揃っても価格の条件どうしが重ならなければ、待っても起きない
+		return at === null
+			? { kind: "conditions", conditions: [], at: null }
+			: { kind: "conditions", conditions: blocking, at };
+	}
+	return { kind: "conditions", conditions: blocking, at: null };
 }
 
 /** 買いが次の判定で買わない理由（evaluateConditionSet の買いの判定と同じ順で見る） */

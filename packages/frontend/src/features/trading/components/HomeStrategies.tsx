@@ -9,7 +9,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { Skeleton } from "../../../shared/components/States";
 import { useApi } from "../../../shared/lib/api";
-import { distanceText, waitLines } from "../../../shared/lib/strategy-watch";
+import type { WaitLine } from "../../../shared/lib/strategy-watch";
+import {
+	distanceText,
+	pendingOrderWaits,
+	STOPPED_TEXT,
+	waitLines,
+} from "../../../shared/lib/strategy-watch";
 import {
 	readJson,
 	useInterval,
@@ -285,18 +291,26 @@ function StrategyCard({
 	);
 }
 
-/** カードの次の動き。価格で起きない売買は先頭の1行だけ出し、残りは件数にする（全部は戦略の画面で見る） */
+/** カードの次の動き。価格で起きない売買は先頭の1行だけ出し、残りは件数にする（全部は戦略の画面で見る）。オフは判定しないので、約定しうる未約定の注文だけ出す */
 function CardMoves({ summary: s }: { summary: StrategySummary }) {
 	const moves = s.nextMoves;
-	if (!s.status.enabled) {
-		return <span className="text-xs text-text-2">停止中のため売買しない</span>;
-	}
 	if (!moves) {
 		return (
-			<span className="text-xs text-text-2">価格が取れず試算できない</span>
+			<span className="text-xs text-text-2">
+				{s.status.enabled ? "価格が取れず試算できない" : STOPPED_TEXT}
+			</span>
 		);
 	}
-	const [first, ...rest] = waitLines(moves.waits, moves.price);
+	if (!s.status.enabled) {
+		const lines = waitLines(pendingOrderWaits(moves.waits), moves.price);
+		return (
+			<span className="flex flex-col gap-1 text-xs">
+				<span className="text-text-2">{STOPPED_TEXT}</span>
+				<WaitHead lines={lines} multi={moves.multiBuy} />
+			</span>
+		);
+	}
+	const lines = waitLines(moves.waits, moves.price);
 	return (
 		<span className="flex flex-col gap-1 text-xs">
 			{moves.now.map((a) => (
@@ -320,11 +334,22 @@ function CardMoves({ summary: s }: { summary: StrategySummary }) {
 				from={moves.price}
 				multi={moves.multiBuy}
 			/>
-			{first && <WaitRow line={first} multi={moves.multiBuy} />}
+			<WaitHead lines={lines} multi={moves.multiBuy} />
+		</span>
+	);
+}
+
+/** 先頭の1行と残りの件数 */
+function WaitHead({ lines, multi }: { lines: WaitLine[]; multi: boolean }) {
+	const [first, ...rest] = lines;
+	if (!first) return null;
+	return (
+		<>
+			<WaitRow line={first} multi={multi} />
 			{rest.length > 0 && (
 				<span className="pl-5 text-text-2">他 {rest.length} 件</span>
 			)}
-		</span>
+		</>
 	);
 }
 
