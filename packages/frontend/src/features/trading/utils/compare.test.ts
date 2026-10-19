@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { StrategySummary } from "@trading-studio/backend";
-import { barOf, compared } from "./compare";
+import { compared } from "./compare";
 
 const summary = (
 	performance: Partial<NonNullable<StrategySummary["performance"]>> | null,
@@ -48,7 +48,6 @@ describe("ホームのカードで比べる値", () => {
 		});
 		expect(compared(s, "profitFactor")).toMatchObject({
 			text: "∞",
-			amount: Number.POSITIVE_INFINITY,
 		});
 		expect(compared(s, "maxDrawdown")).toMatchObject({
 			text: "−2.3%",
@@ -63,28 +62,9 @@ describe("ホームのカードで比べる値", () => {
 	test("取引が無ければ PF は出さない。成績が読めなければ —", () => {
 		expect(compared(summary({ trades: 0 }), "profitFactor")).toMatchObject({
 			text: "—",
-			amount: null,
 		});
 		expect(compared(summary(null), "pnl")).toMatchObject({
 			text: "—",
-			amount: null,
 		});
-	});
-
-	test("棒は並べた中で一番大きい値を目いっぱいにする。損益は中央から左右へ", () => {
-		expect(barOf(50, [50, 25], false)).toEqual({ left: 0, width: 100 });
-		expect(barOf(25, [50, 25], false)).toEqual({ left: 0, width: 50 });
-		expect(barOf(100, [-200, 100], true)).toEqual({ left: 50, width: 25 });
-		expect(barOf(-200, [-200, 100], true)).toEqual({ left: 0, width: 50 });
-		// 全部 0 なら棒は出さない長さ
-		expect(barOf(0, [0, 0], true)).toEqual({ left: 50, width: 0 });
-		// PF の ∞ は目いっぱい
-		expect(
-			barOf(Number.POSITIVE_INFINITY, [Number.POSITIVE_INFINITY, 1.5], false),
-		).toEqual({
-			left: 0,
-			width: 100,
-		});
-		expect(barOf(null, [1], false)).toBeNull();
 	});
 });
