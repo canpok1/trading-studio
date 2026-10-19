@@ -421,6 +421,7 @@ function DashboardBody({
 					{showMoves && (
 						<NextMovesCard
 							watch={watch}
+							stopped={!run?.enabled}
 							className="col-span-full lg:col-span-2 xl:col-span-1"
 						/>
 					)}

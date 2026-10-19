@@ -9,6 +9,7 @@ import type {
 	TradeOrder,
 	ValidationError,
 	WatchAction,
+	WatchWait,
 } from "@trading-studio/core";
 import type {
 	CreateStrategyInput,
@@ -131,12 +132,13 @@ export type StrategySummary = {
 	status: AutoTradingStatus;
 	/** 口座のリセット以降の成績 */
 	performance: TradingPerformance | null;
-	/** 次の動き（次の判定で起きる売買と、上側・下側で一番近い発動価格）。価格がまだ無ければ null */
+	/** 次の動き（次の判定で起きる売買と、上側・下側で一番近い発動価格、価格で起きない売買の理由）。価格がまだ無ければ null */
 	nextMoves: {
 		price: number;
 		now: WatchAction[];
 		up: WatchAction | null;
 		down: WatchAction | null;
+		waits: WatchWait[];
 		/** 買いが2つ以上。売買の種類に買いの名前を添える */
 		multiBuy: boolean;
 	} | null;

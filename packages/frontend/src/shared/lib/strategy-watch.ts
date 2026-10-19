@@ -5,8 +5,10 @@ import type {
 	WatchActionKind,
 	WatchBuyStatus,
 	WatchGroup,
+	WatchWait,
 } from "@trading-studio/core";
-import { TIMEFRAME_LABELS } from "@trading-studio/core";
+import { PRICE_FREE, TIMEFRAME_LABELS } from "@trading-studio/core";
+import { conditionText } from "./condition-text";
 import { formatInt } from "./number";
 
 /** チャートに引く発動価格 */
@@ -85,4 +87,55 @@ export function metCount(g: WatchGroup): { met: number; total: number } {
 		met: g.conditions.filter((c) => c.met === true).length,
 		total: g.conditions.length,
 	};
+}
+
+/** 価格で起きない売買1行ぶん。同じ買い・種類・理由のロットは1行にまとめる */
+export type WaitLine = {
+	key: string;
+	kind: WatchWait["kind"];
+	buyName: string;
+	text: string;
+};
+
+export function waitLines(waits: WatchWait[], price: number): WaitLine[] {
+	const out: WaitLine[] = [];
+	const seen = new Set<string>();
+	for (const w of waits) {
+		const text = waitText(w, price);
+		const key = `${w.kind}:${w.buyId}:${text}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		out.push({ key, kind: w.kind, buyName: w.buyName, text });
+	}
+	return out;
+}
+
+/** 価格で起きない理由。例: 「センチメント +1（今 中立）が揃えば −1.20%で」 */
+export function waitText(w: WatchWait, price: number): string {
+	const r = w.reason;
+	switch (r.kind) {
+		case "buyStatus":
+			return buyStatusText(r.status) ?? "";
+		case "selling":
+			return "売り注文の約定待ち";
+		case "insufficient":
+			return r.reason ? `判定できない（${r.reason}）` : "判定できない";
+		case "conditions": {
+			if (r.conditions.length === 0) {
+				return "価格では届かない（条件の成立する価格が重ならない）";
+			}
+			const list = r.conditions
+				.map((c) => {
+					const t = conditionText(c.condition);
+					return c.detail ? `${t}（${c.detail}）` : t;
+				})
+				.join("・");
+			if (r.at === "now") return `${list}が揃えば次の判定で`;
+			if (r.at !== null)
+				return `${list}が揃えば ${distanceText(r.at, price)}で`;
+			return r.conditions.every((c) => !PRICE_FREE.has(c.condition.type))
+				? `価格では届かない（${list}）`
+				: `${list}を待つ`;
+		}
+	}
 }

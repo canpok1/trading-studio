@@ -15,12 +15,14 @@ import { useCallback, useState } from "react";
 import { Help } from "../../../shared/components/Help";
 import { conditionText } from "../../../shared/lib/condition-text";
 import { formatInt } from "../../../shared/lib/number";
+import type { WaitLine } from "../../../shared/lib/strategy-watch";
 import {
 	ACTION_LABELS,
 	buyStatusText,
 	distanceText,
 	metCount,
 	moveText,
+	waitLines,
 } from "../../../shared/lib/strategy-watch";
 import { PANEL } from "./Panel";
 
@@ -49,15 +51,48 @@ export function KindBadge({
 	);
 }
 
-/** チャートの上に置く要約。次の判定で起きる売買と、上側・下側で一番近い発動価格 */
+/** 価格で起きない売買の行。売り注文の約定待ちは利確・損切りのどちらでもないので無彩色にする */
+export function WaitRow({
+	line,
+	multi,
+	className = "",
+}: {
+	line: WaitLine;
+	multi: boolean;
+	className?: string;
+}) {
+	const badge =
+		line.kind === "sell" ? "bg-surface-2 text-text-2" : KIND_BADGE[line.kind];
+	return (
+		<span
+			className={`flex flex-wrap items-center gap-x-1.5 gap-y-0.5 ${className}`}
+		>
+			<span aria-hidden className="w-3.5 text-text-2">
+				⏸
+			</span>
+			<span
+				className={`rounded px-1.5 py-px text-[11px] font-semibold whitespace-nowrap ${badge}`}
+			>
+				{line.kind === "sell" ? "売り" : ACTION_LABELS[line.kind]}
+				{multi && `「${line.buyName}」`}
+			</span>
+			<span className="text-text-2">{line.text}</span>
+		</span>
+	);
+}
+
+/** チャートの上に置く要約。次の判定で起きる売買と、上側・下側で一番近い発動価格、価格で起きない売買の理由 */
 export function NextMovesCard({
 	watch,
+	stopped,
 	className = "",
 }: {
 	watch: StrategyWatch;
+	/** オフ。判定しないので試算を出さない */
+	stopped: boolean;
 	className?: string;
 }) {
-	const { now, up, down } = nextMoves(watch);
+	const { now, up, down, waits } = nextMoves(watch);
 	const multi = watch.buys.length >= 2;
 	return (
 		<section aria-label="次の動き" className={`${PANEL} gap-2 ${className}`}>
@@ -68,50 +103,77 @@ export function NextMovesCard({
 						戦略を今の価格で試算し、今の価格からどれだけ動けば何をするかを出す。上側・下側で一番近いものだけ。発動する価格そのものはチャートの札と「戦略の見張り」で見る。
 					</p>
 					<p>
-						実際に注文するのは次の判定のとき。価格以外の条件（市場評価など）が変われば動きも変わる。全部の条件はチャートの下の「戦略の見張り」で見る。
+						⏸
+						の行は、価格が動くだけでは起きない売買と、その理由（買いが止まっている・価格以外の条件が未成立など）。
+					</p>
+					<p>
+						実際に注文するのは次の判定のとき。全部の条件はチャートの下の「戦略の見張り」で見る。
 					</p>
 				</Help>
 			</div>
-			<ul className="flex flex-col gap-1.5 text-sm">
-				{now.map((a) => (
-					<li
-						key={`now-${a.kind}-${a.buyId}-${a.lotId ?? ""}`}
-						className="flex flex-wrap items-center gap-x-2 gap-y-0.5"
-					>
-						<span aria-hidden className="w-3.5 font-bold text-text-2">
-							●
-						</span>
-						<span>次の判定で</span>
-						<KindBadge action={a} multi={multi} />
-					</li>
-				))}
-				{up && (
-					<li className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-						<span aria-hidden className="w-3.5 font-bold text-profit">
-							↑
-						</span>
-						<MoveText price={up.price as number} from={watch.price} />
-						<KindBadge action={up} multi={multi} />
-					</li>
-				)}
-				{down && (
-					<li className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-						<span aria-hidden className="w-3.5 font-bold text-loss">
-							↓
-						</span>
-						<MoveText price={down.price as number} from={watch.price} />
-						<KindBadge action={down} multi={multi} />
-					</li>
-				)}
-				{now.length === 0 && !up && !down && (
-					<li className="text-xs text-text-2">
-						価格の動きだけで起きる売買は無い。条件はチャートの下の「戦略の見張り」で見る
-					</li>
-				)}
-			</ul>
+			{stopped ? (
+				<p className="text-sm text-text-2">停止中のため売買しない</p>
+			) : (
+				<ul className="flex flex-col gap-1.5 text-sm">
+					{now.map((a) => (
+						<li
+							key={`now-${a.kind}-${a.buyId}-${a.lotId ?? ""}`}
+							className="flex flex-wrap items-center gap-x-2 gap-y-0.5"
+						>
+							<span aria-hidden className="w-3.5 font-bold text-text-2">
+								●
+							</span>
+							<span>次の判定で</span>
+							<KindBadge action={a} multi={multi} />
+						</li>
+					))}
+					<MoveRow arrow="↑" action={up} from={watch.price} multi={multi} />
+					<MoveRow arrow="↓" action={down} from={watch.price} multi={multi} />
+					{waitLines(waits, watch.price).map((l) => (
+						<li key={l.key}>
+							<WaitRow line={l} multi={multi} />
+						</li>
+					))}
+				</ul>
+			)}
 		</section>
 	);
 }
+
+function MoveRow({
+	arrow,
+	action,
+	from,
+	multi,
+}: {
+	arrow: "↑" | "↓";
+	action: WatchAction | null;
+	from: number;
+	multi: boolean;
+}) {
+	return (
+		<li className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+			<span
+				aria-hidden
+				className={`w-3.5 font-bold ${arrow === "↑" ? "text-profit" : "text-loss"}`}
+			>
+				{arrow}
+			</span>
+			{action && action.price !== null ? (
+				<>
+					<MoveText price={action.price} from={from} />
+					<KindBadge action={action} multi={multi} />
+				</>
+			) : (
+				<span className="text-text-2">{noMoveText(arrow)}</span>
+			)}
+		</li>
+	);
+}
+
+/** その向きに発動価格が無いとき。「—」だと不具合に見えるので文で書く */
+export const noMoveText = (arrow: "↑" | "↓") =>
+	arrow === "↑" ? "上がっても売買なし" : "下がっても売買なし";
 
 /** 「+0.88%（+113,254 円）で」。向きは行頭の矢印と符号で分かるので言葉にしない。発動価格そのものはチャートの札と「戦略の見張り」で見る */
 function MoveText({ price, from }: { price: number; from: number }) {

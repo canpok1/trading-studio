@@ -128,11 +128,40 @@ export type WatchAction = {
 	lotId: string | null;
 };
 
+/** 売買が今も起きず、価格の動きだけでも起きない理由 */
+export type WatchWaitReason =
+	/** 買いが止まっている */
+	| { kind: "buyStatus"; status: Exclude<WatchBuyStatus, { kind: "ready" }> }
+	/** 売り注文の約定待ち */
+	| { kind: "selling" }
+	/** 指標の本数不足などで判定できない */
+	| { kind: "insufficient"; reason: string }
+	/**
+	 * 発動価格に換算できない条件が未成立。conditions が空なら、条件ごとの成立する価格の範囲が重ならない。
+	 * at は conditions が揃えば届く価格（"now" なら今の価格のまま）。conditions に価格で決まる条件があれば null
+	 */
+	| {
+			kind: "conditions";
+			conditions: WatchCondition[];
+			at: number | "now" | null;
+	  };
+
+export type WatchWait = {
+	/** sell は売り注文の約定待ちのロット（利確・損切りのどちらも判定しない） */
+	kind: WatchActionKind | "sell";
+	buyId: string;
+	buyName: string;
+	lotId: string | null;
+	reason: WatchWaitReason;
+};
+
 export type StrategyWatch = {
 	price: number;
 	buys: WatchBuy[];
 	/** 次に起きうる売買。発動価格のあるものと、次の判定で起きるもの */
 	actions: WatchAction[];
+	/** 今も起きず、価格の動きだけでも起きない売買とその理由 */
+	waits: WatchWait[];
 };
 
 export type WatchInput = Omit<StrategyInput<ConditionSet>, "position"> & {
@@ -392,6 +421,16 @@ function watchGroup(g: ConditionGroup, ctx: Ctx): WatchGroup {
 	if (met || conditions.some((c) => c.edge === null && !c.met)) {
 		return { match: g.match, conditions, met, triggers: [] };
 	}
+	const t = rangeTrigger(conditions, p);
+	const triggers = typeof t === "number" ? [t] : [];
+	return { match: g.match, conditions, met, triggers };
+}
+
+/** 入れ替わる価格のある条件がすべて成立する範囲に届く価格。今の価格が範囲内なら "now"、範囲が無ければ null */
+function rangeTrigger(
+	conditions: WatchCondition[],
+	p: number,
+): number | "now" | null {
 	let low = 0;
 	let high = Number.POSITIVE_INFINITY;
 	for (const c of conditions) {
@@ -399,8 +438,37 @@ function watchGroup(g: ConditionGroup, ctx: Ctx): WatchGroup {
 		if (c.edge.metAbove) low = Math.max(low, c.edge.price);
 		else high = Math.min(high, c.edge.price);
 	}
-	const triggers = low > high ? [] : p < low ? [low] : p > high ? [high] : [];
-	return { match: g.match, conditions, met, triggers };
+	if (low > high) return null;
+	return p < low ? low : p > high ? high : "now";
+}
+
+/** 今の価格と関係なく成立・不成立が決まる条件 */
+export const PRICE_FREE: ReadonlySet<Condition["type"]> = new Set([
+	"judgment",
+	"eventWindow",
+	"dvol",
+	"dvolAverage",
+	"holdingBars",
+]);
+
+/** グループが価格の動きだけでは成立しない理由。成立済み・発動価格がある・条件が空なら null */
+function groupWait(g: WatchGroup, p: number): WatchWaitReason | null {
+	if (g.met === true || g.triggers.length > 0 || g.conditions.length === 0) {
+		return null;
+	}
+	if (g.met === null) {
+		const lacking = g.conditions.find((c) => c.met === null);
+		return { kind: "insufficient", reason: lacking?.detail ?? "" };
+	}
+	const blocking = g.conditions.filter((c) => c.met === false && !c.edge);
+	// 価格と関係ない条件だけが足りないなら、それが揃ったときに届く価格まで示す
+	const at =
+		g.match === "all" &&
+		blocking.length > 0 &&
+		blocking.every((c) => PRICE_FREE.has(c.condition.type))
+			? rangeTrigger(g.conditions, p)
+			: null;
+	return { kind: "conditions", conditions: blocking, at };
 }
 
 /** 買いが次の判定で買わない理由（evaluateConditionSet の買いの判定と同じ順で見る） */
@@ -500,6 +568,7 @@ export function watchConditionSet(input: WatchInput): StrategyWatch {
 	);
 
 	const actions: WatchAction[] = [];
+	const waits: WatchWait[] = [];
 	const buys: WatchBuy[] = p.buys.map((b) => {
 		const mine = (buyId: string | null | undefined) =>
 			buyRuleOf(p, buyId).id === b.id;
@@ -532,11 +601,25 @@ export function watchConditionSet(input: WatchInput): StrategyWatch {
 				actions.push({ kind, price: t, buyId: b.id, buyName: b.name, lotId });
 			}
 		};
-		if (status.kind === "ready") act("entry", buy, null);
+		const wait = (
+			kind: WatchWait["kind"],
+			reason: WatchWaitReason | null,
+			lotId: string | null,
+		) => {
+			if (reason)
+				waits.push({ kind, buyId: b.id, buyName: b.name, lotId, reason });
+		};
+		if (status.kind === "ready") {
+			act("entry", buy, null);
+			wait("entry", groupWait(buy, price), null);
+		} else {
+			wait("entry", { kind: "buyStatus", status }, null);
+		}
 
 		const watchLots: WatchLot[] = myLots.map((lot) => {
 			const partialDone = lot.partialExitDone ?? false;
 			if (selling.has(lot.id)) {
+				wait("sell", { kind: "selling" }, lot.id);
 				return {
 					id: lot.id,
 					entryPrice: lot.entryPrice,
@@ -584,6 +667,18 @@ export function watchConditionSet(input: WatchInput): StrategyWatch {
 			}
 			act("takeProfit", groups.takeProfit, lot.id);
 			act("partialTakeProfit", groups.partialTakeProfit, lot.id);
+			// 建値ストップが価格で効くなら、損切りの条件が価格で届かなくても損切りは起きうる
+			if (breakeven === null) {
+				wait("stopLoss", groupWait(groups.stopLoss, price), lot.id);
+			}
+			wait("takeProfit", groupWait(groups.takeProfit, price), lot.id);
+			if (groups.partialTakeProfit) {
+				wait(
+					"partialTakeProfit",
+					groupWait(groups.partialTakeProfit, price),
+					lot.id,
+				);
+			}
 			return {
 				id: lot.id,
 				entryPrice: lot.entryPrice,
@@ -604,19 +699,22 @@ export function watchConditionSet(input: WatchInput): StrategyWatch {
 			lots: watchLots,
 		};
 	});
-	return { price, buys, actions };
+	return { price, buys, actions, waits };
 }
 
 /**
- * 「次の動き」に出す売買。次の判定で起きるもの（価格なし）と、今の価格に一番近い上側・下側の発動価格を1つずつ。
+ * 「次の動き」に出す売買。次の判定で起きるもの（価格なし）と、今の価格に一番近い上側・下側の発動価格を1つずつ、価格で起きないものの理由。
  * 同じ価格なら損切り > 利確 > 一部利確 > 買い の順（判定で同時に成り立ったときの売りの優先と合わせる）
  */
 export function nextMoves(w: StrategyWatch): {
 	now: WatchAction[];
 	up: WatchAction | null;
 	down: WatchAction | null;
+	/** 価格で起きない売買の理由。売り注文の約定待ち > 損切り > 利確 > 一部利確 > 買い の順 */
+	waits: WatchWait[];
 } {
-	const rank: Record<WatchActionKind, number> = {
+	const rank: Record<WatchWait["kind"], number> = {
+		sell: -1,
 		stopLoss: 0,
 		takeProfit: 1,
 		partialTakeProfit: 2,
@@ -642,5 +740,6 @@ export function nextMoves(w: StrategyWatch): {
 			priced.filter((a) => a.price <= w.price),
 			false,
 		),
+		waits: [...w.waits].sort((a, b) => rank[a.kind] - rank[b.kind]),
 	};
 }

@@ -5,7 +5,7 @@ import type {
 	StoredOrder,
 	StoredStrategy,
 } from "@trading-studio/backend";
-import type { StrategyWatch, Timeframe } from "@trading-studio/core";
+import type { StrategyWatch, Timeframe, WatchWait } from "@trading-studio/core";
 import { nextMoves, TIMEFRAME_MS } from "@trading-studio/core";
 import type { FakeApi } from "./fake-api";
 import { routes } from "./fake-api";
@@ -26,10 +26,12 @@ export type HomeState = {
 	/** 今の価格。最新価格の口が返す */
 	price: number;
 	collector: CollectorStatus;
+	/** 見張りの、価格で起きない売買の理由 */
+	waits: WatchWait[];
 };
 
 /** 買いの発動価格が1つある見張り */
-function watchOf(price: number): StrategyWatch {
+function watchOf(price: number, waits: WatchWait[]): StrategyWatch {
 	const trigger = Math.round(price * 0.98);
 	return {
 		price,
@@ -70,6 +72,7 @@ function watchOf(price: number): StrategyWatch {
 				lotId: null,
 			},
 		],
+		waits,
 	};
 }
 
@@ -85,6 +88,7 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 		orders: [],
 		price: 10_000_000,
 		collector: marketLatest().collector,
+		waits: [],
 		...init,
 	};
 	const find = (id: string) => state.runs.find((r) => r.id === Number(id));
@@ -213,7 +217,7 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 		.on(routes.api.trading.strategies[":id"].watch, "$get", (req, reply) => {
 			const run = find(req.params.id as string);
 			if (!run) return reply(404, RUN_NOT_FOUND);
-			return { watch: watchOf(state.price) };
+			return { watch: watchOf(state.price, state.waits) };
 		})
 		.on(routes.api.trading.summaries, "$get", () => ({
 			summaries: state.runs
@@ -222,7 +226,7 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 						r.mode === "paper" && (r.enabled || r.strategyLock === "holding"),
 				)
 				.map((status) => {
-					const w = watchOf(state.price);
+					const w = watchOf(state.price, state.waits);
 					return {
 						status,
 						performance: performanceOf(status),

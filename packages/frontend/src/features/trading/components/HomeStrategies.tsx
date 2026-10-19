@@ -9,7 +9,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { Skeleton } from "../../../shared/components/States";
 import { useApi } from "../../../shared/lib/api";
-import { distanceText } from "../../../shared/lib/strategy-watch";
+import { distanceText, waitLines } from "../../../shared/lib/strategy-watch";
 import {
 	readJson,
 	useInterval,
@@ -24,7 +24,7 @@ import {
 	isCompareKey,
 	SIGNED,
 } from "../utils/compare";
-import { KindBadge } from "./StrategyWatch";
+import { KindBadge, noMoveText, WaitRow } from "./StrategyWatch";
 
 /** 要約を読み直す間隔（自動取引の状態と同じ） */
 const SUMMARY_MS = 5_000;
@@ -217,7 +217,6 @@ function StrategyCard({
 	onSelect: () => void;
 }) {
 	const { status } = s;
-	const moves = s.nextMoves;
 	return (
 		<li
 			data-testid="home-strategy"
@@ -272,31 +271,7 @@ function StrategyCard({
 						/>
 					)}
 				</span>
-				{moves && (
-					<span className="flex flex-col gap-1 text-xs">
-						{moves.now.map((a) => (
-							<span
-								key={`now-${a.kind}-${a.buyId}-${a.lotId ?? ""}`}
-								className="flex flex-wrap items-center gap-1"
-							>
-								<span className="font-semibold">● 次の判定で</span>
-								<KindBadge action={a} multi={moves.multiBuy} />
-							</span>
-						))}
-						<MoveLine
-							arrow="↑"
-							action={moves.up}
-							from={moves.price}
-							multi={moves.multiBuy}
-						/>
-						<MoveLine
-							arrow="↓"
-							action={moves.down}
-							from={moves.price}
-							multi={moves.multiBuy}
-						/>
-					</span>
-				)}
+				<CardMoves summary={s} />
 			</button>
 			{selected && (
 				<Link
@@ -307,6 +282,49 @@ function StrategyCard({
 				</Link>
 			)}
 		</li>
+	);
+}
+
+/** カードの次の動き。価格で起きない売買は先頭の1行だけ出し、残りは件数にする（全部は戦略の画面で見る） */
+function CardMoves({ summary: s }: { summary: StrategySummary }) {
+	const moves = s.nextMoves;
+	if (!s.status.enabled) {
+		return <span className="text-xs text-text-2">停止中のため売買しない</span>;
+	}
+	if (!moves) {
+		return (
+			<span className="text-xs text-text-2">価格が取れず試算できない</span>
+		);
+	}
+	const [first, ...rest] = waitLines(moves.waits, moves.price);
+	return (
+		<span className="flex flex-col gap-1 text-xs">
+			{moves.now.map((a) => (
+				<span
+					key={`now-${a.kind}-${a.buyId}-${a.lotId ?? ""}`}
+					className="flex flex-wrap items-center gap-1"
+				>
+					<span className="font-semibold">● 次の判定で</span>
+					<KindBadge action={a} multi={moves.multiBuy} />
+				</span>
+			))}
+			<MoveLine
+				arrow="↑"
+				action={moves.up}
+				from={moves.price}
+				multi={moves.multiBuy}
+			/>
+			<MoveLine
+				arrow="↓"
+				action={moves.down}
+				from={moves.price}
+				multi={moves.multiBuy}
+			/>
+			{first && <WaitRow line={first} multi={moves.multiBuy} />}
+			{rest.length > 0 && (
+				<span className="pl-5 text-text-2">他 {rest.length} 件</span>
+			)}
+		</span>
 	);
 }
 
@@ -336,7 +354,7 @@ function MoveLine({
 					<KindBadge action={action} multi={multi} />
 				</>
 			) : (
-				<span className="text-text-2">—</span>
+				<span className="text-text-2">{noMoveText(arrow)}</span>
 			)}
 		</span>
 	);

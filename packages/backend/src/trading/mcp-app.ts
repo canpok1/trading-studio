@@ -40,7 +40,7 @@ export function registerTradingTools(
 		"list_home_strategies",
 		{
 			description:
-				"ホームのカード。デモで、オンか、オフでも保有か未約定の注文がある戦略の要約（作った順）。画面の「比べる値」（通算損益=performance.pnl・含み損益=unrealizedPnl・確定損益=performance.realizedPnl・勝率・PF・最大DD・取引回数）と保有ロット数、次の動き（次の判定で起きるものと、上側・下側それぞれ最も近い発動価格。distancePercent は今の価格からの幅）。条件ごとの詳細は get_strategy_watch",
+				"ホームのカード。デモで、オンか、オフでも保有か未約定の注文がある戦略の要約（作った順）。画面の「比べる値」（通算損益=performance.pnl・含み損益=unrealizedPnl・確定損益=performance.realizedPnl・勝率・PF・最大DD・取引回数）と保有ロット数、次の動き（次の判定で起きるものと、上側・下側それぞれ最も近い発動価格。distancePercent は今の価格からの幅。waits は価格で起きない売買の理由で、画面のカードは先頭の1件だけ出す。オフの戦略は判定しないので画面では「停止中のため売買しない」と出す）。条件ごとの詳細は get_strategy_watch",
 			annotations: readOnly,
 		},
 		() => text(trading.summaries().map(strategySummaryView)),
@@ -50,7 +50,7 @@ export function registerTradingTools(
 		"get_strategy_watch",
 		{
 			description:
-				"戦略の画面の「次の動き」「戦略の見張り」。戦略を今の価格で試算した、買いとロットごとの条件の成立・今の値・発動価格（価格がいくらになれば成立するか）。actions は起きうる売買で、price が null なら今の価格のまま次の判定で起きる。nextMoves は画面の「次の動き」（次の判定で起きるものと、上側・下側それぞれ最も近い発動価格）。distancePercent は今の価格からの幅。注文はしない。リアルは画面と同じく出さない",
+				"戦略の画面の「次の動き」「戦略の見張り」。戦略を今の価格で試算した、買いとロットごとの条件の成立・今の値・発動価格（価格がいくらになれば成立するか）。actions は起きうる売買で、price が null なら今の価格のまま次の判定で起きる。nextMoves は画面の「次の動き」（次の判定で起きるものと、上側・下側それぞれ最も近い発動価格、waits は今も起きず価格だけでも起きない売買とその理由。reason.at は未成立の条件が揃えば届く価格で now なら今の価格のまま）。distancePercent は今の価格からの幅。注文はしない。リアルは画面と同じく出さない",
 			inputSchema: {
 				strategyId: z.number().int().describe("戦略の id（list_strategies）"),
 			},
