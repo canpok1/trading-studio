@@ -370,7 +370,10 @@ test("次の動きと戦略の見張りが出て、グループの開閉を覚�
 	});
 	await page.goto("/strategies/1");
 	await expect(page.getByTestId("chart-close")).toHaveText(PRICE);
-	await expect(page.getByRole("region", { name: "次の動き" })).toBeVisible();
+	// オフの戦略は判定しないので試算を出さない
+	await expect(page.getByRole("region", { name: "次の動き" })).toContainText(
+		"停止中のため新しい注文は出さない",
+	);
 	const panel = page.getByRole("region", { name: "戦略の見張り" });
 	await expect(panel).toContainText("買い1");
 	// グループは最初は閉じ、開いたものは再読み込みしても開いたまま
@@ -388,4 +391,33 @@ test("次の動きと戦略の見張りが出て、グループの開閉を覚�
 	await expect(buyGroup).toHaveAttribute("open");
 	await buyGroup.locator("summary").click();
 	await expect(buyGroup).not.toHaveAttribute("open");
+});
+
+test("オンの戦略の次の動きは、発動価格の無い向きと価格で起きない売買を全部文で出す", async ({
+	page,
+	api,
+}) => {
+	const name = "見張り";
+	const wait = (kind: "entry" | "stopLoss") => ({
+		kind,
+		buyId: "b1",
+		buyName: "買い1",
+		lotId: kind === "entry" ? null : "o1",
+		reason: {
+			kind: "buyStatus" as const,
+			status: { kind: "full" as const },
+		},
+	});
+	onHome(api, {
+		strategies: [templateStrategy(1, name, "range")],
+		runs: [tradingRun({ id: 1, name, enabled: true })],
+		waits: [wait("entry"), wait("stopLoss")],
+	});
+	await page.goto("/strategies/1");
+	const moves = page.getByRole("region", { name: "次の動き" });
+	await expect(moves).toContainText("上がっても売買なし");
+	await expect(moves).toContainText("−2.00%");
+	await expect(moves.getByText("最大ロット数に達していて買わない")).toHaveCount(
+		2,
+	);
 });

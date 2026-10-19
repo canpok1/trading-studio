@@ -3,7 +3,13 @@ import type { BuyRule, ConditionSet } from "./condition-strategy";
 import { DEFAULT_BUY_ORDER, DEFAULT_PARTIAL_SELL } from "./condition-strategy";
 import type { EventCalendar } from "./event-calendar";
 import { adx, rsi } from "./indicators";
-import type { StrategyWatch, WatchAction, WatchInput } from "./strategy-watch";
+import type {
+	StrategyWatch,
+	WatchAction,
+	WatchCondition,
+	WatchInput,
+	WatchWait,
+} from "./strategy-watch";
 import { nextMoves, watchConditionSet } from "./strategy-watch";
 import { TIMEFRAME_MS } from "./timeframe";
 import type { Candle, Lot, Order } from "./types";
@@ -461,10 +467,14 @@ const act = (
 	lotId: string | null = null,
 ): WatchAction => ({ kind, price, buyId: "b1", buyName: "買い1", lotId });
 
-const watchOf = (actions: WatchAction[]): StrategyWatch => ({
+const watchOf = (
+	actions: WatchAction[],
+	waits: WatchWait[] = [],
+): StrategyWatch => ({
 	price: 1_000,
 	buys: [],
 	actions,
+	waits,
 });
 
 describe("nextMoves", () => {
@@ -487,6 +497,139 @@ describe("nextMoves", () => {
 			watchOf([act("entry", 900), act("stopLoss", 900, "o1")]),
 		);
 		expect(m.down?.kind).toBe("stopLoss");
+	});
+
+	test("価格で起きない理由は 売り注文の約定待ち > 損切り > 利確 > 一部利確 > 買い の順", () => {
+		const wait = (kind: WatchWait["kind"]): WatchWait => ({
+			kind,
+			buyId: "b1",
+			buyName: "買い1",
+			lotId: null,
+			reason: { kind: "conditions", conditions: [], at: null },
+		});
+		const m = nextMoves(
+			watchOf(
+				[],
+				[
+					wait("entry"),
+					wait("partialTakeProfit"),
+					wait("takeProfit"),
+					wait("stopLoss"),
+					wait("sell"),
+				],
+			),
+		);
+		expect(m.waits.map((w) => w.kind)).toEqual([
+			"sell",
+			"stopLoss",
+			"takeProfit",
+			"partialTakeProfit",
+			"entry",
+		]);
+	});
+});
+
+describe("価格で起きない売買の理由", () => {
+	const bullish = {
+		type: "judgment" as const,
+		judge: "sentiment" as const,
+		values: ["+1" as const],
+	};
+	const breakout = {
+		type: "breakout" as const,
+		timeframe: "1h" as const,
+		lookback: 5,
+		direction: "high" as const,
+	};
+	const neutral = {
+		sentiment: [{ judge: "sentiment" as const, time: 0, label: "0" }],
+	};
+
+	test("価格と関係ない条件だけが足りなければ、揃ったときに届く価格を添える", () => {
+		const w = watchConditionSet(
+			input(
+				params([
+					rule({ buy: { match: "all", conditions: [bullish, breakout] } }),
+				]),
+				{ judgments: neutral },
+			),
+		);
+		expect(w.actions).toEqual([]);
+		expect(w.waits).toEqual([
+			{
+				kind: "entry",
+				buyId: "b1",
+				buyName: "買い1",
+				lotId: null,
+				reason: {
+					kind: "conditions",
+					conditions: [w.buys[0]?.buy.conditions[0] as WatchCondition],
+					at: (closes.at(-2) as number) + 1,
+				},
+			},
+		]);
+	});
+
+	test("価格の条件を満たしていれば、価格と関係ない条件が揃えば次の判定で起きる", () => {
+		const w = watchConditionSet(
+			input(params([rule({ buy: { match: "all", conditions: [bullish] } })]), {
+				judgments: neutral,
+			}),
+		);
+		expect(w.waits[0]?.reason).toMatchObject({ kind: "conditions", at: "now" });
+	});
+
+	test("どれか1つのグループは、揃えば届く価格を出さない", () => {
+		const w = watchConditionSet(
+			input(params([rule({ buy: { match: "any", conditions: [bullish] } })]), {
+				judgments: neutral,
+			}),
+		);
+		expect(w.waits[0]?.reason).toMatchObject({ kind: "conditions", at: null });
+	});
+
+	test("買いが止まっていれば理由を出し、発動価格のある損切りや空の利確は理由を出さない", () => {
+		const w = watchConditionSet(
+			input(params([rule({ buy: { match: "all", conditions: [breakout] } })]), {
+				lots: [lot(price)],
+			}),
+		);
+		expect(w.waits).toEqual([
+			{
+				kind: "entry",
+				buyId: "b1",
+				buyName: "買い1",
+				lotId: null,
+				reason: { kind: "buyStatus", status: { kind: "full" } },
+			},
+		]);
+	});
+
+	test("売り注文の約定待ちのロットはその旨を出す", () => {
+		const sell: Order = {
+			id: "s1",
+			side: "sell",
+			type: "limit",
+			price: price + 100_000,
+			quantity: BTC / 100,
+			placedAt: 0,
+			expiresAt: null,
+			status: "open",
+			lotId: "o1",
+		};
+		const w = watchConditionSet(
+			input(params([rule({ maxPositions: 2 })]), {
+				lots: [lot(price)],
+				openOrders: [sell],
+			}),
+		);
+		expect(w.waits).toContainEqual({
+			kind: "sell",
+			buyId: "b1",
+			buyName: "買い1",
+			lotId: "o1",
+			reason: { kind: "selling" },
+		});
 	});
 });
 

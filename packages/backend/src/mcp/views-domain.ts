@@ -9,6 +9,7 @@ import type {
 	Timeframe,
 	WatchAction,
 	WatchGroup,
+	WatchWait,
 } from "@trading-studio/core";
 import {
 	conditionScreenText,
@@ -401,12 +402,34 @@ export function watchGroupView(g: WatchGroup) {
 	};
 }
 
+/** 今の価格からの幅（%、小数2桁） */
+const distancePercent = (x: number, price: number) =>
+	Math.round((x / price - 1) * 10_000) / 100;
+
 /** 発動価格の今の価格からの幅（%）を足す。次の判定で起きるもの（価格なし）は null */
 const withDistance = (price: number) => (a: WatchAction) => ({
 	...a,
-	distancePercent:
-		a.price === null ? null : Math.round((a.price / price - 1) * 10_000) / 100,
+	distancePercent: a.price === null ? null : distancePercent(a.price, price),
 });
+
+/** 価格で起きない理由。揃えば届く価格に今の価格からの幅（%）を足す */
+const waitView = (price: number) => (w: WatchWait) =>
+	w.reason.kind === "conditions"
+		? {
+				...w,
+				reason: {
+					...w.reason,
+					conditions: w.reason.conditions.map((c) => ({
+						text: conditionScreenText(c.condition),
+						detail: c.detail,
+					})),
+					atDistancePercent:
+						typeof w.reason.at === "number"
+							? distancePercent(w.reason.at, price)
+							: null,
+				},
+			}
+		: w;
 
 /** ホームのカード1枚ぶん。比べる値（通算損益・含み損益・確定損益・勝率・PF・最大DD・取引回数）と次の動き */
 export function strategySummaryView(s: StrategySummary) {
@@ -427,6 +450,7 @@ export function strategySummaryView(s: StrategySummary) {
 				now: n.now.map(action),
 				up: n.up && action(n.up),
 				down: n.down && action(n.down),
+				waits: n.waits.map(waitView(n.price)),
 			},
 	};
 }
@@ -440,6 +464,7 @@ export function watchView(w: StrategyWatch) {
 			now: next.now.map(action),
 			up: next.up && action(next.up),
 			down: next.down && action(next.down),
+			waits: next.waits.map(waitView(w.price)),
 		},
 		actions: w.actions.map(action),
 		buys: w.buys.map((b) => ({
