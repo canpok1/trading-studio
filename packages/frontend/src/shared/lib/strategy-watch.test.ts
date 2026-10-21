@@ -63,19 +63,18 @@ describe("triggerView", () => {
 			icon: "↑",
 			text: "+10.00%",
 			note: "+100 円",
-			suffix: "で",
-			ordered: false,
+			suffix: "待ち",
 		});
 		expect(triggerView({ kind: "order", price: 985 }, 1_000)).toEqual({
 			icon: "↓",
 			text: "−1.50%",
 			note: "−15 円",
-			suffix: "で",
-			ordered: true,
+			suffix: " 約定待ち",
 		});
-		expect(triggerView({ kind: "order", price: null }, 1_000).text).toBe(
-			"成行",
-		);
+		expect(triggerView({ kind: "order", price: null }, 1_000)).toMatchObject({
+			text: "成行",
+			suffix: " 約定待ち",
+		});
 	});
 
 	test("時間・価格以外・あと N 条件", () => {
@@ -87,7 +86,7 @@ describe("triggerView", () => {
 				{ kind: "time", at: Date.parse("2026-10-29T19:00:00Z") },
 				1_000,
 			),
-		).toMatchObject({ text: "10/30 4:00", suffix: " から" });
+		).toMatchObject({ text: "10/30 4:00", suffix: " まで待ち" });
 		expect(
 			triggerView(
 				{
@@ -101,8 +100,7 @@ describe("triggerView", () => {
 			icon: "◇",
 			text: "センチメント やや強気",
 			note: "今 中立",
-			suffix: "で",
-			ordered: false,
+			suffix: "待ち",
 		});
 		expect(triggerView({ kind: "remaining", count: 2 }, 1_000).text).toBe(
 			"あと 2 条件",

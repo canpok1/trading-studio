@@ -48,7 +48,7 @@ test("オンの戦略とオフでも保有がある戦略を作った順にカ�
 		"−7,350円",
 	);
 	// 次の動きは % と種類だけ（円の差は戦略の画面で出す）
-	await expect(cards.nth(0)).toContainText("−2.00%で");
+	await expect(cards.nth(0)).toContainText("−2.00%待ち");
 	await expect(cards.nth(0)).not.toContainText("−200,000");
 	await page.getByRole("link", { name: /停止中 1 件/ }).click();
 	await expect(page).toHaveURL(/\/strategies$/);
@@ -84,14 +84,87 @@ test("次の動きは優先度の高い上位2つだけ出し、オフの戦略�
 	});
 	await page.goto("/home");
 	const cards = page.getByTestId("home-strategy");
-	await expect(cards.nth(0)).toContainText("−1.50%で買い（注文中）");
-	await expect(cards.nth(0)).toContainText("+10.00%で一部利確");
+	await expect(cards.nth(0)).toContainText("買い↓−1.50% 約定待ち");
+	await expect(cards.nth(0)).toContainText("一部利確↑+10.00%待ち");
 	await expect(cards.nth(0)).not.toContainText("あと 2 条件");
 	// 円の差はカードでは出さない
 	await expect(cards.nth(0)).not.toContainText("1,000,000");
 	await expect(cards.nth(2)).toContainText("停止中のため新しい注文は出さない");
-	await expect(cards.nth(2)).toContainText("−1.50%で買い（注文中）");
+	await expect(cards.nth(2)).toContainText("買い↓−1.50% 約定待ち");
 	await expect(cards.nth(2)).not.toContainText("一部利確");
+});
+
+test("買いが2つ以上なら種類に買いの名前を添え、スマホの2列だけは外して1行に収める", async ({
+	page,
+	api,
+	isMobile,
+}) => {
+	onHome(api, {
+		runs: fourRuns(),
+		multiBuy: true,
+		moves: [
+			{
+				kind: "takeProfit",
+				buyId: "b1",
+				buyName: "押し目",
+				trigger: { kind: "price", price: 10_220_000 },
+			},
+		],
+	});
+	await page.goto("/home");
+	const card = page.getByTestId("home-strategy").nth(0);
+	const badge = card.getByText("「押し目」");
+	if (isMobile) {
+		await expect(badge).toBeHidden();
+		const [kind, trigger] = await Promise.all([
+			badge.locator("..").boundingBox(),
+			card.getByText("+2.20%待ち").boundingBox(),
+		]);
+		if (!kind || !trigger) throw new Error("見つからない");
+		expect(
+			Math.abs(kind.y + kind.height / 2 - (trigger.y + trigger.height / 2)),
+		).toBeLessThan(4);
+		await page.getByRole("button", { name: "1列" }).click();
+	}
+	await expect(badge).toBeVisible();
+	// いちばん長い買いの名前（20文字）でも、バッジは折り返して値に重ならない
+	const long = "い".repeat(20);
+	const runs = fourRuns();
+	runs.splice(
+		0,
+		1,
+		withEquity(
+			tradingRun({ id: 1, name: "トレンド", enabled: true }),
+			99_999_999,
+		),
+	);
+	onHome(api, {
+		runs,
+		multiBuy: true,
+		moves: [
+			{
+				kind: "takeProfit",
+				buyId: "b1",
+				buyName: long,
+				trigger: { kind: "price", price: 10_220_000 },
+			},
+		],
+	});
+	await page.reload();
+	const named = card.getByText(`「${long}」`).locator("..");
+	await expect(named).toBeVisible();
+	await expect
+		.poll(async () => {
+			const [b, v] = await Promise.all([
+				named.boundingBox(),
+				card.getByTestId("home-strategy-value").boundingBox(),
+			]);
+			if (!b || !v) return false;
+			return (
+				b.x + b.width <= v.x || b.y >= v.y + v.height || b.y + b.height <= v.y
+			);
+		})
+		.toBe(true);
 });
 
 test("次の動きが無ければ「次の動きなし」と出す", async ({ page, api }) => {
