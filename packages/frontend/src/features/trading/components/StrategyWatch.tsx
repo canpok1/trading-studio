@@ -91,8 +91,8 @@ export function MoveRow({
 				multi={multi}
 				nameClass={nameClass}
 			/>
-			<span className="flex items-center gap-x-1.5">
-				<span aria-hidden className={`w-3.5 ${ICON_CLASS[t.icon]}`}>
+			<span className="flex items-center gap-x-0.5">
+				<span aria-hidden className={ICON_CLASS[t.icon]}>
 					{t.icon}
 				</span>
 				<span
