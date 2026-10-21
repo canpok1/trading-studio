@@ -187,3 +187,25 @@ export function ChevronIcon({
 		</Svg>
 	);
 }
+
+/** 2列に並べる */
+export function GridIcon({ size = 16 }: IconProps) {
+	return (
+		<Svg size={size} strokeLinejoin="round">
+			<rect x="4" y="4" width="7" height="7" rx="1" />
+			<rect x="13" y="4" width="7" height="7" rx="1" />
+			<rect x="4" y="13" width="7" height="7" rx="1" />
+			<rect x="13" y="13" width="7" height="7" rx="1" />
+		</Svg>
+	);
+}
+
+/** 1列に並べる */
+export function ListIcon({ size = 16 }: IconProps) {
+	return (
+		<Svg size={size} strokeLinejoin="round">
+			<rect x="4" y="4" width="16" height="7" rx="1" />
+			<rect x="4" y="13" width="16" height="7" rx="1" />
+		</Svg>
+	);
+}
