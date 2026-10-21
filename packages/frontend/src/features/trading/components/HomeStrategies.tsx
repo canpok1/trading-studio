@@ -5,8 +5,10 @@ import type {
 	AutoTradingStatus,
 	StrategySummary,
 } from "@trading-studio/backend";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
+import { GridIcon, ListIcon } from "../../../shared/components/icons";
 import { Skeleton } from "../../../shared/components/States";
 import { useApi } from "../../../shared/lib/api";
 import { STOPPED_TEXT } from "../../../shared/lib/strategy-watch";
@@ -28,6 +30,7 @@ import { MoveRow } from "./StrategyWatch";
 const SUMMARY_MS = 5_000;
 const MARK_KEY = "home-mark";
 const COMPARE_KEY = "home-compare";
+const LAYOUT_KEY = "home-layout";
 
 /** ホームに出す戦略の要約を読み、5秒ごとに読み直す。読めなければ前の値を残す */
 export function useStrategySummaries() {
@@ -106,6 +109,20 @@ function useCompareKey(): [CompareKey, (k: CompareKey) => void] {
 	return [key, change];
 }
 
+/** スマホ幅の並べ方。2列は押しやすさ、1列は名前を全部出して見分けやすさを優先する。PC 幅は常に横一列 */
+type Layout = "grid" | "list";
+
+function useLayout(): [Layout, (l: Layout) => void] {
+	const [layout, setLayout] = useState<Layout>(() =>
+		readStored(LAYOUT_KEY) === "list" ? "list" : "grid",
+	);
+	const change = (l: Layout) => {
+		setLayout(l);
+		writeStored(LAYOUT_KEY, l);
+	};
+	return [layout, change];
+}
+
 export function HomeStrategies({
 	summaries,
 	error,
@@ -120,6 +137,8 @@ export function HomeStrategies({
 	onMark: (id: number) => void;
 }) {
 	const [key, setKey] = useCompareKey();
+	const [layout, setLayout] = useLayout();
+	const list = layout === "list";
 	const shownIds = new Set(summaries?.map((s) => s.status.id));
 	const stopped =
 		runs && summaries ? runs.filter((r) => !shownIds.has(r.id)).length : 0;
@@ -134,7 +153,26 @@ export function HomeStrategies({
 				<span className="hidden text-xs text-text-2 sm:inline">
 					押すとチャートの印を切り替え
 				</span>
-				<label className="ml-auto flex items-center gap-2 text-xs text-text-2">
+				<fieldset
+					aria-label="並べ方"
+					className="ml-auto flex h-9 overflow-hidden rounded-lg border border-line lg:hidden"
+				>
+					<LayoutButton
+						label="2列"
+						pressed={!list}
+						onClick={() => setLayout("grid")}
+					>
+						<GridIcon />
+					</LayoutButton>
+					<LayoutButton
+						label="1列"
+						pressed={list}
+						onClick={() => setLayout("list")}
+					>
+						<ListIcon />
+					</LayoutButton>
+				</fieldset>
+				<label className="flex items-center gap-2 text-xs text-text-2 lg:ml-auto">
 					<span className="hidden sm:inline">比べる値</span>
 					<select
 						aria-label="比べる値"
@@ -156,7 +194,9 @@ export function HomeStrategies({
 						戦略の要約を読み込めなかった。5秒ごとに読み直している
 					</p>
 				) : (
-					<div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4 xl:grid-cols-5">
+					<div
+						className={`grid gap-2.5 lg:grid-cols-4 xl:grid-cols-5 ${list ? "grid-cols-1" : "grid-cols-2"}`}
+					>
 						<Skeleton className="h-36" />
 						<Skeleton className="h-36" />
 					</div>
@@ -176,13 +216,16 @@ export function HomeStrategies({
 					</Link>
 				</div>
 			) : (
-				<ul className="grid grid-cols-2 gap-2.5 lg:grid-cols-4 xl:grid-cols-5">
+				<ul
+					className={`grid gap-2.5 lg:grid-cols-4 xl:grid-cols-5 ${list ? "grid-cols-1" : "grid-cols-2"}`}
+				>
 					{summaries.map((s) => (
 						<StrategyCard
 							key={s.status.id}
 							summary={s}
 							value={compared(s, key)}
 							selected={s.status.id === markId}
+							list={list}
 							onSelect={() => onMark(s.status.id)}
 						/>
 					))}
@@ -201,14 +244,19 @@ function StrategyCard({
 	summary: s,
 	value,
 	selected,
+	list,
 	onSelect,
 }: {
 	summary: StrategySummary;
 	value: ReturnType<typeof compared>;
 	selected: boolean;
+	/** スマホ幅の1列。名前を1行目の全幅に置いて切らずに出し、その下に次の動き（左）と値・補足（右）を並べる */
+	list: boolean;
 	onSelect: () => void;
 }) {
 	const { status } = s;
+	// 1列では格子で置き場所を決める。PC 幅は2列と同じ縦積みに戻す（格子の置き場所は効かない）
+	const at = (cls: string) => (list ? cls : "");
 	return (
 		<li
 			data-testid="home-strategy"
@@ -220,14 +268,24 @@ function StrategyCard({
 				type="button"
 				aria-pressed={selected}
 				onClick={onSelect}
-				className="flex min-w-0 flex-1 flex-col gap-1 rounded-xl px-3 pt-2.5 pb-2 text-left hover:bg-surface-2"
+				className={`min-w-0 flex-1 rounded-xl px-3 pt-2.5 pb-2 text-left hover:bg-surface-2 ${
+					list
+						? "grid grid-cols-[minmax(0,1fr)_auto_auto] items-baseline gap-x-1.5 gap-y-1 lg:flex lg:flex-col lg:items-stretch lg:gap-1"
+						: "flex flex-col gap-1"
+				}`}
 			>
-				<span className="flex min-w-0 items-center gap-1.5">
+				<span
+					className={`flex min-w-0 items-center gap-1.5 ${at("col-span-3 row-start-1")}`}
+				>
 					<span
 						aria-hidden
 						className={`size-2 shrink-0 rounded-full ${status.enabled ? "bg-profit" : "bg-text-2"}`}
 					/>
-					<b className="min-w-0 flex-1 truncate text-[13px]">{status.name}</b>
+					<b
+						className={`min-w-0 flex-1 text-[13px] ${list ? "break-words lg:truncate" : "truncate"}`}
+					>
+						{status.name}
+					</b>
 					{selected && (
 						<span className="shrink-0 rounded bg-accent px-1.5 py-px text-[10px] font-semibold text-white dark:text-accent-ink">
 							チャート
@@ -235,13 +293,15 @@ function StrategyCard({
 					)}
 				</span>
 				{!status.enabled && (
-					<span className="text-[11px] text-text-2">
+					<span
+						className={`text-[11px] text-text-2 ${at("col-start-1 row-start-2")}`}
+					>
 						停止中（保有・注文あり）
 					</span>
 				)}
 				<span
 					data-testid="home-strategy-value"
-					className={`num text-xl font-semibold tracking-tight ${
+					className={`num text-xl font-semibold tracking-tight ${at("col-start-2 row-start-2")} ${
 						value.tone === "profit"
 							? "text-profit"
 							: value.tone === "loss"
@@ -251,8 +311,17 @@ function StrategyCard({
 				>
 					{value.text}
 				</span>
-				<span className="num text-xs text-text-2">{value.sub}</span>
-				<CardMoves summary={s} />
+				<span
+					className={`num text-xs text-text-2 ${at("col-start-3 row-start-2")}`}
+				>
+					{value.sub}
+				</span>
+				<CardMoves
+					summary={s}
+					className={at(
+						`col-start-1 ${status.enabled ? "row-start-2" : "row-start-3"}`,
+					)}
+				/>
 			</button>
 			{selected && (
 				<Link
@@ -270,11 +339,17 @@ function StrategyCard({
 const CARD_MOVES = 2;
 
 /** カードの次の動き。優先度の高い上位だけ出す。オフは判定しないので、出している注文だけ出す */
-function CardMoves({ summary: s }: { summary: StrategySummary }) {
+function CardMoves({
+	summary: s,
+	className,
+}: {
+	summary: StrategySummary;
+	className: string;
+}) {
 	const n = s.nextMoves;
 	if (!n) {
 		return (
-			<span className="text-xs text-text-2">
+			<span className={`text-xs text-text-2 ${className}`}>
 				{s.status.enabled ? "価格が取れず試算できない" : STOPPED_TEXT}
 			</span>
 		);
@@ -285,7 +360,7 @@ function CardMoves({ summary: s }: { summary: StrategySummary }) {
 			: n.moves.filter((m) => m.trigger.kind === "order")
 	).slice(0, CARD_MOVES);
 	return (
-		<span className="flex flex-col gap-1 text-xs">
+		<span className={`flex flex-col gap-1 text-xs ${className}`}>
 			{!s.status.enabled && <span className="text-text-2">{STOPPED_TEXT}</span>}
 			{moves.map((m) => (
 				<MoveRow
@@ -300,5 +375,33 @@ function CardMoves({ summary: s }: { summary: StrategySummary }) {
 				<span className="text-text-2">次の動きなし</span>
 			)}
 		</span>
+	);
+}
+
+function LayoutButton({
+	label,
+	pressed,
+	onClick,
+	children,
+}: {
+	label: string;
+	pressed: boolean;
+	onClick: () => void;
+	children: ReactNode;
+}) {
+	return (
+		<button
+			type="button"
+			aria-label={label}
+			aria-pressed={pressed}
+			onClick={onClick}
+			className={`grid w-9 place-items-center ${
+				pressed
+					? "bg-accent text-white dark:text-accent-ink"
+					: "bg-surface text-text-2"
+			}`}
+		>
+			{children}
+		</button>
 	);
 }

@@ -192,6 +192,52 @@ test("スマホはカードを2列、PC は全幅のチャートの下に横一�
 	}
 });
 
+test("スマホは1列に切り替えると長い名前も切らずに出し、選んだ並べ方を覚えている。PC は切替を出さない", async ({
+	page,
+	api,
+	isMobile,
+}) => {
+	const long = "トレンドフォロー 日足EMAクロス 損切り浅め 版3";
+	const runs = fourRuns();
+	runs.splice(
+		0,
+		1,
+		withEquity(tradingRun({ id: 1, name: long, enabled: true }), 1_018_420),
+	);
+	onHome(api, { runs });
+	await page.goto("/home");
+	const layout = page.getByRole("group", { name: "並べ方" });
+	if (!isMobile) {
+		await expect(layout).toBeHidden();
+		return;
+	}
+	const cards = page.getByTestId("home-strategy");
+	const name = cards.nth(0).getByText(long);
+	const clipped = () =>
+		name.evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+	// 2列は名前を1行で切る
+	await expect(cards).toHaveCount(3);
+	expect(await clipped()).toBe(true);
+	await layout.getByRole("button", { name: "1列" }).click();
+	await expect.poll(clipped).toBe(false);
+	// 1列は名前を1行目の全幅に置き、値はその下の右。カードは縦に並ぶ
+	const [a, b, value, label] = await Promise.all([
+		cards.nth(0).boundingBox(),
+		cards.nth(1).boundingBox(),
+		cards.nth(0).getByTestId("home-strategy-value").boundingBox(),
+		name.boundingBox(),
+	]);
+	if (!a || !b || !value || !label) throw new Error("見つからない");
+	expect(b.y).toBeGreaterThan(a.y + a.height - 1);
+	expect(value.y).toBeGreaterThanOrEqual(label.y + label.height);
+	expect(value.x + value.width).toBeGreaterThan(a.x + a.width * 0.75);
+	await page.reload();
+	await expect(
+		page.getByRole("button", { name: "1列", pressed: true }),
+	).toBeVisible();
+	await expect.poll(clipped).toBe(false);
+});
+
 test("−・＋を「最新へ」と同じ行に出し、押しても最新の足は見えたまま", async ({
 	page,
 	api,
