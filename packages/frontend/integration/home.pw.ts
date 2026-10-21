@@ -127,6 +127,44 @@ test("買いが2つ以上なら種類に買いの名前を添え、スマホの2
 		await page.getByRole("button", { name: "1列" }).click();
 	}
 	await expect(badge).toBeVisible();
+	// いちばん長い買いの名前（20文字）でも、バッジは折り返して値に重ならない
+	const long = "い".repeat(20);
+	const runs = fourRuns();
+	runs.splice(
+		0,
+		1,
+		withEquity(
+			tradingRun({ id: 1, name: "トレンド", enabled: true }),
+			99_999_999,
+		),
+	);
+	onHome(api, {
+		runs,
+		multiBuy: true,
+		moves: [
+			{
+				kind: "takeProfit",
+				buyId: "b1",
+				buyName: long,
+				trigger: { kind: "price", price: 10_220_000 },
+			},
+		],
+	});
+	await page.reload();
+	const named = card.getByText(`「${long}」`).locator("..");
+	await expect(named).toBeVisible();
+	await expect
+		.poll(async () => {
+			const [b, v] = await Promise.all([
+				named.boundingBox(),
+				card.getByTestId("home-strategy-value").boundingBox(),
+			]);
+			if (!b || !v) return false;
+			return (
+				b.x + b.width <= v.x || b.y >= v.y + v.height || b.y + b.height <= v.y
+			);
+		})
+		.toBe(true);
 });
 
 test("次の動きが無ければ「次の動きなし」と出す", async ({ page, api }) => {

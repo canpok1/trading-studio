@@ -48,9 +48,10 @@ export function KindBadge({
 }) {
 	return (
 		<span
-			className={`rounded px-1.5 py-px text-[11px] font-semibold whitespace-nowrap ${KIND_BADGE[kind]}`}
+			className={`rounded px-1.5 py-px text-[11px] font-semibold ${KIND_BADGE[kind]}`}
 		>
-			{ACTION_LABELS[kind]}
+			{/* 買いの名前は長いと幅に収まらないので、名前の中だけ折り返す */}
+			<span className="whitespace-nowrap">{ACTION_LABELS[kind]}</span>
 			{multi && <span className={nameClass}>「{buyName}」</span>}
 		</span>
 	);
@@ -91,7 +92,7 @@ export function MoveRow({
 				multi={multi}
 				nameClass={nameClass}
 			/>
-			<span className="flex items-center gap-x-0.5">
+			<span className="flex items-baseline gap-x-0.5">
 				<span aria-hidden className={ICON_CLASS[t.icon]}>
 					{t.icon}
 				</span>
