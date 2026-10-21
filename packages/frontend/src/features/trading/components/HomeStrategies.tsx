@@ -270,12 +270,12 @@ function StrategyCard({
 				onClick={onSelect}
 				className={`min-w-0 flex-1 rounded-xl px-3 pt-2.5 pb-2 text-left hover:bg-surface-2 ${
 					list
-						? "grid grid-cols-[minmax(0,1fr)_auto_auto] items-baseline gap-x-1.5 gap-y-1 lg:flex lg:flex-col lg:items-stretch lg:gap-1"
+						? "grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 lg:flex lg:flex-col lg:items-stretch lg:gap-1"
 						: "flex flex-col gap-1"
 				}`}
 			>
 				<span
-					className={`flex min-w-0 items-center gap-1.5 ${at("col-span-3 row-start-1")}`}
+					className={`flex min-w-0 items-center gap-1.5 ${at("col-span-2 row-start-1")}`}
 				>
 					<span
 						aria-hidden
@@ -301,7 +301,7 @@ function StrategyCard({
 				)}
 				<span
 					data-testid="home-strategy-value"
-					className={`num text-xl font-semibold tracking-tight ${at("col-start-2 row-start-2")} ${
+					className={`num text-xl font-semibold tracking-tight ${at("col-start-2 row-start-2 text-right lg:text-left")} ${
 						value.tone === "profit"
 							? "text-profit"
 							: value.tone === "loss"
@@ -312,14 +312,15 @@ function StrategyCard({
 					{value.text}
 				</span>
 				<span
-					className={`num text-xs text-text-2 ${at("col-start-3 row-start-2")}`}
+					className={`num text-xs text-text-2 ${at("col-start-2 row-start-3 text-right lg:text-left")}`}
 				>
 					{value.sub}
 				</span>
 				<CardMoves
 					summary={s}
+					list={list}
 					className={at(
-						`col-start-1 ${status.enabled ? "row-start-2" : "row-start-3"}`,
+						`col-start-1 row-span-2 ${status.enabled ? "row-start-2" : "row-start-3"}`,
 					)}
 				/>
 			</button>
@@ -335,15 +336,20 @@ function StrategyCard({
 	);
 }
 
+/** スマホ幅の2列では、種類のバッジから買いの名前を外して1行に収める（名前は1列・戦略の画面で見る） */
+const NARROW_HIDDEN = "hidden lg:inline";
+
 /** カードに出す次の動きの数。全部は戦略の画面で見る */
 const CARD_MOVES = 2;
 
 /** カードの次の動き。優先度の高い上位だけ出す。オフは判定しないので、出している注文だけ出す */
 function CardMoves({
 	summary: s,
+	list,
 	className,
 }: {
 	summary: StrategySummary;
+	list: boolean;
 	className: string;
 }) {
 	const n = s.nextMoves;
@@ -369,6 +375,7 @@ function CardMoves({
 					price={n.price}
 					multi={n.multiBuy}
 					detailed={false}
+					nameClass={list ? "" : NARROW_HIDDEN}
 				/>
 			))}
 			{s.status.enabled && moves.length === 0 && (

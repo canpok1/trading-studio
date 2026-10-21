@@ -38,17 +38,20 @@ export function KindBadge({
 	kind,
 	buyName,
 	multi,
+	nameClass = "",
 }: {
 	kind: WatchMove["kind"];
 	buyName: string;
 	multi: boolean;
+	/** 買いの名前に付けるクラス。狭いところで隠すのに使う */
+	nameClass?: string;
 }) {
 	return (
 		<span
 			className={`rounded px-1.5 py-px text-[11px] font-semibold whitespace-nowrap ${KIND_BADGE[kind]}`}
 		>
 			{ACTION_LABELS[kind]}
-			{multi && `「${buyName}」`}
+			{multi && <span className={nameClass}>「{buyName}」</span>}
 		</span>
 	);
 }
@@ -63,41 +66,49 @@ const ICON_CLASS: Record<TriggerView["icon"], string> = {
 };
 
 /**
- * 次の動き1行。「↑ +10.00%で 一部利確」。detailed（戦略の画面）なら円の差・今の値も添える（「+10.00%（+1,000,000 円）で」）。
- * 買いが2つ以上なら種類に買いの名前を添える
+ * 次の動き1行。「一部利確 ↑ +10.00%待ち」。種類を先に置き、入らなければきっかけを次の行へ折り返す。
+ * detailed（戦略の画面）なら円の差・今の値も添える（「+10.00%（+1,000,000 円）待ち」）。買いが2つ以上なら種類に買いの名前を添える
  */
 export function MoveRow({
 	move,
 	price,
 	multi,
 	detailed,
+	nameClass,
 }: {
 	move: WatchMove;
 	price: number;
 	multi: boolean;
 	detailed: boolean;
+	nameClass?: string;
 }) {
 	const t = triggerView(move.trigger, price);
 	return (
 		<span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-			<span aria-hidden className={`w-3.5 ${ICON_CLASS[t.icon]}`}>
-				{t.icon}
+			<KindBadge
+				kind={move.kind}
+				buyName={move.buyName}
+				multi={multi}
+				nameClass={nameClass}
+			/>
+			<span className="flex items-center gap-x-1.5">
+				<span aria-hidden className={`w-3.5 ${ICON_CLASS[t.icon]}`}>
+					{t.icon}
+				</span>
+				<span
+					className={
+						move.trigger.kind === "price" || move.trigger.kind === "order"
+							? "num"
+							: ""
+					}
+				>
+					{t.text}
+					{detailed && t.note && (
+						<span className="text-xs text-text-2">（{t.note}）</span>
+					)}
+					{t.suffix}
+				</span>
 			</span>
-			<span
-				className={
-					move.trigger.kind === "price" || move.trigger.kind === "order"
-						? "num"
-						: ""
-				}
-			>
-				{t.text}
-				{detailed && t.note && (
-					<span className="text-xs text-text-2">（{t.note}）</span>
-				)}
-				{t.suffix}
-			</span>
-			<KindBadge kind={move.kind} buyName={move.buyName} multi={multi} />
-			{t.ordered && <span className="text-text-2">（注文中）</span>}
 		</span>
 	);
 }

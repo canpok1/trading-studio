@@ -28,6 +28,8 @@ export type HomeState = {
 	collector: CollectorStatus;
 	/** 見張りの次の動き。null なら買いの発動価格1つ */
 	moves: WatchMove[] | null;
+	/** 買いが2つ以上の戦略として次の動きを返す（種類に買いの名前を添える） */
+	multiBuy?: boolean;
 };
 
 /** 買いの発動価格が1つある見張り */
@@ -237,7 +239,11 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 					return {
 						status,
 						performance: performanceOf(status),
-						nextMoves: { price: w.price, moves: w.moves, multiBuy: false },
+						nextMoves: {
+							price: w.price,
+							moves: w.moves,
+							multiBuy: state.multiBuy ?? false,
+						},
 					};
 				}),
 		}))

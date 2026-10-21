@@ -99,12 +99,11 @@ export type TriggerView = {
 	text: string;
 	/** 円の差・今の値など。戦略の画面だけで出す */
 	note: string | null;
-	suffix: "で" | " から";
-	/** 出している注文 */
-	ordered: boolean;
+	/** 種類のバッジの後ろに続けて読むので「〜待ち」にする */
+	suffix: "待ち" | " 約定待ち" | " まで待ち";
 };
 
-/** 例: 「+10.00%（+1,000,000 円）で」「センチメント やや強気（今 中立）で」「あと 2 条件で」 */
+/** 例: 「+10.00%（+1,000,000 円）待ち」「−1.50% 約定待ち」「センチメント やや強気（今 中立）待ち」 */
 export function triggerView(t: WatchTrigger, price: number): TriggerView {
 	const priced = (p: number, ordered: boolean): TriggerView => {
 		const m = moveText(p, price);
@@ -112,8 +111,7 @@ export function triggerView(t: WatchTrigger, price: number): TriggerView {
 			icon: p > price ? "↑" : "↓",
 			text: m.percent,
 			note: m.yen,
-			suffix: "で",
-			ordered,
+			suffix: ordered ? " 約定待ち" : "待ち",
 		};
 	};
 	switch (t.kind) {
@@ -122,12 +120,11 @@ export function triggerView(t: WatchTrigger, price: number): TriggerView {
 				icon: "●",
 				text: "次の判定",
 				note: null,
-				suffix: "で",
-				ordered: false,
+				suffix: "待ち",
 			};
 		case "order":
 			return t.price === null
-				? { icon: "●", text: "成行", note: null, suffix: "で", ordered: true }
+				? { icon: "●", text: "成行", note: null, suffix: " 約定待ち" }
 				: priced(t.price, true);
 		case "price":
 			return priced(t.price, false);
@@ -136,32 +133,28 @@ export function triggerView(t: WatchTrigger, price: number): TriggerView {
 				icon: "⏱",
 				text: `あと ${t.bars} 本（${TIMEFRAME_LABELS[t.timeframe]}）`,
 				note: null,
-				suffix: "で",
-				ordered: false,
+				suffix: "待ち",
 			};
 		case "time":
 			return {
 				icon: "⏱",
 				text: jstDateTime(t.at),
 				note: null,
-				suffix: " から",
-				ordered: false,
+				suffix: " まで待ち",
 			};
 		case "condition":
 			return {
 				icon: "◇",
 				text: conditionText(t.condition),
 				note: t.detail || null,
-				suffix: "で",
-				ordered: false,
+				suffix: "待ち",
 			};
 		case "remaining":
 			return {
 				icon: "…",
 				text: `あと ${t.count} 条件`,
 				note: null,
-				suffix: "で",
-				ordered: false,
+				suffix: "待ち",
 			};
 	}
 }
