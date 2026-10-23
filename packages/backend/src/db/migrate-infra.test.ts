@@ -661,3 +661,30 @@ describe("0028 戦略と運用を 1:1 にする", () => {
 		expect(runs(db)).toHaveLength(2);
 	});
 });
+
+describe("0030 銘柄・市場を持たせる", () => {
+	test("既存の足・相場データ・戦略を BTC/JPY・Coincheck として残す", async () => {
+		const db = await dbUpTo(29);
+		insert(db, "candles", { timeframe: "1m", time: 60_000, close: 100 });
+		insert(db, "segments", { from_time: 0, to_time: 1 });
+		insert(db, "strategies", { name: "s" });
+		migrateDb(db, { now: 1 });
+		const rows = (sql: string) => db.$client.query(sql).all();
+		expect(rows("select instrument, time, close from candles")).toEqual([
+			{ instrument: "coincheck:btc_jpy", time: 60_000, close: 100 },
+		]);
+		expect(rows("select instrument from segments")).toEqual([
+			{ instrument: "coincheck:btc_jpy" },
+		]);
+		expect(rows("select market from strategies")).toEqual([
+			{ market: "coincheck" },
+		]);
+		// 同じ時刻の足を別の銘柄で持てる
+		insert(db, "candles", {
+			instrument: "other",
+			timeframe: "1m",
+			time: 60_000,
+		});
+		expect(rows("select count(*) as n from candles")).toEqual([{ n: 2 }]);
+	});
+});
