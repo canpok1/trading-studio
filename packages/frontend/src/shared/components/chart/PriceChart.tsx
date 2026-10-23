@@ -2,9 +2,10 @@
 
 import type { WatchActionKind } from "@trading-studio/core";
 import {
+	BTC_JPY,
 	bollinger,
 	ema,
-	formatBtc,
+	formatQuantity,
 	formatRsi,
 	JUDGE_LABELS,
 	JUDGES,
@@ -1414,7 +1415,7 @@ export function PriceChart({
 							data-testid="chart-volume"
 							className={`text-text-2 ${short ? "max-lg:hidden" : ""}`}
 						>
-							出来高 {formatBtc(bar.volume)} BTC
+							出来高 {formatQuantity(BTC_JPY, bar.volume)} BTC
 						</span>
 					)}
 					{judgments &&

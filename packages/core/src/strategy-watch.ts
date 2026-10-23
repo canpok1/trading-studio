@@ -42,7 +42,8 @@ import {
 } from "./event-calendar";
 import { formatYen } from "./format";
 import { bollinger } from "./indicators";
-import { limitBuyPriceBelow, notionalYen } from "./money";
+import { BTC_JPY } from "./instrument";
+import { limitBuyPriceBelow, notional } from "./money";
 import { JUDGMENT_VALUE_LABELS, NO_JUDGMENT } from "./news-judgment";
 import type { StrategyInput } from "./strategy";
 import type { Timeframe } from "./timeframe";
@@ -602,10 +603,11 @@ function buyStatus(
 		const reserved = input.openOrders
 			.filter((o) => o.side === "buy")
 			.reduce(
-				(a, o) => a + notionalYen(o.price ?? input.price, o.quantity, "ceil"),
+				(a, o) =>
+					a + notional(BTC_JPY, o.price ?? input.price, o.quantity, "ceil"),
 				0,
 			);
-		if (input.cash - reserved < notionalYen(at, b.orderSize, "ceil")) {
+		if (input.cash - reserved < notional(BTC_JPY, at, b.orderSize, "ceil")) {
 			return { kind: "noCash" };
 		}
 	}

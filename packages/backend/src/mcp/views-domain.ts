@@ -12,6 +12,7 @@ import type {
 	WatchMove,
 } from "@trading-studio/core";
 import {
+	BTC_JPY,
 	conditionScreenText,
 	conditionSetScreenText,
 	fewTradesNote,
@@ -338,12 +339,13 @@ export function paperView(
 			lots: a.lots.map((l) => ({
 				...l,
 				openedAt: jst(l.openedAt),
-				unrealizedPnl: unrealizedPnl(l.quantity, l.entryPrice, price),
+				unrealizedPnl: unrealizedPnl(BTC_JPY, l.quantity, l.entryPrice, price),
 			})),
 			openOrderCount: a.openOrderCount,
 			resetAt: jst(a.resetAt),
 		},
 		unrealizedPnl: unrealizedPnl(
+			BTC_JPY,
 			a.position.quantity,
 			a.position.entryPrice,
 			price,
@@ -439,6 +441,7 @@ export function strategySummaryView(s: StrategySummary) {
 		...tradingRunView(s.status),
 		performance: s.performance && tradingPerformanceView(s.performance),
 		unrealizedPnl: unrealizedPnl(
+			BTC_JPY,
 			position.quantity,
 			position.entryPrice,
 			n?.price ?? s.performance?.price ?? null,

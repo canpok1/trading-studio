@@ -1,6 +1,7 @@
 // 過去データの CSV の読み書きと検証
 
-import { btcToSatoshi, roundYen, satoshiToBtcString } from "./money";
+import { BTC_JPY, toPriceUnits } from "./instrument";
+import { parseQuantity, quantityToString } from "./money";
 import type { Timeframe } from "./timeframe";
 import { candleStart, JST_OFFSET_MS } from "./timeframe";
 import type { Candle } from "./types";
@@ -67,7 +68,7 @@ const DECIMAL = /^\d+(\.\d+)?$/;
 function parsePrice(v: string): number | null {
 	const t = v.trim();
 	if (!DECIMAL.test(t)) return null;
-	const n = roundYen(Number(t));
+	const n = toPriceUnits(BTC_JPY, Number(t));
 	return n > 0 && Number.isSafeInteger(n) ? n : null;
 }
 
@@ -138,7 +139,7 @@ export function parseCandleCsv(
 		}
 		let volume: number;
 		try {
-			volume = btcToSatoshi(cols[5] ?? "");
+			volume = parseQuantity(BTC_JPY, cols[5] ?? "");
 		} catch {
 			fail(lineNo, raw, "出来高が読めない（0 以上の数値が必要）");
 			continue;
@@ -182,6 +183,6 @@ export function formatCandleCsvRow(c: Candle): string {
 		c.high,
 		c.low,
 		c.close,
-		satoshiToBtcString(c.volume),
+		quantityToString(BTC_JPY, c.volume),
 	].join(",");
 }

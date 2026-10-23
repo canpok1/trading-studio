@@ -18,6 +18,7 @@ import type {
 	ValidationError,
 } from "@trading-studio/core";
 import {
+	BTC_JPY,
 	buyRuleName,
 	CONDITION_GROUP_LABELS,
 	CONDITION_GROUPS,
@@ -29,7 +30,7 @@ import {
 	EVENT_IMPORTANCES,
 	FREQUENCY_UNIT_LABELS,
 	FREQUENCY_UNITS,
-	formatBtc,
+	formatQuantity,
 	hasTimeframe,
 	isAtrCondition,
 	JUDGE_LABELS,
@@ -40,7 +41,7 @@ import {
 	newBuyRuleId,
 	ORDER_TYPE_LABELS,
 	partialSellQuantity,
-	SATOSHI_PER_BTC,
+	quantityScale,
 	TIMEFRAME_LABELS,
 	TIMEFRAMES,
 } from "@trading-studio/core";
@@ -235,7 +236,7 @@ function OrderSizeFields({
 				<NumberInput
 					value={size}
 					onChange={set}
-					format={(n) => formatBtc(n)}
+					format={(n) => formatQuantity(BTC_JPY, n)}
 					parse={parseBtc}
 					invalid={errs.length > 0}
 					aria-label="1回の注文量（BTC）"
@@ -252,7 +253,7 @@ function OrderSizeFields({
 			<span className="num text-xs text-text-2">
 				BTC · 約{" "}
 				{latestPrice && Number.isFinite(size)
-					? formatInt((size / SATOSHI_PER_BTC) * latestPrice)
+					? formatInt((size / quantityScale(BTC_JPY)) * latestPrice)
 					: "—"}
 				円 （取り込み済みデータの最新の終値で換算）
 			</span>
@@ -354,11 +355,15 @@ export function RiskLimitCard({ params, onChange, errors }: Props) {
 	);
 }
 
-/** BTC の文字列を satoshi へ。読めなければ NaN */
+/** 数量の文字列を最小単位へ。最小単位より細かい桁があれば読めないとして NaN */
 function parseBtc(s: string): number {
-	const m = /^\s*(\d+)(?:\.(\d{0,8}))?\s*$/.exec(s);
+	const digits = BTC_JPY.quantityDecimals;
+	const m = new RegExp(`^\\s*(\\d+)(?:\\.(\\d{0,${digits}}))?\\s*$`).exec(s);
 	if (!m) return Number.NaN;
-	return Number(m[1]) * SATOSHI_PER_BTC + Number((m[2] ?? "").padEnd(8, "0"));
+	return (
+		Number(m[1]) * quantityScale(BTC_JPY) +
+		Number((m[2] ?? "").padEnd(digits, "0"))
+	);
 }
 
 const GROUP_BORDER: Record<ConditionGroupKey, string> = {
@@ -1462,8 +1467,9 @@ function PartialSellFields({
 				</div>
 				{sold !== null && Number.isFinite(rule.orderSize) && (
 					<p className="text-xs text-text-2">
-						1ロットにつき1回だけ。1回の注文量なら {formatBtc(sold)} BTC を売り、
-						{formatBtc(rule.orderSize - sold)} BTC を残す
+						1ロットにつき1回だけ。1回の注文量なら{" "}
+						{formatQuantity(BTC_JPY, sold)} BTC を売り、
+						{formatQuantity(BTC_JPY, rule.orderSize - sold)} BTC を残す
 					</p>
 				)}
 				<ErrorText messages={percentErrs} />
