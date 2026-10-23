@@ -17,6 +17,8 @@ export const settings = sqliteTable("settings", {
 /** 過去データの取り込み。1回の取り込みが1行 */
 export const dataImports = sqliteTable("data_imports", {
 	id: integer("id").primaryKey({ autoIncrement: true }),
+	/** 銘柄（core の Instrument の id）。既定は銘柄を持つ前の行のため */
+	instrument: text("instrument").notNull().default("coincheck:btc_jpy"),
 	timeframe: text("timeframe").notNull(),
 	fileName: text("file_name").notNull(),
 	/** running / done / failed / canceled */
@@ -36,10 +38,12 @@ export const dataImports = sqliteTable("data_imports", {
 	error: text("error"),
 });
 
-/** 足。金額は円、出来高は satoshi、時刻は足の開始時刻（UTC のエポックミリ秒） */
+/** 足。価格・出来高は銘柄の最小単位、時刻は足の開始時刻（UTC のエポックミリ秒） */
 export const candles = sqliteTable(
 	"candles",
 	{
+		/** 銘柄（core の Instrument の id）。既定は銘柄を持つ前の行のため */
+		instrument: text("instrument").notNull().default("coincheck:btc_jpy"),
 		timeframe: text("timeframe").notNull(),
 		time: integer("time").notNull(),
 		open: integer("open").notNull(),
@@ -52,7 +56,7 @@ export const candles = sqliteTable(
 		importId: integer("import_id").references(() => dataImports.id),
 	},
 	(t) => [
-		primaryKey({ columns: [t.timeframe, t.time] }),
+		primaryKey({ columns: [t.instrument, t.timeframe, t.time] }),
 		index("candles_import_id").on(t.importId),
 	],
 );
@@ -72,6 +76,8 @@ export const segments = sqliteTable(
 	"segments",
 	{
 		id: integer("id").primaryKey({ autoIncrement: true }),
+		/** 銘柄（core の Instrument の id）。既定は銘柄を持つ前の行のため */
+		instrument: text("instrument").notNull().default("coincheck:btc_jpy"),
 		/** 期間（to は含まない）。JST の月初 */
 		fromTime: integer("from_time").notNull(),
 		toTime: integer("to_time").notNull(),
@@ -83,13 +89,17 @@ export const segments = sqliteTable(
 		volatilityPpm: integer("volatility_ppm").notNull(),
 		createdAt: integer("created_at").notNull(),
 	},
-	(t) => [uniqueIndex("segments_period").on(t.fromTime, t.toTime)],
+	(t) => [
+		uniqueIndex("segments_period").on(t.instrument, t.fromTime, t.toTime),
+	],
 );
 
 /** 戦略（名前を付けた条件のセット） */
 export const strategies = sqliteTable("strategies", {
 	id: integer("id").primaryKey({ autoIncrement: true }),
 	name: text("name").notNull().unique(),
+	/** 市場（core の Market の id）。既定は市場を持つ前の行のため */
+	market: text("market").notNull().default("coincheck"),
 	/** 条件のセット（JSON） */
 	params: text("params").notNull(),
 	createdAt: integer("created_at").notNull(),
@@ -99,6 +109,8 @@ export const strategies = sqliteTable("strategies", {
 /** バックテストの実行。実行時の条件の写しと成績を持つ */
 export const backtestRuns = sqliteTable("backtest_runs", {
 	id: integer("id").primaryKey({ autoIncrement: true }),
+	/** 銘柄（core の Instrument の id）。既定は銘柄を持つ前の行のため */
+	instrument: text("instrument").notNull().default("coincheck:btc_jpy"),
 	/** 使わない。バックテストが戦略と結び付いていた頃の元の戦略 */
 	strategyId: integer("strategy_id"),
 	/** バックテスト名。戦略と結び付いていた頃の実行は、実行したときの戦略名 */
@@ -357,6 +369,8 @@ export const tradingOrders = sqliteTable(
 	{
 		/** 運用（trading_runs）の id */
 		runId: integer("run_id").notNull(),
+		/** 銘柄（core の Instrument の id）。既定は銘柄を持つ前の行のため */
+		instrument: text("instrument").notNull().default("coincheck:btc_jpy"),
 		mode: text("mode").notNull(),
 		id: text("id").notNull(),
 		side: text("side").notNull(),

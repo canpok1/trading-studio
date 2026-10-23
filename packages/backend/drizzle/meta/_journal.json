@@ -211,6 +211,13 @@
       "when": 1792284590714,
       "tag": "0029_dvol_bars",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1792765361272,
+      "tag": "0030_instrument",
+      "breakpoints": true
     }
   ]
 }

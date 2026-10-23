@@ -1,6 +1,12 @@
 // 足と取り込みの記録の読み書き
 
-import type { Candle, CsvRowError, Gap, Timeframe } from "@trading-studio/core";
+import type {
+	Candle,
+	CsvRowError,
+	Gap,
+	Instrument,
+	Timeframe,
+} from "@trading-studio/core";
 import {
 	aggregateCandles,
 	candleStart,
@@ -80,7 +86,11 @@ const spanOf = (times: Iterable<number>): Span | null => {
 };
 
 export class SqliteMarketDataRepository implements MarketDataRepository {
-	constructor(private readonly db: Db) {}
+	/** instrument は読み書きする足の銘柄 */
+	constructor(
+		private readonly db: Db,
+		readonly instrument: Instrument,
+	) {}
 
 	/**
 	 * 粒度ごとの欠損の一覧と、前回探してから足を書いた期間。
@@ -116,16 +126,16 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 		const { from, to } = c.dirty;
 		const lo =
 			this.sql
-				.query<{ t: number | null }, [string, number]>(
-					"select max(time) as t from candles where timeframe = ? and time < ?",
+				.query<{ t: number | null }, [string, string, number]>(
+					"select max(time) as t from candles where instrument = ? and timeframe = ? and time < ?",
 				)
-				.get(timeframe, from)?.t ?? Number.MIN_SAFE_INTEGER;
+				.get(this.instrument.id, timeframe, from)?.t ?? Number.MIN_SAFE_INTEGER;
 		const hi =
 			this.sql
-				.query<{ t: number | null }, [string, number]>(
-					"select min(time) as t from candles where timeframe = ? and time >= ?",
+				.query<{ t: number | null }, [string, string, number]>(
+					"select min(time) as t from candles where instrument = ? and timeframe = ? and time >= ?",
 				)
-				.get(timeframe, to)?.t ?? Number.MAX_SAFE_INTEGER;
+				.get(this.instrument.id, timeframe, to)?.t ?? Number.MAX_SAFE_INTEGER;
 		const step = TIMEFRAME_MS[timeframe];
 		const inside = (g: Gap) => g.from - step >= lo && g.to <= hi;
 		c.gaps = [
@@ -142,10 +152,10 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 
 	createImport(timeframe: Timeframe, fileName: string, now: number): number {
 		const r = this.sql
-			.query<{ id: number }, [string, string, number]>(
-				"insert into data_imports (timeframe, file_name, status, started_at) values (?, ?, 'running', ?) returning id",
+			.query<{ id: number }, [string, string, string, number]>(
+				"insert into data_imports (instrument, timeframe, file_name, status, started_at) values (?, ?, ?, 'running', ?) returning id",
 			)
-			.get(timeframe, fileName, now);
+			.get(this.instrument.id, timeframe, fileName, now);
 		return (r as { id: number }).id;
 	}
 
@@ -181,24 +191,26 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 		return this.sql.run(
 			`update data_imports set status = 'failed', finished_at = ?,
 			 error = json_object('message', 'サーバーが途中で止まったため中断した', 'errors', json('[]'), 'errorCount', 0)
-			 where status = 'running'`,
-			[now],
+			 where instrument = ? and status = 'running'`,
+			[now, this.instrument.id],
 		).changes;
 	}
 
 	getImport(id: number): ImportJob | null {
 		const r = this.sql
-			.query<ImportRow, [number]>("select * from data_imports where id = ?")
-			.get(id);
+			.query<ImportRow, [number, string]>(
+				"select * from data_imports where id = ? and instrument = ?",
+			)
+			.get(id, this.instrument.id);
 		return r ? toJob(r) : null;
 	}
 
 	listImports(limit = 50): ImportJob[] {
 		return this.sql
-			.query<ImportRow, [number]>(
-				"select * from data_imports order by id desc limit ?",
+			.query<ImportRow, [string, number]>(
+				"select * from data_imports where instrument = ? order by id desc limit ?",
 			)
-			.all(limit)
+			.all(this.instrument.id, limit)
 			.map(toJob);
 	}
 
@@ -216,9 +228,9 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 			? "'derived', 'import', 'collect'"
 			: "'derived'";
 		const stmt = this.sql.prepare(
-			`insert into candles (timeframe, time, open, high, low, close, volume, source, import_id)
-			 values (?, ?, ?, ?, ?, ?, ?, 'import', ?)
-			 on conflict (timeframe, time) do update set
+			`insert into candles (instrument, timeframe, time, open, high, low, close, volume, source, import_id)
+			 values (?, ?, ?, ?, ?, ?, ?, ?, 'import', ?)
+			 on conflict (instrument, timeframe, time) do update set
 			   open = excluded.open, high = excluded.high, low = excluded.low, close = excluded.close,
 			   volume = excluded.volume, source = 'import', import_id = excluded.import_id
 			 where candles.source in (${overwritable})`,
@@ -227,6 +239,7 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 		this.sql.transaction(() => {
 			for (const c of rows) {
 				inserted += stmt.run(
+					this.instrument.id,
 					timeframe,
 					c.time,
 					c.open,
@@ -252,10 +265,10 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 		if (!first || !last) return null;
 		const existing = new Set(
 			this.sql
-				.query<{ time: number }, [string, number, number]>(
-					"select time from candles where timeframe = ? and source in ('import', 'collect') and time >= ? and time <= ?",
+				.query<{ time: number }, [string, string, number, number]>(
+					"select time from candles where instrument = ? and timeframe = ? and source in ('import', 'collect') and time >= ? and time <= ?",
 				)
-				.all(timeframe, first.time, last.time)
+				.all(this.instrument.id, timeframe, first.time, last.time)
 				.map((r) => r.time),
 		);
 		let from: number | null = null;
@@ -272,7 +285,10 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 
 	/** 取り込みを取り消す。その取り込みで保存した足を消す */
 	deleteImported(importId: number): void {
-		this.sql.run("delete from candles where import_id = ?", [importId]);
+		this.sql.run("delete from candles where instrument = ? and import_id = ?", [
+			this.instrument.id,
+			importId,
+		]);
 		this.gapCache.clear();
 	}
 
@@ -286,9 +302,9 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 		const n = this.sql.run(
 			`delete from candles where rowid in (
 			   select rowid from candles
-			   where timeframe = ? and time >= ? and time < ?
+			   where instrument = ? and timeframe = ? and time >= ? and time < ?
 			   limit ?)`,
-			[timeframe, from, to, limit],
+			[this.instrument.id, timeframe, from, to, limit],
 		).changes;
 		if (n > 0) this.gapCache.clear();
 		return n;
@@ -296,10 +312,10 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 
 	loadCandles(timeframe: Timeframe, from: number, to: number): Candle[] {
 		return this.sql
-			.query<Candle, [string, number, number]>(
-				"select time, open, high, low, close, volume from candles where timeframe = ? and time >= ? and time < ? order by time",
+			.query<Candle, [string, string, number, number]>(
+				"select time, open, high, low, close, volume from candles where instrument = ? and timeframe = ? and time >= ? and time < ? order by time",
 			)
-			.all(timeframe, from, to);
+			.all(this.instrument.id, timeframe, from, to);
 	}
 
 	/**
@@ -311,14 +327,14 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 		let end = 0;
 		for (const tf of finer) {
 			const r = this.sql
-				.query<{ last: number | null }, [string]>(
-					"select max(time) as last from candles where timeframe = ? and source != 'derived'",
+				.query<{ last: number | null }, [string, string]>(
+					"select max(time) as last from candles where instrument = ? and timeframe = ? and source != 'derived'",
 				)
-				.get(tf);
+				.get(this.instrument.id, tf);
 			if (r?.last != null) end = Math.max(end, r.last + TIMEFRAME_MS[tf]);
 		}
 		return {
-			sql: `timeframe = ? and time >= ? and time < ? and not (source = 'derived' and time + ${TIMEFRAME_MS[timeframe]} > ?)`,
+			sql: `instrument = ? and timeframe = ? and time >= ? and time < ? and not (source = 'derived' and time + ${TIMEFRAME_MS[timeframe]} > ?)`,
 			end,
 		};
 	}
@@ -332,10 +348,10 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 	): Candle[] {
 		const f = this.exportFilter(timeframe);
 		return this.sql
-			.query<Candle, [string, number, number, number, number]>(
+			.query<Candle, [string, string, number, number, number, number]>(
 				`select time, open, high, low, close, volume from candles where ${f.sql} order by time limit ?`,
 			)
-			.all(timeframe, from, to, f.end, limit);
+			.all(this.instrument.id, timeframe, from, to, f.end, limit);
 	}
 
 	/** 書き出す期間 [from, to) の足の最初と最後の開始時刻。足が無ければ null */
@@ -348,11 +364,11 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 		const r = this.sql
 			.query<
 				{ first: number | null; last: number | null },
-				[string, number, number, number]
+				[string, string, number, number, number]
 			>(
 				`select min(time) as first, max(time) as last from candles where ${f.sql}`,
 			)
-			.get(timeframe, from, to, f.end);
+			.get(this.instrument.id, timeframe, from, to, f.end);
 		return r?.first != null && r.last != null
 			? { first: r.first, last: r.last }
 			: null;
@@ -375,9 +391,9 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 		const end = candleStart(to - 1, "1d") + TIMEFRAME_MS["1d"];
 		const insert = (overwritable: string) =>
 			this.sql.prepare(
-				`insert into candles (timeframe, time, open, high, low, close, volume, source, import_id)
-				 values (?, ?, ?, ?, ?, ?, ?, 'derived', ?)
-				 on conflict (timeframe, time) do update set
+				`insert into candles (instrument, timeframe, time, open, high, low, close, volume, source, import_id)
+				 values (?, ?, ?, ?, ?, ?, ?, ?, 'derived', ?)
+				 on conflict (instrument, timeframe, time) do update set
 				   open = excluded.open, high = excluded.high, low = excluded.low, close = excluded.close,
 				   volume = excluded.volume, source = 'derived',
 				   import_id = coalesce(excluded.import_id, candles.import_id)
@@ -407,6 +423,7 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 					const stmt =
 						counts.get(c.time) === minutesPerBucket ? orImported : derivedOnly;
 					written += stmt.run(
+						this.instrument.id,
 						target,
 						c.time,
 						c.open,
@@ -426,15 +443,23 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 	/** 収集した1分足を保存する。同じ日時の足は出どころを問わず上書きする（収集した足を正とする） */
 	upsertCollected(rows: readonly Candle[]): void {
 		const stmt = this.sql.prepare(
-			`insert into candles (timeframe, time, open, high, low, close, volume, source, import_id)
-			 values ('1m', ?, ?, ?, ?, ?, ?, 'collect', null)
-			 on conflict (timeframe, time) do update set
+			`insert into candles (instrument, timeframe, time, open, high, low, close, volume, source, import_id)
+			 values (?, '1m', ?, ?, ?, ?, ?, ?, 'collect', null)
+			 on conflict (instrument, timeframe, time) do update set
 			   open = excluded.open, high = excluded.high, low = excluded.low, close = excluded.close,
 			   volume = excluded.volume, source = 'collect', import_id = null`,
 		);
 		this.sql.transaction(() => {
 			for (const c of rows) {
-				stmt.run(c.time, c.open, c.high, c.low, c.close, c.volume);
+				stmt.run(
+					this.instrument.id,
+					c.time,
+					c.open,
+					c.high,
+					c.low,
+					c.close,
+					c.volume,
+				);
 			}
 		})();
 		this.markWritten("1m", spanOf(rows.map((c) => c.time)));
@@ -450,11 +475,11 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 		const rows = this.sql
 			.query<
 				{ timeframe: Timeframe; first: number; last: number },
-				[number, number]
+				[string, number, number]
 			>(
-				"select timeframe, min(time) as first, max(time) as last from candles where source != 'derived' and time >= ? and time < ? group by timeframe",
+				"select timeframe, min(time) as first, max(time) as last from candles where instrument = ? and source != 'derived' and time >= ? and time < ? group by timeframe",
 			)
-			.all(from, to);
+			.all(this.instrument.id, from, to);
 		if (rows.length === 0) return [];
 		const spanFrom = Math.min(...rows.map((r) => r.first));
 		const spanTo = Math.max(
@@ -477,20 +502,20 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 	firstCandleTime(timeframe: Timeframe): number | null {
 		return (
 			this.sql
-				.query<{ time: number | null }, [string]>(
-					"select min(time) as time from candles where timeframe = ?",
+				.query<{ time: number | null }, [string, string]>(
+					"select min(time) as time from candles where instrument = ? and timeframe = ?",
 				)
-				.get(timeframe)?.time ?? null
+				.get(this.instrument.id, timeframe)?.time ?? null
 		);
 	}
 
 	lastCandle(timeframe: Timeframe): Candle | null {
 		return (
 			this.sql
-				.query<Candle, [string]>(
-					"select time, open, high, low, close, volume from candles where timeframe = ? order by time desc limit 1",
+				.query<Candle, [string, string]>(
+					"select time, open, high, low, close, volume from candles where instrument = ? and timeframe = ? order by time desc limit 1",
 				)
-				.get(timeframe) ?? null
+				.get(this.instrument.id, timeframe) ?? null
 		);
 	}
 
@@ -498,30 +523,30 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 	lastCandleAtOrBefore(timeframe: Timeframe, time: number): Candle | null {
 		return (
 			this.sql
-				.query<Candle, [string, number]>(
-					"select time, open, high, low, close, volume from candles where timeframe = ? and time <= ? order by time desc limit 1",
+				.query<Candle, [string, string, number]>(
+					"select time, open, high, low, close, volume from candles where instrument = ? and timeframe = ? and time <= ? order by time desc limit 1",
 				)
-				.get(timeframe, time) ?? null
+				.get(this.instrument.id, timeframe, time) ?? null
 		);
 	}
 
 	/** 開始時刻が before より前の足を、新しい方から count 本（古い順に並べて返す） */
 	candlesBefore(timeframe: Timeframe, before: number, count: number): Candle[] {
 		return this.sql
-			.query<Candle, [string, number, number]>(
-				"select time, open, high, low, close, volume from candles where timeframe = ? and time < ? order by time desc limit ?",
+			.query<Candle, [string, string, number, number]>(
+				"select time, open, high, low, close, volume from candles where instrument = ? and timeframe = ? and time < ? order by time desc limit ?",
 			)
-			.all(timeframe, before, count)
+			.all(this.instrument.id, timeframe, before, count)
 			.reverse();
 	}
 
 	countCandles(timeframe: Timeframe, from: number, to: number): number {
 		return (
 			this.sql
-				.query<{ n: number }, [string, number, number]>(
-					"select count(*) as n from candles where timeframe = ? and time >= ? and time < ?",
+				.query<{ n: number }, [string, string, number, number]>(
+					"select count(*) as n from candles where instrument = ? and timeframe = ? and time >= ? and time < ?",
 				)
-				.get(timeframe, from, to) as { n: number }
+				.get(this.instrument.id, timeframe, from, to) as { n: number }
 		).n;
 	}
 
@@ -530,10 +555,10 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 		let best: { time: number; close: number } | null = null;
 		for (const tf of TIMEFRAMES) {
 			const r = this.sql
-				.query<{ time: number; close: number }, [string]>(
-					"select time, close from candles where timeframe = ? order by time desc limit 1",
+				.query<{ time: number; close: number }, [string, string]>(
+					"select time, close from candles where instrument = ? and timeframe = ? order by time desc limit 1",
 				)
-				.get(tf);
+				.get(this.instrument.id, tf);
 			if (r) {
 				const end = r.time + TIMEFRAME_MS[tf];
 				if (!best || end > best.time) best = { time: end, close: r.close };
@@ -552,11 +577,11 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 						first: number | null;
 						last: number | null;
 					},
-					[string]
+					[string, string]
 				>(
-					"select count(*) as count, sum(source != 'derived') as imported, min(time) as first, max(time) as last from candles where timeframe = ?",
+					"select count(*) as count, sum(source != 'derived') as imported, min(time) as first, max(time) as last from candles where instrument = ? and timeframe = ?",
 				)
-				.get(timeframe);
+				.get(this.instrument.id, timeframe);
 			const gaps = this.allGaps(timeframe);
 			return {
 				timeframe,
@@ -574,13 +599,17 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 	gaps(timeframe: Timeframe, from?: number, to?: number): Gap[] {
 		const step = TIMEFRAME_MS[timeframe];
 		const rows = this.sql
-			.query<{ time: number; next: number }, [string, number, number, number]>(
+			.query<
+				{ time: number; next: number },
+				[string, string, number, number, number]
+			>(
 				`select time, next from (
 				   select time, lead(time) over (order by time) as next from candles
-				   where timeframe = ? and time >= ? and time < ?
+				   where instrument = ? and timeframe = ? and time >= ? and time < ?
 				 ) where next - time > ?`,
 			)
 			.all(
+				this.instrument.id,
 				timeframe,
 				from ?? Number.MIN_SAFE_INTEGER,
 				to ?? Number.MAX_SAFE_INTEGER,

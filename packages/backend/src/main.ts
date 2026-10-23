@@ -37,6 +37,7 @@ import { demoDvol } from "./dvol/fake-deribit-infra";
 import { SqliteDvolRepository } from "./dvol/repository-infra";
 import { createJudgmentService } from "./judgments/judgments-domain";
 import { createMarketService } from "./market/market-domain";
+import { DEFAULT_INSTRUMENT } from "./market-data/instrument-domain";
 import { createMarketDataService } from "./market-data/market-data-domain";
 import { SqliteMarketDataRepository } from "./market-data/repository-infra";
 import { mcpRoutes } from "./mcp/mcp-app";
@@ -95,7 +96,7 @@ try {
 	process.exit(1);
 }
 
-const marketDataRepo = new SqliteMarketDataRepository(db);
+const marketDataRepo = new SqliteMarketDataRepository(db, DEFAULT_INSTRUMENT);
 marketDataRepo.failInterrupted(Date.now());
 const backtestRepo = new SqliteBacktestRepository(db);
 backtestRepo.failInterrupted(Date.now());
@@ -196,7 +197,7 @@ const dvolTimer = setInterval(() => dvol.tick(), 60_000);
 dvol.tick();
 
 const segments = createSegmentService({
-	repo: new SqliteSegmentRepository(db),
+	repo: new SqliteSegmentRepository(db, DEFAULT_INSTRUMENT.id),
 	marketData: marketDataRepo,
 	newsDeletedBefore: () => scoreRepo.newsDeletedBefore(),
 });

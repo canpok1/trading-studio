@@ -1,7 +1,9 @@
-import type { Candle, Gap, Timeframe } from "@trading-studio/core";
+import type { Candle, Gap, Instrument, Timeframe } from "@trading-studio/core";
 import type { ImportJob, TimeframeCoverage } from "./types-domain";
 
 export interface MarketDataRepository {
+	/** 読み書きする足の銘柄 */
+	readonly instrument: Instrument;
 	createImport(timeframe: Timeframe, fileName: string, now: number): number;
 	finishImport(job: ImportJob): void;
 	/** サーバーが途中で止まった取り込みを失敗として残す */
