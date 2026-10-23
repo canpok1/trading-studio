@@ -50,9 +50,12 @@ function Tile({
 export function TotalPnlTile({
 	performance: p,
 	error,
+	unit,
 }: {
 	performance: TradingPerformance | null;
 	error: string | null;
+	/** 金額の単位 */
+	unit: string;
 }) {
 	return (
 		<Tile
@@ -83,7 +86,7 @@ export function TotalPnlTile({
 						data-testid="home-pnl"
 						className={`num text-xl font-semibold tracking-tight ${tone(p.pnl)}`}
 					>
-						{p.pnl === null ? "—" : `${formatSignedInt(p.pnl)}円`}
+						{p.pnl === null ? "—" : `${formatSignedInt(p.pnl)}${unit}`}
 					</span>
 					<span className="num text-xs text-text-2">
 						<span
@@ -118,7 +121,9 @@ export function UnrealizedPnlTile({
 				data-testid="home-unrealized"
 				className={`num text-xl font-semibold tracking-tight ${tone(pnl)}`}
 			>
-				{pnl === null ? "—" : `${formatSignedInt(pnl)}円`}
+				{pnl === null
+					? "—"
+					: `${formatSignedInt(pnl)}${status.instrument.currency.unit}`}
 			</span>
 			<span className="text-xs text-text-2">
 				{lots > 0 ? `保有 ${lots} ロット` : "保有なし"}

@@ -45,6 +45,7 @@ export function AccountPanel({
 	const [resetting, setResetting] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const { account } = status;
+	const unit = status.instrument.currency.unit;
 	const { quantity, entryPrice } = account.position;
 	const lots = account.lots;
 
@@ -58,7 +59,7 @@ export function AccountPanel({
 			set(r.status);
 			onReset();
 			onToast(
-				`「${status.name}」の口座をリセットした。開始時の資金 ${formatInt(initialCash)}円`,
+				`「${status.name}」の口座をリセットした。開始時の資金 ${formatInt(initialCash)}${unit}`,
 			);
 		} catch (e) {
 			onToast(errorMessage(e));
@@ -78,13 +79,13 @@ export function AccountPanel({
 				>
 					{performance?.equity == null
 						? "—"
-						: `${formatInt(performance.equity)}円`}
+						: `${formatInt(performance.equity)}${unit}`}
 				</span>
 			</div>
 			<div className="grid grid-cols-3 gap-x-2 gap-y-3">
 				<Stat
 					label="現金"
-					value={performance ? `${formatInt(performance.cash)}円` : "—"}
+					value={performance ? `${formatInt(performance.cash)}${unit}` : "—"}
 				/>
 				<button
 					type="button"
@@ -101,7 +102,7 @@ export function AccountPanel({
 				</button>
 				<Stat
 					label="平均取得"
-					value={entryPrice === null ? "—" : `${formatInt(entryPrice)}円`}
+					value={entryPrice === null ? "—" : `${formatInt(entryPrice)}${unit}`}
 				/>
 			</div>
 			{!status.enabled && (
@@ -115,7 +116,11 @@ export function AccountPanel({
 				</Button>
 			)}
 			{resetting && (
-				<ResetModal onReset={reset} onClose={() => setResetting(false)} />
+				<ResetModal
+					unit={unit}
+					onReset={reset}
+					onClose={() => setResetting(false)}
+				/>
 			)}
 			{lotsOpen && (
 				<Modal title="保有中のロット" onClose={() => setLotsOpen(false)}>
@@ -134,8 +139,8 @@ export function AccountPanel({
 								>
 									<span className="flex min-w-0 flex-col gap-0.5">
 										<span className="num text-sm font-semibold">
-											買値 {formatInt(l.entryPrice)}円 ·{" "}
-											{formatQuantity(status.instrument, l.quantity)}{" "}
+											買値 {formatInt(l.entryPrice)}
+											{unit} · {formatQuantity(status.instrument, l.quantity)}{" "}
 											{status.instrument.quantityUnit}
 										</span>
 										<span className="num text-xs text-text-2">
@@ -143,7 +148,7 @@ export function AccountPanel({
 										</span>
 									</span>
 									<span className={`num text-[13px] font-semibold ${tone(v)}`}>
-										{v === null ? "—" : `${formatSignedInt(v)}円`}
+										{v === null ? "—" : `${formatSignedInt(v)}${unit}`}
 									</span>
 								</div>
 							);
@@ -157,9 +162,11 @@ export function AccountPanel({
 }
 
 function ResetModal({
+	unit,
 	onReset,
 	onClose,
 }: {
+	unit: string;
 	onReset: (initialCash: number) => void;
 	onClose: () => void;
 }) {
@@ -173,7 +180,7 @@ function ResetModal({
 			</p>
 			<div className="flex flex-col gap-1.5">
 				<label htmlFor={id} className="text-[13px] font-semibold">
-					開始時の資金（円）
+					開始時の資金（{unit}）
 				</label>
 				<NumberInput
 					id={id}
@@ -186,7 +193,7 @@ function ResetModal({
 				/>
 				{!valid && (
 					<span className="text-xs font-semibold text-loss">
-						1 円以上の整数で入れる
+						1 {unit}以上の整数で入れる
 					</span>
 				)}
 			</div>
