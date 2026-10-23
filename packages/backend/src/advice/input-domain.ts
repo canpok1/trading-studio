@@ -3,14 +3,15 @@
 import type { BacktestOrder, Timeframe } from "@trading-studio/core";
 import {
 	accountScreenText,
+	BTC_JPY,
 	candleStart,
 	coarserTimeframes,
 	conditionSetScreenText,
 	JUDGE_LABELS,
 	JUDGES,
 	JUDGMENT_VALUE_LABELS,
+	quantityToString,
 	ruleScreenText,
-	satoshiToBtcString,
 	TIMEFRAME_LABELS,
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
@@ -220,7 +221,7 @@ function orderTable(orders: BacktestOrder[]): string {
 			o.side === "buy" ? "買い" : "売り",
 			o.type === "limit" ? "指値" : "成行",
 			yen(o.price),
-			satoshiToBtcString(o.quantity),
+			quantityToString(BTC_JPY, o.quantity),
 			jst(o.placedAt),
 			o.status === "filled"
 				? "約定"
@@ -289,7 +290,7 @@ export function buildAdviceSource(
 			`- 平均保有期間: ${s.averageHoldingMs === null ? "取引なし" : `${Math.round(s.averageHoldingMs / 60_000)} 分`}`,
 		);
 		lines.push(
-			`- 期間の最後に持っていた数量: ${satoshiToBtcString(s.openPositionQuantity)} BTC`,
+			`- 期間の最後に持っていた数量: ${quantityToString(BTC_JPY, s.openPositionQuantity)} BTC`,
 		);
 	}
 	lines.push("");

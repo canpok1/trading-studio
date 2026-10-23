@@ -5,9 +5,10 @@ import type {
 	Timeframe,
 } from "@trading-studio/core";
 import {
+	BTC_JPY,
 	buyHoldPercentOf,
 	conditionSetChanges,
-	formatBtc,
+	formatQuantity,
 	gradeMaxDrawdown,
 	gradePnl,
 	gradeProfitFactor,
@@ -255,7 +256,7 @@ export function RunHeader({
 					: []),
 				`${tag}利確: ${groupText(b.takeProfit)}`,
 				`${tag}損切り: ${groupText(b.stopLoss)}`,
-				`${tag}${formatBtc(b.orderSize)} BTC`,
+				`${tag}${formatQuantity(BTC_JPY, b.orderSize)} BTC`,
 				`${tag}最大ロット数 ${b.maxPositions}`,
 			];
 		}),
@@ -591,7 +592,7 @@ function Result({ run }: { run: BacktestRun }) {
 				<FewTradesNote trades={s.trades} />
 				{s.openPositionQuantity > 0 && (
 					<p className="text-xs text-text-2">
-						期間の終わりに {formatBtc(s.openPositionQuantity)} BTC
+						期間の終わりに {formatQuantity(BTC_JPY, s.openPositionQuantity)} BTC
 						を保有していた。損益・最終資金は最後の終値で評価し、取引回数・勝率には含めない。
 					</p>
 				)}

@@ -1,7 +1,7 @@
 // 自動取引の成績。口座をリセットした時点以降の約定から、バックテスト結果と同じ指標を出す
 
 import type { Position, TradeOrder } from "@trading-studio/core";
-import { notionalYen } from "@trading-studio/core";
+import { BTC_JPY, notional } from "@trading-studio/core";
 import type { TradingPerformance } from "./types-domain";
 
 /** 評価に使う価格。足の終値なら足の終わりの時刻 */
@@ -16,7 +16,7 @@ export function equityOf(
 	if (position.quantity === 0) return cash;
 	return price === null
 		? null
-		: cash + notionalYen(price, position.quantity, "floor");
+		: cash + notional(BTC_JPY, price, position.quantity, "floor");
 }
 
 /**
@@ -54,7 +54,7 @@ export function tradingPerformance({
 	let ddFrom: number | null = null;
 	let ddTo: number | null = null;
 	const mark = (time: number, p: number) => {
-		const equity = c + notionalYen(p, qty, "floor");
+		const equity = c + notional(BTC_JPY, p, qty, "floor");
 		if (equity > peak) {
 			peak = equity;
 			peakAt = time;
@@ -74,10 +74,10 @@ export function tradingPerformance({
 			const p = f.fillPrice ?? 0;
 			const fee = f.fee ?? 0;
 			if (f.side === "buy") {
-				c -= notionalYen(p, f.quantity, "ceil") + fee;
+				c -= notional(BTC_JPY, p, f.quantity, "ceil") + fee;
 				qty += f.quantity;
 			} else {
-				c += notionalYen(p, f.quantity, "floor") - fee;
+				c += notional(BTC_JPY, p, f.quantity, "floor") - fee;
 				qty -= f.quantity;
 			}
 			mark(f.filledAt ?? 0, p);

@@ -1,5 +1,5 @@
 // 全モード（バックテスト・デモ・リアル）で共通の取引の型。
-// 金額は円の整数、数量は satoshi の整数、時刻は UTC のエポックミリ秒（.claude/rules/values.md）
+// 金額・価格・数量は通貨と銘柄の最小単位の整数、時刻は UTC のエポックミリ秒（.claude/rules/values.md）
 
 /** 足。time は足の開始時刻 */
 export type Candle = {
@@ -8,7 +8,7 @@ export type Candle = {
 	high: number;
 	low: number;
 	close: number;
-	/** 出来高（satoshi） */
+	/** 出来高（数量の最小単位） */
 	volume: number;
 };
 

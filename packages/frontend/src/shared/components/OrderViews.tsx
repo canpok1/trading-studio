@@ -5,7 +5,7 @@ import type {
 	ExitKind,
 	GradeBadgeValue,
 } from "@trading-studio/core";
-import { formatBtc, sellReasonPart } from "@trading-studio/core";
+import { BTC_JPY, formatQuantity, sellReasonPart } from "@trading-studio/core";
 import type { ReactNode } from "react";
 import { Fragment } from "react";
 import { formatDateTime } from "../lib/format";
@@ -236,7 +236,7 @@ export function OrderRow({
 					<span className="shrink-0">
 						<SideText order={o} />{" "}
 						{o.type === "limit" && o.status !== "filled" ? "指値 " : ""}
-						{formatBtc(o.quantity)} BTC · {STATUS_LABEL[o.status]}
+						{formatQuantity(BTC_JPY, o.quantity)} BTC · {STATUS_LABEL[o.status]}
 					</span>
 					<ExitBadge order={o} />
 				</span>
@@ -299,7 +299,10 @@ export function OrderSheet({
 					label={o.status === "filled" ? "約定価格" : "指値"}
 					value={price !== null ? `${formatInt(price)}円` : "—"}
 				/>
-				<Stat label="数量" value={`${formatBtc(o.quantity)} BTC`} />
+				<Stat
+					label="数量"
+					value={`${formatQuantity(BTC_JPY, o.quantity)} BTC`}
+				/>
 				{o.pnl !== null ? (
 					<Stat
 						label="損益"

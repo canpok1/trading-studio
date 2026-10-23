@@ -5,7 +5,7 @@ import type {
 	CurrentJudgment,
 	TradingPerformance,
 } from "@trading-studio/backend";
-import { gradePnl, JUDGES, unrealizedPnl } from "@trading-studio/core";
+import { BTC_JPY, gradePnl, JUDGES, unrealizedPnl } from "@trading-studio/core";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { GradeBadge } from "../../../shared/components/Grade";
@@ -110,7 +110,7 @@ export function UnrealizedPnlTile({
 	price: number | null;
 }) {
 	const { quantity, entryPrice } = status.account.position;
-	const pnl = unrealizedPnl(quantity, entryPrice, price);
+	const pnl = unrealizedPnl(BTC_JPY, quantity, entryPrice, price);
 	const lots = status.account.lots.length;
 	return (
 		<Tile label="含み損益">

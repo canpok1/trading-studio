@@ -2,6 +2,7 @@
 
 import type { ConditionSet } from "@trading-studio/core";
 import {
+	BTC_JPY,
 	CONDITION_GROUP_LABELS,
 	CONDITION_GROUPS,
 	conditionSetChanges,
@@ -10,7 +11,7 @@ import {
 	JUDGES,
 	JUDGMENT_CONDITION_VALUES,
 	parseConditionSet,
-	SATOSHI_PER_BTC,
+	quantityScale,
 	TIMEFRAME_LABELS,
 	TIMEFRAMES,
 	validateConditionSet,
@@ -285,7 +286,7 @@ export function readImprovedStrategy(
 						...r,
 						orderSize:
 							typeof orderSizeBtc === "number"
-								? Math.round(orderSizeBtc * SATOSHI_PER_BTC)
+								? Math.round(orderSizeBtc * quantityScale(BTC_JPY))
 								: undefined,
 					};
 				})

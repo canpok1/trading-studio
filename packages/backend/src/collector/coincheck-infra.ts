@@ -1,7 +1,7 @@
 // Coincheck の公開 WebSocket と公開 API から BTC/JPY の約定を受ける（docs/adr/0007）
 
 import type { MarketTrade } from "@trading-studio/core";
-import { btcToSatoshi, roundYen } from "@trading-studio/core";
+import { BTC_JPY, parseQuantity, toPriceUnits } from "@trading-studio/core";
 import type { TradeFeed } from "./collector-domain";
 
 const WS_URL = "wss://ws-api.coincheck.com/";
@@ -10,7 +10,12 @@ const PAIR = "btc_jpy";
 
 /** 取引所の数量の文字列（"0.5" や "7.0e-08"）を satoshi へ */
 function toSatoshi(amount: string): number {
-	return btcToSatoshi(/e/i.test(amount) ? Number(amount).toFixed(8) : amount);
+	return parseQuantity(
+		BTC_JPY,
+		/e/i.test(amount)
+			? Number(amount).toFixed(BTC_JPY.quantityDecimals)
+			: amount,
+	);
 }
 
 /**
@@ -23,7 +28,7 @@ export function parseWsTrade(row: unknown): MarketTrade | null {
 	const trade = {
 		id: Number(id),
 		time: Number(time) * 1000,
-		price: roundYen(Number(rate)),
+		price: toPriceUnits(BTC_JPY, Number(rate)),
 		quantity: toSatoshi(String(amount)),
 	};
 	return Object.values(trade).every(Number.isSafeInteger) ? trade : null;
@@ -41,7 +46,7 @@ export function parseRestTrade(row: {
 	const trade = {
 		id: row.id,
 		time: Date.parse(row.created_at),
-		price: roundYen(Number(row.rate)),
+		price: toPriceUnits(BTC_JPY, Number(row.rate)),
 		quantity: toSatoshi(row.amount),
 	};
 	return Object.values(trade).every(Number.isSafeInteger) ? trade : null;

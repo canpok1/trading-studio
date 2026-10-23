@@ -10,6 +10,7 @@ export * from "./event-calendar";
 export * from "./format";
 export * from "./grade";
 export * from "./indicators";
+export * from "./instrument";
 export * from "./market-regime";
 export * from "./market-trades";
 export * from "./money";

@@ -2,8 +2,9 @@
 // 1ステップは「約定の反映 → 期限切れの指値の取消 → 戦略の評価 → 注文の作成」。約定の判定（足か約定データか）だけ呼び出し側が差し替える
 
 import type { EventCalendar } from "./event-calendar";
-import { formatBtc, formatDuration, formatYen } from "./format";
-import { feeYen, notionalYen } from "./money";
+import { formatDuration, formatQuantity, formatYen } from "./format";
+import { BTC_JPY } from "./instrument";
+import { feeAmount, notional } from "./money";
 import type { Strategy, StrategyInput, StrategyOutput } from "./strategy";
 import type {
 	ExitKind,
@@ -328,9 +329,14 @@ export function settleFills(
 			remaining.push(item);
 			continue;
 		}
-		const fee = feeYen(price, order.quantity, feeRate(fees, order.type));
+		const fee = feeAmount(
+			BTC_JPY,
+			price,
+			order.quantity,
+			feeRate(fees, order.type),
+		);
 		if (order.side === "buy") {
-			const cost = notionalYen(price, order.quantity, "ceil");
+			const cost = notional(BTC_JPY, price, order.quantity, "ceil");
 			// 指値は発注時に資金を確かめているが、同時に出した注文が先に約定して足りなくなることがあるため、約定時にも確かめる
 			if (cash < cost + fee) {
 				withChanged(
@@ -373,7 +379,7 @@ export function settleFills(
 				);
 				continue;
 			}
-			const proceeds = notionalYen(price, order.quantity, "floor");
+			const proceeds = notional(BTC_JPY, price, order.quantity, "floor");
 			cash += proceeds - fee;
 			const partial = order.quantity < lot.quantity;
 			// 一部だけ売るときは、買いの支払いを売った量のぶんだけ按分する
@@ -549,8 +555,8 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 	}) => {
 		const p = o.type === "limit" ? (o.price as number) : input.price;
 		return (
-			notionalYen(p, o.quantity, "ceil") +
-			feeYen(p, o.quantity, feeRate(fees, o.type))
+			notional(BTC_JPY, p, o.quantity, "ceil") +
+			feeAmount(BTC_JPY, p, o.quantity, feeRate(fees, o.type))
 		);
 	};
 
@@ -582,7 +588,7 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 				return "売るロットが無いため注文しない";
 			}
 			if (intent.quantity <= 0 || intent.quantity > lot.quantity) {
-				return `ロットの ${formatBtc(lot.quantity)} BTC を超える数量は売れないため注文しない`;
+				return `ロットの ${formatQuantity(BTC_JPY, lot.quantity)} BTC を超える数量は売れないため注文しない`;
 			}
 			if (open.some((x) => x.order.lotId === lot.id)) {
 				return "このロットの売りが約定待ちのため注文しない";

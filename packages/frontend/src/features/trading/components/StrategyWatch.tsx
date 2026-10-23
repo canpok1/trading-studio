@@ -9,7 +9,7 @@ import type {
 	WatchLot,
 	WatchMove,
 } from "@trading-studio/core";
-import { formatBtc } from "@trading-studio/core";
+import { BTC_JPY, formatQuantity } from "@trading-studio/core";
 import { useCallback, useState } from "react";
 import { Help } from "../../../shared/components/Help";
 import { conditionText } from "../../../shared/lib/condition-text";
@@ -321,8 +321,8 @@ function LotBlock({
 	return (
 		<div className="mt-1 border-t border-line pt-1.5">
 			<p className="num text-xs text-text-2">
-				ロット 買値 {formatInt(lot.entryPrice)} 円 ・ {formatBtc(lot.quantity)}{" "}
-				BTC{" "}
+				ロット 買値 {formatInt(lot.entryPrice)} 円 ・{" "}
+				{formatQuantity(BTC_JPY, lot.quantity)} BTC{" "}
 				<span className={change >= 0 ? "text-profit" : "text-loss"}>
 					{distanceText(price, lot.entryPrice)}
 				</span>

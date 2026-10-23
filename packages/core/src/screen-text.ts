@@ -13,7 +13,8 @@ import {
 	importanceText,
 	isEventImportance,
 } from "./event-calendar";
-import { formatBtc, formatYen } from "./format";
+import { formatQuantity, formatYen } from "./format";
+import { BTC_JPY } from "./instrument";
 import type { AggregationRule, Judge } from "./news-judgment";
 import {
 	DURATION_LABELS,
@@ -100,7 +101,7 @@ export function conditionSetScreenText(p: ConditionSet): string[] {
 		const tag = p.buys.length >= 2 ? `【${b.name}】` : "";
 		lines.push(
 			`### ${tag}注文量とロット数`,
-			`- 1回の注文量: ${formatBtc(b.orderSize)} BTC`,
+			`- 1回の注文量: ${formatQuantity(BTC_JPY, b.orderSize)} BTC`,
 			`- 最大ロット数: ${b.maxPositions}`,
 		);
 		for (const key of CONDITION_GROUPS) {

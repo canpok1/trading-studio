@@ -17,9 +17,10 @@ import {
 	importanceText,
 	isEventImportance,
 } from "./event-calendar";
-import { formatBtc, formatYen } from "./format";
+import { formatQuantity, formatYen } from "./format";
 import { adx, atr, bollinger, ema, rsi } from "./indicators";
-import { limitBuyPriceBelow, notionalYen, SATOSHI_PER_BTC } from "./money";
+import { BTC_JPY, quantityScale } from "./instrument";
+import { limitBuyPriceBelow, notional } from "./money";
 import type {
 	Judge,
 	JudgmentConditionValue,
@@ -445,7 +446,7 @@ export const LIMITS = {
 	maxPositions: { min: 1, max: 10 },
 	frequency: { min: 1, max: 999 },
 	/** 注文量（satoshi）。0.001〜1 BTC */
-	orderSize: { min: 100_000, max: SATOSHI_PER_BTC },
+	orderSize: { min: 100_000, max: quantityScale(BTC_JPY) },
 	/** 1日の損失上限（円） */
 	dailyLossLimit: { min: 1, max: 100_000_000 },
 	/** 損切り後に買わない本数。0 は止めない */
@@ -1369,7 +1370,7 @@ function validateBuyRule(
 	if (!isIntIn(p.orderSize, size)) {
 		err(
 			"orderSize",
-			`${formatBtc(size.min)}〜${formatBtc(size.max)} BTC の範囲で入れる（最小単位 0.00000001）`,
+			`${formatQuantity(BTC_JPY, size.min)}〜${formatQuantity(BTC_JPY, size.max)} BTC の範囲で入れる（最小単位 0.00000001）`,
 		);
 	}
 	for (const g of CONDITION_GROUPS) {
@@ -1650,7 +1651,7 @@ function validateBuyRule(
 		if (sold < size.min || p.orderSize - sold < size.min) {
 			err(
 				"partialSell.percent",
-				`売る量 ${formatBtc(sold)} BTC と残り ${formatBtc(p.orderSize - sold)} BTC がどちらも ${formatBtc(size.min)} BTC 以上になるようにする`,
+				`売る量 ${formatQuantity(BTC_JPY, sold)} BTC と残り ${formatQuantity(BTC_JPY, p.orderSize - sold)} BTC がどちらも ${formatQuantity(BTC_JPY, size.min)} BTC 以上になるようにする`,
 			);
 		}
 	}
@@ -1924,10 +1925,12 @@ export function evaluateConditionSet(
 			const what =
 				(multi ? `「${rule.name}」で買った` : "") +
 				(lots.length === 1
-					? `保有中の ${formatBtc(lot.quantity)} BTC`
-					: `買値 ${formatYen(lot.entryPrice)} のロット ${formatBtc(lot.quantity)} BTC`);
+					? `保有中の ${formatQuantity(BTC_JPY, lot.quantity)} BTC`
+					: `買値 ${formatYen(lot.entryPrice)} のロット ${formatQuantity(BTC_JPY, lot.quantity)} BTC`);
 			const part =
-				quantity < lot.quantity ? ` のうち ${formatBtc(quantity)} BTC` : "";
+				quantity < lot.quantity
+					? ` のうち ${formatQuantity(BTC_JPY, quantity)} BTC`
+					: "";
 			sells.push(`${hit.why}${what}${part} を売却（${hit.label}の条件）`);
 			if (cooldown && hit.exitKind === "stopLoss") stopLossAt = now;
 			intents.push({
@@ -2055,7 +2058,7 @@ function buyIntents(
 			line.type === "market"
 				? price
 				: limitBuyPriceBelow(price, Math.round(line.belowPercent * 10_000));
-		const cost = notionalYen(at, size, "ceil");
+		const cost = notional(BTC_JPY, at, size, "ceil");
 		if (cash < total + cost) {
 			short =
 				line.type === "market"
@@ -2065,7 +2068,7 @@ function buyIntents(
 		}
 		total += cost;
 		if (line.type === "market") {
-			texts.push(`成行で ${formatBtc(size)} BTC を買い`);
+			texts.push(`成行で ${formatQuantity(BTC_JPY, size)} BTC を買い`);
 			intents.push({
 				kind: "place",
 				side: "buy",
@@ -2074,7 +2077,7 @@ function buyIntents(
 			});
 		} else {
 			texts.push(
-				`現在値 ${formatYen(price)} より ${line.belowPercent}% 下の ${formatYen(at)} に指値で ${formatBtc(size)} BTC を買い（${TIMEFRAME_LABELS[expireTimeframe]}で ${expireBars} 本のあいだ約定しなければ取消）`,
+				`現在値 ${formatYen(price)} より ${line.belowPercent}% 下の ${formatYen(at)} に指値で ${formatQuantity(BTC_JPY, size)} BTC を買い（${TIMEFRAME_LABELS[expireTimeframe]}で ${expireBars} 本のあいだ約定しなければ取消）`,
 			);
 			intents.push({
 				kind: "place",
