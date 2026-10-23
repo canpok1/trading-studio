@@ -3,6 +3,7 @@
 
 import type { DvolPoint } from "./dvol";
 import type { EventCalendar } from "./event-calendar";
+import type { Instrument } from "./instrument";
 import type { Timeframe } from "./timeframe";
 import type {
 	Candle,
@@ -15,6 +16,8 @@ import type {
 } from "./types";
 
 export type StrategyInput<P> = {
+	/** 売買する銘柄 */
+	instrument: Instrument;
 	/** 評価時刻。この時刻までに確定した足だけが candles に入る */
 	now: number;
 	/** 判定時の現在値 */

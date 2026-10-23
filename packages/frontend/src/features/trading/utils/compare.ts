@@ -1,7 +1,7 @@
 // ホームのカードで比べる値。値と補足を、戦略の要約から作る
 
 import type { StrategySummary } from "@trading-studio/backend";
-import { BTC_JPY, unrealizedPnl } from "@trading-studio/core";
+import { unrealizedPnl } from "@trading-studio/core";
 import {
 	formatSignedInt,
 	formatSignedPercent,
@@ -55,7 +55,7 @@ export function compared(s: StrategySummary, key: CompareKey): Compared {
 			};
 		case "unrealized": {
 			const v = unrealizedPnl(
-				BTC_JPY,
+				s.status.instrument,
 				p.position.quantity,
 				p.position.entryPrice,
 				p.price,

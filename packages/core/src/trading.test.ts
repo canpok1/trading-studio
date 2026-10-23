@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { defaultFillModel, runBacktest } from "./backtest";
 import { conditionStrategy } from "./condition-strategy";
+import { BTC_JPY } from "./instrument";
 import type { Strategy } from "./strategy";
 import { strategyTemplate } from "./templates";
 import { TIMEFRAME_MS } from "./timeframe";
@@ -43,6 +44,7 @@ describe("バックテストとの一致", () => {
 		const from = 500 * H;
 		const bt = runBacktest({
 			strategy: conditionStrategy,
+			instrument: BTC_JPY,
 			events: { events: [], covered: [] },
 			dvol: [],
 			params,
@@ -67,6 +69,7 @@ describe("バックテストとの一致", () => {
 			const bar = candles[i] as Candle;
 			const out: StepOutput = tradingStep({
 				strategy: conditionStrategy,
+				instrument: BTC_JPY,
 				events: { events: [], covered: [] },
 				params,
 				now: bar.time + H,
@@ -126,6 +129,7 @@ const fixed = (
 const decideWith = (strategy: Strategy<null>, account: Account) =>
 	decide({
 		strategy,
+		instrument: BTC_JPY,
 		events: { events: [], covered: [] },
 		dvol: [],
 		params: null,
@@ -158,7 +162,13 @@ describe("注文の作成と約定", () => {
 		expect(order).toMatchObject({ id: "p1", expiresAt: 13 * H });
 		expect(placed.changed[0]).toMatchObject({ status: "open", reason: "理由" });
 
-		const filled = settleFills(placed.account, () => 10_000_000, 11 * H, FEES);
+		const filled = settleFills(
+			placed.account,
+			() => 10_000_000,
+			11 * H,
+			FEES,
+			BTC_JPY,
+		);
 		expect(filled.filled).toBe(true);
 		expect(filled.account.cash).toBe(1_000_000 - 100_000 - 100);
 		expect(filled.account.position).toEqual({
@@ -189,7 +199,13 @@ describe("注文の作成と約定", () => {
 			{ kind: "place", side: "buy", type: "market", quantity: 1_000_000 },
 		]);
 		const placed = decideWith(market, newAccount(100_000));
-		const out = settleFills(placed.account, () => 10_000_000, 11 * H, FEES);
+		const out = settleFills(
+			placed.account,
+			() => 10_000_000,
+			11 * H,
+			FEES,
+			BTC_JPY,
+		);
 		expect(out.filled).toBe(false);
 		expect(out.account.cash).toBe(100_000);
 		expect(out.changed[0]).toMatchObject({
@@ -201,7 +217,13 @@ describe("注文の作成と約定", () => {
 
 	test("売りで往復が閉じると、損益を出し買いの記録にも対応づける", () => {
 		const placed = decideWith(buyLimit, newAccount(1_000_000));
-		const bought = settleFills(placed.account, () => 10_000_000, 11 * H, FEES);
+		const bought = settleFills(
+			placed.account,
+			() => 10_000_000,
+			11 * H,
+			FEES,
+			BTC_JPY,
+		);
 		const sell = fixed([
 			{
 				kind: "place",
@@ -212,7 +234,13 @@ describe("注文の作成と約定", () => {
 			},
 		]);
 		const selling = decideWith(sell, bought.account);
-		const sold = settleFills(selling.account, () => 11_000_000, 12 * H, FEES);
+		const sold = settleFills(
+			selling.account,
+			() => 11_000_000,
+			12 * H,
+			FEES,
+			BTC_JPY,
+		);
 		expect(sold.trades).toEqual([
 			{
 				buyOrderId: "p1",
@@ -284,7 +312,13 @@ describe("注文の作成と約定", () => {
 
 	test("売りで往復が閉じると、その日の確定損益に足す", () => {
 		const placed = decideWith(buyLimit, newAccount(1_000_000));
-		const bought = settleFills(placed.account, () => 10_000_000, 11 * H, FEES);
+		const bought = settleFills(
+			placed.account,
+			() => 10_000_000,
+			11 * H,
+			FEES,
+			BTC_JPY,
+		);
 		const sell = fixed([
 			{
 				kind: "place",
@@ -299,6 +333,7 @@ describe("注文の作成と約定", () => {
 			() => 9_000_000,
 			12 * H,
 			FEES,
+			BTC_JPY,
 		);
 		expect(sold.account.today).toEqual({
 			dayStart: jstDayStart(12 * H),
@@ -309,7 +344,13 @@ describe("注文の作成と約定", () => {
 	test("同じ入力なら同じ結果になる", () => {
 		const run = () => {
 			const placed = decideWith(buyLimit, newAccount(1_000_000));
-			return settleFills(placed.account, () => 10_000_000, 11 * H, FEES);
+			return settleFills(
+				placed.account,
+				() => 10_000_000,
+				11 * H,
+				FEES,
+				BTC_JPY,
+			);
 		};
 		expect(run()).toEqual(run());
 	});
@@ -365,7 +406,13 @@ describe("ロット", () => {
 
 	test("約定した買いを1件ずつロットにし、合計は数量で重み付けした平均の買値", () => {
 		const placed = decideWith(buys, newAccount(1_000_000));
-		const filled = settleFills(placed.account, (o) => o.price, 11 * H, FEES);
+		const filled = settleFills(
+			placed.account,
+			(o) => o.price,
+			11 * H,
+			FEES,
+			BTC_JPY,
+		);
 		expect(filled.account.lots.map((l) => [l.id, l.entryPrice])).toEqual([
 			["p1", 10_000_000],
 			["p2", 9_000_000],
@@ -393,14 +440,26 @@ describe("ロット", () => {
 			newAccount(1_000_000),
 		);
 		expect(placed.changed[0]?.buyName).toBe("突破");
-		const filled = settleFills(placed.account, (o) => o.price, 11 * H, FEES);
+		const filled = settleFills(
+			placed.account,
+			(o) => o.price,
+			11 * H,
+			FEES,
+			BTC_JPY,
+		);
 		expect(filled.account.lots[0]?.buyId).toBe("b2");
 		expect(publicLots(filled.account.lots)[0]?.buyId).toBe("b2");
 	});
 
 	test("ロットを指定した売りは、そのロットだけで往復を閉じる", () => {
 		const placed = decideWith(buys, newAccount(1_000_000));
-		const bought = settleFills(placed.account, (o) => o.price, 11 * H, FEES);
+		const bought = settleFills(
+			placed.account,
+			(o) => o.price,
+			11 * H,
+			FEES,
+			BTC_JPY,
+		);
 		const sell = fixed([
 			{
 				kind: "place",
@@ -415,6 +474,7 @@ describe("ロット", () => {
 			() => 9_500_000,
 			12 * H,
 			FEES,
+			BTC_JPY,
 		);
 		expect(sold.trades).toEqual([
 			{
@@ -432,7 +492,13 @@ describe("ロット", () => {
 
 	test("ロットの一部だけの売りは、支払いを按分してロットを残し、最後の売りで往復を1件にまとめる", () => {
 		const placed = decideWith(buys, newAccount(1_000_000));
-		const bought = settleFills(placed.account, (o) => o.price, 11 * H, FEES);
+		const bought = settleFills(
+			placed.account,
+			(o) => o.price,
+			11 * H,
+			FEES,
+			BTC_JPY,
+		);
 		const sellOf = (quantity: number) =>
 			fixed([
 				{ kind: "place", side: "sell", type: "market", quantity, lotId: "p2" },
@@ -442,6 +508,7 @@ describe("ロット", () => {
 			() => 9_500_000,
 			12 * H,
 			FEES,
+			BTC_JPY,
 		);
 		const firstPnl = 47_500 - 48 - 45_045;
 		expect(half.trades).toEqual([]);
@@ -465,6 +532,7 @@ describe("ロット", () => {
 			() => 10_000_000,
 			13 * H,
 			FEES,
+			BTC_JPY,
 		);
 		const secondPnl = 50_000 - 50 - 45_045;
 		expect(rest.trades).toEqual([
@@ -484,7 +552,13 @@ describe("ロット", () => {
 
 	test("ロットが無い・数量が多すぎる・売りが約定待ちなら売りを出さない", () => {
 		const placed = decideWith(buys, newAccount(1_000_000));
-		const bought = settleFills(placed.account, (o) => o.price, 11 * H, FEES);
+		const bought = settleFills(
+			placed.account,
+			(o) => o.price,
+			11 * H,
+			FEES,
+			BTC_JPY,
+		);
 		const sellOf = (lotId: string, quantity = 1_000_000) =>
 			fixed([{ kind: "place", side: "sell", type: "market", quantity, lotId }]);
 		expect(decideWith(sellOf("x"), bought.account).decision.note).toContain(
@@ -512,6 +586,7 @@ describe("ロット", () => {
 			(o) => o.price,
 			11 * H,
 			FEES,
+			BTC_JPY,
 		);
 		expect(out.account.lots).toHaveLength(1);
 		expect(out.changed[1]).toMatchObject({ id: "p2", status: "canceled" });

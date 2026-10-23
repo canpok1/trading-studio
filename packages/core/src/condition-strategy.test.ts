@@ -30,6 +30,7 @@ import {
 	validateConditionSet as validateConditionSetOf,
 } from "./condition-strategy";
 import type { EventCalendar } from "./event-calendar";
+import { BTC_JPY } from "./instrument";
 import type { StrategyInput } from "./strategy";
 import type { TemplateId } from "./templates";
 import {
@@ -131,6 +132,7 @@ function input(
 	return {
 		now: ((cs.at(-1)?.time ?? 0) as number) + H,
 		price: cs.at(-1)?.close ?? 0,
+		instrument: BTC_JPY,
 		events: { events: [], covered: [] },
 		dvol: [],
 		candles: { "1h": cs },

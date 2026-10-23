@@ -1,7 +1,7 @@
 // 自動取引の成績。口座をリセットした時点以降の約定から、バックテスト結果と同じ指標を出す
 
-import type { Position, TradeOrder } from "@trading-studio/core";
-import { BTC_JPY, notional } from "@trading-studio/core";
+import type { Instrument, Position, TradeOrder } from "@trading-studio/core";
+import { notional } from "@trading-studio/core";
 import type { TradingPerformance } from "./types-domain";
 
 /** 評価に使う価格。足の終値なら足の終わりの時刻 */
@@ -9,6 +9,7 @@ export type PricePoint = { time: number; price: number };
 
 /** 現金と保有を今の価格で評価した資産。保有があって価格が分からなければ null */
 export function equityOf(
+	instrument: Instrument,
 	cash: number,
 	position: Position,
 	price: number | null,
@@ -16,7 +17,7 @@ export function equityOf(
 	if (position.quantity === 0) return cash;
 	return price === null
 		? null
-		: cash + notional(BTC_JPY, price, position.quantity, "floor");
+		: cash + notional(instrument, price, position.quantity, "floor");
 }
 
 /**
@@ -24,6 +25,7 @@ export function equityOf(
  * 最大ドローダウンは、約定の直後（約定価格）と prices の各時点、今の時点で資産を評価して測る
  */
 export function tradingPerformance({
+	instrument,
 	initialCash,
 	resetAt,
 	now,
@@ -34,6 +36,7 @@ export function tradingPerformance({
 	prices,
 	basePrice,
 }: {
+	instrument: Instrument;
 	initialCash: number;
 	resetAt: number;
 	now: number;
@@ -54,7 +57,7 @@ export function tradingPerformance({
 	let ddFrom: number | null = null;
 	let ddTo: number | null = null;
 	const mark = (time: number, p: number) => {
-		const equity = c + notional(BTC_JPY, p, qty, "floor");
+		const equity = c + notional(instrument, p, qty, "floor");
 		if (equity > peak) {
 			peak = equity;
 			peakAt = time;
@@ -74,10 +77,10 @@ export function tradingPerformance({
 			const p = f.fillPrice ?? 0;
 			const fee = f.fee ?? 0;
 			if (f.side === "buy") {
-				c -= notional(BTC_JPY, p, f.quantity, "ceil") + fee;
+				c -= notional(instrument, p, f.quantity, "ceil") + fee;
 				qty += f.quantity;
 			} else {
-				c += notional(BTC_JPY, p, f.quantity, "floor") - fee;
+				c += notional(instrument, p, f.quantity, "floor") - fee;
 				qty -= f.quantity;
 			}
 			mark(f.filledAt ?? 0, p);
@@ -89,7 +92,7 @@ export function tradingPerformance({
 		mark(pt.time, pt.price);
 	}
 	applyUntil(now);
-	const equity = equityOf(cash, position, price);
+	const equity = equityOf(instrument, cash, position, price);
 	if (equity !== null && price !== null) mark(now, price);
 
 	// 往復は売りの約定（損益つき）と、対応づけた買いの約定時刻から作る。

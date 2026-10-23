@@ -8,11 +8,13 @@ import type {
 	DvolPoint,
 	EventCalendar,
 	FeeRates,
+	Instrument,
 	ScoredNews,
 	Timeframe,
 } from "@trading-studio/core";
 
 export type RunnerJob = {
+	instrument: Instrument;
 	params: ConditionSet;
 	/** 条件で使う粒度ごとの足。指標の計算に使うため期間より前の足も含む */
 	candles: Partial<Record<Timeframe, Candle[]>>;

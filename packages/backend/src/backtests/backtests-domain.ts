@@ -105,7 +105,11 @@ export type BacktestServiceDeps = {
 	repo: BacktestRepository;
 	marketData: Pick<
 		MarketDataRepository,
-		"importedTimeframes" | "gaps" | "countCandles" | "loadCandles"
+		| "instrument"
+		| "importedTimeframes"
+		| "gaps"
+		| "countCandles"
+		| "loadCandles"
 	>;
 	strategies: StrategyService;
 	runner: BacktestRunner;
@@ -433,6 +437,7 @@ export function createBacktestService({
 			let job: RunningJob;
 			try {
 				job = runner({
+					instrument: marketData.instrument,
 					params,
 					candles,
 					dataTimeframe: finest,

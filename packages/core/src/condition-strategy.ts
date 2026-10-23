@@ -19,6 +19,7 @@ import {
 } from "./event-calendar";
 import { formatQuantity, formatYen } from "./format";
 import { adx, atr, bollinger, ema, rsi } from "./indicators";
+import type { Instrument } from "./instrument";
 import { BTC_JPY, quantityScale } from "./instrument";
 import { limitBuyPriceBelow, notional } from "./money";
 import type {
@@ -1925,11 +1926,11 @@ export function evaluateConditionSet(
 			const what =
 				(multi ? `「${rule.name}」で買った` : "") +
 				(lots.length === 1
-					? `保有中の ${formatQuantity(BTC_JPY, lot.quantity)} BTC`
-					: `買値 ${formatYen(lot.entryPrice)} のロット ${formatQuantity(BTC_JPY, lot.quantity)} BTC`);
+					? `保有中の ${formatQuantity(input.instrument, lot.quantity)} ${input.instrument.quantityUnit}`
+					: `買値 ${formatYen(lot.entryPrice)} のロット ${formatQuantity(input.instrument, lot.quantity)} ${input.instrument.quantityUnit}`);
 			const part =
 				quantity < lot.quantity
-					? ` のうち ${formatQuantity(BTC_JPY, quantity)} BTC`
+					? ` のうち ${formatQuantity(input.instrument, quantity)} ${input.instrument.quantityUnit}`
 					: "";
 			sells.push(`${hit.why}${what}${part} を売却（${hit.label}の条件）`);
 			if (cooldown && hit.exitKind === "stopLoss") stopLossAt = now;
@@ -2012,7 +2013,7 @@ export function evaluateConditionSet(
 					`買いの条件を満たすが、上の「${placedBy.name}」で注文したため買わない`,
 				);
 			} else {
-				const placed = buyIntents(b, ctx.price, cash, free);
+				const placed = buyIntents(input.instrument, b, ctx.price, cash, free);
 				for (const intent of placed.intents) {
 					intents.push({
 						...intent,
@@ -2041,6 +2042,7 @@ export function evaluateConditionSet(
 
 /** 買い注文の行を、空き枠の数だけ先頭から注文にする。資金が足りなくなった行から先は出さない */
 function buyIntents(
+	instrument: Instrument,
 	b: BuyRule,
 	price: number,
 	cash: number,
@@ -2058,7 +2060,7 @@ function buyIntents(
 			line.type === "market"
 				? price
 				: limitBuyPriceBelow(price, Math.round(line.belowPercent * 10_000));
-		const cost = notional(BTC_JPY, at, size, "ceil");
+		const cost = notional(instrument, at, size, "ceil");
 		if (cash < total + cost) {
 			short =
 				line.type === "market"
@@ -2068,7 +2070,9 @@ function buyIntents(
 		}
 		total += cost;
 		if (line.type === "market") {
-			texts.push(`成行で ${formatQuantity(BTC_JPY, size)} BTC を買い`);
+			texts.push(
+				`成行で ${formatQuantity(instrument, size)} ${instrument.quantityUnit} を買い`,
+			);
 			intents.push({
 				kind: "place",
 				side: "buy",
@@ -2077,7 +2081,7 @@ function buyIntents(
 			});
 		} else {
 			texts.push(
-				`現在値 ${formatYen(price)} より ${line.belowPercent}% 下の ${formatYen(at)} に指値で ${formatQuantity(BTC_JPY, size)} BTC を買い（${TIMEFRAME_LABELS[expireTimeframe]}で ${expireBars} 本のあいだ約定しなければ取消）`,
+				`現在値 ${formatYen(price)} より ${line.belowPercent}% 下の ${formatYen(at)} に指値で ${formatQuantity(instrument, size)} ${instrument.quantityUnit} を買い（${TIMEFRAME_LABELS[expireTimeframe]}で ${expireBars} 本のあいだ約定しなければ取消）`,
 			);
 			intents.push({
 				kind: "place",

@@ -3,6 +3,7 @@
 import type {
 	DecisionLog,
 	ExitKind,
+	Instrument,
 	Lot,
 	Position,
 	StrategyWatch,
@@ -105,6 +106,8 @@ export type AutoTradingStatus = {
 	accountId: number;
 	/** 戦略の名前 */
 	name: string;
+	/** 売買する銘柄 */
+	instrument: Instrument;
 	enabled: boolean;
 	mode: TradingMode;
 	/** 次の判定時刻。オフなら、今オンにしたときの最初の判定時刻 */

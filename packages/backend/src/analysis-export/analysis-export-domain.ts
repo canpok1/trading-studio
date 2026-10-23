@@ -838,7 +838,9 @@ export function createAnalysisExportService({
 			const candles = marketData.exportCandles("1m", from, to);
 			const lines = [CSV_HEADER];
 			for (const page of candles?.pages ?? []) {
-				for (const c of page) lines.push(formatCandleCsvRow(c));
+				for (const c of page) {
+					if (candles) lines.push(formatCandleCsvRow(candles.instrument, c));
+				}
 			}
 			files.push({
 				name: CANDLE_FILE,

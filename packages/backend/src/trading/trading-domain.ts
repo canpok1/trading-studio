@@ -82,7 +82,7 @@ export function createTradingService({
 	dvol: Pick<DvolRepository, "bars" | "fetchState">;
 	marketData: Pick<
 		MarketDataRepository,
-		"candlesBefore" | "loadCandles" | "lastCandle"
+		"instrument" | "candlesBefore" | "loadCandles" | "lastCandle"
 	>;
 	market: () => LiveMarket;
 	now?: () => number;
@@ -200,6 +200,7 @@ export function createTradingService({
 		const expired = expireOrders(row.account, t);
 		saveChanges(row, expired.changed, { decisionId: null, strategy: null });
 		const out = decide({
+			instrument: marketData.instrument,
 			strategy: conditionStrategy,
 			params: s.params,
 			now: t,
@@ -251,6 +252,7 @@ export function createTradingService({
 		return {
 			id: s.id,
 			accountId: row.id,
+			instrument: marketData.instrument,
 			name: s.name,
 			enabled: row.enabled,
 			mode: row.mode,
@@ -274,7 +276,12 @@ export function createTradingService({
 				lots: publicLots(a.lots),
 				openOrderCount: a.openOrders.length,
 				resetAt: row.resetAt,
-				equity: equityOf(a.cash, a.position, currentPrice(live)),
+				equity: equityOf(
+					marketData.instrument,
+					a.cash,
+					a.position,
+					currentPrice(live),
+				),
 			},
 		};
 	};
@@ -348,6 +355,7 @@ export function createTradingService({
 								(o) => tradeFillPrice(o, trade),
 								trade.time,
 								fees,
+								marketData.instrument,
 							);
 							saveChanges(row, out.changed, {
 								decisionId: null,
@@ -423,6 +431,7 @@ export function createTradingService({
 			const a = expireOrders(row.account, t).account;
 			return {
 				watch: watchConditionSet({
+					instrument: marketData.instrument,
 					now: t,
 					price,
 					...candlesAt(s, t, live),
@@ -596,6 +605,7 @@ export function createTradingService({
 				.loadCandles("1h", candleStart(row.resetAt, "1h"), t)
 				.map((c) => ({ time: c.time + hour, price: c.close }));
 			return tradingPerformance({
+				instrument: marketData.instrument,
 				initialCash: row.initialCash,
 				resetAt: row.resetAt,
 				now: t,
