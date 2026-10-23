@@ -104,6 +104,7 @@ export function createTradingService({
 		origin: { decisionId: number | null; strategy: StoredStrategy | null },
 	) => {
 		repo.saveOrders(run, changed, {
+			instrument: marketData.instrument.id,
 			decisionId: origin.decisionId,
 			strategyId: origin.strategy?.id ?? null,
 			strategyName: origin.strategy?.name ?? "",

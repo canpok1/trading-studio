@@ -6,7 +6,7 @@ import type {
 	DecisionLog,
 	Trade,
 } from "@trading-studio/core";
-import { strategyTemplate } from "@trading-studio/core";
+import { BTC_JPY, strategyTemplate } from "@trading-studio/core";
 import { crc32 } from "../src/analysis-export/zip-infra";
 import type { BacktestRun } from "../src/backtests/types-domain";
 import { createTestApp } from "./test-app";
@@ -89,6 +89,7 @@ function addNews(t: T, at: number, title: string) {
 function addBacktest(t: T, startedAt: number): number {
 	const id = t.backtestRepo.create({
 		name: "テスト",
+		instrument: BTC_JPY,
 		params: strategyTemplate("trend").params,
 		timeframe: "1h",
 		from: DAY,

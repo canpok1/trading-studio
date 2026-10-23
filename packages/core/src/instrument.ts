@@ -67,6 +67,13 @@ export function findInstrument(id: string): Instrument | null {
 	return INSTRUMENTS.find((i) => i.id === id) ?? null;
 }
 
+/** 保存したデータの銘柄を引く。定義から消した銘柄は読めないので例外にする */
+export function instrumentOf(id: string): Instrument {
+	const i = findInstrument(id);
+	if (!i) throw new RangeError(`未定義の銘柄: ${id}`);
+	return i;
+}
+
 /** 数量 1（BTC なら 1 BTC）を最小単位で表した値 */
 export function quantityScale(instrument: Instrument): number {
 	return 10 ** instrument.quantityDecimals;

@@ -54,12 +54,17 @@ export class SqliteStrategyRepository implements StrategyRepository {
 		);
 	}
 
-	insert(name: string, params: ConditionSet, at: number): StoredStrategy {
+	insert(
+		name: string,
+		market: string,
+		params: ConditionSet,
+		at: number,
+	): StoredStrategy {
 		const r = this.sql
-			.query<Row, [string, string, number, number]>(
-				"insert into strategies (name, params, created_at, updated_at) values (?, ?, ?, ?) returning *",
+			.query<Row, [string, string, string, number, number]>(
+				"insert into strategies (name, market, params, created_at, updated_at) values (?, ?, ?, ?, ?) returning *",
 			)
-			.get(name, JSON.stringify(params), at, at) as Row;
+			.get(name, market, JSON.stringify(params), at, at) as Row;
 		return toStrategy(r);
 	}
 

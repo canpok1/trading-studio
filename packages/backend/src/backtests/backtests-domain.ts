@@ -406,6 +406,7 @@ export function createBacktestService({
 
 			const id = repo.create({
 				name: input.name.trim(),
+				instrument: marketData.instrument,
 				params,
 				// 条件で使う最も細かい足。AI アドバイスで注文の前後を見せる足に使う
 				timeframe: needed[0] ?? step.timeframe,

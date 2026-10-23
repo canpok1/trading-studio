@@ -38,6 +38,8 @@ export interface TradingRepository {
 		},
 		orders: readonly TradeOrder[],
 		origin: {
+			/** 注文した銘柄の id */
+			instrument: string;
 			decisionId: number | null;
 			strategyId: number | null;
 			strategyName: string;

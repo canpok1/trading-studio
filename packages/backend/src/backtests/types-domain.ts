@@ -7,6 +7,7 @@ import type {
 	ConditionSet,
 	FeeRates,
 	Gap,
+	Instrument,
 	MarketRegime,
 	Timeframe,
 	ValidationError,
@@ -41,6 +42,7 @@ export type BacktestRun = {
 	id: number;
 	/** バックテスト名。名前を入れる前の実行は、実行したときの戦略名 */
 	name: string;
+	instrument: Instrument;
 	params: ConditionSet;
 	/**
 	 * 条件で使う足のうち最も細かいもの（足を使う条件が無ければ判定に使った足）。AI アドバイスで注文の前後を見せる足に使う。

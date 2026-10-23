@@ -298,6 +298,7 @@ export function backtestRun(
 	over: Partial<BacktestRun> & Pick<BacktestRun, "id" | "name">,
 ): BacktestRun {
 	return {
+		instrument: BTC_JPY,
 		params: strategyTemplate("blank").params,
 		timeframe: "1h",
 		from: Date.UTC(2026, 7, 31, 15),
