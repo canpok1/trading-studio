@@ -142,6 +142,7 @@ export function unrealizedPnl(
 ): number | null {
 	if (quantity <= 0 || entryPrice === null || price === null) return null;
 	const { multiplier, divisor } = notionalScale(instrument);
+	// 買値は平均で小数になりうるので BigInt にせず浮動小数で計算する
 	return Math.round(
 		((price - entryPrice) * quantity * Number(multiplier)) / Number(divisor),
 	);

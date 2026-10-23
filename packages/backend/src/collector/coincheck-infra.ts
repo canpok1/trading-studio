@@ -12,7 +12,9 @@ const PAIR = "btc_jpy";
 function toSatoshi(amount: string): number {
 	return parseQuantity(
 		BTC_JPY,
-		/e/i.test(amount) ? Number(amount).toFixed(8) : amount,
+		/e/i.test(amount)
+			? Number(amount).toFixed(BTC_JPY.quantityDecimals)
+			: amount,
 	);
 }
 
