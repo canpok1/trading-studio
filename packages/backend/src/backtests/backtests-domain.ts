@@ -1,6 +1,13 @@
 // バックテストの実行ジョブ。同時に動かすのは1つだけで、画面は進捗を定期的に問い合わせる
 
-import type { AggregationRule, Candle, Timeframe } from "@trading-studio/core";
+import type {
+	AggregationRule,
+	BacktestMarket,
+	BacktestOrder,
+	Candle,
+	Instrument,
+	Timeframe,
+} from "@trading-studio/core";
 import {
 	acceptsNoJudgment,
 	BacktestError,
@@ -10,12 +17,14 @@ import {
 	conditionStrategy,
 	eventWindowHours,
 	HOUR_MS,
+	isCoarser,
 	isTimeframe,
 	marketOf,
 	maxWindowMs,
 	parseConditionSet,
 	RUN_LIMITS,
 	TIMEFRAME_MS,
+	validateCandidates,
 	validateConditionSet,
 	withSellDetails,
 } from "@trading-studio/core";
@@ -24,6 +33,7 @@ import { strategyDvol } from "../dvol/dvol-domain";
 import type { DvolRepository } from "../dvol/repository-domain";
 import type { JudgmentService } from "../judgments/types-domain";
 import { MAX_CHART_BARS } from "../market/market-domain";
+import { DEFAULT_INSTRUMENT } from "../market-data/instrument-domain";
 import type { MarketDataRepository } from "../market-data/repository-domain";
 import type { ScoringService } from "../news/types-domain";
 import type { Segment, SegmentService } from "../segments/types-domain";
@@ -35,6 +45,7 @@ import type {
 	BacktestInput,
 	BacktestRun,
 	BacktestService,
+	ListedBacktestOrder,
 	StartBacktestFailure,
 	StartBacktestResult,
 } from "./types-domain";
@@ -54,6 +65,14 @@ export const num = (v: unknown) => (typeof v === "number" ? v : Number.NaN);
 export function parseRunConditions(v: unknown) {
 	const params = parseConditionSet(isObj(v) ? v.params : null);
 	if (!isObj(v) || !params || !isObj(v.fees)) return null;
+	// 候補を送らない呼び出し（候補を持つ前の画面・MCP）は BTC/JPY だけ
+	const instruments =
+		v.instruments === undefined ? [DEFAULT_INSTRUMENT.id] : v.instruments;
+	if (
+		!Array.isArray(instruments) ||
+		!instruments.every((x) => typeof x === "string")
+	)
+		return null;
 	return {
 		v,
 		conditions: {
@@ -73,6 +92,7 @@ export function parseRunConditions(v: unknown) {
 				v.eventCriteriaVersion === undefined || v.eventCriteriaVersion === null
 					? null
 					: num(v.eventCriteriaVersion),
+			instruments: instruments as string[],
 		},
 	};
 }
@@ -104,14 +124,8 @@ export function parseChartQuery(
 
 export type BacktestServiceDeps = {
 	repo: BacktestRepository;
-	marketData: Pick<
-		MarketDataRepository,
-		| "instrument"
-		| "importedTimeframes"
-		| "gaps"
-		| "countCandles"
-		| "loadCandles"
-	>;
+	/** 候補にできる銘柄（収集している銘柄）の足 */
+	marketData: readonly MarketData[];
 	strategies: StrategyService;
 	runner: BacktestRunner;
 	judgments: Pick<
@@ -133,6 +147,11 @@ export type BacktestServiceDeps = {
 	now?: () => number;
 };
 
+type MarketData = Pick<
+	MarketDataRepository,
+	"instrument" | "importedTimeframes" | "gaps" | "countCandles" | "loadCandles"
+>;
+
 const fail = (error: StartBacktestFailure): StartBacktestResult => ({
 	ok: false,
 	error,
@@ -140,6 +159,8 @@ const fail = (error: StartBacktestFailure): StartBacktestResult => ({
 
 type Plan = {
 	input: BacktestInput;
+	/** 候補の銘柄の足。先頭が候補の先頭 */
+	markets: MarketData[];
 	segment: Segment | null;
 	finest: Timeframe;
 	step: { timeframe: Timeframe; limited: boolean };
@@ -188,6 +209,23 @@ function checkInput(input: BacktestInput): StartBacktestFailure | null {
 	return null;
 }
 
+/** 売りに、売るロットの買値と売りの条件のグループを添える。価格の単位は注文の銘柄のもの */
+function listed(
+	stored: readonly BacktestOrder[],
+	run: BacktestRun,
+): ListedBacktestOrder[] {
+	const primary = run.instrument.id;
+	const byId = new Map(
+		run.instruments.flatMap((i) =>
+			withSellDetails(
+				stored.filter((o) => (o.instrument ?? primary) === i.id),
+				i,
+			).map((o) => [o.id, o] as const),
+		),
+	);
+	return stored.flatMap((o) => byId.get(o.id) ?? []);
+}
+
 export function createBacktestService({
 	repo,
 	marketData,
@@ -227,34 +265,58 @@ export function createBacktestService({
 		const input = segment
 			? { ...requested, from: segment.from, to: segment.to }
 			: requested;
-		const errors = validateConditionSet(
-			input.params,
-			marketOf(marketData.instrument),
-			RUN_LIMITS,
+		const markets = input.instruments.map((id) =>
+			marketData.find((m) => m.instrument.id === id),
 		);
+		if (!markets.every((m) => m !== undefined)) {
+			return planFail({
+				kind: "invalid_input",
+				field: "instruments",
+				message: "価格を集めていない銘柄は候補にできない",
+			});
+		}
+		const instruments = markets.map((m) => m.instrument);
+		const primary = instruments[0] as Instrument | undefined;
+		const errors = [
+			...validateCandidates(input.params, instruments),
+			...(primary
+				? validateConditionSet(input.params, marketOf(primary), RUN_LIMITS)
+				: []),
+		];
 		if (errors.length > 0) return planFail({ kind: "invalid_params", errors });
 		const invalid = checkInput(input);
 		if (invalid) return planFail(invalid);
 
 		const { params, from, to } = input;
 		const needed = candleTimeframes(params);
-		// 条件の足より細かいデータがあれば、条件の足は自動で作られている
-		const finest = marketData.importedTimeframes(from, to)[0];
-		if (!finest) {
-			return planFail({
-				kind: "no_data",
-				message:
-					"期間に取り込み済みのデータが無い。期間を変えるか、過去データを取り込む",
-			});
-		}
-		try {
-			checkDataResolution(finest, needed[0] ?? null);
-		} catch (e) {
-			if (e instanceof BacktestError) {
-				return planFail({ kind: "no_data", message: e.message });
+		// 候補が2つ以上なら、足りない銘柄が分かるよう銘柄を添える
+		const named = (m: MarketData, message: string) =>
+			markets.length > 1 ? `${m.instrument.symbol}: ${message}` : message;
+		// 条件の足より細かいデータがあれば、条件の足は自動で作られている。
+		// 銘柄ごとに同じ粒度の足で判定するので、銘柄の中で最も粗いものに合わせる
+		let finest: Timeframe | null = null;
+		for (const m of markets) {
+			const own = m.importedTimeframes(from, to)[0];
+			if (!own) {
+				return planFail({
+					kind: "no_data",
+					message: named(
+						m,
+						"期間に取り込み済みのデータが無い。期間を変えるか、過去データを取り込む",
+					),
+				});
 			}
-			throw e;
+			try {
+				checkDataResolution(own, needed[0] ?? null);
+			} catch (e) {
+				if (e instanceof BacktestError) {
+					return planFail({ kind: "no_data", message: named(m, e.message) });
+				}
+				throw e;
+			}
+			if (finest === null || isCoarser(own, finest)) finest = own;
 		}
+		if (finest === null) throw new Error("候補が無い");
 		// 記録が始まる前はデータなしとして渡す。判定の条件のどれにも「データなし」が無ければ、
 		// 判定の条件が効いていない結果を正しいものと誤読しやすいので実行しない
 		const rule = judgments.rule();
@@ -335,26 +397,30 @@ export function createBacktestService({
 		}
 		// 判定頻度が戦略の粒度より短ければ、細かい足で判定する
 		const step = chooseStepTimeframe(params, finest);
-		const gaps = marketData.gaps(step.timeframe, from, to);
-		if (gaps.length > 0 && !input.skipGaps) {
-			return planFail({
-				kind: "gaps",
-				gaps: gaps.slice(0, MAX_GAPS),
-				gapCount: gaps.length,
-				missingBars: gaps.reduce((n, g) => n + g.missing, 0),
-			});
-		}
-		// 足はまとめて実行するときに件数ぶん読むと重いので、実行を始めるときに読む
-		if (marketData.countCandles(step.timeframe, from, to) === 0) {
-			return {
-				ok: false,
-				error: { kind: "no_data", message: "期間に足が無い" },
-			};
+		for (const m of markets) {
+			const gaps = m.gaps(step.timeframe, from, to);
+			if (gaps.length > 0 && !input.skipGaps) {
+				return planFail({
+					kind: "gaps",
+					instrument: m.instrument.id,
+					gaps: gaps.slice(0, MAX_GAPS),
+					gapCount: gaps.length,
+					missingBars: gaps.reduce((n, g) => n + g.missing, 0),
+				});
+			}
+			// 足はまとめて実行するときに件数ぶん読むと重いので、実行を始めるときに読む
+			if (m.countCandles(step.timeframe, from, to) === 0) {
+				return planFail({
+					kind: "no_data",
+					message: named(m, "期間に足が無い"),
+				});
+			}
 		}
 		return {
 			ok: true,
 			plan: {
 				input,
+				markets,
 				segment,
 				finest,
 				step,
@@ -383,6 +449,7 @@ export function createBacktestService({
 			if (!planned.ok) return fail(planned.error);
 			const {
 				input,
+				markets,
 				segment,
 				finest,
 				step,
@@ -397,21 +464,35 @@ export function createBacktestService({
 			const { params, from, to } = input;
 			const needed = candleTimeframes(params);
 			const needs = conditionStrategy.candleNeeds(params);
-			const candles: Partial<Record<Timeframe, Candle[]>> = {};
-			for (const tf of needed) {
-				const history = needs[tf] ?? 1;
-				candles[tf] = marketData.loadCandles(
-					tf,
-					from - history * TIMEFRAME_MS[tf],
-					to,
-				);
-			}
-			const stepCandles = marketData.loadCandles(step.timeframe, from, to);
-			const barCount = stepCandles.length;
+			const loaded: BacktestMarket[] = markets.map((m) => {
+				const candles: Partial<Record<Timeframe, Candle[]>> = {};
+				for (const tf of needed) {
+					const history = needs[tf] ?? 1;
+					candles[tf] = m.loadCandles(
+						tf,
+						from - history * TIMEFRAME_MS[tf],
+						to,
+					);
+				}
+				return {
+					instrument: m.instrument,
+					candles,
+					stepCandles: m.loadCandles(step.timeframe, from, to),
+				};
+			});
+			const [head, ...otherMarkets] = loaded as [
+				BacktestMarket,
+				...BacktestMarket[],
+			];
+			// 判定する時刻は、どれかの銘柄に足がある時刻
+			const barCount = new Set(
+				loaded.flatMap((m) => m.stepCandles.map((c) => c.time)),
+			).size;
 
 			const id = repo.create({
 				name: input.name.trim(),
-				instrument: marketData.instrument,
+				instrument: head.instrument,
+				instruments: loaded.map((m) => m.instrument),
 				params,
 				// 条件で使う最も細かい足。AI アドバイスで注文の前後を見せる足に使う
 				timeframe: needed[0] ?? step.timeframe,
@@ -443,11 +524,11 @@ export function createBacktestService({
 			let job: RunningJob;
 			try {
 				job = runner({
-					instrument: marketData.instrument,
+					instrument: head.instrument,
 					params,
-					candles,
+					candles: head.candles as Partial<Record<Timeframe, Candle[]>>,
 					dataTimeframe: finest,
-					stepCandles,
+					stepCandles: head.stepCandles as Candle[],
 					stepTimeframe: step.timeframe,
 					from,
 					to,
@@ -468,6 +549,7 @@ export function createBacktestService({
 					// 予定の前後の条件が無ければ暦は見ない
 					events: calendar.calendar(eventCriteriaVersion ?? undefined),
 					dvol: strategyDvol(dvol, params, from, to),
+					otherMarkets,
 				});
 			} catch (e) {
 				console.error("backtest failed to start", e);
@@ -513,17 +595,25 @@ export function createBacktestService({
 			return { ...r, runs: r.runs.map(withProgress) };
 		},
 
-		chart(id, timeframe, maxBars = MAX_CHART_BARS) {
-			const chart = repo.chart(id);
+		chart(id, timeframe, maxBars = MAX_CHART_BARS, instrument) {
 			const run = repo.get(id);
-			if (!chart || !run) return { ok: false, kind: "not_found" };
-			const count = marketData.countCandles(timeframe, run.from, run.to);
+			const target = instrument ?? run?.instrument.id;
+			const market = marketData.find((m) => m.instrument.id === target);
+			const chart = run && repo.chart(id, target);
+			if (
+				!chart ||
+				!run ||
+				!market ||
+				!run.instruments.some((i) => i.id === target)
+			)
+				return { ok: false, kind: "not_found" };
+			const count = market.countCandles(timeframe, run.from, run.to);
 			if (count > maxBars) {
 				return { ok: false, kind: "too_many", count, max: maxBars };
 			}
 			// チャートの足は画面で選んだ粒度で、期間の足をそのときのデータから読む。
 			// データが消えていれば、結果に残した足（日足。戦略が足の粒度を持っていた頃の実行はその粒度）を出す
-			const loaded = marketData.loadCandles(timeframe, run.from, run.to);
+			const loaded = market.loadCandles(timeframe, run.from, run.to);
 			const bars = loaded.length > 0 ? loaded : chart.bars;
 			const tf = loaded.length > 0 ? timeframe : chart.timeframe;
 			const rule = run.aggregationRule;
@@ -557,17 +647,22 @@ export function createBacktestService({
 									run.newsDelayMs,
 									// 残っている相場データはニュースも残しているので、古いニュースを消した後も背景を出せる
 									run.segment && segments.get(run.segment.id) ? run.from : null,
+									market.instrument.id,
 								)
 							: null,
 				},
 			};
 		},
 
-		orders(id, filter, offset, limit) {
+		orders(id, filter, offset, limit, instrument) {
 			const stored = repo.orders(id);
 			const run = repo.get(id);
 			if (!stored || !run) return null;
-			const all = withSellDetails(stored, run.instrument);
+			const all = listed(stored, run).filter(
+				(o) =>
+					instrument === undefined ||
+					(o.instrument ?? run.instrument.id) === instrument,
+			);
 			// 新しい順に並べる
 			const list = (
 				filter === "filled" ? all.filter((o) => o.status === "filled") : all
@@ -582,9 +677,7 @@ export function createBacktestService({
 			const stored = repo.orders(id);
 			const run = repo.get(id);
 			return stored && run
-				? (withSellDetails(stored, run.instrument).find(
-						(o) => o.id === orderId,
-					) ?? null)
+				? (listed(stored, run).find((o) => o.id === orderId) ?? null)
 				: null;
 		},
 

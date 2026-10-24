@@ -119,6 +119,8 @@ export function runView(r: BacktestRun) {
 		name: r.name,
 		status: r.status,
 		progress: r.progress,
+		// 候補の銘柄の id。summary.byInstrument（候補が2つ以上のときの銘柄ごとの成績）も同じ id
+		instruments: r.instruments.map((i) => i.id),
 		from: jst(r.from),
 		to: jst(r.to),
 		stepTimeframe: r.stepTimeframe,

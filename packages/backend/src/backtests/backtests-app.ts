@@ -119,6 +119,7 @@ export function backtestRoutes(
 								{
 									kind: e.kind,
 									message: "期間内にデータの欠損がある",
+									instrument: e.instrument,
 									gaps: e.gaps,
 									gapCount: e.gapCount,
 									missingBars: e.missingBars,
@@ -147,9 +148,12 @@ export function backtestRoutes(
 					return { timeframe: r.timeframe };
 				}),
 				(c) => {
+					// 銘柄は候補が1つの画面からは送らないので、型に出さず任意で読む
 					const r = service.chart(
 						Number(c.req.param("id")),
 						c.req.valid("query").timeframe,
+						undefined,
+						c.req.query("instrument"),
 					);
 					if (r.ok) return c.json(r.chart, 200);
 					if (r.kind === "not_found") return c.json(NOT_FOUND, 404);
@@ -179,6 +183,7 @@ export function backtestRoutes(
 						filter,
 						offset,
 						limit,
+						c.req.query("instrument"),
 					);
 					return r ? c.json(r, 200) : c.json(NOT_FOUND, 404);
 				},

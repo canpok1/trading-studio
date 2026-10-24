@@ -30,6 +30,7 @@ type RunRow = {
 	id: number;
 	strategy_name: string;
 	instrument: string;
+	instruments: string | null;
 	params: string;
 	timeframe: Timeframe;
 	from_time: number;
@@ -63,6 +64,10 @@ function toRun(r: RunRow): BacktestRun {
 		id: r.id,
 		name: r.strategy_name,
 		instrument: instrumentOf(r.instrument),
+		instruments: (r.instruments
+			? (JSON.parse(r.instruments) as string[])
+			: [r.instrument]
+		).map(instrumentOf),
 		// 保存するときに形を検証しているので、読み出しでは形が崩れていない前提で読む
 		params: parseConditionSet(JSON.parse(r.params)) as ConditionSet,
 		dailyLossLimitApplied: "dailyLossLimit" in JSON.parse(r.params),
@@ -126,14 +131,15 @@ export class SqliteBacktestRepository implements BacktestRepository {
 	): number {
 		return Number(
 			this.sql.run(
-				`insert into backtest_runs (strategy_name, instrument, params, timeframe, from_time, to_time,
+				`insert into backtest_runs (strategy_name, instrument, instruments, params, timeframe, from_time, to_time,
 				 initial_cash, fee_limit_ppm, fee_market_ppm, skip_gaps, status, started_at, bar_count,
 				 step_timeframe, step_limited, aggregation_rule, criteria_version, event_criteria_version,
 				 news_delay_ms, news_data_version, segment_id, segment_regime, dataset_run_id)
-				 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					run.name,
 					run.instrument.id,
+					JSON.stringify(run.instruments.map((i) => i.id)),
 					JSON.stringify(run.params),
 					run.timeframe,
 					run.from,
@@ -257,27 +263,43 @@ export class SqliteBacktestRepository implements BacktestRepository {
 		return r?.v ?? null;
 	}
 
-	chart(id: number): Omit<BacktestChart, "judgments"> | null {
+	chart(
+		id: number,
+		instrument?: string,
+	): Omit<BacktestChart, "judgments"> | null {
 		const run = this.get(id);
-		const bars = this.blob(id, "bars");
-		const orders = this.orders(id);
-		if (!bars || !orders) return null;
+		const blob = this.blob(id, "bars");
+		const stored = this.orders(id);
+		if (!run || !blob || !stored) return null;
 		// opens・highs・lows は4本値を保存する前の実行には無い
-		const b = unpack<{
-			/** 残した足の粒度。持たない実行は戦略の足の粒度（run.timeframe） */
-			timeframe?: Timeframe;
+		type Bars = {
 			times: number[];
 			closes: number[];
 			opens?: number[];
 			highs?: number[];
 			lows?: number[];
-		}>(bars);
+		};
+		const packed = unpack<
+			Bars & {
+				/** 残した足の粒度。持たない実行は戦略の足の粒度（run.timeframe） */
+				timeframe?: Timeframe;
+				/** 候補の2つ目以降の銘柄の足。銘柄の id ごと */
+				others?: Record<string, Bars>;
+			}
+		>(blob);
+		const primary = run.instrument.id;
+		const target = instrument ?? primary;
+		const b: Bars =
+			target === primary
+				? packed
+				: (packed.others?.[target] ?? { times: [], closes: [] });
+		const orders = stored.filter((o) => (o.instrument ?? primary) === target);
 		const closeAt = (t: number) => {
 			const i = b.times.findLastIndex((x) => x <= t);
 			return b.closes[Math.max(0, i)] as number;
 		};
 		return {
-			timeframe: b.timeframe ?? (run?.timeframe as Timeframe),
+			timeframe: packed.timeframe ?? run.timeframe,
 			bars: b.times.map((time, i) => {
 				const close = b.closes[i] as number;
 				if (!b.opens || !b.highs || !b.lows) return { time, close };

@@ -20,6 +20,7 @@ import type {
 } from "@trading-studio/core";
 import {
 	acceptsNoJudgment,
+	BTC_JPY,
 	brokerOf,
 	candleTimeframes,
 	chooseStepTimeframe,
@@ -105,6 +106,8 @@ const DAY = 86_400_000;
 const DEFAULT_CASH = 2_000_000;
 const STORAGE_KEY = "backtest-draft";
 const NAME_MAX = 40;
+/** 候補の銘柄。画面で候補を選べるまでは BTC/JPY だけで実行する */
+const CANDIDATES = [BTC_JPY.id];
 export const BACKTEST_NAME_MAX = NAME_MAX;
 const BLANK_NAME = "新しいバックテスト";
 
@@ -727,6 +730,7 @@ function RunForm({
 					skipGaps,
 					criteriaVersion,
 					eventCriteriaVersion: eventHours ? eventCriteriaVersion : null,
+					instruments: CANDIDATES,
 				},
 			});
 			const body = (await res.json()) as {
@@ -773,6 +777,7 @@ function RunForm({
 					criteriaVersion,
 					eventCriteriaVersion: eventHours ? eventCriteriaVersion : null,
 					segmentId: segment?.id ?? null,
+					instruments: CANDIDATES,
 				},
 			});
 			const body = (await res.json()) as {

@@ -36,13 +36,18 @@ export type BacktestInput = {
 	eventCriteriaVersion: number | null;
 	/** 期間を相場データで選ぶ。指定すると from・to は無視し、相場データの期間で実行する */
 	segmentId: number | null;
+	/** 候補の銘柄の id（ADR 0037）。並び順は順位が無いときの優先順。先頭の銘柄で市場評価・相場データを見る */
+	instruments: string[];
 };
 
 export type BacktestRun = {
 	id: number;
 	/** バックテスト名。名前を入れる前の実行は、実行したときの戦略名 */
 	name: string;
+	/** 候補の先頭の銘柄 */
 	instrument: Instrument;
+	/** 候補の銘柄。候補を持つ前の実行は instrument だけ */
+	instruments: Instrument[];
 	params: ConditionSet;
 	/**
 	 * 条件で使う足のうち最も細かいもの（足を使う条件が無ければ判定に使った足）。AI アドバイスで注文の前後を見せる足に使う。
@@ -159,8 +164,14 @@ export type StartBacktestFailure =
 			version: number;
 			coverage: JudgmentCoverage;
 	  }
-	/** 期間内に欠損がある。skipGaps で実行し直せる */
-	| { kind: "gaps"; gaps: Gap[]; gapCount: number; missingBars: number };
+	/** 期間内に欠損がある。skipGaps で実行し直せる。instrument は欠損を見つけた候補の銘柄の id（候補の並びで最初のもの） */
+	| {
+			kind: "gaps";
+			instrument: string;
+			gaps: Gap[];
+			gapCount: number;
+			missingBars: number;
+	  };
 
 export type SaveRunResult =
 	| { ok: true; strategy: StoredStrategy }
@@ -184,20 +195,23 @@ export interface BacktestService {
 	/** 実行中なら中止を求める。中止は計算の区切りで効く */
 	cancel(id: number): BacktestRun | null;
 	list(filter?: Partial<RunFilter>): RunListResult;
-	/** timeframe の足で返す。足が maxBars（既定はチャートの上限）より多ければ too_many */
+	/** instrument（候補の銘柄の id。省くと候補の先頭）の timeframe の足で返す。足が maxBars（既定はチャートの上限）より多ければ too_many */
 	chart(
 		id: number,
 		timeframe: Timeframe,
 		maxBars?: number,
+		instrument?: string,
 	):
 		| { ok: true; chart: BacktestChart }
 		| { ok: false; kind: "not_found" }
 		| { ok: false; kind: "too_many"; count: number; max: number };
+	/** instrument を指定すると、その銘柄の注文だけ */
 	orders(
 		id: number,
 		filter: OrderFilter,
 		offset: number,
 		limit: number,
+		instrument?: string,
 	): { orders: ListedBacktestOrder[]; total: number } | null;
 	order(id: number, orderId: string): ListedBacktestOrder | null;
 	/** 結果の条件を新しい戦略として保存する */

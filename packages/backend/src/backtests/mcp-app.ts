@@ -3,6 +3,10 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ConditionSet } from "@trading-studio/core";
 import * as z from "zod";
+import {
+	COLLECTED_IDS,
+	DEFAULT_INSTRUMENT,
+} from "../market-data/instrument-domain";
 import { feeSchema } from "../mcp/schemas-domain";
 import type { ToolDeps } from "../mcp/tool-app";
 import { fail, paramsSchema, readOnly, text } from "../mcp/tool-app";
@@ -47,6 +51,7 @@ function startFailure(e: StartBacktestFailure) {
 			return fail(
 				"期間内にデータの欠損がある。承知で進めるなら skipGaps: true で実行し直す",
 				{
+					instrument: e.instrument,
 					gapCount: e.gapCount,
 					missingBars: e.missingBars,
 					gaps: e.gaps.slice(0, 10).map((g) => ({
@@ -121,11 +126,17 @@ export function registerBacktestTools(
 				filter: z.enum(["filled", "all"]).default("filled"),
 				offset: z.number().int().min(0).default(0),
 				limit: z.number().int().min(1).max(500).default(100),
+				instrument: z
+					.enum(COLLECTED_IDS)
+					.optional()
+					.describe(
+						"銘柄の id。省くと全銘柄（候補の先頭以外の注文は instrument を持つ）",
+					),
 			},
 			annotations: readOnly,
 		},
-		({ id, filter, offset, limit }) => {
-			const r = backtests.orders(id, filter, offset, limit);
+		({ id, filter, offset, limit, instrument }) => {
+			const r = backtests.orders(id, filter, offset, limit, instrument);
 			if (!r) return fail("バックテストの結果が見つからない");
 			return text({
 				total: r.total,
@@ -161,6 +172,12 @@ export function registerBacktestTools(
 					.int()
 					.optional()
 					.describe("相場データ（list_segments）。渡すとその期間で実行する"),
+				instruments: z
+					.array(z.enum(COLLECTED_IDS))
+					.optional()
+					.describe(
+						"候補の銘柄の id（ADR 0037）。並びは順位が無いときの優先順。省けば strategyId の戦略の候補、params なら BTC/JPY だけ",
+					),
 				initialCash: z.number().int().default(2_000_000).describe("円"),
 				...feeSchema,
 				skipGaps: z
@@ -186,12 +203,15 @@ export function registerBacktestTools(
 		},
 		async (a) => {
 			let params: ConditionSet | null;
+			let instruments: string[] = [DEFAULT_INSTRUMENT.id];
 			if (a.strategyId !== undefined && a.params !== undefined) {
 				return fail("strategyId と params はどちらか一方だけ渡す");
 			}
 			if (a.strategyId !== undefined) {
-				params = strategies.get(a.strategyId)?.params ?? null;
-				if (!params) return fail("戦略が見つからない");
+				const strategy = strategies.get(a.strategyId);
+				if (!strategy) return fail("戦略が見つからない");
+				params = strategy.params;
+				instruments = strategy.instruments;
 			} else if (a.params !== undefined) {
 				params = parseParamsInput({ params: a.params });
 				if (!params) return fail("条件セットの形が違う。get_guide を参照");
@@ -217,6 +237,7 @@ export function registerBacktestTools(
 				initialCash: a.initialCash,
 				fees: { limitPpm: a.limitFeePpm, marketPpm: a.marketFeePpm },
 				skipGaps: a.skipGaps,
+				instruments: a.instruments ?? instruments,
 				criteriaVersion: a.criteriaVersion ?? null,
 				eventCriteriaVersion: a.eventCriteriaVersion ?? null,
 				segmentId,

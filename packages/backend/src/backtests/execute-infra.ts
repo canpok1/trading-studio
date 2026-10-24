@@ -1,6 +1,7 @@
 // バックテストを計算して、保存する形（gzip した JSON）にする。Worker とテストの両方から呼ぶ
 
 import { gzipSync } from "node:zlib";
+import type { Candle } from "@trading-studio/core";
 import {
 	BacktestAborted,
 	BacktestError,
@@ -10,6 +11,14 @@ import {
 import type { RunnerJob, RunnerOutcome } from "./runner-domain";
 
 const pack = (v: unknown) => gzipSync(JSON.stringify(v));
+
+const packBars = (candles: readonly Candle[]) => ({
+	times: candles.map((c) => c.time),
+	closes: candles.map((c) => c.close),
+	opens: candles.map((c) => c.open),
+	highs: candles.map((c) => c.high),
+	lows: candles.map((c) => c.low),
+});
 
 export function execute(
 	job: RunnerJob,
@@ -32,6 +41,7 @@ export function execute(
 			judgments: job.judgments ?? undefined,
 			events: job.events,
 			dvol: job.dvol,
+			otherMarkets: job.otherMarkets,
 			onProgress,
 			shouldAbort,
 		});
@@ -43,11 +53,17 @@ export function execute(
 				filledCount: r.orders.filter((o) => o.status === "filled").length,
 				bars: pack({
 					timeframe: "1d",
-					times: r.candles.map((c) => c.time),
-					closes: r.candles.map((c) => c.close),
-					opens: r.candles.map((c) => c.open),
-					highs: r.candles.map((c) => c.high),
-					lows: r.candles.map((c) => c.low),
+					...packBars(r.candles),
+					...(r.otherCandles
+						? {
+								others: Object.fromEntries(
+									Object.entries(r.otherCandles).map(([id, c]) => [
+										id,
+										packBars(c),
+									]),
+								),
+							}
+						: {}),
 				}),
 				orders: pack(r.orders),
 				trades: pack(r.trades),

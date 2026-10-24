@@ -5,11 +5,14 @@ import type {
 	SingleBuyConditionSet,
 } from "@trading-studio/core";
 import {
+	BTC_JPY,
 	DEFAULT_AGGREGATION_RULE,
 	DEFAULT_BUY_ORDER,
 	DEFAULT_PARTIAL_SELL,
+	ETH_JPY,
 	singleBuy,
 	TIMEFRAME_MS,
+	XRP_JPY,
 } from "@trading-studio/core";
 import { inlineRunner } from "../src/backtests/inline-runner-infra";
 import type { BacktestRun } from "../src/backtests/types-domain";
@@ -51,19 +54,20 @@ const FLAT: SingleBuyConditionSet = {
 };
 const PARAMS: ConditionSet = singleBuy(FLAT);
 
-// 2日周期で ±5% 動く値動き。買いの指値が約定するよう、安値側のひげを長くする
-function candles(from: number, bars: number): Candle[] {
+// 2日周期で ±5% 動く値動き。買いの指値が約定するよう、安値側のひげを長くする。scale で価格の水準を変える
+function candles(from: number, bars: number, scale = 1): Candle[] {
 	return Array.from({ length: bars }, (_, i) => {
 		const t = from + i * H;
 		const close = Math.round(
 			10_000_000 *
+				scale *
 				(1 + 0.05 * Math.sin((2 * Math.PI * (t - START)) / (48 * H))),
 		);
 		return {
 			time: t,
 			open: close,
-			high: close + 10_000,
-			low: close - 150_000,
+			high: close + Math.round(10_000 * scale),
+			low: close - Math.round(150_000 * scale),
 			close,
 			volume: 1_000_000,
 		};
@@ -72,12 +76,17 @@ function candles(from: number, bars: number): Candle[] {
 
 type T = ReturnType<typeof createTestApp>;
 
-function importBars(t: T, rows: Candle[], tf: "15m" | "1h" | "1d" = "1h") {
-	const id = t.marketDataRepo.createImport(tf, "a.csv", 0);
-	t.marketDataRepo.insertImported(tf, rows, id);
+function importBars(
+	t: T,
+	rows: Candle[],
+	tf: "15m" | "1h" | "1d" = "1h",
+	repo = t.marketDataRepo,
+) {
+	const id = repo.createImport(tf, "a.csv", 0);
+	repo.insertImported(tf, rows, id);
 	const first = rows[0] as Candle;
 	const last = rows.at(-1) as Candle;
-	t.marketDataRepo.refillDerived(first.time, last.time + 1, id);
+	repo.refillDerived(first.time, last.time + 1, id);
 }
 
 const body = (over: Record<string, unknown> = {}) => ({
@@ -822,5 +831,114 @@ describe("DVOL の条件", () => {
 		saveDvol(high, 7000);
 		expect(await trades(high)).toBe(0);
 		expect(await trades(setup())).toBe(0);
+	});
+});
+
+describe("候補の銘柄が複数", () => {
+	const IDS = [BTC_JPY.id, ETH_JPY.id, XRP_JPY.id];
+	// BTC/JPY 以外を含む候補は金額で注文する
+	const byAmount: ConditionSet = {
+		...PARAMS,
+		buys: PARAMS.buys.map((b) => ({ ...b, orderAmount: 100_000 })),
+		maxHoldings: 2,
+	};
+	// ETH は 50 万円、XRP は 100 円（価格の最小単位は 0.001 円）前後
+	const setupAll = () => {
+		const t = setup();
+		importBars(t, candles(START, DAYS * 24, 0.05), "1h", t.repoOf(ETH_JPY.id));
+		importBars(t, candles(START, DAYS * 24, 0.01), "1h", t.repoOf(XRP_JPY.id));
+		return t;
+	};
+
+	test("候補の銘柄すべてで完走し、銘柄ごとの成績・チャート・注文が取れる", async () => {
+		const t = setupAll();
+		const r = await post(t, body({ params: byAmount, instruments: IDS }));
+		expect(r.status).toBe(202);
+		const id = (r.json.run as BacktestRun).id;
+		await t.backtests.running();
+		const run = (await getJson<{ run: BacktestRun }>(t, `/api/backtests/${id}`))
+			.run;
+		expect(run.status).toBe("done");
+		expect(run.instruments.map((i) => i.id)).toEqual(IDS);
+		const by = run.summary?.byInstrument ?? {};
+		expect(Object.keys(by)).toEqual(IDS);
+		expect(Object.values(by).reduce((a, x) => a + x.pnl, 0)).toBe(
+			run.summary?.pnl as number,
+		);
+		expect(Object.values(by).reduce((a, x) => a + x.trades, 0)).toBe(
+			run.summary?.trades as number,
+		);
+		expect(by[ETH_JPY.id]?.trades).toBeGreaterThan(0);
+
+		// 注文とチャートの印は銘柄ごとに絞れる。全銘柄の注文は銘柄ごとの和
+		const orders = (q = "") =>
+			getJson<{ orders: { instrument?: string }[]; total: number }>(
+				t,
+				`/api/backtests/${id}/orders?filter=all&limit=500${q}`,
+			);
+		const all = await orders();
+		const per = await Promise.all(IDS.map((i) => orders(`&instrument=${i}`)));
+		expect(per.reduce((a, x) => a + x.total, 0)).toBe(all.total);
+		const eth = per[1] as Awaited<ReturnType<typeof orders>>;
+		expect(eth.total).toBeGreaterThan(0);
+		expect(eth.orders.every((o) => o.instrument === ETH_JPY.id)).toBe(true);
+		const chart = await getJson<{
+			bars: { close: number }[];
+			markers: { id: string }[];
+		}>(t, `/api/backtests/${id}/chart?timeframe=1h&instrument=${ETH_JPY.id}`);
+		expect(chart.bars).toHaveLength(18 * 24);
+		// ETH の価格の足
+		expect(chart.bars[0]?.close).toBeLessThan(1_000_000);
+		expect(chart.markers).toHaveLength(eth.total);
+		// 候補に無い銘柄は無い
+		const other = await post(t, body());
+		await t.backtests.running();
+		const btcOnly = (other.json.run as BacktestRun).id;
+		expect(
+			(
+				await t.app.request(
+					`/api/backtests/${btcOnly}/chart?timeframe=1h&instrument=${ETH_JPY.id}`,
+				)
+			).status,
+		).toBe(404);
+	});
+
+	test("候補を省くと BTC/JPY だけで実行し、銘柄ごとの成績は持たない", async () => {
+		const t = setup();
+		const r = await post(t, body());
+		await t.backtests.running();
+		const run = (
+			await getJson<{ run: BacktestRun }>(
+				t,
+				`/api/backtests/${(r.json.run as BacktestRun).id}`,
+			)
+		).run;
+		expect(run.instruments.map((i) => i.id)).toEqual([BTC_JPY.id]);
+		expect(run.summary?.byInstrument).toBeUndefined();
+	});
+
+	test("候補の銘柄の検証と、銘柄ごとのデータの不足で実行しない", async () => {
+		const t = setup();
+		expect(
+			(await post(t, body({ instruments: ["coincheck:doge_jpy"] }))).json,
+		).toMatchObject({ kind: "invalid_input", field: "instruments" });
+		// 数量で注文する条件は BTC/JPY 以外を候補にできない
+		expect((await post(t, body({ instruments: IDS }))).json).toMatchObject({
+			kind: "invalid_params",
+			errors: [{ path: "instruments" }],
+		});
+		// ETH の足が無い
+		const r = await post(t, body({ params: byAmount, instruments: IDS }));
+		expect(r.status).toBe(400);
+		expect(r.json).toMatchObject({ kind: "no_data" });
+		expect(r.json.message).toStartWith("ETH/JPY: ");
+	});
+
+	test("欠損はそれを見つけた銘柄を添えて返す", async () => {
+		const t = setupAll();
+		const xrp = t.repoOf(XRP_JPY.id);
+		xrp.deleteCandles("1h", START + 5 * 24 * H, START + 5 * 24 * H + 3 * H, 3);
+		const r = await post(t, body({ params: byAmount, instruments: IDS }));
+		expect(r.json).toMatchObject({ kind: "gaps", instrument: XRP_JPY.id });
 	});
 });

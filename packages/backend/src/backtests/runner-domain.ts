@@ -2,6 +2,7 @@
 
 import type {
 	AggregationRule,
+	BacktestMarket,
 	BacktestSummary,
 	Candle,
 	ConditionSet,
@@ -14,6 +15,7 @@ import type {
 } from "@trading-studio/core";
 
 export type RunnerJob = {
+	/** 候補の先頭の銘柄 */
 	instrument: Instrument;
 	params: ConditionSet;
 	/** 条件で使う粒度ごとの足。指標の計算に使うため期間より前の足も含む */
@@ -36,6 +38,8 @@ export type RunnerJob = {
 	events: EventCalendar;
 	/** DVOL の1時間足。DVOL の条件が使う期間より前も含む。条件が無ければ空 */
 	dvol: DvolPoint[];
+	/** 候補の2つ目以降の銘柄の足。粒度は先頭の銘柄と同じ */
+	otherMarkets: BacktestMarket[];
 };
 
 /** 保存する結果。中身は gzip した JSON */
