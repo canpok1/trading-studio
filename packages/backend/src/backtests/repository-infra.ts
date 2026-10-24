@@ -22,6 +22,7 @@ import type {
 	BacktestChart,
 	BacktestRun,
 	BacktestStatus,
+	EquityPoint,
 	RunFilter,
 	RunListResult,
 } from "./types-domain";
@@ -323,6 +324,17 @@ export class SqliteBacktestRepository implements BacktestRepository {
 				return { id: o.id, side: o.side, status: o.status, time, price };
 			}),
 		};
+	}
+
+	equity(id: number): EquityPoint[] | null {
+		const blob = this.blob(id, "bars");
+		if (!blob) return null;
+		const e = unpack<{ equity?: { times: number[]; closes: number[] } }>(
+			blob,
+		).equity;
+		return e
+			? e.times.map((time, i) => ({ time, value: e.closes[i] as number }))
+			: null;
 	}
 
 	/** 往復の取引。結果が無ければ null */

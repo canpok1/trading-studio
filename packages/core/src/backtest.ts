@@ -184,6 +184,8 @@ export type BacktestResult = {
 	candles: Candle[];
 	/** 候補の2つ目以降の銘柄の期間内の日足。銘柄の id ごと */
 	otherCandles?: Record<string, Candle[]>;
+	/** 候補が2つ以上のときの総資産（未決済は終値で評価）の日足。終値がその日の最後の判定の総資産 */
+	equity?: Candle[];
 };
 
 /** データが条件で使う足より粗ければエラーにする（日足では1時間足の条件を検証できないため） */
@@ -349,6 +351,8 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 			return a + notional(m.instrument, bar.close, quantity, "floor");
 		}, 0);
 
+	// 候補が2つ以上のときの足ごとの総資産（日足にまとめて結果に残す）
+	const equities: Candle[] = [];
 	let peak = initialCash;
 	let peakAt = times[0] ?? from;
 	let maxDd = 0;
@@ -473,6 +477,16 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 
 		// 足ごとの時価評価でドローダウンを測る
 		const equity = equityOf();
+		if (markets.length > 1) {
+			equities.push({
+				time,
+				open: equity,
+				high: equity,
+				low: equity,
+				close: equity,
+				volume: 0,
+			});
+		}
 		if (equity > peak) {
 			peak = equity;
 			peakAt = closeAt;
@@ -561,6 +575,7 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 							aggregateCandles(inRangeOf(m), "1d", calendar),
 						]),
 					),
+					equity: aggregateCandles(equities, "1d", calendar),
 				}
 			: {}),
 	};
