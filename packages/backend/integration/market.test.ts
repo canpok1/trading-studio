@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { TIMEFRAME_MS } from "@trading-studio/core";
+import { BTC_JPY, ETH_JPY, TIMEFRAME_MS } from "@trading-studio/core";
 import type { LatestMarket } from "../src/market/types-domain";
 import { createTestApp } from "./test-app";
 
@@ -150,6 +150,53 @@ describe("チャートの足の API", () => {
 		).toBe(400);
 		expect(
 			(await t.app.request("/api/market/bars?timeframe=1m&range=2d")).status,
+		).toBe(400);
+	});
+});
+
+describe("銘柄を選んで価格と足を読む", () => {
+	const q = (id: string) => `instrument=${encodeURIComponent(id)}`;
+
+	test("指定した銘柄の価格と足を返し、省くか空なら既定の銘柄（BTC/JPY）", async () => {
+		const t = createTestApp();
+		t.clock.now = T0 + DAY;
+		t.marketDataRepo.upsertCollected([candle(T0, 100)]);
+		const eth = t.repoOf(ETH_JPY.id);
+		eth.upsertCollected([candle(T0, 500_000)]);
+		eth.insertImported(
+			"1h",
+			[candle(T0 + 3_600_000, 510_000)],
+			eth.createImport("1h", "a.csv", 0),
+		);
+		const price = async (query: string) =>
+			(
+				(await (
+					await t.app.request(`/api/market/latest${query}`)
+				).json()) as LatestMarket
+			).price;
+		expect(await price(`?${q(ETH_JPY.id)}`)).toBe(500_000);
+		expect(await price("")).toBe(100);
+		expect(await price("?instrument=")).toBe(100);
+
+		const bars = async (query: string) =>
+			(await (
+				await t.app.request(`/api/market/bars?timeframe=1h&range=1d${query}`)
+			).json()) as { instrument: { id: string }; bars: { close: number }[] };
+		const ethBars = await bars(`&${q(ETH_JPY.id)}`);
+		expect(ethBars.instrument.id).toBe(ETH_JPY.id);
+		expect(ethBars.bars.map((b) => b.close)).toEqual([510_000]);
+		expect((await bars("")).instrument.id).toBe(BTC_JPY.id);
+	});
+
+	test("収集していない銘柄は 400", async () => {
+		const t = createTestApp();
+		const unknown = q("coincheck:doge_jpy");
+		expect((await t.app.request(`/api/market/latest?${unknown}`)).status).toBe(
+			400,
+		);
+		expect(
+			(await t.app.request(`/api/market/bars?timeframe=1h&range=1d&${unknown}`))
+				.status,
 		).toBe(400);
 	});
 });

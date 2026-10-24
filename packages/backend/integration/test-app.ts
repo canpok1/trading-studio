@@ -22,7 +22,7 @@ import type { BacktestRunner } from "../src/backtests/runner-domain";
 import { createCalendarService } from "../src/calendar/calendar-domain";
 import type { IcalEvent } from "../src/calendar/repository-domain";
 import { SqliteCalendarRepository } from "../src/calendar/repository-infra";
-import type { Collector, LiveMarket } from "../src/collector/collector-domain";
+import type { LiveMarket } from "../src/collector/collector-domain";
 import { createDatasetService } from "../src/datasets/datasets-domain";
 import { SqliteDatasetRepository } from "../src/datasets/repository-infra";
 import type { Db } from "../src/db/open-infra";
@@ -103,13 +103,15 @@ export function createTestApp(
 		]),
 	);
 	const liveOf = (id: string) => lives.get(id) as { current: LiveMarket };
-	const collector: Pick<Collector, "live"> = { live: () => live.current };
 	const clock = { now: 4_000 };
-	const market = createMarketService({
-		collector,
-		repo: marketDataRepo,
-		now: () => clock.now,
-	});
+	const marketByInstrument = collectedRepos.map((repo) =>
+		createMarketService({
+			collector: { live: () => liveOf(repo.instrument.id).current },
+			repo,
+			now: () => clock.now,
+		}),
+	);
+	const market = marketByInstrument[0] as (typeof marketByInstrument)[number];
 	// 収集は動かさず、テストから newsRepo に書き込む
 	const newsRepo = new SqliteNewsRepository(db, () => clock.now);
 	const newsRun = {
@@ -268,6 +270,7 @@ export function createTestApp(
 		marketData,
 		marketDataByInstrument: [marketData, ethMarketData],
 		market,
+		marketByInstrument,
 		strategies,
 		backtests,
 		advice,

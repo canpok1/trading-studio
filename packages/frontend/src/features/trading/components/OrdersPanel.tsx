@@ -1,6 +1,7 @@
 // ホームの注文・約定。状態と売買で絞り込み、日ごとにまとめて10件ずつ出す
 
 import type { StoredOrder } from "@trading-studio/backend";
+import type { Instrument } from "@trading-studio/core";
 import { instrumentOf } from "@trading-studio/core";
 import { useMemo, useState } from "react";
 import { OrderRow, orderTime } from "../../../shared/components/OrderViews";
@@ -35,14 +36,24 @@ const SIDE_OPTIONS: readonly (readonly [SideFilter, string])[] = [
 	["sell", "売"],
 ];
 
-/** 選んだ注文の詳細は、チャートの印と共通なのでホームが出す */
+/** 全銘柄の注文を出す選択肢 */
+const ALL_INSTRUMENTS = "all";
+
+/**
+ * 選んだ注文の詳細は、チャートの印と共通なのでホームが出す。
+ * 候補が2つ以上なら、選んでいる銘柄（instrument）の注文を出し、全銘柄に切り替えられる
+ */
 export function OrdersPanel({
 	strategyId,
+	instruments,
+	instrument,
 	active,
 	selectedId,
 	onSelect,
 }: {
 	strategyId: number;
+	instruments: readonly Instrument[];
+	instrument: string | null;
 	active: boolean;
 	selectedId: string | null;
 	onSelect: (id: string) => void;
@@ -50,17 +61,29 @@ export function OrdersPanel({
 	const [kind, setKind] = useState<KindFilter>("all");
 	const [side, setSide] = useState<SideFilter>("all");
 	const [limit, setLimit] = useState(ORDERS_PAGE);
+	const multi = instruments.length > 1;
+	// 全銘柄を選んでいなければ、上で選んでいる銘柄に付いていく
+	const [allInstruments, setAllInstruments] = useState(false);
+	const scope = multi && !allInstruments ? instrument : null;
+	const scoped = instruments.find((i) => i.id === scope) ?? null;
+	// 上で銘柄を切り替えたときも、絞り込みを変えたときと同じく最初の10件に戻す
+	const [shownScope, setShownScope] = useState(scope);
+	if (shownScope !== scope) {
+		setShownScope(scope);
+		setLimit(ORDERS_PAGE);
+	}
 	const loaded = useTradingOrders(
 		{
 			strategyId,
 			...(kind !== "all" && { status: kind }),
 			...(side !== "all" && { side }),
+			...(scope && { instrument: scope }),
 			limit,
 		},
 		active,
 	);
 	// 「さらに表示」で件数を変えても、届くまでは今の一覧を出したままにする（一覧が縮んで位置がずれないように）
-	const filterKey = `${kind}:${side}`;
+	const filterKey = `${kind}:${side}:${scope}`;
 	const [kept, setKept] = useState<{
 		filterKey: string;
 		orders: StoredOrder[];
@@ -99,7 +122,24 @@ export function OrdersPanel({
 
 	return (
 		<section aria-label="注文・約定" className={`${PANEL} lg:col-span-2`}>
-			<PanelHeader title="注文・約定" />
+			<PanelHeader
+				title={scoped ? `注文・約定（${scoped.quantityUnit}）` : "注文・約定"}
+			/>
+			{multi && (
+				<div className="flex flex-wrap items-center gap-1.5">
+					<FilterChips
+						label="銘柄"
+						options={[
+							["one", scopeLabel(instruments, instrument)],
+							[ALL_INSTRUMENTS, "全銘柄"],
+						]}
+						value={allInstruments ? ALL_INSTRUMENTS : "one"}
+						onChange={filter((v: string) =>
+							setAllInstruments(v === ALL_INSTRUMENTS),
+						)}
+					/>
+				</div>
+			)}
 			<div className="flex flex-wrap items-center gap-1.5">
 				<FilterChips
 					label="状態"
@@ -171,6 +211,11 @@ export function OrdersPanel({
 											key={o.id}
 											order={o}
 											instrument={instrumentOf(o.instrument)}
+											chip={
+												multi && !scope
+													? instrumentOf(o.instrument).quantityUnit
+													: undefined
+											}
 											selected={o.id === selectedId}
 											onClick={() => onSelect(o.id)}
 										/>
@@ -203,6 +248,13 @@ export function OrdersPanel({
 				</>
 			)}
 		</section>
+	);
+}
+
+/** 選んでいる銘柄の短い名前 */
+function scopeLabel(instruments: readonly Instrument[], id: string | null) {
+	return (
+		(instruments.find((i) => i.id === id) ?? instruments[0])?.quantityUnit ?? ""
 	);
 }
 

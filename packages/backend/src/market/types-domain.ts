@@ -35,6 +35,8 @@ export type MarketBarsResult =
 	| { ok: false; kind: "too_many"; count: number; max: number };
 
 export interface MarketService {
+	/** 価格と足の銘柄 */
+	readonly instrument: Instrument;
 	latest(): LatestMarket;
 	/** 粒度と期間を指定した足。history は期間の前に足す本数（EMA の計算に使う） */
 	bars(

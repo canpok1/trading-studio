@@ -77,6 +77,7 @@ export function MoveRow({
 	multi,
 	detailed,
 	nameClass,
+	tag,
 }: {
 	move: WatchMove;
 	instrument: Instrument;
@@ -84,6 +85,8 @@ export function MoveRow({
 	multi: boolean;
 	detailed: boolean;
 	nameClass?: string;
+	/** 候補が2つ以上の戦略で、どの銘柄の動きかを添える */
+	tag?: string;
 }) {
 	const t = triggerView(move.trigger, price, instrument);
 	return (
@@ -94,6 +97,7 @@ export function MoveRow({
 				multi={multi}
 				nameClass={nameClass}
 			/>
+			{tag && <span className="font-semibold">{tag}</span>}
 			<span className="flex items-baseline gap-x-0.5">
 				<span aria-hidden className={ICON_CLASS[t.icon]}>
 					{t.icon}

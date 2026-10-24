@@ -4,9 +4,22 @@ import { validator } from "hono/validator";
 import { parseBarsQuery } from "./market-domain";
 import type { MarketService } from "./types-domain";
 
-export function marketRoutes(service: MarketService) {
+/**
+ * byInstrument は収集している銘柄ごとの価格と足。instrument（クエリ）で銘柄を選び、省くか空なら既定の銘柄（service）を使う。
+ * クエリの検査を足すとクライアントの型が変わるので、銘柄は直接読む
+ */
+export function marketRoutes(
+	service: MarketService,
+	byInstrument: readonly MarketService[],
+) {
+	const pick = (id: string | undefined) =>
+		!id ? service : (byInstrument.find((s) => s.instrument.id === id) ?? null);
+	const unknown = { message: "収集していない銘柄" };
 	return new Hono()
-		.get("/latest", (c) => c.json(service.latest()))
+		.get("/latest", (c) => {
+			const s = pick(c.req.query("instrument"));
+			return s ? c.json(s.latest(), 200) : c.json(unknown, 400);
+		})
 		.get(
 			"/bars",
 			validator("query", (q, c) => {
@@ -17,7 +30,9 @@ export function marketRoutes(service: MarketService) {
 			compress(),
 			(c) => {
 				const { timeframe, range, history } = c.req.valid("query");
-				const r = service.bars(timeframe, range, history);
+				const s = pick(c.req.query("instrument"));
+				if (!s) return c.json(unknown, 400);
+				const r = s.bars(timeframe, range, history);
 				if (!r.ok) {
 					return c.json(
 						{

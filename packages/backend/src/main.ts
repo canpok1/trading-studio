@@ -127,7 +127,6 @@ const collectorOf = (id: string) =>
 	collectors[
 		COLLECTED.findIndex((i) => i.id === id)
 	] as (typeof collectors)[number];
-const collector = collectorOf(DEFAULT_INSTRUMENT.id);
 const collectorTimer = setInterval(() => {
 	for (const c of collectors) c.tick();
 }, 1_000);
@@ -301,7 +300,15 @@ const news = createNewsService({
 	rule: () => scoreRepo.aggregationRule(),
 	rescoring: () => scorer.rescoring(),
 });
-const market = createMarketService({ collector, repo: marketDataRepo });
+const marketByInstrument = COLLECTED.map((_, i) =>
+	createMarketService({
+		collector: collectors[i] as (typeof collectors)[number],
+		repo: collectedRepos[i] as SqliteMarketDataRepository,
+	}),
+);
+const market = marketByInstrument[
+	COLLECTED.findIndex((i) => i.id === DEFAULT_INSTRUMENT.id)
+] as (typeof marketByInstrument)[number];
 const server = new Hono()
 	.use("/api/*", slowRequestLog())
 	// 画面の配信（GET *）より前に置く
@@ -333,6 +340,7 @@ const server = new Hono()
 			marketData,
 			marketDataByInstrument,
 			market,
+			marketByInstrument,
 			strategies,
 			backtests,
 			advice,
