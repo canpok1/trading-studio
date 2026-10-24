@@ -24,6 +24,7 @@ import {
 	compared,
 	isCompareKey,
 } from "../utils/compare";
+import { heldInstruments } from "../utils/holdings";
 import { MoveRow } from "./StrategyWatch";
 
 /** 要約を読み直す間隔（自動取引の状態と同じ） */
@@ -360,23 +361,24 @@ function CardMoves({
 			</span>
 		);
 	}
-	const moves = (
-		s.status.enabled
-			? n.moves
-			: n.moves.filter((m) => m.trigger.kind === "order")
-	).slice(0, CARD_MOVES);
+	const shown = (ms: typeof n.moves) =>
+		s.status.enabled ? ms : ms.filter((m) => m.trigger.kind === "order");
+	const moves = cardMoves(s)
+		.filter((x) => shown([x.move]).length > 0)
+		.slice(0, CARD_MOVES);
 	return (
 		<span className={`flex flex-col gap-1 text-xs ${className}`}>
 			{!s.status.enabled && <span className="text-text-2">{STOPPED_TEXT}</span>}
-			{moves.map((m) => (
+			{moves.map(({ move: m, instrument, price }) => (
 				<MoveRow
-					key={`${m.buyId}:${m.kind}`}
+					key={`${instrument.id}:${m.buyId}:${m.kind}`}
 					move={m}
-					instrument={s.status.instrument}
-					price={n.price}
+					instrument={instrument}
+					price={price}
 					multi={n.multiBuy}
 					detailed={false}
 					nameClass={list ? "" : NARROW_HIDDEN}
+					tag={n.markets ? instrument.quantityUnit : undefined}
 				/>
 			))}
 			{s.status.enabled && moves.length === 0 && (
@@ -384,6 +386,44 @@ function CardMoves({
 			)}
 		</span>
 	);
+}
+
+/**
+ * カードに並べる次の動き。候補が2つ以上なら、保有中の銘柄から順に各銘柄の優先度の高いものを1つずつ交互に取る
+ * （1つの銘柄の動きでカードが埋まらないように）
+ */
+function cardMoves(s: StrategySummary) {
+	const n = s.nextMoves;
+	if (!n) return [];
+	if (!n.markets) {
+		return n.moves.map((move) => ({
+			move,
+			instrument: s.status.instrument,
+			price: n.price,
+		}));
+	}
+	const held = new Set(heldInstruments(s.status).map((i) => i.id));
+	const markets = n.markets.flatMap((m) => {
+		const instrument = s.status.instruments.find((i) => i.id === m.instrument);
+		return instrument ? [{ ...m, instrument }] : [];
+	});
+	const ordered = [
+		...markets.filter((m) => held.has(m.instrument.id)),
+		...markets.filter((m) => !held.has(m.instrument.id)),
+	];
+	const out: {
+		move: (typeof n.moves)[number];
+		instrument: (typeof markets)[number]["instrument"];
+		price: number;
+	}[] = [];
+	const longest = Math.max(0, ...ordered.map((m) => m.moves.length));
+	for (let k = 0; k < longest; k++) {
+		for (const m of ordered) {
+			const move = m.moves[k];
+			if (move) out.push({ move, instrument: m.instrument, price: m.price });
+		}
+	}
+	return out;
 }
 
 function LayoutButton({

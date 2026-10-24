@@ -5,8 +5,19 @@ import type {
 	StoredOrder,
 	StoredStrategy,
 } from "@trading-studio/backend";
-import type { StrategyWatch, Timeframe, WatchMove } from "@trading-studio/core";
-import { BTC_JPY, TIMEFRAME_MS } from "@trading-studio/core";
+import type {
+	Instrument,
+	StrategyWatch,
+	Timeframe,
+	WatchMove,
+} from "@trading-studio/core";
+import {
+	BTC_JPY,
+	ETH_JPY,
+	findInstrument,
+	TIMEFRAME_MS,
+	XRP_JPY,
+} from "@trading-studio/core";
 import type { FakeApi } from "./fake-api";
 import { routes } from "./fake-api";
 import {
@@ -30,7 +41,57 @@ export type HomeState = {
 	moves: WatchMove[] | null;
 	/** 買いが2つ以上の戦略として次の動きを返す（種類に買いの名前を添える） */
 	multiBuy?: boolean;
+	/** BTC/JPY 以外の銘柄の今の価格（銘柄の id ごと）。無ければ price */
+	prices?: Record<string, number>;
+	/** 銘柄ごとの見張りの次の動き。無ければ moves */
+	movesOf?: Record<string, WatchMove[]>;
 };
+
+/** BTC・ETH・XRP を候補にし、ETH と XRP を持っている戦略（ADR 0037） */
+export function multiInstrumentRun(
+	over: Partial<AutoTradingStatus> & Pick<AutoTradingStatus, "id" | "name">,
+): AutoTradingStatus {
+	const base = tradingRun(over);
+	const holding = (
+		instrument: Instrument,
+		quantity: number,
+		entry: number,
+		price: number,
+	) => ({
+		instrument: instrument.id,
+		position: { quantity, entryPrice: entry, openedAt: 0 },
+		lots: [
+			{
+				id: `${instrument.quantityUnit}1`,
+				quantity,
+				entryPrice: entry,
+				openedAt: 0,
+				partialExitDone: false,
+				buyId: "b1",
+			},
+		],
+		price,
+	});
+	return {
+		...base,
+		instruments: [BTC_JPY, ETH_JPY, XRP_JPY],
+		account: {
+			...base.account,
+			cash: 800_000,
+			holdings: [
+				{
+					instrument: BTC_JPY.id,
+					position: { quantity: 0, entryPrice: null, openedAt: null },
+					lots: [],
+					price: 10_000_000,
+				},
+				holding(ETH_JPY, 18_000, 500_000, 520_000),
+				holding(XRP_JPY, 52_000, 200_000, 210_000),
+			],
+		},
+		...over,
+	};
+}
 
 /** 買いの発動価格が1つある見張り */
 function watchOf(price: number, moves: WatchMove[] | null): StrategyWatch {
@@ -101,10 +162,43 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 		...init,
 	};
 	const find = (id: string) => state.runs.find((r) => r.id === Number(id));
+	const priceOf = (id: string | null | undefined) =>
+		(id && state.prices?.[id]) || state.price;
+	const instrumentQuery = (q: URLSearchParams) =>
+		findInstrument(q.get("instrument") ?? "") ?? BTC_JPY;
 	const performanceOf = (run: AutoTradingStatus) => {
 		const { initialCash, equity } = run.account;
 		const pnl = equity === null ? null : equity - initialCash;
+		const sells = (id: string) =>
+			state.orders.filter(
+				(o) => o.runId === run.id && o.side === "sell" && o.instrument === id,
+			);
 		return tradingPerformance({
+			...(run.instruments.length > 1
+				? {
+						realizedPnl: run.instruments.reduce(
+							(n, i) => n + sells(i.id).reduce((m, o) => m + (o.pnl ?? 0), 0),
+							0,
+						),
+						byInstrument: Object.fromEntries(
+							run.instruments.map((i) => [
+								i.id,
+								{
+									realizedPnl: sells(i.id).reduce(
+										(n, o) => n + (o.pnl ?? 0),
+										0,
+									),
+									trades: sells(i.id).length,
+									wins: 0,
+									losses: 0,
+									winRate: null,
+									profitFactor: null,
+									averageHoldingMs: null,
+								},
+							]),
+						),
+					}
+				: {}),
 			resetAt: run.account.resetAt,
 			initialCash,
 			cash: run.account.cash,
@@ -122,16 +216,16 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 		return run;
 	};
 	api
-		.on(routes.api.market.latest, "$get", () =>
+		.on(routes.api.market.latest, "$get", (req) =>
 			marketLatest({
-				price: state.price,
+				price: priceOf(req.query.get("instrument")),
 				priceTime: Date.now(),
 				price24hAgo: 9_800_000,
 				collector: state.collector,
 			}),
 		)
 		.on(routes.api.market.bars, "$get", (req) => ({
-			instrument: BTC_JPY,
+			instrument: instrumentQuery(req.query),
 			bars: chartBars(req.query.get("timeframe") as Timeframe, Date.now()),
 		}))
 		.on(routes.api.data.coverage, "$get", () => ({ timeframes: [] }))
@@ -230,7 +324,14 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 		.on(routes.api.trading.strategies[":id"].watch, "$get", (req, reply) => {
 			const run = find(req.params.id as string);
 			if (!run) return reply(404, RUN_NOT_FOUND);
-			return { instrument: BTC_JPY, watch: watchOf(state.price, state.moves) };
+			const instrument = instrumentQuery(req.query);
+			return {
+				instrument,
+				watch: watchOf(
+					priceOf(instrument.id),
+					state.movesOf?.[instrument.id] ?? state.moves,
+				),
+			};
 		})
 		.on(routes.api.trading.summaries, "$get", () => ({
 			summaries: state.runs
@@ -239,7 +340,9 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 						r.mode === "paper" && (r.enabled || r.strategyLock === "holding"),
 				)
 				.map((status) => {
-					const w = watchOf(state.price, state.moves);
+					const watchFor = (id: string) =>
+						watchOf(priceOf(id), state.movesOf?.[id] ?? state.moves);
+					const w = watchFor(status.instrument.id);
 					return {
 						status,
 						performance: performanceOf(status),
@@ -247,6 +350,18 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 							price: w.price,
 							moves: w.moves,
 							multiBuy: state.multiBuy ?? false,
+							...(status.instruments.length > 1
+								? {
+										markets: status.instruments.map((i) => {
+											const m = watchFor(i.id);
+											return {
+												instrument: i.id,
+												price: m.price,
+												moves: m.moves,
+											};
+										}),
+									}
+								: {}),
 						},
 					};
 				}),
@@ -257,7 +372,8 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 				(o) =>
 					(!q.has("strategy") || o.runId === Number(q.get("strategy"))) &&
 					(!q.has("status") || o.status === q.get("status")) &&
-					(!q.has("side") || o.side === q.get("side")),
+					(!q.has("side") || o.side === q.get("side")) &&
+					(!q.has("instrument") || o.instrument === q.get("instrument")),
 			);
 			return {
 				orders: hit.slice(0, Number(q.get("limit") ?? hit.length)),

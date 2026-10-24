@@ -53,6 +53,7 @@ export function createMarketService({
 	now?: () => number;
 }): MarketService {
 	return {
+		instrument: repo.instrument,
 		latest() {
 			const live = collector.live();
 			const t = now();

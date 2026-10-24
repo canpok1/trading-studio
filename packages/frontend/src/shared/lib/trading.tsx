@@ -106,6 +106,8 @@ export type OrderQuery = {
 	strategyId?: number;
 	status?: StoredOrder["status"];
 	side?: StoredOrder["side"];
+	/** 銘柄の id */
+	instrument?: string;
 	limit?: number;
 };
 
@@ -132,6 +134,7 @@ export function useTradingOrders(query: OrderQuery, active: boolean) {
 						}),
 						...(q.status && { status: q.status }),
 						...(q.side && { side: q.side }),
+						...(q.instrument && { instrument: q.instrument }),
 						...(q.limit && { limit: String(q.limit) }),
 					},
 				})
@@ -211,39 +214,55 @@ export function useTradingPerformance(strategyId: number, active: boolean) {
 	};
 }
 
-/** 戦略を今の価格で試算した見張りを読み、5秒ごとに読み直す。読めなければ前の値を残す */
-export function useStrategyWatch(strategyId: number, active: boolean) {
+/**
+ * 戦略を今の価格で試算した見張りを読み、5秒ごとに読み直す。読めなければ前の値を残す。
+ * instrument は見張る銘柄の id（null なら候補の先頭）
+ */
+export function useStrategyWatch(
+	strategyId: number,
+	instrument: string | null,
+	active: boolean,
+) {
 	const api = useApi();
-	// どの戦略の見張りかを持ち、切り替え直後に前の見張りを出さない
+	// どの戦略・銘柄の見張りかを持ち、切り替え直後に前の見張りを出さない
+	const key = `${strategyId}:${instrument}`;
 	const [loaded, setLoaded] = useState<{
-		strategyId: number;
+		key: string;
 		instrument: Instrument;
 		watch: StrategyWatch | null;
 	} | null>(null);
 	const seq = useRef(0);
 	const load = useCallback(async () => {
 		const my = ++seq.current;
+		// 銘柄は API の型に出していないので、変数に入れて渡す
+		const args: {
+			param: { id: string };
+			query: { instrument?: string };
+		} = {
+			param: { id: String(strategyId) },
+			query: instrument ? { instrument } : {},
+		};
 		try {
 			const r = await api.api.trading.strategies[":id"].watch
-				.$get({ param: { id: String(strategyId) } })
+				.$get(args)
 				.then((res) =>
 					readJson<{ instrument: Instrument; watch: StrategyWatch | null }>(
 						res,
 					),
 				);
 			if (my === seq.current) {
-				setLoaded({ strategyId, instrument: r.instrument, watch: r.watch });
+				setLoaded({ key, instrument: r.instrument, watch: r.watch });
 			}
 		} catch {
 			// 見張りは補助の表示なので、読めなければ前の値のまま残す
 		}
-	}, [api, strategyId]);
+	}, [api, strategyId, instrument, key]);
 	useEffect(() => {
 		if (active) load();
 	}, [active, load]);
 	useInterval(load, STATUS_MS, active);
 	// 見張る銘柄は見張りと一緒に返す。見張りが無ければ null
-	return loaded?.strategyId === strategyId && loaded.watch
+	return loaded?.key === key && loaded.watch
 		? { instrument: loaded.instrument, watch: loaded.watch }
 		: null;
 }

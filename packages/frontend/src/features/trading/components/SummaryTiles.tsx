@@ -18,6 +18,7 @@ import {
 	formatSignedInt,
 	formatSignedPercent,
 } from "../../../shared/lib/number";
+import { heldInstruments, totalUnrealized } from "../utils/holdings";
 
 /** 要点のカードの枠。自動取引のカードも同じ枠で並べる */
 export const TILE =
@@ -127,6 +128,29 @@ export function UnrealizedPnlTile({
 			</span>
 			<span className="text-xs text-text-2">
 				{lots > 0 ? `保有 ${lots} ロット` : "保有なし"}
+			</span>
+		</Tile>
+	);
+}
+
+/** 候補が2つ以上の戦略の含み損益。全銘柄の保有の合計と、保有中の銘柄 */
+export function UnrealizedTotalTile({ status }: { status: AutoTradingStatus }) {
+	const pnl = totalUnrealized(status);
+	const held = heldInstruments(status);
+	return (
+		<Tile label="含み損益（合計）">
+			<span
+				data-testid="home-unrealized"
+				className={`num text-xl font-semibold tracking-tight ${tone(pnl)}`}
+			>
+				{pnl === null
+					? "—"
+					: `${formatSignedInt(pnl)}${status.instrument.currency.unit}`}
+			</span>
+			<span className="text-xs text-text-2">
+				{held.length > 0
+					? `保有 ${held.map((i) => i.quantityUnit).join("・")}`
+					: "保有なし"}
 			</span>
 		</Tile>
 	);

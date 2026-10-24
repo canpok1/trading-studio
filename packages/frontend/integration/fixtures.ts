@@ -77,7 +77,8 @@ export function tradingRun(
 }
 
 type MarketLatest = InferResponseType<
-	ApiClient["api"]["market"]["latest"]["$get"]
+	ApiClient["api"]["market"]["latest"]["$get"],
+	200
 >;
 
 /** 価格の収集が動いていて、価格がまだ無い状態 */

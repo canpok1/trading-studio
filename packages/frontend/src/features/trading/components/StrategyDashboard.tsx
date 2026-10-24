@@ -1,4 +1,5 @@
 import type {
+	AutoTradingStatus,
 	CurrentJudgment,
 	JudgmentSeries,
 	LatestMarket,
@@ -27,7 +28,7 @@ import {
 	ErrorState,
 	Skeleton,
 } from "../../../shared/components/States";
-import { Button } from "../../../shared/components/ui";
+import { Button, Segmented } from "../../../shared/components/ui";
 import { useApi } from "../../../shared/lib/api";
 import { useChartBg } from "../../../shared/lib/chart-bg";
 import { useChartIndicators } from "../../../shared/lib/chart-indicators";
@@ -67,6 +68,7 @@ import {
 	MarketEvalTile,
 	TotalPnlTile,
 	UnrealizedPnlTile,
+	UnrealizedTotalTile,
 } from "./SummaryTiles";
 import { TradeOrderSheet } from "./TradeViews";
 
@@ -79,6 +81,17 @@ const EMA_HISTORY_FACTOR = 3;
 const MAX_HISTORY = 1_000;
 /** チャートの印に読む注文の数 */
 const MARKER_ORDERS = 300;
+
+/** 見る銘柄の既定。候補のうち保有中の先頭、無ければ候補の先頭。戦略が無ければ null（既定の銘柄） */
+function defaultInstrument(run: AutoTradingStatus | null): string | null {
+	if (!run) return null;
+	const held = run.account.holdings.find((h) => h.position.quantity > 0);
+	return held?.instrument ?? run.instrument.id;
+}
+
+/** 銘柄の指定。API の型に出していないので、変数に入れて渡す */
+const instrumentQuery = (id: string | null): { instrument?: string } =>
+	id ? { instrument: id } : {};
 
 /**
  * 戦略1つの要点・次の動き・チャート・見張り・成績・口座・注文。
@@ -98,21 +111,45 @@ export function StrategyDashboard({
 }) {
 	const api = useApi();
 	const visible = usePageVisible();
+	const { runs } = useTradingStatus();
+	const run =
+		strategyId === null
+			? null
+			: (runs?.find((r) => r.id === strategyId) ?? null);
+	// 候補が2つ以上の戦略は見る銘柄を選べる（ADR 0037）。選ぶまで・戦略を切り替えたら既定の銘柄
+	const [chosen, setChosen] = useState<{
+		strategyId: number | null;
+		id: string;
+	} | null>(null);
+	const instrumentId =
+		(chosen?.strategyId === strategyId &&
+		run?.instruments.some((i) => i.id === chosen.id)
+			? chosen.id
+			: null) ?? defaultInstrument(run);
+	const chooseInstrument = useCallback(
+		(id: string) => setChosen({ strategyId, id }),
+		[strategyId],
+	);
 
-	// 最新価格
-	const [latest, setLatest] = useState<LatestMarket | null>(null);
+	// 最新価格。どの銘柄の価格かを持ち、切り替え直後に前の銘柄の価格を出さない
+	const [loadedLatest, setLatest] = useState<{
+		instrument: string | null;
+		latest: LatestMarket;
+	} | null>(null);
+	const latest =
+		loadedLatest?.instrument === instrumentId ? loadedLatest.latest : null;
 	const [latestError, setLatestError] = useState<string | null>(null);
 	const loadLatest = useCallback(async () => {
 		try {
 			const r = await api.api.market.latest
-				.$get()
+				.$get({ query: instrumentQuery(instrumentId) })
 				.then((res) => readJson<LatestMarket>(res));
-			setLatest(r);
+			setLatest({ instrument: instrumentId, latest: r });
 			setLatestError(null);
 		} catch (e) {
 			setLatestError(errorMessage(e));
 		}
-	}, [api]);
+	}, [api, instrumentId]);
 	useEffect(() => {
 		if (visible) loadLatest();
 	}, [visible, loadLatest]);
@@ -169,7 +206,9 @@ export function StrategyDashboard({
 	}
 	return (
 		<DashboardBody
-			strategyId={strategyId}
+			run={run}
+			instrumentId={instrumentId}
+			onInstrument={chooseInstrument}
 			layout={layout}
 			head={head}
 			latest={latest}
@@ -193,7 +232,9 @@ function DashboardFrame({ children }: { children: ReactNode }) {
 }
 
 function DashboardBody({
-	strategyId,
+	run,
+	instrumentId,
+	onInstrument,
 	layout,
 	head,
 	children,
@@ -210,23 +251,24 @@ function DashboardBody({
 	strategies: StoredStrategy[];
 	counts: Partial<Record<Timeframe, number>>;
 	visible: boolean;
-	strategyId: number | null;
+	run: AutoTradingStatus | null;
+	/** 見る銘柄の id。null なら既定の銘柄 */
+	instrumentId: string | null;
+	onInstrument: (id: string) => void;
 	layout: "strategy" | "home";
 	head?: (toast: (message: string) => void) => ReactNode;
 	children?: ReactNode;
 }) {
 	const api = useApi();
-	const { runs } = useTradingStatus();
-	const run =
-		strategyId === null
-			? null
-			: (runs?.find((r) => r.id === strategyId) ?? null);
 	const runId = run?.id ?? 0;
+	const multi = (run?.instruments.length ?? 0) > 1;
+	// 候補が2つ以上なら、見張り・印・口座は選んだ銘柄のもの
+	const viewed = run && multi ? viewOf(run, instrumentId) : run;
 	// リアルが使えない間、リアルの戦略は口座・成績・注文を出さない
 	const hasAccount = run !== null && !(run.mode === "live" && !LIVE_AVAILABLE);
 	// ホームは印だけ描き、要点・成績・口座・注文の一覧は戦略の画面で見る
 	const home = layout === "home";
-	const account = run?.account ?? null;
+	const account = viewed?.account ?? null;
 	// 状態は定期的に取り直すので、買値が変わったときだけ線を引き直す
 	const entryKey = account?.lots.map((l) => l.entryPrice).join(",") ?? "";
 	const entryPrices = useMemo(
@@ -234,11 +276,19 @@ function DashboardBody({
 		[entryKey],
 	);
 	const { orders, reload: reloadOrders } = useTradingOrders(
-		{ strategyId: runId, limit: MARKER_ORDERS },
+		{
+			strategyId: runId,
+			limit: MARKER_ORDERS,
+			...(multi && instrumentId ? { instrument: instrumentId } : {}),
+		},
 		visible && hasAccount,
 	);
 	const perf = useTradingPerformance(runId, visible && hasAccount && !home);
-	const watched = useStrategyWatch(runId, visible && hasAccount);
+	const watched = useStrategyWatch(
+		runId,
+		multi ? instrumentId : null,
+		visible && hasAccount,
+	);
 	const watch = watched?.watch ?? null;
 	const showMoves = hasAccount && watched !== null;
 	// 見張りは定期的に取り直すので、発動価格が変わったときだけ線を引き直す
@@ -294,15 +344,20 @@ function DashboardBody({
 		series: JudgmentSeries;
 	} | null>(null);
 	const [bg, setBg] = useChartBg();
-	const barsKey = `${timeframe}:${range}:${history}`;
+	const barsKey = `${instrumentId}:${timeframe}:${range}:${history}`;
 	const barsSeq = useRef(0);
 	const loadBars = useCallback(async () => {
 		const my = ++barsSeq.current;
+		const instrument = instrumentQuery(instrumentId);
+		const barsQuery: {
+			timeframe: Timeframe;
+			range: typeof range;
+			history: string;
+			instrument?: string;
+		} = { timeframe, range, history: String(history), ...instrument };
 		try {
 			const r = await api.api.market.bars
-				.$get({
-					query: { timeframe, range, history: String(history) },
-				})
+				.$get({ query: barsQuery })
 				.then((res) =>
 					readJson<{ instrument: Instrument; bars: ChartBar[] }>(res),
 				);
@@ -312,7 +367,7 @@ function DashboardBody({
 			}
 			// 判定は読めなくても価格のチャートは出すので、失敗は表示を前のまま残すだけにする
 			api.api.judgments.current
-				.$get()
+				.$get({ query: instrument })
 				.then((res) => readJson<CurrentJudgment>(res))
 				.then((c) => {
 					if (my === barsSeq.current) setCurrent(c);
@@ -321,17 +376,20 @@ function DashboardBody({
 			const first = r.bars[0];
 			const last = r.bars.at(-1);
 			if (first && last) {
+				const seriesQuery: {
+					from: string;
+					to: string;
+					timeframe: Timeframe;
+					instrument?: string;
+				} = {
+					from: String(judgmentsFrom(first.time, last.time, timeframe)),
+					// 最新の価格から作る今の足にも判定を付けるため、今の時刻まで含める
+					to: String(Math.max(last.time, Date.now()) + TIMEFRAME_MS[timeframe]),
+					timeframe,
+					...instrument,
+				};
 				api.api.judgments.series
-					.$get({
-						query: {
-							from: String(judgmentsFrom(first.time, last.time, timeframe)),
-							// 最新の価格から作る今の足にも判定を付けるため、今の時刻まで含める
-							to: String(
-								Math.max(last.time, Date.now()) + TIMEFRAME_MS[timeframe],
-							),
-							timeframe,
-						},
-					})
+					.$get({ query: seriesQuery })
 					.then((res) => readJson<JudgmentSeries>(res))
 					.then((sr) => {
 						if (my === barsSeq.current) setSeries({ key: barsKey, series: sr });
@@ -341,7 +399,7 @@ function DashboardBody({
 		} catch (e) {
 			if (my === barsSeq.current) setBarsError(errorMessage(e));
 		}
-	}, [api, timeframe, range, history, barsKey]);
+	}, [api, timeframe, range, history, barsKey, instrumentId]);
 	useEffect(() => {
 		if (visible) loadBars();
 	}, [visible, loadBars]);
@@ -383,9 +441,21 @@ function DashboardBody({
 	const noData =
 		latest !== null && latest.price === null && bars?.bars.length === 0;
 
+	const picker = run && multi && instrumentId && (
+		<InstrumentPicker run={run} value={instrumentId} onChange={onInstrument} />
+	);
+
 	return (
 		<DashboardFrame>
 			{head?.(showToast)}
+			{!home && picker && (
+				<div className="flex flex-col gap-1 lg:col-span-2">
+					{picker}
+					<p className="text-xs text-text-2">
+						損益は全銘柄の合計。市場評価・次の動き・チャート・見張り・口座は選んだ銘柄のもの
+					</p>
+				</div>
+			)}
 			<CollectorAlert latest={latest} />
 			{latestError && (
 				<div
@@ -419,7 +489,11 @@ function DashboardBody({
 								error={perf.error}
 								unit={run.instrument.currency.unit}
 							/>
-							<UnrealizedPnlTile status={run} price={latest?.price ?? null} />
+							{multi ? (
+								<UnrealizedTotalTile status={run} />
+							) : (
+								<UnrealizedPnlTile status={run} price={latest?.price ?? null} />
+							)}
 						</>
 					)}
 					<MarketEvalTile
@@ -456,7 +530,7 @@ function DashboardBody({
 				</section>
 			) : (
 				<PriceChart
-					instrument={bars?.instrument ?? run?.instrument ?? null}
+					instrument={bars?.instrument ?? viewed?.instrument ?? null}
 					bars={shownBars}
 					indicators={indicators}
 					hideIndicators={!fresh}
@@ -477,6 +551,7 @@ function DashboardBody({
 						home && (
 							<div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
 								<MarketEvalInline current={current} />
+								{picker && <div className="w-full">{picker}</div>}
 							</div>
 						)
 					}
@@ -507,10 +582,14 @@ function DashboardBody({
 			)}
 			{!home && hasAccount && run && (
 				<>
-					<PerformancePanel performance={perf.performance} error={perf.error} />
+					<PerformancePanel
+						performance={perf.performance}
+						error={perf.error}
+						status={run}
+					/>
 					<AccountPanel
 						key={`account-${run.id}`}
-						status={run}
+						status={viewed ?? run}
 						performance={perf.performance}
 						price={latest?.price ?? null}
 						onToast={showToast}
@@ -525,6 +604,8 @@ function DashboardBody({
 				<OrdersPanel
 					key={runId}
 					strategyId={runId}
+					instruments={run?.instruments ?? []}
+					instrument={instrumentId}
 					active={visible}
 					selectedId={selectedOrder}
 					onSelect={setSelectedOrder}
@@ -549,6 +630,57 @@ function DashboardBody({
 				</div>
 			)}
 		</DashboardFrame>
+	);
+}
+
+/** 候補が2つ以上の戦略の状態を、選んだ銘柄の保有だけを持つ形にする（口座のパネルと買値の線に使う） */
+function viewOf(
+	run: AutoTradingStatus,
+	instrumentId: string | null,
+): AutoTradingStatus {
+	const instrument =
+		run.instruments.find((i) => i.id === instrumentId) ?? run.instrument;
+	const h = run.account.holdings.find((x) => x.instrument === instrument.id);
+	return {
+		...run,
+		instrument,
+		account: {
+			...run.account,
+			position: h?.position ?? run.account.position,
+			lots: h?.lots ?? [],
+		},
+	};
+}
+
+/** 見る銘柄の切り替え。保有中の銘柄には印を添える */
+function InstrumentPicker({
+	run,
+	value,
+	onChange,
+}: {
+	run: AutoTradingStatus;
+	value: string;
+	onChange: (id: string) => void;
+}) {
+	const held = new Set(
+		run.account.holdings
+			.filter((h) => h.position.quantity > 0)
+			.map((h) => h.instrument),
+	);
+	return (
+		<Segmented
+			name={`instrument-${run.id}`}
+			label="見る銘柄"
+			options={run.instruments.map(
+				(i) =>
+					[
+						i.id,
+						`${i.quantityUnit}${held.has(i.id) ? "・保有中" : ""}`,
+					] as const,
+			)}
+			value={value}
+			onChange={onChange}
+		/>
 	);
 }
 
