@@ -30,6 +30,7 @@ import type { BacktestRepository } from "../backtests/repository-domain";
 import type { BacktestRun } from "../backtests/types-domain";
 import type { DvolRepository } from "../dvol/repository-domain";
 import type { DvolBar } from "../dvol/types-domain";
+import { DEFAULT_INSTRUMENT } from "../market-data/instrument-domain";
 import type { MarketDataService } from "../market-data/types-domain";
 import type { ScoreRepository } from "../news/score-repository-domain";
 import type {
@@ -392,12 +393,6 @@ function decisionColumns<T>(get: (r: T) => DecisionLog): Column<T>[] {
 	];
 }
 
-/** 銘柄を持たない記録は口座の先頭の銘柄のもの */
-const firstOf = (instruments: string | null) =>
-	instruments === null
-		? null
-		: ((JSON.parse(instruments) as string[])[0] ?? null);
-
 type PaperDecision = DecisionExportRow & {
 	log: DecisionLog;
 	values: Record<string, string>;
@@ -423,14 +418,15 @@ const paperDecisionsTable: Table<PaperDecision> = {
 		col("strategy_name", "判断したときの戦略名", (r) => r.strategy_name),
 		col(
 			"instrument",
-			`判定した${INSTRUMENT_DESC}。記録に銘柄が無ければ今の戦略の先頭の銘柄で、戦略を削除していれば空`,
-			(r) => r.log.instrument ?? firstOf(r.strategy_instruments),
+			`判定した${INSTRUMENT_DESC}`,
+			// 自動取引は収集の先頭の銘柄のものに銘柄を付けない
+			(r) => r.log.instrument ?? DEFAULT_INSTRUMENT.id,
 		),
 		...decisionColumns<PaperDecision>((r) => r.log),
 		...JUDGES.map((j) =>
 			col<PaperDecision>(
 				`judgment_${j}`,
-				`判断したときの${JUDGE_DESC[j]}`,
+				`判断したときの、その行の銘柄に対する${JUDGE_DESC[j]}`,
 				(r) => r.values[j] ?? null,
 			),
 		),
@@ -806,7 +802,7 @@ function readme({
 	const out: string[] = [
 		"# trading-studio 分析用データ",
 		"",
-		"仮想通貨の自動売買アプリ trading-studio の記録。市場評価の精度と戦略の成績の分析に使う。市場評価・DVOL・1分足は BTC/JPY のもの。",
+		"仮想通貨の自動売買アプリ trading-studio の記録。市場評価の精度と戦略の成績の分析に使う。judgments.csv・dvol_1h.csv・candles_1m.csv は BTC/JPY のもの。",
 		"",
 		`- 期間: ${formatJstRfc3339(from)} 〜 ${formatJstRfc3339(to)}（終わりの時刻は含まない）`,
 		`- 書き出した時刻: ${formatJstRfc3339(now)}`,

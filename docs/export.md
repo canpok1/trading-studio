@@ -41,7 +41,7 @@
 | `backtest_instruments.csv` | 選んだ実行の銘柄ごとの成績。候補ごとに1行。候補が1つの実行は全体の成績をその銘柄の行にする | 選んだもの |
 | `backtest_orders.csv` `backtest_trades.csv` `backtest_decisions.csv` | 選んだ実行の注文・往復の取引・判断ログ。どの銘柄のものか | 選んだもの |
 
-銘柄の列は、記録が銘柄を持たない（候補・口座の先頭の銘柄のもの）ときも先頭の銘柄で埋める。デモの判断は先頭の銘柄を今の戦略から引くので、戦略を削除した記録は空になる。市場評価・DVOL・1分足は BTC/JPY のものだけ入れる。
+銘柄の列は、記録が銘柄を持たない（バックテストは候補の先頭、デモは収集の先頭の BTC/JPY のもの）ときも埋める。`paper_decisions.csv` の判定はその行の銘柄に対するもの。`judgments.csv`・`dvol_1h.csv`・`candles_1m.csv` は BTC/JPY のものだけ入れる。
 
 ### 書式
 

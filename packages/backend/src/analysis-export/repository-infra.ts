@@ -44,8 +44,7 @@ export class SqliteAnalysisExportRepository
 	decisions(from: number, to: number): DecisionExportRow[] {
 		return this.sql
 			.query<DecisionExportRow, [number, number]>(
-				`select d.*, r.name as run_name, s.instruments as strategy_instruments from trading_decisions d
-				left join trading_runs r on r.id = d.run_id left join strategies s on s.id = d.strategy_id
+				`select d.*, r.name as run_name from trading_decisions d left join trading_runs r on r.id = d.run_id
 				where d.time >= ? and d.time < ? order by d.time, d.id`,
 			)
 			.all(from, to);

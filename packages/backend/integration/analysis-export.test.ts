@@ -539,23 +539,6 @@ describe("分析用エクスポート", () => {
 			},
 			{},
 		);
-		// 削除した戦略の、銘柄を持たない判断は銘柄が分からない
-		t.tradingRepo.addDecision(
-			{ id: 1, mode: "paper" },
-			{ id: 999, name: "消した戦略" },
-			{
-				time: DAY + 3 * M,
-				price: 10_000_000,
-				cash: 1_000_000,
-				position: { quantity: 0, entryPrice: null, openedAt: null },
-				openOrderIds: [],
-				intents: [],
-				nextEvalAt: DAY + H,
-				note: "消した",
-				state: null,
-			},
-			{},
-		);
 		t.tradingRepo.saveOrders(
 			{ id: 1, mode: "paper" },
 			[
@@ -593,9 +576,9 @@ describe("分析用エクスポート", () => {
 			}),
 		]);
 		expect(rows(files.get("paper_decisions.csv") as string)).toEqual([
-			// 銘柄を持たない判断は、戦略の先頭の銘柄のもの
+			// 銘柄を持たない判断は、戦略の候補に関わらず収集の先頭の銘柄のもの
 			expect.objectContaining({
-				instrument: ETH_JPY.id,
+				instrument: BTC_JPY.id,
 				decision_id: String(decisionId),
 				run_id: "1",
 				run_name: "デモ",
@@ -605,7 +588,6 @@ describe("分析用エクスポート", () => {
 				judgment_risk: "normal",
 			}),
 			expect.objectContaining({ instrument: XRP_JPY.id, note: "XRP を見る" }),
-			expect.objectContaining({ instrument: "", note: "消した" }),
 		]);
 		expect(rows(files.get("paper_orders.csv") as string)).toEqual([
 			expect.objectContaining({

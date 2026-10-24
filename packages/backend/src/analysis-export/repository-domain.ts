@@ -54,8 +54,6 @@ export type DecisionExportRow = {
 	time: number;
 	decision: string;
 	judgments: string;
-	/** 今の戦略の対象の銘柄（JSON の配列）。戦略を削除していれば null */
-	strategy_instruments: string | null;
 };
 
 export type OrderExportRow = {
