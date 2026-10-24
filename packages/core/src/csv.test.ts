@@ -6,6 +6,7 @@ import {
 	parseCandleCsv,
 	parseRfc3339,
 } from "./csv";
+import { BTC_JPY } from "./instrument";
 
 describe("parseRfc3339", () => {
 	test("オフセット付き・Z・小数秒なしを読む", () => {
@@ -33,6 +34,7 @@ const HEAD = "日時,始値,高値,安値,終値,出来高";
 describe("parseCandleCsv", () => {
 	test("ヘッダーを読み飛ばし、価格は円へ四捨五入、出来高は satoshi にする", () => {
 		const r = parseCandleCsv(
+			BTC_JPY,
 			`${HEAD}\n2026-09-26T12:00:00+09:00,100.4,110.5,90,105,0.5\n`,
 			"1m",
 		);
@@ -55,6 +57,7 @@ describe("parseCandleCsv", () => {
 
 	test("ヘッダーが無くても読める。日時は足の開始時刻へ切り下げ、古い順に並べる", () => {
 		const r = parseCandleCsv(
+			BTC_JPY,
 			"2026-09-26T12:05:30+09:00,1,1,1,1,0\n2026-09-26T12:00:01.000+09:00,2,2,2,2,0",
 			"5m",
 		);
@@ -67,6 +70,7 @@ describe("parseCandleCsv", () => {
 
 	test("ファイル内で同じ日時の行は最初の行を使い、件数を返す", () => {
 		const r = parseCandleCsv(
+			BTC_JPY,
 			"2026-09-26T12:00:00Z,1,1,1,1,0\n2026-09-26T12:00:00Z,2,2,2,2,0",
 			"1m",
 		);
@@ -76,6 +80,7 @@ describe("parseCandleCsv", () => {
 
 	test("1行でも不正なら足を返さず、行番号・該当行・理由を返す", () => {
 		const r = parseCandleCsv(
+			BTC_JPY,
 			[
 				HEAD,
 				"2026-09-26T12:00:00+09:00,1,1,1,1,0",
@@ -98,12 +103,12 @@ describe("parseCandleCsv", () => {
 	});
 
 	test("2行目以降の日時が読めなければヘッダー扱いにしない", () => {
-		const r = parseCandleCsv(`${HEAD}\n${HEAD}`, "1m");
+		const r = parseCandleCsv(BTC_JPY, `${HEAD}\n${HEAD}`, "1m");
 		expect(r.ok).toBe(false);
 	});
 
 	test("データの行が無ければエラー", () => {
-		expect(parseCandleCsv(HEAD, "1m").ok).toBe(false);
+		expect(parseCandleCsv(BTC_JPY, HEAD, "1m").ok).toBe(false);
 	});
 });
 
@@ -130,11 +135,14 @@ describe("formatCandleCsvRow", () => {
 		expect(formatJstRfc3339(candles[0]?.time as number)).toBe(
 			"2026-09-26T00:00:00.000+09:00",
 		);
-		expect(formatCandleCsvRow(candles[0] as (typeof candles)[0])).toBe(
+		expect(formatCandleCsvRow(BTC_JPY, candles[0] as (typeof candles)[0])).toBe(
 			"2026-09-26T00:00:00.000+09:00,17000000,17010000,16990000,17005000,0.12345678",
 		);
-		const text = [CSV_HEADER, ...candles.map(formatCandleCsvRow)].join("\n");
-		const r = parseCandleCsv(text, "1m");
+		const text = [
+			CSV_HEADER,
+			...candles.map((c) => formatCandleCsvRow(BTC_JPY, c)),
+		].join("\n");
+		const r = parseCandleCsv(BTC_JPY, text, "1m");
 		expect(r.ok && r.candles).toEqual(candles);
 	});
 });

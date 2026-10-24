@@ -118,6 +118,8 @@ describe("含み損益", () => {
 describe("BTC 以外の単位", () => {
 	// 価格はセント、数量は1株単位
 	const usStock: Instrument = {
+		id: "us:aapl",
+		marketId: "us",
 		symbol: "AAPL",
 		currency: { code: "USD", unit: "ドル", decimals: 2 },
 		priceDecimals: 2,
@@ -127,6 +129,8 @@ describe("BTC 以外の単位", () => {
 	};
 	// 価格は0.1円刻み、数量は1株単位
 	const jpStock: Instrument = {
+		id: "tse:7203",
+		marketId: "tse",
 		symbol: "7203",
 		currency: JPY,
 		priceDecimals: 1,

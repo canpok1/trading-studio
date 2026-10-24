@@ -1,5 +1,6 @@
 // テスト用。メモリ上の DB で本物のサービスをつないだ app を作る
 
+import { BTC_JPY } from "@trading-studio/core";
 import { createAdviceService } from "../src/advice/advice-domain";
 import { demoAdviceModel } from "../src/advice/fake-model-infra";
 import { DEFAULT_INSTRUCTIONS } from "../src/advice/prompt-domain";
@@ -60,7 +61,7 @@ export function createTestApp(
 	db: Db = createTestDb(),
 	runner: BacktestRunner = inlineRunner(),
 ) {
-	const marketDataRepo = new SqliteMarketDataRepository(db);
+	const marketDataRepo = new SqliteMarketDataRepository(db, BTC_JPY);
 	const marketData = createMarketDataService(marketDataRepo, {
 		now: () => 1_000,
 	});
@@ -147,7 +148,7 @@ export function createTestApp(
 	});
 	// 定期の作成は動かさず、テストから segments.build() を呼ぶ
 	const segments = createSegmentService({
-		repo: new SqliteSegmentRepository(db),
+		repo: new SqliteSegmentRepository(db, BTC_JPY.id),
 		marketData: marketDataRepo,
 		newsDeletedBefore: () => scoreRepo.newsDeletedBefore(),
 		now: () => clock.now,

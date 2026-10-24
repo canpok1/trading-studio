@@ -249,19 +249,21 @@ export class SqliteTradingRepository implements TradingRepository {
 		run: { id: number; mode: TradingMode },
 		orders: readonly TradeOrder[],
 		origin: {
+			instrument: string;
 			decisionId: number | null;
 			strategyId: number | null;
 			strategyName: string;
 		},
 	): void {
 		const stmt = this.sql.prepare(
-			`insert into trading_orders (run_id, mode, id, side, type, price, quantity, placed_at, status, filled_at, fill_price, fee, canceled_at, cancel_reason, reason, pair_id, pnl, exit_kind, buy_name, decision_id, strategy_id, strategy_name)
-			values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`insert into trading_orders (instrument, run_id, mode, id, side, type, price, quantity, placed_at, status, filled_at, fill_price, fee, canceled_at, cancel_reason, reason, pair_id, pnl, exit_kind, buy_name, decision_id, strategy_id, strategy_name)
+			values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			on conflict (run_id, id) do update set status = excluded.status, filled_at = excluded.filled_at, fill_price = excluded.fill_price, fee = excluded.fee,
 			canceled_at = excluded.canceled_at, cancel_reason = excluded.cancel_reason, pair_id = excluded.pair_id, pnl = excluded.pnl`,
 		);
 		for (const o of orders) {
 			stmt.run(
+				origin.instrument,
 				run.id,
 				run.mode,
 				o.id,

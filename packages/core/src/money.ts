@@ -110,24 +110,36 @@ export function parseQuantity(instrument: Instrument, text: string): number {
 	return n;
 }
 
+// 最小単位の整数を、小数 digits 桁の文字列へ（末尾の 0 は minDigits 桁まで残す）
+function decimalString(
+	value: number,
+	digits: number,
+	minDigits: number,
+): string {
+	const scale = 10 ** digits;
+	const sign = value < 0 ? "-" : "";
+	const abs = Math.abs(value);
+	const int = Math.floor(abs / scale);
+	let frac = digits > 0 ? String(abs % scale).padStart(digits, "0") : "";
+	frac = frac.replace(/0+$/, "");
+	if (frac.length < minDigits) {
+		frac = frac.padEnd(minDigits, "0");
+	}
+	return `${sign}${int}${frac ? `.${frac}` : ""}`;
+}
+
 /** 最小単位の数量を小数の文字列へ（表示用。末尾の 0 は残さない） */
 export function quantityToString(
 	instrument: Instrument,
 	quantity: number,
 	minDigits = 0,
 ): string {
-	const digits = instrument.quantityDecimals;
-	const scale = 10 ** digits;
-	const sign = quantity < 0 ? "-" : "";
-	const abs = Math.abs(quantity);
-	const int = Math.floor(abs / scale);
-	let frac = String(abs % scale)
-		.padStart(digits, "0")
-		.replace(/0+$/, "");
-	if (frac.length < minDigits) {
-		frac = frac.padEnd(minDigits, "0");
-	}
-	return `${sign}${int}${frac ? `.${frac}` : ""}`;
+	return decimalString(quantity, instrument.quantityDecimals, minDigits);
+}
+
+/** 最小単位の価格を通貨での小数の文字列へ（末尾の 0 は残さない） */
+export function priceToString(instrument: Instrument, price: number): string {
+	return decimalString(price, instrument.priceDecimals, 0);
 }
 
 /**

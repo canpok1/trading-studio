@@ -4,7 +4,7 @@ import type {
 	AutoTradingStatus,
 	TradingPerformance,
 } from "@trading-studio/backend";
-import { BTC_JPY, formatQuantity, unrealizedPnl } from "@trading-studio/core";
+import { formatQuantity, unrealizedPnl } from "@trading-studio/core";
 import { useId, useState } from "react";
 import { Modal } from "../../../shared/components/Modal";
 import { NumberInput } from "../../../shared/components/NumberInput";
@@ -45,6 +45,7 @@ export function AccountPanel({
 	const [resetting, setResetting] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const { account } = status;
+	const unit = status.instrument.currency.unit;
 	const { quantity, entryPrice } = account.position;
 	const lots = account.lots;
 
@@ -58,7 +59,7 @@ export function AccountPanel({
 			set(r.status);
 			onReset();
 			onToast(
-				`「${status.name}」の口座をリセットした。開始時の資金 ${formatInt(initialCash)}円`,
+				`「${status.name}」の口座をリセットした。開始時の資金 ${formatInt(initialCash)}${unit}`,
 			);
 		} catch (e) {
 			onToast(errorMessage(e));
@@ -78,30 +79,30 @@ export function AccountPanel({
 				>
 					{performance?.equity == null
 						? "—"
-						: `${formatInt(performance.equity)}円`}
+						: `${formatInt(performance.equity)}${unit}`}
 				</span>
 			</div>
 			<div className="grid grid-cols-3 gap-x-2 gap-y-3">
 				<Stat
 					label="現金"
-					value={performance ? `${formatInt(performance.cash)}円` : "—"}
+					value={performance ? `${formatInt(performance.cash)}${unit}` : "—"}
 				/>
 				<button
 					type="button"
-					aria-label={`保有 ${formatQuantity(BTC_JPY, quantity)} BTC${lots.length > 0 ? `（${lots.length} ロット）` : ""}`}
+					aria-label={`保有 ${formatQuantity(status.instrument, quantity)} ${status.instrument.quantityUnit}${lots.length > 0 ? `（${lots.length} ロット）` : ""}`}
 					disabled={lots.length === 0}
 					onClick={() => setLotsOpen(true)}
 					className="-m-1 rounded-lg p-1 text-left enabled:hover:bg-surface-2"
 				>
 					<Stat
 						label="保有"
-						value={`${formatQuantity(BTC_JPY, quantity)} BTC`}
+						value={`${formatQuantity(status.instrument, quantity)} ${status.instrument.quantityUnit}`}
 						sub={lots.length > 0 ? `${lots.length} ロット ›` : undefined}
 					/>
 				</button>
 				<Stat
 					label="平均取得"
-					value={entryPrice === null ? "—" : `${formatInt(entryPrice)}円`}
+					value={entryPrice === null ? "—" : `${formatInt(entryPrice)}${unit}`}
 				/>
 			</div>
 			{!status.enabled && (
@@ -115,13 +116,22 @@ export function AccountPanel({
 				</Button>
 			)}
 			{resetting && (
-				<ResetModal onReset={reset} onClose={() => setResetting(false)} />
+				<ResetModal
+					unit={unit}
+					onReset={reset}
+					onClose={() => setResetting(false)}
+				/>
 			)}
 			{lotsOpen && (
 				<Modal title="保有中のロット" onClose={() => setLotsOpen(false)}>
 					<div className="overflow-hidden rounded-xl border border-line">
 						{lots.map((l) => {
-							const v = unrealizedPnl(BTC_JPY, l.quantity, l.entryPrice, price);
+							const v = unrealizedPnl(
+								status.instrument,
+								l.quantity,
+								l.entryPrice,
+								price,
+							);
 							return (
 								<div
 									key={l.id}
@@ -129,15 +139,16 @@ export function AccountPanel({
 								>
 									<span className="flex min-w-0 flex-col gap-0.5">
 										<span className="num text-sm font-semibold">
-											買値 {formatInt(l.entryPrice)}円 ·{" "}
-											{formatQuantity(BTC_JPY, l.quantity)} BTC
+											買値 {formatInt(l.entryPrice)}
+											{unit} · {formatQuantity(status.instrument, l.quantity)}{" "}
+											{status.instrument.quantityUnit}
 										</span>
 										<span className="num text-xs text-text-2">
 											{formatDateTime(l.openedAt)}
 										</span>
 									</span>
 									<span className={`num text-[13px] font-semibold ${tone(v)}`}>
-										{v === null ? "—" : `${formatSignedInt(v)}円`}
+										{v === null ? "—" : `${formatSignedInt(v)}${unit}`}
 									</span>
 								</div>
 							);
@@ -151,9 +162,11 @@ export function AccountPanel({
 }
 
 function ResetModal({
+	unit,
 	onReset,
 	onClose,
 }: {
+	unit: string;
 	onReset: (initialCash: number) => void;
 	onClose: () => void;
 }) {
@@ -167,7 +180,7 @@ function ResetModal({
 			</p>
 			<div className="flex flex-col gap-1.5">
 				<label htmlFor={id} className="text-[13px] font-semibold">
-					開始時の資金（円）
+					開始時の資金（{unit}）
 				</label>
 				<NumberInput
 					id={id}
@@ -180,7 +193,7 @@ function ResetModal({
 				/>
 				{!valid && (
 					<span className="text-xs font-semibold text-loss">
-						1 円以上の整数で入れる
+						1 {unit}以上の整数で入れる
 					</span>
 				)}
 			</div>

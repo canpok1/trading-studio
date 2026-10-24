@@ -1,4 +1,4 @@
-// 通貨と銘柄の単位（ADR 0036）。金額は通貨の、価格・数量は銘柄の最小単位の整数で持つ
+// 通貨・市場・銘柄（ADR 0036）。金額は通貨の、価格・数量は銘柄の最小単位の整数で持つ
 
 export type Currency = {
 	code: string;
@@ -8,7 +8,20 @@ export type Currency = {
 	decimals: number;
 };
 
+/** 市場。1つの戦略は1つの市場だけを扱う */
+export type Market = {
+	/** 保存するデータで市場を指す */
+	id: string;
+	name: string;
+	currency: Currency;
+	/** IANA のタイムゾーン */
+	timeZone: string;
+};
+
 export type Instrument = {
+	/** 保存するデータで銘柄を指す */
+	id: string;
+	marketId: string;
 	/** 市場の中で銘柄を指す */
 	symbol: string;
 	/** 価格と金額の通貨 */
@@ -25,7 +38,16 @@ export type Instrument = {
 
 export const JPY: Currency = { code: "JPY", unit: "円", decimals: 0 };
 
+export const COINCHECK: Market = {
+	id: "coincheck",
+	name: "Coincheck",
+	currency: JPY,
+	timeZone: "Asia/Tokyo",
+};
+
 export const BTC_JPY: Instrument = {
+	id: "coincheck:btc_jpy",
+	marketId: COINCHECK.id,
 	symbol: "BTC/JPY",
 	currency: JPY,
 	priceDecimals: 0,
@@ -33,6 +55,24 @@ export const BTC_JPY: Instrument = {
 	quantityUnit: "BTC",
 	quantityMinDigits: 3,
 };
+
+export const MARKETS: readonly Market[] = [COINCHECK];
+export const INSTRUMENTS: readonly Instrument[] = [BTC_JPY];
+
+export function findMarket(id: string): Market | null {
+	return MARKETS.find((m) => m.id === id) ?? null;
+}
+
+export function findInstrument(id: string): Instrument | null {
+	return INSTRUMENTS.find((i) => i.id === id) ?? null;
+}
+
+/** 保存したデータの銘柄を引く。定義から消した銘柄は読めないので例外にする */
+export function instrumentOf(id: string): Instrument {
+	const i = findInstrument(id);
+	if (!i) throw new RangeError(`未定義の銘柄: ${id}`);
+	return i;
+}
 
 /** 数量 1（BTC なら 1 BTC）を最小単位で表した値 */
 export function quantityScale(instrument: Instrument): number {

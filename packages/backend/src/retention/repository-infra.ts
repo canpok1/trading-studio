@@ -119,11 +119,11 @@ export class SqliteRetentionRepository implements RetentionRepository {
 		return ids.length;
 	}
 
-	/** 開始が before より前の相場データを、相場ごとに最新の1件とデータセットに入っているものを残して消す。消した件数を返す */
+	/** 開始が before より前の相場データを、銘柄と相場ごとに最新の1件とデータセットに入っているものを残して消す。消した件数を返す */
 	pruneSegments(before: number): number {
 		return this.sql.run(
 			`delete from segments where from_time < ?1 and from_time < (
-			   select max(k.from_time) from segments k where k.regime = segments.regime and k.from_time < ?1)
+			   select max(k.from_time) from segments k where k.instrument = segments.instrument and k.regime = segments.regime and k.from_time < ?1)
 			 and id not in (select j.value from datasets d, json_each(d.segment_ids) j)`,
 			[before],
 		).changes;

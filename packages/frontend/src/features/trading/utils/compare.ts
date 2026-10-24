@@ -1,7 +1,7 @@
 // ホームのカードで比べる値。値と補足を、戦略の要約から作る
 
 import type { StrategySummary } from "@trading-studio/backend";
-import { BTC_JPY, unrealizedPnl } from "@trading-studio/core";
+import { unrealizedPnl } from "@trading-studio/core";
 import {
 	formatSignedInt,
 	formatSignedPercent,
@@ -46,30 +46,31 @@ export function compared(s: StrategySummary, key: CompareKey): Compared {
 	const p = s.performance;
 	if (!p) return { text: "—", sub: "成績を読めない", tone: null };
 	const record = `${p.wins}勝 ${p.losses}敗`;
+	const unit = s.status.instrument.currency.unit;
 	switch (key) {
 		case "pnl":
 			return {
-				text: p.pnl === null ? "—" : `${formatSignedInt(p.pnl)}円`,
+				text: p.pnl === null ? "—" : `${formatSignedInt(p.pnl)}${unit}`,
 				sub: p.pnlPercent === null ? "—" : formatSignedPercent(p.pnlPercent),
 				tone: signTone(p.pnl),
 			};
 		case "unrealized": {
 			const v = unrealizedPnl(
-				BTC_JPY,
+				s.status.instrument,
 				p.position.quantity,
 				p.position.entryPrice,
 				p.price,
 			);
 			const lots = s.status.account.lots.length;
 			return {
-				text: v === null ? "—" : `${formatSignedInt(v)}円`,
+				text: v === null ? "—" : `${formatSignedInt(v)}${unit}`,
 				sub: lots > 0 ? `保有 ${lots} ロット` : "保有なし",
 				tone: signTone(v),
 			};
 		}
 		case "realized":
 			return {
-				text: `${formatSignedInt(p.realizedPnl)}円`,
+				text: `${formatSignedInt(p.realizedPnl)}${unit}`,
 				sub: `${p.trades}回`,
 				tone: signTone(p.realizedPnl),
 			};

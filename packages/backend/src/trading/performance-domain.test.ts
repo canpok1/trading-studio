@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { TradeOrder } from "@trading-studio/core";
-import { EMPTY_POSITION } from "@trading-studio/core";
+import { BTC_JPY, EMPTY_POSITION } from "@trading-studio/core";
 import { tradingPerformance } from "./performance-domain";
 
 const H = 3_600_000;
@@ -48,6 +48,7 @@ describe("tradingPerformance", () => {
 			}),
 		];
 		const r = tradingPerformance({
+			instrument: BTC_JPY,
 			initialCash: 1_000_000,
 			resetAt: 0,
 			now: 6 * H,
@@ -79,6 +80,7 @@ describe("tradingPerformance", () => {
 
 	test("保有があって価格が分からなければ資産と損益は null", () => {
 		const r = tradingPerformance({
+			instrument: BTC_JPY,
 			initialCash: 1_000_000,
 			resetAt: 0,
 			now: H,
@@ -130,6 +132,7 @@ describe("tradingPerformance", () => {
 			}),
 		];
 		const r = tradingPerformance({
+			instrument: BTC_JPY,
 			initialCash: 1_000_000,
 			resetAt: 0,
 			now: 7 * H,

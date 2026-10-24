@@ -1,6 +1,6 @@
 // 過去データの取り込みジョブ。同時に動かすのは1つだけで、画面は進捗を定期的に問い合わせる
 
-import type { Candle, Timeframe } from "@trading-studio/core";
+import type { Candle, Instrument, Timeframe } from "@trading-studio/core";
 import {
 	CSV_HEADER,
 	formatCandleCsvRow,
@@ -55,18 +55,23 @@ export function parseImportForm(
 /** 書き出した足の CSV。chunks は見出しから順に送る文字列 */
 export function candleCsv(
 	timeframe: Timeframe,
-	r: { first: number; last: number; pages: Iterable<Candle[]> },
+	r: {
+		instrument: Instrument;
+		first: number;
+		last: number;
+		pages: Iterable<Candle[]>;
+	},
 ): { fileName: string; chunks: Iterable<string> } {
 	const day = (ms: number) =>
 		formatJstRfc3339(ms).slice(0, 10).replaceAll("-", "");
 	function* chunks() {
 		yield `${CSV_HEADER}\n`;
 		for (const page of r.pages) {
-			yield `${page.map(formatCandleCsvRow).join("\n")}\n`;
+			yield `${page.map((c) => formatCandleCsvRow(r.instrument, c)).join("\n")}\n`;
 		}
 	}
 	return {
-		fileName: `btcjpy-${timeframe}-${day(r.first)}-${day(r.last)}.csv`,
+		fileName: `${r.instrument.symbol.replace(/\W/g, "").toLowerCase()}-${timeframe}-${day(r.first)}-${day(r.last)}.csv`,
 		chunks: chunks(),
 	};
 }
@@ -105,10 +110,15 @@ export function createMarketDataService(
 		try {
 			job.phase = "validating";
 			await yieldToEventLoop();
-			const parsed = parseCandleCsv(text, job.timeframe, (done, total) => {
-				job.processedRows = done;
-				job.totalRows = total;
-			});
+			const parsed = parseCandleCsv(
+				repo.instrument,
+				text,
+				job.timeframe,
+				(done, total) => {
+					job.processedRows = done;
+					job.totalRows = total;
+				},
+			);
 			job.totalRows = parsed.totalRows;
 			if (!parsed.ok) {
 				job.errors = parsed.errors;
@@ -289,7 +299,7 @@ export function createMarketDataService(
 					next = (page[page.length - 1] as { time: number }).time + 1;
 				}
 			}
-			return { ...range, pages: pages() };
+			return { instrument: repo.instrument, ...range, pages: pages() };
 		},
 
 		running() {

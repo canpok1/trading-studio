@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { StrategySummary } from "@trading-studio/backend";
+import { BTC_JPY } from "@trading-studio/core";
 import { compared } from "./compare";
 
 const summary = (
 	performance: Partial<NonNullable<StrategySummary["performance"]>> | null,
 ): StrategySummary =>
 	({
-		status: { account: { lots: [{}, {}] } },
+		status: { instrument: BTC_JPY, account: { lots: [{}, {}] } },
 		performance: performance && {
 			pnl: 18_420,
 			pnlPercent: 1.842,

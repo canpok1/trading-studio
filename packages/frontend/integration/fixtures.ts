@@ -26,6 +26,7 @@ import type {
 	Timeframe,
 } from "@trading-studio/core";
 import {
+	BTC_JPY,
 	candleStart,
 	DEFAULT_AGGREGATION_RULE,
 	DEFAULT_FEE_RATES,
@@ -43,6 +44,7 @@ export function tradingRun(
 ): AutoTradingStatus {
 	return {
 		accountId: over.id,
+		instrument: BTC_JPY,
 		enabled: false,
 		mode: "paper",
 		nextEvalAt: null,
@@ -296,6 +298,7 @@ export function backtestRun(
 	over: Partial<BacktestRun> & Pick<BacktestRun, "id" | "name">,
 ): BacktestRun {
 	return {
+		instrument: BTC_JPY,
 		params: strategyTemplate("blank").params,
 		timeframe: "1h",
 		from: Date.UTC(2026, 7, 31, 15),

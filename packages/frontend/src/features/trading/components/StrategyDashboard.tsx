@@ -409,7 +409,11 @@ function DashboardBody({
 				>
 					{hasAccount && run && (
 						<>
-							<TotalPnlTile performance={perf.performance} error={perf.error} />
+							<TotalPnlTile
+								performance={perf.performance}
+								error={perf.error}
+								unit={run.instrument.currency.unit}
+							/>
 							<UnrealizedPnlTile status={run} price={latest?.price ?? null} />
 						</>
 					)}

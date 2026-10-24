@@ -4,7 +4,7 @@ import { aggregateCandles } from "./candles";
 import type { DvolPoint } from "./dvol";
 import type { EventCalendar } from "./event-calendar";
 import { HOUR_MS } from "./event-calendar";
-import { BTC_JPY } from "./instrument";
+import type { Instrument } from "./instrument";
 import { notional } from "./money";
 import type { AggregationRule, ScoredNews } from "./news-judgment";
 import { judgmentCursor } from "./news-judgment";
@@ -42,6 +42,7 @@ export const defaultFillModel: FillModel = (order, bar) => {
 };
 
 export type BacktestConfig<P> = {
+	instrument: Instrument;
 	strategy: Strategy<P>;
 	params: P;
 	/** 戦略が頼む粒度ごとの足（古い順）。期間より前の足も含めてよい（指標の計算に使う） */
@@ -259,6 +260,7 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 
 		// 足の中の約定 → 足の終わりに期限切れの取消 → 判定
 		const out: StepOutput = tradingStep({
+			instrument: config.instrument,
 			strategy,
 			params,
 			now: closeAt,
@@ -309,7 +311,7 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 
 		// 足ごとの時価評価でドローダウンを測る
 		const equity =
-			cash + notional(BTC_JPY, bar.close, position.quantity, "floor");
+			cash + notional(config.instrument, bar.close, position.quantity, "floor");
 		if (equity > peak) {
 			peak = equity;
 			peakAt = closeAt;
@@ -338,7 +340,7 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 	const { cash, position } = account;
 
 	const finalEquity =
-		cash + notional(BTC_JPY, last.close, position.quantity, "floor");
+		cash + notional(config.instrument, last.close, position.quantity, "floor");
 	const first = steps[startIndex] as Candle;
 	const inRange = steps.slice(startIndex, endIndex + 1);
 	const wins = trades.filter((t) => t.pnl > 0);

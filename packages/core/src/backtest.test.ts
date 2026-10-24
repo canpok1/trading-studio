@@ -9,6 +9,7 @@ import {
 	MARKET_BUY_ORDER,
 	singleBuy,
 } from "./condition-strategy";
+import { BTC_JPY } from "./instrument";
 import { DEFAULT_AGGREGATION_RULE } from "./news-judgment";
 import type { Strategy } from "./strategy";
 import { strategyTemplate } from "./templates";
@@ -97,6 +98,7 @@ function config(
 ): BacktestConfig<Script> {
 	return {
 		strategy: scripted,
+		instrument: BTC_JPY,
 		events: { events: [], covered: [] },
 		dvol: [],
 		params,
@@ -303,6 +305,7 @@ describe("期間と指標", () => {
 		const r = runBacktest({
 			...config(bars([flat, flat, flat, flat]), { buyPrice: 1 }),
 			strategy: spy,
+			instrument: BTC_JPY,
 			events: { events: [], covered: [] },
 			dvol: [],
 			from: 2 * H,
@@ -345,6 +348,7 @@ describe("複数の足", () => {
 		runBacktest({
 			...config(hours, { buyPrice: 1 }),
 			strategy: spy,
+			instrument: BTC_JPY,
 			events: { events: [], covered: [] },
 			dvol: [],
 			candles: { "1h": hours, "4h": fours },
@@ -440,6 +444,7 @@ describe("判定頻度が条件の足より短い", () => {
 	}
 	const base = {
 		strategy: conditionStrategy,
+		instrument: BTC_JPY,
 		events: { events: [], covered: [] },
 		dvol: [],
 		params,
@@ -520,6 +525,7 @@ describe("決定論", () => {
 		const run = () =>
 			runBacktest({
 				strategy: conditionStrategy,
+				instrument: BTC_JPY,
 				events: { events: [], covered: [] },
 				dvol: [],
 				params,
@@ -567,6 +573,7 @@ describe("AI 判定", () => {
 	const run = (judgments?: BacktestConfig<ConditionSet>["judgments"]) =>
 		runBacktest({
 			strategy: conditionStrategy,
+			instrument: BTC_JPY,
 			events: { events: [], covered: [] },
 			dvol: [],
 			params,
@@ -650,6 +657,7 @@ describe("1日の損失上限", () => {
 		});
 		const r = runBacktest({
 			strategy: churn,
+			instrument: BTC_JPY,
 			events: { events: [], covered: [] },
 			dvol: [],
 			params: null,
@@ -720,6 +728,7 @@ describe("複数ポジション", () => {
 	test("階段の指値がそれぞれロットになり、ロットごとに売って往復を数える", () => {
 		const r = runBacktest({
 			strategy: conditionStrategy,
+			instrument: BTC_JPY,
 			events: { events: [], covered: [] },
 			dvol: [],
 			params,
@@ -783,6 +792,7 @@ describe("DVOL", () => {
 		const r = runBacktest({
 			strategy: conditionStrategy,
 			params,
+			instrument: BTC_JPY,
 			events: { events: [], covered: [] },
 			dvol,
 			candles: { "1h": hours },

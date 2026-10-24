@@ -10,7 +10,11 @@ import type {
 	Timeframe,
 	Trade,
 } from "@trading-studio/core";
-import { parseAggregationRule, parseConditionSet } from "@trading-studio/core";
+import {
+	instrumentOf,
+	parseAggregationRule,
+	parseConditionSet,
+} from "@trading-studio/core";
 import type { Db } from "../db/open-infra";
 import type { BacktestRepository } from "./repository-domain";
 import type { RunnerOutput } from "./runner-domain";
@@ -25,6 +29,7 @@ import type {
 type RunRow = {
 	id: number;
 	strategy_name: string;
+	instrument: string;
 	params: string;
 	timeframe: Timeframe;
 	from_time: number;
@@ -57,6 +62,7 @@ function toRun(r: RunRow): BacktestRun {
 	return {
 		id: r.id,
 		name: r.strategy_name,
+		instrument: instrumentOf(r.instrument),
 		// 保存するときに形を検証しているので、読み出しでは形が崩れていない前提で読む
 		params: parseConditionSet(JSON.parse(r.params)) as ConditionSet,
 		dailyLossLimitApplied: "dailyLossLimit" in JSON.parse(r.params),
@@ -120,13 +126,14 @@ export class SqliteBacktestRepository implements BacktestRepository {
 	): number {
 		return Number(
 			this.sql.run(
-				`insert into backtest_runs (strategy_name, params, timeframe, from_time, to_time,
+				`insert into backtest_runs (strategy_name, instrument, params, timeframe, from_time, to_time,
 				 initial_cash, fee_limit_ppm, fee_market_ppm, skip_gaps, status, started_at, bar_count,
 				 step_timeframe, step_limited, aggregation_rule, criteria_version, event_criteria_version,
 				 news_delay_ms, news_data_version, segment_id, segment_regime, dataset_run_id)
-				 values (?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				[
 					run.name,
+					run.instrument.id,
 					JSON.stringify(run.params),
 					run.timeframe,
 					run.from,

@@ -3,7 +3,7 @@
 
 import type { EventCalendar } from "./event-calendar";
 import { formatDuration, formatQuantity, formatYen } from "./format";
-import { BTC_JPY } from "./instrument";
+import type { Instrument } from "./instrument";
 import { feeAmount, notional } from "./money";
 import type { Strategy, StrategyInput, StrategyOutput } from "./strategy";
 import type {
@@ -316,6 +316,7 @@ export function settleFills(
 	fillPrice: (order: Order) => number | null,
 	time: number,
 	fees: FeeRates,
+	instrument: Instrument,
 ): StepChanges & { account: Account; filled: boolean } {
 	let { cash, lots, today } = account;
 	const changed: TradeOrder[] = [];
@@ -330,13 +331,13 @@ export function settleFills(
 			continue;
 		}
 		const fee = feeAmount(
-			BTC_JPY,
+			instrument,
 			price,
 			order.quantity,
 			feeRate(fees, order.type),
 		);
 		if (order.side === "buy") {
-			const cost = notional(BTC_JPY, price, order.quantity, "ceil");
+			const cost = notional(instrument, price, order.quantity, "ceil");
 			// 指値は発注時に資金を確かめているが、同時に出した注文が先に約定して足りなくなることがあるため、約定時にも確かめる
 			if (cash < cost + fee) {
 				withChanged(
@@ -379,7 +380,7 @@ export function settleFills(
 				);
 				continue;
 			}
-			const proceeds = notional(BTC_JPY, price, order.quantity, "floor");
+			const proceeds = notional(instrument, price, order.quantity, "floor");
 			cash += proceeds - fee;
 			const partial = order.quantity < lot.quantity;
 			// 一部だけ売るときは、買いの支払いを売った量のぶんだけ按分する
@@ -484,6 +485,7 @@ export function cancelAll(
 }
 
 export type DecideInput<P> = {
+	instrument: Instrument;
 	strategy: Strategy<P>;
 	params: P;
 	/** 評価時刻 */
@@ -516,7 +518,7 @@ export type DecideOutput = StepChanges & {
 
 /** 戦略の評価と注文の作成 */
 export function decide<P>(input: DecideInput<P>): DecideOutput {
-	const { strategy, params, now, fees } = input;
+	const { strategy, params, now, fees, instrument } = input;
 	const prefix = input.idPrefix ?? "o";
 	const { cash, position, lots } = input.account;
 	let { seq } = input.account;
@@ -531,6 +533,7 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 	);
 
 	const out: StrategyOutput = strategy.evaluate({
+		instrument,
 		now,
 		price: input.price,
 		candles: input.candles,
@@ -555,8 +558,8 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 	}) => {
 		const p = o.type === "limit" ? (o.price as number) : input.price;
 		return (
-			notional(BTC_JPY, p, o.quantity, "ceil") +
-			feeAmount(BTC_JPY, p, o.quantity, feeRate(fees, o.type))
+			notional(instrument, p, o.quantity, "ceil") +
+			feeAmount(instrument, p, o.quantity, feeRate(fees, o.type))
 		);
 	};
 
@@ -588,7 +591,7 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 				return "売るロットが無いため注文しない";
 			}
 			if (intent.quantity <= 0 || intent.quantity > lot.quantity) {
-				return `ロットの ${formatQuantity(BTC_JPY, lot.quantity)} BTC を超える数量は売れないため注文しない`;
+				return `ロットの ${formatQuantity(instrument, lot.quantity)} ${instrument.quantityUnit} を超える数量は売れないため注文しない`;
 			}
 			if (open.some((x) => x.order.lotId === lot.id)) {
 				return "このロットの売りが約定待ちのため注文しない";
@@ -708,6 +711,7 @@ export function tradingStep<P>(input: StepInput<P>): StepOutput {
 		input.fill.price,
 		input.fill.time,
 		input.fees,
+		input.instrument,
 	);
 	const expired = expireOrders(settled.account, input.now);
 	const changed = [...settled.changed];

@@ -5,6 +5,7 @@ import {
 	strategyTemplate,
 	validateConditionSet,
 } from "@trading-studio/core";
+import { DEFAULT_INSTRUMENT } from "../market-data/instrument-domain";
 import type { StrategyRepository } from "./repository-domain";
 import type {
 	CreateStrategyInput,
@@ -93,7 +94,12 @@ export function createStrategyService(
 			}
 			return {
 				ok: true,
-				strategy: repo.insert(name.trim(), params, now()),
+				strategy: repo.insert(
+					name.trim(),
+					DEFAULT_INSTRUMENT.marketId,
+					params,
+					now(),
+				),
 			};
 		},
 

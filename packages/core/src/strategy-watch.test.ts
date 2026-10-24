@@ -3,6 +3,7 @@ import type { BuyRule, ConditionSet } from "./condition-strategy";
 import { DEFAULT_BUY_ORDER, DEFAULT_PARTIAL_SELL } from "./condition-strategy";
 import type { EventCalendar } from "./event-calendar";
 import { adx, rsi } from "./indicators";
+import { BTC_JPY } from "./instrument";
 import type { WatchInput, WatchMove } from "./strategy-watch";
 import { watchConditionSet } from "./strategy-watch";
 import { TIMEFRAME_MS } from "./timeframe";
@@ -64,6 +65,7 @@ function input(p: ConditionSet, over: Partial<WatchInput> = {}): WatchInput {
 	return {
 		now: closes.length * H,
 		price,
+		instrument: BTC_JPY,
 		events: { events: [], covered: [] },
 		dvol: [],
 		candles: { "1h": candles(closes) },

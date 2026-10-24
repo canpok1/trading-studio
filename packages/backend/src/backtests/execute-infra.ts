@@ -18,6 +18,7 @@ export function execute(
 ): RunnerOutcome {
 	try {
 		const r = runBacktest({
+			instrument: job.instrument,
 			strategy: conditionStrategy,
 			params: job.params,
 			candles: job.candles,

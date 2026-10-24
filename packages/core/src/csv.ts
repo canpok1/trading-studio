@@ -1,7 +1,8 @@
 // 過去データの CSV の読み書きと検証
 
-import { BTC_JPY, toPriceUnits } from "./instrument";
-import { parseQuantity, quantityToString } from "./money";
+import type { Instrument } from "./instrument";
+import { toPriceUnits } from "./instrument";
+import { parseQuantity, priceToString, quantityToString } from "./money";
 import type { Timeframe } from "./timeframe";
 import { candleStart, JST_OFFSET_MS } from "./timeframe";
 import type { Candle } from "./types";
@@ -65,10 +66,10 @@ export function parseRfc3339(value: string): number | null {
 
 const DECIMAL = /^\d+(\.\d+)?$/;
 
-function parsePrice(v: string): number | null {
+function parsePrice(instrument: Instrument, v: string): number | null {
 	const t = v.trim();
 	if (!DECIMAL.test(t)) return null;
-	const n = toPriceUnits(BTC_JPY, Number(t));
+	const n = toPriceUnits(instrument, Number(t));
 	return n > 0 && Number.isSafeInteger(n) ? n : null;
 }
 
@@ -78,6 +79,7 @@ function parsePrice(v: string): number | null {
  * 1行目の日時が読めなければヘッダーとして読み飛ばす
  */
 export function parseCandleCsv(
+	instrument: Instrument,
 	text: string,
 	timeframe: Timeframe,
 	onProgress?: (done: number, total: number) => void,
@@ -119,7 +121,9 @@ export function parseCandleCsv(
 			);
 			continue;
 		}
-		const [open, high, low, close] = cols.slice(1, 5).map(parsePrice);
+		const [open, high, low, close] = cols
+			.slice(1, 5)
+			.map((v) => parsePrice(instrument, v));
 		if (
 			open === null ||
 			high === null ||
@@ -139,7 +143,7 @@ export function parseCandleCsv(
 		}
 		let volume: number;
 		try {
-			volume = parseQuantity(BTC_JPY, cols[5] ?? "");
+			volume = parseQuantity(instrument, cols[5] ?? "");
 		} catch {
 			fail(lineNo, raw, "出来高が読めない（0 以上の数値が必要）");
 			continue;
@@ -175,14 +179,14 @@ export function formatJstRfc3339(ms: number): string {
 	return `${new Date(ms + JST_OFFSET_MS).toISOString().slice(0, -1)}+09:00`;
 }
 
-/** 足を CSV の1行へ（改行なし）。出来高は BTC の小数で書く */
-export function formatCandleCsvRow(c: Candle): string {
+/** 足を CSV の1行へ（改行なし）。価格は通貨の、出来高は数量の小数で書く */
+export function formatCandleCsvRow(instrument: Instrument, c: Candle): string {
 	return [
 		formatJstRfc3339(c.time),
-		c.open,
-		c.high,
-		c.low,
-		c.close,
-		quantityToString(BTC_JPY, c.volume),
+		priceToString(instrument, c.open),
+		priceToString(instrument, c.high),
+		priceToString(instrument, c.low),
+		priceToString(instrument, c.close),
+		quantityToString(instrument, c.volume),
 	].join(",");
 }

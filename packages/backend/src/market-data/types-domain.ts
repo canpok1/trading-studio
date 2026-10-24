@@ -1,6 +1,12 @@
 // 過去データの API が使う型。app.ts から参照されるため、Bun 固有の型を持ち込まない
 
-import type { Candle, CsvRowError, Gap, Timeframe } from "@trading-studio/core";
+import type {
+	Candle,
+	CsvRowError,
+	Gap,
+	Instrument,
+	Timeframe,
+} from "@trading-studio/core";
 
 export type ImportStatus = "running" | "done" | "failed" | "canceled";
 /**
@@ -86,7 +92,12 @@ export interface MarketDataService {
 		timeframe: Timeframe,
 		from: number,
 		to: number,
-	): { first: number; last: number; pages: Iterable<Candle[]> } | null;
+	): {
+		instrument: Instrument;
+		first: number;
+		last: number;
+		pages: Iterable<Candle[]>;
+	} | null;
 	/** 最後に確定した足の終値（time は足の終わりの時刻） */
 	latestClose(): { time: number; close: number } | null;
 }

@@ -105,7 +105,11 @@ export type BacktestServiceDeps = {
 	repo: BacktestRepository;
 	marketData: Pick<
 		MarketDataRepository,
-		"importedTimeframes" | "gaps" | "countCandles" | "loadCandles"
+		| "instrument"
+		| "importedTimeframes"
+		| "gaps"
+		| "countCandles"
+		| "loadCandles"
 	>;
 	strategies: StrategyService;
 	runner: BacktestRunner;
@@ -402,6 +406,7 @@ export function createBacktestService({
 
 			const id = repo.create({
 				name: input.name.trim(),
+				instrument: marketData.instrument,
 				params,
 				// 条件で使う最も細かい足。AI アドバイスで注文の前後を見せる足に使う
 				timeframe: needed[0] ?? step.timeframe,
@@ -433,6 +438,7 @@ export function createBacktestService({
 			let job: RunningJob;
 			try {
 				job = runner({
+					instrument: marketData.instrument,
 					params,
 					candles,
 					dataTimeframe: finest,
