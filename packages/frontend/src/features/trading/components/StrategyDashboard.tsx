@@ -126,6 +126,12 @@ export function StrategyDashboard({
 		run?.instruments.some((i) => i.id === chosen.id)
 			? chosen.id
 			: null) ?? defaultInstrument(run);
+	// 既定の銘柄は保有で変わるので、戦略ごとに最初の1回で固定し、定期の取り直しで表示を飛ばさない
+	const fixedDefault =
+		chosen?.strategyId === strategyId ? null : defaultInstrument(run);
+	useEffect(() => {
+		if (fixedDefault !== null) setChosen({ strategyId, id: fixedDefault });
+	}, [strategyId, fixedDefault]);
 	const chooseInstrument = useCallback(
 		(id: string) => setChosen({ strategyId, id }),
 		[strategyId],
@@ -139,15 +145,18 @@ export function StrategyDashboard({
 	const latest =
 		loadedLatest?.instrument === instrumentId ? loadedLatest.latest : null;
 	const [latestError, setLatestError] = useState<string | null>(null);
+	const latestSeq = useRef(0);
 	const loadLatest = useCallback(async () => {
+		const my = ++latestSeq.current;
 		try {
 			const r = await api.api.market.latest
 				.$get({ query: instrumentQuery(instrumentId) })
 				.then((res) => readJson<LatestMarket>(res));
+			if (my !== latestSeq.current) return;
 			setLatest({ instrument: instrumentId, latest: r });
 			setLatestError(null);
 		} catch (e) {
-			setLatestError(errorMessage(e));
+			if (my === latestSeq.current) setLatestError(errorMessage(e));
 		}
 	}, [api, instrumentId]);
 	useEffect(() => {
@@ -337,7 +346,12 @@ function DashboardBody({
 	} | null>(null);
 	const [barsError, setBarsError] = useState<string | null>(null);
 	// 判定は足と一緒に取り直す。読めなくても価格のチャートは出す
-	const [current, setCurrent] = useState<CurrentJudgment | null>(null);
+	const [loadedCurrent, setCurrent] = useState<{
+		instrument: string | null;
+		current: CurrentJudgment;
+	} | null>(null);
+	const current =
+		loadedCurrent?.instrument === instrumentId ? loadedCurrent.current : null;
 	// どの足の条件で取った判定かを持ち、切り替え直後に別の粒度の判定を当てはめない
 	const [series, setSeries] = useState<{
 		key: string;
@@ -370,7 +384,8 @@ function DashboardBody({
 				.$get({ query: instrument })
 				.then((res) => readJson<CurrentJudgment>(res))
 				.then((c) => {
-					if (my === barsSeq.current) setCurrent(c);
+					if (my === barsSeq.current)
+						setCurrent({ instrument: instrumentId, current: c });
 				})
 				.catch(() => {});
 			const first = r.bars[0];
@@ -407,8 +422,10 @@ function DashboardBody({
 
 	// 粒度を切り替えた直後は前の条件の足が残っている。届くまでは最新の価格も EMA も重ねない
 	const fresh = bars?.key === barsKey;
+	// 銘柄を切り替えた直後の前の銘柄の足は、価格の桁が違い線や印と合わないので出さない
+	const sameInstrument = bars?.key.startsWith(`${instrumentId}:`) ?? false;
 	const shownBars = useMemo(() => {
-		if (!bars) return [];
+		if (!bars || !sameInstrument) return [];
 		if (!fresh) return bars.bars;
 		return withLatestPrice(
 			bars.bars,
@@ -417,7 +434,7 @@ function DashboardBody({
 			latest?.price ?? null,
 			latest?.priceTime ?? null,
 		);
-	}, [bars, fresh, timeframe, latest]);
+	}, [bars, sameInstrument, fresh, timeframe, latest]);
 
 	const barJudgments = useMemo(
 		() =>
@@ -530,7 +547,11 @@ function DashboardBody({
 				</section>
 			) : (
 				<PriceChart
-					instrument={bars?.instrument ?? viewed?.instrument ?? null}
+					instrument={
+						(sameInstrument ? bars?.instrument : null) ??
+						viewed?.instrument ??
+						null
+					}
 					bars={shownBars}
 					indicators={indicators}
 					hideIndicators={!fresh}

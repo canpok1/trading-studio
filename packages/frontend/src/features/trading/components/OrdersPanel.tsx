@@ -66,6 +66,12 @@ export function OrdersPanel({
 	const [allInstruments, setAllInstruments] = useState(false);
 	const scope = multi && !allInstruments ? instrument : null;
 	const scoped = instruments.find((i) => i.id === scope) ?? null;
+	// 上で銘柄を切り替えたときも、絞り込みを変えたときと同じく最初の10件に戻す
+	const [shownScope, setShownScope] = useState(scope);
+	if (shownScope !== scope) {
+		setShownScope(scope);
+		setLimit(ORDERS_PAGE);
+	}
 	const loaded = useTradingOrders(
 		{
 			strategyId,
