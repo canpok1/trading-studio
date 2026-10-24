@@ -8,7 +8,7 @@ import type { Instrument } from "./instrument";
 import { marketOf } from "./instrument";
 import { notional } from "./money";
 import type { AggregationRule, ScoredNews } from "./news-judgment";
-import { judgmentCursor } from "./news-judgment";
+import { judgmentCursor, scoredNewsFor } from "./news-judgment";
 import type { Strategy } from "./strategy";
 import type { Timeframe } from "./timeframe";
 import {
@@ -211,12 +211,24 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 			"AI 判定の条件があるのに、判定の材料が渡されていない",
 		);
 	}
-	const judgeAtTime =
-		judges.length > 0 && config.judgments
-			? judgmentCursor(config.judgments.news, config.judgments.rule)
-			: null;
+	// 銘柄ごとの評価で判定する（ADR 0037）。時刻を昇順に進めるので銘柄ごとに持つ
+	const cursors = new Map<string, ReturnType<typeof judgmentCursor>>();
+	const cursorOf = (instrument: string) => {
+		const material = config.judgments;
+		if (judges.length === 0 || !material) return null;
+		let c = cursors.get(instrument);
+		if (!c) {
+			c = judgmentCursor(
+				scoredNewsFor(material.news, instrument),
+				material.rule,
+			);
+			cursors.set(instrument, c);
+		}
+		return c;
+	};
 	const since = config.judgments?.since;
-	const judgmentsAt = (time: number) => {
+	const judgmentsAt = (instrument: string, time: number) => {
+		const judgeAtTime = cursorOf(instrument);
 		if (!judgeAtTime) return {};
 		if (since === null || (since !== undefined && time < since)) return {};
 		const v = judgeAtTime(time);
@@ -358,13 +370,11 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 			(m) => m.current >= 0 && (filled.has(m) || closeAt >= m.nextEvalAt),
 		);
 		if (due.length > 0) {
-			const judgments = judgmentsAt(closeAt);
 			const dvol = dvolAt(closeAt);
 			const out = decideAll({
 				strategy,
 				params,
 				now: closeAt,
-				judgments,
 				events: config.events,
 				account,
 				fees,
@@ -406,6 +416,7 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 								m.current + 1,
 							),
 						},
+						judgments: judgmentsAt(m.instrument.id, closeAt),
 						dvol,
 						state: m.state,
 					};

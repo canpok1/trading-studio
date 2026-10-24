@@ -93,9 +93,26 @@ export type ScoredNews = {
 	fetchedAt: number;
 	/** 判定に使い始める時刻。運用では採点した時刻、バックテストでは公開時刻に取得の間隔を足した時刻（docs/news.md） */
 	usableAt: number;
+	/** 市場全体の点数 */
 	scores: Scores;
 	duration: Duration;
+	/** 記事が個別に関係する銘柄の点数（銘柄の id → 点数）。無い銘柄は市場全体の点数を使う（ADR 0037） */
+	instruments?: Readonly<Record<string, InstrumentScore>>;
 };
+
+export type InstrumentScore = { scores: Scores; duration: Duration };
+
+/** 銘柄に対する点数の記事。その銘柄の個別の点数があればそれ、無ければ市場全体の点数 */
+export function scoredNewsFor(
+	news: readonly ScoredNews[],
+	instrument: string,
+): ScoredNews[] {
+	return news.map((n) => {
+		const own = n.instruments?.[instrument];
+		const { instruments: _, ...rest } = n;
+		return own ? { ...rest, ...own } : rest;
+	});
+}
 
 /**
  * 評価ルール（画面の名前。コード上は集計ルール）。時間は時間単位の整数、しきい値は観点の点数の範囲（SCORE_RANGES）の整数。

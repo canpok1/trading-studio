@@ -561,7 +561,7 @@ export type DecideOutput = StepChanges & {
 /** 1銘柄ぶんの判定の材料 */
 export type MarketInput<P> = Pick<
 	DecideInput<P>,
-	"instrument" | "price" | "candles" | "recent" | "dvol" | "state"
+	"instrument" | "price" | "candles" | "recent" | "dvol" | "state" | "judgments"
 >;
 
 export type DecideAllInput<P> = Omit<DecideInput<P>, keyof MarketInput<P>> & {
@@ -591,10 +591,19 @@ export type DecideAllOutput = StepChanges & {
 
 /** 戦略の評価と注文の作成（1銘柄） */
 export function decide<P>(input: DecideInput<P>): DecideOutput {
-	const { instrument, price, candles, recent, dvol, state, ...rest } = input;
+	const {
+		instrument,
+		price,
+		candles,
+		recent,
+		dvol,
+		state,
+		judgments,
+		...rest
+	} = input;
 	const out = decideAll({
 		...rest,
-		markets: [{ instrument, price, candles, recent, dvol, state }],
+		markets: [{ instrument, price, candles, recent, dvol, state, judgments }],
 	});
 	const r = out.results[0] as MarketDecision;
 	return {
@@ -645,7 +654,7 @@ export function decideAll<P>(input: DecideAllInput<P>): DecideAllOutput {
 			price: m.price,
 			candles: m.candles,
 			recent: m.recent,
-			judgments: input.judgments,
+			judgments: m.judgments,
 			events: input.events,
 			dvol: m.dvol,
 			position: positionOfLots(myLots),
