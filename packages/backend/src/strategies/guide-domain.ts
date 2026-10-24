@@ -20,7 +20,6 @@ import { DEFAULT_INSTRUMENT } from "../market-data/instrument-domain";
 const DEFAULT_BROKER = brokerOf(marketOf(DEFAULT_INSTRUMENT));
 
 // Record にしておき、条件の種類を足したら型エラーでここの書き足しに気づけるようにする
-
 const CONDITIONS: Record<ConditionType, string> = {
 	emaCross: `- \`{"type":"emaCross","timeframe":"1h","fast":12,"slow":48,"direction":"up"|"down"}\` 短期 EMA が長期 EMA を前の足から今の足の間に上抜け・下抜けた。本数 ${LIMITS.emaPeriod.min}〜${LIMITS.emaPeriod.max}、fast < slow`,
 	breakout: `- \`{"type":"breakout","timeframe":"1h","lookback":20,"direction":"high"|"low"}\` 終値が今の足を除く直近 N 本の最高値を上回った・最安値を下回った。本数 ${LIMITS.lookback.min}〜${LIMITS.lookback.max}`,
