@@ -20,7 +20,7 @@ claude mcp add --transport http trading-studio https://<サーバー>/mcp
 | `list_strategies` `get_strategy` | 戦略の一覧・1件。条件は画面の文言と JSON の両方で返す。条件を変えられない理由（自動取引がオン・保有か未約定の注文がある）を `lock` で返す |
 | `create_strategy` | 条件セットから新しい戦略を保存する |
 | `update_strategy` | 戦略の条件を置き換える。`lock` がある戦略は変えられない |
-| `get_data_coverage` | 価格データの粒度ごとの範囲と欠損の数 |
+| `get_data_coverage` | 価格データの粒度ごとの範囲と欠損の数。`instrument` で銘柄を選ぶ（省くと BTC/JPY） |
 | `run_backtest` | 戦略か条件セットでバックテストを実行し、終わるまで（最大 2 分）待って成績を返す。待ちきれなければ実行中のまま返す。市場評価に使う採点の版と、予定の前後の条件に使う予定の評価基準の版を指定できる。期間は日付か相場データで渡す |
 | `list_segments` | 相場データの一覧。相場で絞れる |
 | `list_datasets` `save_dataset` | データセット（相場データを束ねたもの）の一覧・保存（作成と上書き） |
