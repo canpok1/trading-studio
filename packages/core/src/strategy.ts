@@ -77,6 +77,11 @@ export type Strategy<P> = {
 	 * 戦略の条件とは別に、売買の1ステップの中で注文を出す手前で検査する
 	 */
 	dailyLossLimit?(params: P): number | null;
+	/** 候補の銘柄の検証（ADR 0037）。無ければどの組でもよい */
+	validateCandidates?(
+		params: P,
+		instruments: readonly Instrument[],
+	): ValidationError[];
 	/** 同時に持つ銘柄数の上限（ADR 0037）。無ければ上限なし */
 	maxHoldings?(params: P): number;
 	/**

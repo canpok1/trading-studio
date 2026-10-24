@@ -572,6 +572,8 @@ export type DecideAllInput<P> = Omit<DecideInput<P>, keyof MarketInput<P>> & {
 	 * （1銘柄だけの口座の記録を今までと同じ形に保つため）。既定は markets の先頭
 	 */
 	primary?: string;
+	/** 判定しない銘柄も含む、口座の全銘柄の現在値。未約定の買いの額をその銘柄の価格と単位で見積もるのに使う。markets の銘柄は markets の値を使う */
+	quotes?: readonly Pick<MarketInput<P>, "instrument" | "price">[];
 };
 
 /** 銘柄ごとの判定の結果 */
@@ -685,7 +687,9 @@ export function decideAll<P>(input: DecideAllInput<P>): DecideAllOutput {
 		// 未約定の買いが約定したときに払う額（手数料込み）。同時に出した買いが全部約定しても現金が足りるようにする。
 		// 成行は判定時の現在値で見積もる。ほかの銘柄の買いはその銘柄の価格と単位で見積もる
 		const priceOf = (id: string) =>
-			markets.find((x) => x.instrument.id === id) ?? m;
+			markets.find((x) => x.instrument.id === id) ??
+			input.quotes?.find((x) => x.instrument.id === id) ??
+			m;
 		const buyNeed = (o: {
 			type: OrderType;
 			price?: number | null;
@@ -807,6 +811,12 @@ export function decideAll<P>(input: DecideAllInput<P>): DecideAllOutput {
 						cancelRecord(item.record, now, intent.reason ?? "戦略が取消"),
 					);
 					open = open.filter((x) => x !== item);
+					// 買いを取り消して持つものが無くなった銘柄は、同じ判定のうちに上限から外す
+					if (
+						!myLots.length &&
+						!open.some((x) => x.order.side === "buy" && mine(x.order))
+					)
+						held.delete(instrument.id);
 				}
 			}
 		}

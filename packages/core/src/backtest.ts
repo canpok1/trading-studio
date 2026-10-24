@@ -229,6 +229,13 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 	};
 
 	const primary = config.instrument.id;
+	const invalid = strategy.validateCandidates?.(params, [
+		config.instrument,
+		...(config.otherMarkets ?? []).map((m) => m.instrument),
+	]);
+	if (invalid?.length) {
+		throw new BacktestError(invalid.map((e) => e.message).join("。"));
+	}
 	const markets = [
 		{
 			instrument: config.instrument,
@@ -362,6 +369,12 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 				account,
 				fees,
 				primary,
+				quotes: markets
+					.filter((m) => m.current >= 0)
+					.map((m) => ({
+						instrument: m.instrument,
+						price: (m.steps[m.current] as Candle).close,
+					})),
 				markets: due.map((m) => {
 					const bar = m.steps[m.current] as Candle;
 					const candles: Partial<Record<Timeframe, readonly Candle[]>> = {};

@@ -532,6 +532,66 @@ describe("複数銘柄の資金配分", () => {
 		);
 	});
 
+	test("判定しない銘柄の未約定の買いは、その銘柄の現在値と単位で見積もる", () => {
+		// XRP の単位（価格 0.001 円・数量 0.01）で 200 円 × 1,000 XRP = 200,000 円の指値
+		const XRP: Instrument = {
+			...XRP_JPY,
+			priceDecimals: 3,
+			quantityDecimals: 2,
+		};
+		const account: Account = {
+			...newAccount(250_000),
+			openOrders: [
+				{
+					order: {
+						id: "x",
+						side: "buy",
+						type: "limit",
+						price: 200_000,
+						quantity: 100_000,
+						placedAt: 0,
+						expiresAt: null,
+						status: "open",
+						instrument: XRP.id,
+					},
+					record: {} as never,
+				},
+			],
+		};
+		const out = decideAll({
+			strategy: fixed(buy),
+			events: { events: [], covered: [] },
+			params: null,
+			now: 10 * H,
+			judgments: {},
+			account,
+			fees: FEES,
+			markets: [market(BTC_JPY)],
+			quotes: [{ instrument: XRP, price: 200_000 }],
+		});
+		expect(out.results[0]?.decision.note).toContain(
+			"未約定の買い 200,200 円を除くと",
+		);
+	});
+
+	test("同じ判定で買いを取り消した銘柄は、上限から外す", () => {
+		const placed = run([ETH_JPY], newAccount(10_000_000));
+		const id = placed.account.openOrders[0]?.order.id as string;
+		const cancelEth: Strategy<null> = {
+			...ranked({ [ETH_JPY.id]: 2, [XRP_JPY.id]: 1 }, 1),
+			evaluate: ({ now, state, instrument }) => ({
+				intents:
+					instrument.id === ETH_JPY.id
+						? [{ kind: "cancel", orderId: id }]
+						: buy,
+				nextEvalAt: now + H,
+				state,
+			}),
+		};
+		const out = run([ETH_JPY, XRP_JPY], placed.account, cancelEth);
+		expect(ordered(out)).toEqual([XRP_JPY.id]);
+	});
+
 	test("約定は銘柄ごとに反映し、ロットはその銘柄の判定にだけ渡す", () => {
 		const placed = run([BTC_JPY, ETH_JPY], newAccount(1_000_000));
 		const filled = settleFills(

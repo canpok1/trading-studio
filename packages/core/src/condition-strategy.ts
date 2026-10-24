@@ -1177,7 +1177,7 @@ function gcd(a: number, b: number): number {
 	return x;
 }
 
-/** 条件が足のデータを使う粒度（細かい順、重複なし） */
+/** 条件と順位の決め方が足のデータを使う粒度（細かい順、重複なし） */
 export function candleTimeframes(params: ConditionSet): Timeframe[] {
 	const used = new Set<Timeframe>();
 	for (const g of allGroups(params)) {
@@ -1185,6 +1185,7 @@ export function candleTimeframes(params: ConditionSet): Timeframe[] {
 			if (needsCandles(c)) used.add(c.timeframe);
 		}
 	}
+	if (params.ranking) used.add(params.ranking.timeframe);
 	return TIMEFRAMES.filter((t) => used.has(t));
 }
 
@@ -2366,6 +2367,7 @@ export const conditionStrategy: Strategy<ConditionSet> = {
 	validate: validateConditionSet,
 	evaluate: evaluateConditionSet,
 	dailyLossLimit: (p) => p.dailyLossLimit,
+	validateCandidates,
 	maxHoldings: (p) => p.maxHoldings ?? DEFAULT_MAX_HOLDINGS,
 	rankScore,
 };

@@ -913,6 +913,23 @@ describe("複数の銘柄", () => {
 		expect(r.summary.buyHoldPercent).toBeCloseTo(100 / 3);
 	});
 
+	test("候補の銘柄の検証を通らなければ実行しない", () => {
+		const strategy: Strategy<Script> = {
+			...buyer({}),
+			validateCandidates: (_p, list) =>
+				list.length > 1 ? [{ path: "instruments", message: "だめ" }] : [],
+		};
+		expect(() =>
+			runBacktest({
+				...config(flat(3), { buyPrice: 0 }),
+				strategy,
+				otherMarkets: [
+					{ instrument: ETH, candles: { "1h": flat(3) }, stepCandles: flat(3) },
+				],
+			}),
+		).toThrow("だめ");
+	});
+
 	test("ほかの銘柄の足が欠けた時刻も、ある銘柄で判定する", () => {
 		const r = run({ [XRP.id]: 1 }, flat(1, 2 * H));
 		expect(r.decisions.filter((d) => d.instrument === XRP.id)).toHaveLength(1);
