@@ -25,4 +25,8 @@ describe("価格と金額の書式", () => {
 		expect(formatPriceWithUnit(AAPL, 5)).toBe("0.05 ドル");
 		expect(formatMoney(USD, -1_000_00)).toBe("-1,000.00 ドル");
 	});
+
+	test("同じ入力なら同じ結果", () => {
+		expect(formatPrice(AAPL, 123_456_7)).toBe(formatPrice(AAPL, 123_456_7));
+	});
 });
