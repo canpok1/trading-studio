@@ -59,6 +59,27 @@ const get = async (t: ReturnType<typeof createTestApp>, ids: number[]) => {
 };
 
 describe("GET /api/scoring/accuracy", () => {
+	test("BTC/JPY の値動きで測るので、記事に BTC/JPY の個別の点数があればそれで測る", async () => {
+		const { t, ids } = await scored();
+		t.clock.now = START + 4 * 24 * H;
+		const id = ids[0] as number;
+		const sentimentOf = async () => {
+			const x = (await get(t, [id])).items[0];
+			return x?.status === "ok" ? x.sentiment : null;
+		};
+		t.db.$client.run(
+			"update news_scores set sentiment = 90 where news_id = ?",
+			[id],
+		);
+		const market = await sentimentOf();
+		t.db.$client.run(
+			`update news_scores set instruments = '{"coincheck:btc_jpy":{"sentiment":-90,"risk":0,"duration":"short"}}' where news_id = ?`,
+			[id],
+		);
+		// 上がり続ける価格に対し、市場全体の強気は当たり、BTC の個別の弱気は外れる
+		expect(await sentimentOf()).toBeLessThan(market as number);
+	});
+
 	test("測る長さがたった記事は精度を、たっていない記事は測定中を返す", async () => {
 		const { t, ids } = await scored();
 		const r1 = await get(t, ids);

@@ -5,7 +5,7 @@ import * as z from "zod";
 import type { ToolDeps } from "../mcp/tool-app";
 import { atSchema, atTime, fail, readOnly, text } from "../mcp/tool-app";
 import { evaluationView, jst, resultsView } from "../mcp/views-domain";
-import { parseRuleInput } from "./judgments-domain";
+import { EVALUATED_INSTRUMENT_IDS, parseRuleInput } from "./judgments-domain";
 
 export function registerJudgmentTools(
 	server: McpServer,
@@ -15,14 +15,22 @@ export function registerJudgmentTools(
 		"get_market_evaluation",
 		{
 			description:
-				"市場評価（センチメント・リスク）と、その内訳（評価に使った記事を、記事の点数の段階ごとに数えた件数・平均点・重みの割合）。ニュース画面の「今の市場評価」と評価詳細のタブの「市場評価の内訳」と同じ。at で過去の時点を指定できる",
-			inputSchema: { at: atSchema },
+				"市場評価（センチメント・リスク）と、その内訳（評価に使った記事を、記事の点数の段階ごとに数えた件数・平均点・重みの割合）。ニュース画面の「今の市場評価」と評価詳細のタブの「市場評価の内訳」と同じ。at で過去の時点を指定できる。instrument で銘柄に対する評価（記事にその銘柄の個別の点数があればそれ、無ければ市場全体の点数で集計）",
+			inputSchema: {
+				at: atSchema,
+				instrument: z
+					.enum(EVALUATED_INSTRUMENT_IDS as [string, ...string[]])
+					.optional()
+					.describe("評価する銘柄の id。省くと BTC/JPY"),
+			},
 			annotations: readOnly,
 		},
 		(a) => {
 			const t = atTime(a.at);
 			if ("isError" in t) return t;
-			return text(evaluationView(judgments.current(undefined, t.at)));
+			return text(
+				evaluationView(judgments.current(undefined, t.at, a.instrument)),
+			);
 		},
 	);
 

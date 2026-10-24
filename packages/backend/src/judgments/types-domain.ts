@@ -35,11 +35,18 @@ export type JudgmentSeries = {
 };
 
 export interface JudgmentService {
-	/** 今の判定。rule を渡すとそのルールで計算する（保存しない）。at を渡すとその時点の判定（先の時刻は今） */
-	current(rule?: AggregationRule, at?: number): CurrentJudgment;
+	/**
+	 * 今の判定。rule を渡すとそのルールで計算する（保存しない）。at を渡すとその時点の判定（先の時刻は今）。
+	 * instrument はその銘柄に対する評価（ADR 0037。省くと BTC/JPY）
+	 */
+	current(
+		rule?: AggregationRule,
+		at?: number,
+		instrument?: string,
+	): CurrentJudgment;
 	/**
 	 * [from, to) の足ごとの判定。rule を省くと今の集計ルール。version・delayMs は scoredNews と同じ。
-	 * segmentFrom は firstScoredAt と同じ
+	 * segmentFrom は firstScoredAt と同じ。instrument は current と同じ
 	 */
 	series(
 		from: number,
@@ -49,6 +56,7 @@ export interface JudgmentService {
 		version?: number | null,
 		delayMs?: number | null,
 		segmentFrom?: number | null,
+		instrument?: string,
 	): JudgmentSeries;
 	rule(): AggregationRule;
 	/**
@@ -57,7 +65,7 @@ export interface JudgmentService {
 	 */
 	firstScoredAt(segmentFrom?: number | null): number | null;
 	/**
-	 * 判定に使い始める時刻が [from, to) の採点済みのニュース。version を渡すとその版の採点だけを使う（無い記事は除く）。null・省略は運用どおり。
+	 * 判定に使い始める時刻が [from, to) の採点済みのニュース（銘柄の個別の点数も含む）。version を渡すとその版の採点だけを使う（無い記事は除く）。null・省略は運用どおり。
 	 * delayMs が null・省略なら運用の判定（採点時刻から使う）、数ならバックテスト（新しさの時刻 + delayMs から使う）
 	 */
 	scoredNews(
@@ -75,8 +83,13 @@ export interface JudgmentService {
 		version: number | null,
 		delayMs: number,
 	): number | null;
-	/** [from, to) の、足の粒度 timeframe の足ごとの今のルールでの判定 */
-	seriesOf(from: number, to: number, timeframe: Timeframe): JudgmentSeries;
+	/** [from, to) の、足の粒度 timeframe の足ごとの今のルールでの判定。instrument は current と同じ */
+	seriesOf(
+		from: number,
+		to: number,
+		timeframe: Timeframe,
+		instrument?: string,
+	): JudgmentSeries;
 	/** rule で計算した今の評価（保存しない）。ルールに入力の誤りがあれば errors */
 	preview(
 		rule: AggregationRule,

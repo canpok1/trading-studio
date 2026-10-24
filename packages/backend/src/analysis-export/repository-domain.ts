@@ -23,6 +23,8 @@ export type NewsExportRow = {
 	risk: number | null;
 	sentiment: number | null;
 	duration: string | null;
+	/** 個別に関係する銘柄の点数（JSON）。無ければ null */
+	instruments: string | null;
 	comment: string | null;
 	scored_at: number | null;
 	criteria_version: number | null;
