@@ -7,9 +7,31 @@ import {
 } from "./market-data-domain";
 import type { MarketDataService } from "./types-domain";
 
-export function marketDataRoutes(service: MarketDataService) {
+/**
+ * byInstrument は収集している銘柄ごとの過去データ。
+ * instrument（クエリ。取り込みはフォーム）で銘柄を選び、省くと既定の銘柄（service）を使う
+ */
+export function marketDataRoutes(
+	service: MarketDataService,
+	byInstrument: readonly MarketDataService[],
+) {
+	const pick = (id: unknown) =>
+		id === undefined
+			? service
+			: (byInstrument.find((s) => s.instrument.id === id) ?? null);
+	const instrumentQuery = validator("query", (q, c) => {
+		const s = pick(q.instrument);
+		if (!s) return c.json({ message: "収集していない銘柄" }, 400);
+		return q.instrument === undefined
+			? {}
+			: { instrument: q.instrument as string };
+	});
+	const of = (q: { instrument?: string }) =>
+		pick(q.instrument) as MarketDataService;
 	return new Hono()
-		.get("/coverage", (c) => c.json({ timeframes: service.coverage() }))
+		.get("/coverage", instrumentQuery, (c) =>
+			c.json({ timeframes: of(c.req.valid("query")).coverage() }),
+		)
 		.get("/latest", (c) =>
 			c.json({ instrument: service.instrument, latest: service.latestClose() }),
 		)
@@ -57,18 +79,33 @@ export function marketDataRoutes(service: MarketDataService) {
 				});
 			},
 		)
-		.get("/imports", (c) => c.json({ imports: service.listImports() }))
+		.get("/imports", instrumentQuery, (c) =>
+			c.json({ imports: of(c.req.valid("query")).listImports() }),
+		)
 		.post(
 			"/imports",
 			validator("form", (value, c) => {
 				const r = parseImportForm(value);
 				if (!r.ok) return c.json({ message: r.message }, 400);
-				return { file: r.file, timeframe: r.timeframe };
+				const s = pick(value.instrument);
+				if (!s) return c.json({ message: "収集していない銘柄" }, 400);
+				return {
+					file: r.file,
+					timeframe: r.timeframe,
+					...(value.instrument === undefined
+						? {}
+						: { instrument: value.instrument as string }),
+				};
 			}),
 			async (c) => {
-				const { file, timeframe } = c.req.valid("form");
+				const form = c.req.valid("form");
+				const { file, timeframe } = form;
 				const text = await file.text();
-				const r = service.startImport({ text, timeframe, fileName: file.name });
+				const r = of(form).startImport({
+					text,
+					timeframe,
+					fileName: file.name,
+				});
 				if (!r.ok) {
 					return c.json(
 						{
@@ -81,14 +118,15 @@ export function marketDataRoutes(service: MarketDataService) {
 				return c.json({ job: r.job }, 202);
 			},
 		)
-		.get("/imports/:id", (c) => {
-			const job = service.getImport(Number(c.req.param("id")));
+		.get("/imports/:id", instrumentQuery, (c) => {
+			const job = of(c.req.valid("query")).getImport(Number(c.req.param("id")));
 			return job
 				? c.json({ job }, 200)
 				: c.json({ message: "取り込みが見つからない" }, 404);
 		})
 		.post(
 			"/imports/:id/resolve",
+			instrumentQuery,
 			validator("json", (v, c) => {
 				const overwrite = (v as { overwrite?: unknown } | null)?.overwrite;
 				if (typeof overwrite !== "boolean") {
@@ -100,7 +138,7 @@ export function marketDataRoutes(service: MarketDataService) {
 				return { overwrite };
 			}),
 			(c) => {
-				const r = service.resolveImport(
+				const r = of(c.req.valid("query")).resolveImport(
 					Number(c.req.param("id")),
 					c.req.valid("json").overwrite,
 				);
@@ -113,8 +151,10 @@ export function marketDataRoutes(service: MarketDataService) {
 					: c.json({ message: "取り込みが見つからない" }, 404);
 			},
 		)
-		.post("/imports/:id/cancel", (c) => {
-			const job = service.cancelImport(Number(c.req.param("id")));
+		.post("/imports/:id/cancel", instrumentQuery, (c) => {
+			const job = of(c.req.valid("query")).cancelImport(
+				Number(c.req.param("id")),
+			);
 			return job
 				? c.json({ job }, 200)
 				: c.json({ message: "取り込みが見つからない" }, 404);

@@ -280,7 +280,7 @@ export function BacktestRunPage() {
 				.$get()
 				.then((res) => readJson<{ strategies: StoredStrategy[] }>(res)),
 			api.api.data.coverage
-				.$get()
+				.$get({ query: {} })
 				.then((res) => readJson<{ timeframes: TimeframeCoverage[] }>(res)),
 			api.api.data.latest.$get().then((res) =>
 				readJson<{

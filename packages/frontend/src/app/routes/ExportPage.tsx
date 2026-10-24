@@ -323,7 +323,7 @@ function CandleCsvSection() {
 	const load = useCallback(
 		() =>
 			api.api.data.coverage
-				.$get()
+				.$get({ query: {} })
 				.then((r) => readJson<{ timeframes: TimeframeCoverage[] }>(r)),
 		[api],
 	);

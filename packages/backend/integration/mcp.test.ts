@@ -73,6 +73,7 @@ async function setup() {
 			strategies: t.strategies,
 			backtests: t.backtests,
 			marketData: t.marketData,
+			marketDataByInstrument: [t.marketData, t.ethMarketData],
 			segments: t.segments,
 			datasets: t.datasets,
 			scoring: t.scoring,
@@ -243,6 +244,12 @@ describe("MCP", () => {
 		const coverage = await call("get_data_coverage");
 		expect(coverage.json).toContainEqual(
 			expect.objectContaining({ timeframe: "1h", first: jst(START) }),
+		);
+		const eth = await call("get_data_coverage", {
+			instrument: "coincheck:eth_jpy",
+		});
+		expect(eth.json).toContainEqual(
+			expect.objectContaining({ timeframe: "1h", count: 0 }),
 		);
 
 		const run = await call("run_backtest", {

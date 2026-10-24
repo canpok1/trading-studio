@@ -37,6 +37,55 @@ function chooseFile(view: ReturnType<typeof renderApp>, name: string) {
 }
 
 describe("CSV の取り込み", () => {
+	test("上部で銘柄を切り替えると、その銘柄の取り込み済みを読み、その銘柄として送る", async () => {
+		const api = dataApi()
+			.on(routes.api.data.coverage, "$get", (req) => ({
+				timeframes:
+					req.query.get("instrument") === "coincheck:eth_jpy"
+						? [
+								coverage({
+									timeframe: "1d",
+									count: 1,
+									firstTime: DAY,
+									lastTime: DAY,
+								}),
+							]
+						: [],
+			}))
+			.on(routes.api.data.imports, "$post", (_, reply) =>
+				reply(202, { job: importJob({ id: 1, timeframe: "1m" }) }),
+			)
+			// 取り込みは銘柄で探すので、ほかの銘柄として問い合わせたら見つからない
+			.on(routes.api.data.imports[":id"], "$get", (req, reply) =>
+				req.query.get("instrument") === "coincheck:eth_jpy"
+					? reply(200, {
+							job: importJob({
+								id: 1,
+								status: "done",
+								phase: null,
+								insertedRows: 3,
+							}),
+						})
+					: reply(404, { message: "見つからない" }),
+			);
+		const view = renderApp("/data", api);
+		await view.findByText("取り込んだデータはまだ無い");
+		fireEvent.click(view.getByRole("radio", { name: "ETH" }));
+		expect(
+			await view.findByRole("img", { name: /^日足: 2026\/02\/01/ }),
+		).toBeTruthy();
+		expect(view.getByText("ETH/JPY の1分足の CSV ファイルを選ぶ")).toBeTruthy();
+		chooseFile(view, "eth.csv");
+		// 進み具合をその銘柄で問い合わせたので終わりまで追える
+		expect(await view.findByText(/3 行を取り込んだ/, {}, WAIT)).toBeTruthy();
+		const sent = api.requests.find(
+			(r) => r.method === "POST" && r.path === "/api/data/imports",
+		);
+		expect(String(sent?.body)).toContain(
+			'name="instrument"\r\n\r\ncoincheck:eth_jpy',
+		);
+	});
+
 	test("選んだ粒度で CSV を送り、終わると件数と取り込み済みの期間が出る", async () => {
 		const done = importJob({
 			id: 1,
