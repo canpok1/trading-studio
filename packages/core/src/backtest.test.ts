@@ -925,6 +925,8 @@ describe("複数の銘柄", () => {
 		expect(Object.values(by).reduce((a, x) => a + x.pnl, 0)).toBe(
 			r.summary.pnl,
 		);
+		// 総資産の推移は日足で、終値が最後の時価
+		expect(r.equity?.at(-1)?.close).toBe(r.summary.finalEquity);
 	});
 
 	test("銘柄ごとの損益の和は、ロットが2つ以上残っても全体の損益に一致する", () => {
@@ -981,6 +983,7 @@ describe("複数の銘柄", () => {
 			strategy: buyer({}),
 		});
 		expect(r.summary.byInstrument).toBeUndefined();
+		expect(r.equity).toBeUndefined();
 	});
 
 	test("候補の銘柄の検証を通らなければ実行しない", () => {

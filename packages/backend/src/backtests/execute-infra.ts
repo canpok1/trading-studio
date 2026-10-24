@@ -64,6 +64,14 @@ export function execute(
 								),
 							}
 						: {}),
+					...(r.equity
+						? {
+								equity: {
+									times: r.equity.map((c) => c.time),
+									closes: r.equity.map((c) => c.close),
+								},
+							}
+						: {}),
 				}),
 				orders: pack(r.orders),
 				trades: pack(r.trades),

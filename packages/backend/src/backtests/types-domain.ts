@@ -122,6 +122,9 @@ export type BacktestChart = {
 	judgments: JudgmentSeries | null;
 };
 
+/** 総資産の推移の1点。value はその日の最後の判定の総資産 */
+export type EquityPoint = { time: number; value: number };
+
 export type OrderFilter = "filled" | "all";
 
 /** 実行の一覧の並び。new=実行の新しい順、pnl=損益率の高い順（成績の無いものは最後） */
@@ -205,6 +208,8 @@ export interface BacktestService {
 		| { ok: true; chart: BacktestChart }
 		| { ok: false; kind: "not_found" }
 		| { ok: false; kind: "too_many"; count: number; max: number };
+	/** 候補が2つ以上の実行の総資産の推移。持たなければ null */
+	equity(id: number): EquityPoint[] | null;
 	/** instrument を指定すると、その銘柄の注文だけ */
 	orders(
 		id: number,

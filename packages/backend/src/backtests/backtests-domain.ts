@@ -654,6 +654,10 @@ export function createBacktestService({
 			};
 		},
 
+		equity(id) {
+			return repo.equity(id);
+		},
+
 		orders(id, filter, offset, limit, instrument) {
 			const stored = repo.orders(id);
 			const run = repo.get(id);

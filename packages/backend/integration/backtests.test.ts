@@ -901,6 +901,15 @@ describe("候補の銘柄が複数", () => {
 				)
 			).status,
 		).toBe(404);
+		// 総資産の推移は候補が2つ以上の実行だけ。最後の点が最終資金
+		const { equity } = await getJson<{
+			equity: { time: number; value: number }[];
+		}>(t, `/api/backtests/${id}/equity`);
+		expect(equity).toHaveLength(18);
+		expect(equity.at(-1)?.value).toBe(run.summary?.finalEquity as number);
+		expect(
+			(await t.app.request(`/api/backtests/${btcOnly}/equity`)).status,
+		).toBe(404);
 	});
 
 	test("候補を省くと BTC/JPY だけで実行し、銘柄ごとの成績は持たない", async () => {

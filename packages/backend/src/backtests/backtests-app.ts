@@ -165,6 +165,10 @@ export function backtestRoutes(
 					);
 				},
 			)
+			.get("/:id/equity", (c) => {
+				const equity = service.equity(Number(c.req.param("id")));
+				return equity ? c.json({ equity }, 200) : c.json(NOT_FOUND, 404);
+			})
 			.get(
 				"/:id/orders",
 				validator("query", (q) => {

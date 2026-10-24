@@ -3,6 +3,7 @@ import type { RunnerOutput } from "./runner-domain";
 import type {
 	BacktestChart,
 	BacktestRun,
+	EquityPoint,
 	RunFilter,
 	RunListResult,
 } from "./types-domain";
@@ -40,6 +41,8 @@ export interface BacktestRepository {
 		id: number,
 		instrument?: string,
 	): Omit<BacktestChart, "judgments"> | null;
+	/** 候補が2つ以上の実行の総資産の日足（終値だけ）。持たなければ null */
+	equity(id: number): EquityPoint[] | null;
 	/** 往復の取引。結果が無ければ null */
 	trades(id: number): Trade[] | null;
 	orders(id: number): BacktestOrder[] | null;
