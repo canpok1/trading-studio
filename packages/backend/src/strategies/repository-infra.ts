@@ -80,10 +80,15 @@ export class SqliteStrategyRepository implements StrategyRepository {
 		return toStrategy(r);
 	}
 
-	updateParams(id: number, params: ConditionSet, at: number): void {
+	updateParams(
+		id: number,
+		params: ConditionSet,
+		instruments: readonly string[],
+		at: number,
+	): void {
 		this.sql.run(
-			"update strategies set params = ?, updated_at = ? where id = ?",
-			[JSON.stringify(params), at, id],
+			"update strategies set params = ?, instruments = ?, updated_at = ? where id = ?",
+			[JSON.stringify(params), JSON.stringify(instruments), at, id],
 		);
 	}
 

@@ -6,7 +6,7 @@ import type {
 	TradingFailure,
 	TradingService,
 } from "../trading/types-domain";
-import { parseCreateInput, parseParamsInput } from "./strategies-domain";
+import { parseCreateInput, parseUpdateInput } from "./strategies-domain";
 import type { StrategyResult, StrategyService } from "./types-domain";
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -72,15 +72,16 @@ export function strategyRoutes(
 		.put(
 			"/:id/params",
 			validator("json", (v, c) => {
-				const params = parseParamsInput(v);
-				if (!params) return c.json({ message: "条件の形が違う" }, 400);
-				return { params };
+				const r = parseUpdateInput(v);
+				if (!r) return c.json({ message: "条件か候補の銘柄の形が違う" }, 400);
+				return r;
 			}),
 			(c) => {
 				const id = Number(c.req.param("id"));
 				const no = locked(c, "戦略の条件を変える", id);
 				if (no) return no;
-				return respond(c, service.updateParams(id, c.req.valid("json").params));
+				const { params, instruments } = c.req.valid("json");
+				return respond(c, service.updateParams(id, params, instruments));
 			},
 		)
 		.put(

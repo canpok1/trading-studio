@@ -688,7 +688,13 @@ export function createBacktestService({
 		saveToStrategy(id, name) {
 			const run = repo.get(id);
 			if (run?.status !== "done") return { ok: false, kind: "not_found" };
-			const r = strategies.create({ name, from: { params: run.params } });
+			const r = strategies.create({
+				name,
+				from: {
+					params: run.params,
+					instruments: run.instruments.map((i) => i.id),
+				},
+			});
 			if (r.ok) return { ok: true, strategy: r.strategy };
 			const e = r.error;
 			switch (e.kind) {

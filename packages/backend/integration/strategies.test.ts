@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { strategyTemplate } from "@trading-studio/core";
+import { ETH_JPY, strategyTemplate, XRP_JPY } from "@trading-studio/core";
 import { createTestDb } from "../src/db/test-db-infra";
 import type { StoredStrategy } from "../src/strategies/types-domain";
 import { createTestApp } from "./test-app";
@@ -112,6 +112,51 @@ describe("戦略の API", () => {
 		const list = (await call(app, "GET", "")).body
 			.strategies as StoredStrategy[];
 		expect(list.map((s) => s.name)).toEqual(["a のコピー"]);
+	});
+
+	test("候補の銘柄を条件と一緒に保存し、省くと今の候補のまま。検証を通らない候補は保存しない", async () => {
+		const { app } = createTestApp();
+		const s = (
+			await call(app, "POST", "", { name: "a", from: { template: "trend" } })
+		).body.strategy as StoredStrategy;
+		expect(s.instruments).toEqual(["coincheck:btc_jpy"]);
+		const ids = ["coincheck:btc_jpy", ETH_JPY.id, XRP_JPY.id];
+		const byAmount = {
+			...s.params,
+			buys: s.params.buys.map((b) => ({ ...b, orderAmount: 100_000 })),
+			maxHoldings: 2,
+		};
+		// BTC/JPY 以外を含むなら金額で注文する
+		const bad = await call(app, "PUT", `/${s.id}/params`, {
+			params: s.params,
+			instruments: ids,
+		});
+		expect(bad.status).toBe(400);
+		expect(bad.body.errors).toEqual([
+			{
+				path: "instruments",
+				message: "銘柄ごとに価格と数量の単位が違うので、注文量を金額で入れる",
+			},
+		]);
+		const saved = await call(app, "PUT", `/${s.id}/params`, {
+			params: byAmount,
+			instruments: ids,
+		});
+		expect(saved.status).toBe(200);
+		expect((saved.body.strategy as StoredStrategy).instruments).toEqual(ids);
+		const again = await call(app, "PUT", `/${s.id}/params`, {
+			params: byAmount,
+		});
+		expect((again.body.strategy as StoredStrategy).instruments).toEqual(ids);
+		// 価格を集めていない銘柄は形の誤り
+		expect(
+			(
+				await call(app, "PUT", `/${s.id}/params`, {
+					params: byAmount,
+					instruments: ["coincheck:doge_jpy"],
+				})
+			).status,
+		).toBe(400);
 	});
 
 	test("形の違う入力は 400", async () => {

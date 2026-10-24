@@ -910,6 +910,16 @@ describe("候補の銘柄が複数", () => {
 		expect(
 			(await t.app.request(`/api/backtests/${btcOnly}/equity`)).status,
 		).toBe(404);
+		// 新しい戦略として保存すると候補も引き継ぐ
+		const saved = await t.app.request(`/api/backtests/${id}/save`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ name: "3銘柄" }),
+		});
+		expect(
+			((await saved.json()) as { strategy: { instruments: string[] } }).strategy
+				.instruments,
+		).toEqual(IDS);
 	});
 
 	test("候補を省くと BTC/JPY だけで実行し、銘柄ごとの成績は持たない", async () => {
