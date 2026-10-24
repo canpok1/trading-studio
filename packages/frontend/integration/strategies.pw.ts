@@ -1,5 +1,5 @@
 import type { Locator } from "@playwright/test";
-import { strategyTemplate } from "@trading-studio/core";
+import { BTC_JPY, strategyTemplate } from "@trading-studio/core";
 import { expect, test } from "./browser";
 import { routes } from "./fake-api";
 import { storedStrategy, tradingRun } from "./fixtures";
@@ -13,7 +13,10 @@ test("戦略の編集画面は横にはみ出さない", async ({ page, api }) =
 	});
 	api
 		.on(routes.api.strategies, "$get", () => ({ strategies: [strategy] }))
-		.on(routes.api.data.latest, "$get", () => ({ latest: null }));
+		.on(routes.api.data.latest, "$get", () => ({
+			instrument: BTC_JPY,
+			latest: null,
+		}));
 	await page.goto("/strategies/1/edit");
 	await expect(
 		page.getByRole("heading", { name: "「トレンド」の編集" }),

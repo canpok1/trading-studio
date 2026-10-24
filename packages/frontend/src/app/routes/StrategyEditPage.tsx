@@ -3,7 +3,7 @@ import type {
 	StoredStrategy,
 } from "@trading-studio/backend";
 import type { ConditionSet } from "@trading-studio/core";
-import { validateConditionSet } from "@trading-studio/core";
+import { instrumentOf, validateConditionSet } from "@trading-studio/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import {
@@ -196,7 +196,11 @@ export function StrategyEditPage() {
 					disabled={lock !== null}
 					className="contents min-w-0 lg:flex lg:flex-col lg:gap-3.5"
 				>
-					<BuyRulesEditor {...editor} latestPrice={state.data.latest} />
+					<BuyRulesEditor
+						{...editor}
+						latestPrice={state.data.latest}
+						instrument={instrumentOf(current.instruments[0] as string)}
+					/>
 				</fieldset>
 				<div className="order-last flex flex-col gap-2 lg:col-span-2">
 					{notice && (

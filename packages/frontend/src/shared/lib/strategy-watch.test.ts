@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { StrategyWatch, WatchAction } from "@trading-studio/core";
+import { BTC_JPY } from "@trading-studio/core";
 import {
 	chartTriggers,
 	distanceText,
@@ -46,32 +47,36 @@ test("distanceText は今の価格からの % を符号付き小数2桁で返す
 	expect(distanceText(956.1, 1_000)).toBe("−4.39%");
 });
 
-test("moveText は今の価格からの幅を符号付きの % と円の差で返す", () => {
-	expect(moveText(13_113_254, 13_000_000)).toEqual({
+test("moveText は今の価格からの幅を符号付きの % と価格の差で返す", () => {
+	expect(moveText(BTC_JPY, 13_113_254, 13_000_000)).toEqual({
 		percent: "+0.87%",
-		yen: "+113,254 円",
+		diff: "+113,254 円",
 	});
-	expect(moveText(12_429_300, 13_000_000)).toEqual({
+	expect(moveText(BTC_JPY, 12_429_300, 13_000_000)).toEqual({
 		percent: "−4.39%",
-		yen: "−570,700 円",
+		diff: "−570,700 円",
 	});
 });
 
 describe("triggerView", () => {
 	test("価格・注文は向きの矢印と幅、円の差は添え書き", () => {
-		expect(triggerView({ kind: "price", price: 1_100 }, 1_000)).toEqual({
+		expect(
+			triggerView({ kind: "price", price: 1_100 }, 1_000, BTC_JPY),
+		).toEqual({
 			icon: "↑",
 			text: "+10.00%",
 			note: "+100 円",
 			suffix: "待ち",
 		});
-		expect(triggerView({ kind: "order", price: 985 }, 1_000)).toEqual({
+		expect(triggerView({ kind: "order", price: 985 }, 1_000, BTC_JPY)).toEqual({
 			icon: "↓",
 			text: "−1.50%",
 			note: "−15 円",
 			suffix: " 約定待ち",
 		});
-		expect(triggerView({ kind: "order", price: null }, 1_000)).toMatchObject({
+		expect(
+			triggerView({ kind: "order", price: null }, 1_000, BTC_JPY),
+		).toMatchObject({
 			text: "成行",
 			suffix: " 約定待ち",
 		});
@@ -79,12 +84,14 @@ describe("triggerView", () => {
 
 	test("時間・価格以外・あと N 条件", () => {
 		expect(
-			triggerView({ kind: "bars", bars: 5, timeframe: "1h" }, 1_000).text,
+			triggerView({ kind: "bars", bars: 5, timeframe: "1h" }, 1_000, BTC_JPY)
+				.text,
 		).toBe("あと 5 本（1時間足）");
 		expect(
 			triggerView(
 				{ kind: "time", at: Date.parse("2026-10-29T19:00:00Z") },
 				1_000,
+				BTC_JPY,
 			),
 		).toMatchObject({ text: "10/30 4:00", suffix: " まで待ち" });
 		expect(
@@ -95,6 +102,7 @@ describe("triggerView", () => {
 					detail: "今 中立",
 				},
 				1_000,
+				BTC_JPY,
 			),
 		).toEqual({
 			icon: "◇",
@@ -102,8 +110,8 @@ describe("triggerView", () => {
 			note: "今 中立",
 			suffix: "待ち",
 		});
-		expect(triggerView({ kind: "remaining", count: 2 }, 1_000).text).toBe(
-			"あと 2 条件",
-		);
+		expect(
+			triggerView({ kind: "remaining", count: 2 }, 1_000, BTC_JPY).text,
+		).toBe("あと 2 条件");
 	});
 });

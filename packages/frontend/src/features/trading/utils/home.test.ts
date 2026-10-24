@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { TIMEFRAME_MS } from "@trading-studio/core";
+import { BTC_JPY, TIMEFRAME_MS } from "@trading-studio/core";
 import {
 	changePercent,
 	collectorTrouble,
@@ -31,27 +31,27 @@ describe("ホームの表示", () => {
 			{ time: T0, close: 1 },
 			{ time: T0 + M, close: 2 },
 		];
-		expect(withLatestPrice(bars, "1m", 5, T0 + M + 10_000)).toEqual([
+		expect(withLatestPrice(bars, BTC_JPY, "1m", 5, T0 + M + 10_000)).toEqual([
 			{ time: T0, close: 1 },
 			{ time: T0 + M, close: 5 },
 		]);
-		expect(withLatestPrice(bars, "1m", 5, T0 + 2 * M)).toHaveLength(3);
-		expect(withLatestPrice(bars, "5m", 5, T0 + 2 * M)).toEqual([
+		expect(withLatestPrice(bars, BTC_JPY, "1m", 5, T0 + 2 * M)).toHaveLength(3);
+		expect(withLatestPrice(bars, BTC_JPY, "5m", 5, T0 + 2 * M)).toEqual([
 			{ time: T0, close: 1 },
 			{ time: T0 + M, close: 2 },
 		]);
-		expect(withLatestPrice(bars, "1m", null, null)).toEqual(bars);
+		expect(withLatestPrice(bars, BTC_JPY, "1m", null, null)).toEqual(bars);
 	});
 
 	test("4本値のある足へ最新の価格を反映すると、高値・安値も広げる", () => {
 		const bars = [{ time: T0, open: 10, high: 12, low: 9, close: 11 }];
-		expect(withLatestPrice(bars, "1m", 13, T0 + 10_000)).toEqual([
+		expect(withLatestPrice(bars, BTC_JPY, "1m", 13, T0 + 10_000)).toEqual([
 			{ time: T0, open: 10, high: 13, low: 9, close: 13 },
 		]);
-		expect(withLatestPrice(bars, "1m", 8, T0 + 10_000)).toEqual([
+		expect(withLatestPrice(bars, BTC_JPY, "1m", 8, T0 + 10_000)).toEqual([
 			{ time: T0, open: 10, high: 12, low: 8, close: 8 },
 		]);
-		expect(withLatestPrice(bars, "1m", 7, T0 + M).at(-1)).toEqual({
+		expect(withLatestPrice(bars, BTC_JPY, "1m", 7, T0 + M).at(-1)).toEqual({
 			time: T0 + M,
 			open: 7,
 			high: 7,

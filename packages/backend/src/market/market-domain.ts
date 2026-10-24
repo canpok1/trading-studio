@@ -101,7 +101,7 @@ export function createMarketService({
 					volume: c.volume,
 				}),
 			);
-			return { ok: true, bars };
+			return { ok: true, instrument: repo.instrument, bars };
 		},
 	};
 }

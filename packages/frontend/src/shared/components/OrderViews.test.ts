@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { BacktestOrder } from "@trading-studio/core";
+import { BTC_JPY } from "@trading-studio/core";
 import { exitBadge } from "./OrderViews";
 
 const sell = (reason: string): BacktestOrder => ({
@@ -23,29 +24,38 @@ const sell = (reason: string): BacktestOrder => ({
 describe("売りのバッジ", () => {
 	test("グループ名と、成り立った条件の名前を出す", () => {
 		expect(
-			exitBadge({
-				...sell(
-					"短期EMA(12) 12,470,000 が長期EMA(48) 12,480,000 を下抜け。保有中の 0.020 BTC を売却（利確の条件）",
-				),
-				exitKind: "takeProfit",
-			}),
+			exitBadge(
+				{
+					...sell(
+						"短期EMA(12) 12,470,000 が長期EMA(48) 12,480,000 を下抜け。保有中の 0.020 BTC を売却（利確の条件）",
+					),
+					exitKind: "takeProfit",
+				},
+				BTC_JPY,
+			),
 		).toEqual({ kind: "takeProfit", text: "利確: EMA12/48下抜け" });
 		expect(
-			exitBadge({
-				...sell(
-					"終値 10,300,000 が直近 24 本の最高値 10,250,000 を上抜け。現在値 10,300,000 は買値 10,000,000 から +3.0%（+2% 以上）。保有中の 0.010 BTC を売却（利確の条件）",
-				),
-				exitKind: "takeProfit",
-			})?.text,
+			exitBadge(
+				{
+					...sell(
+						"終値 10,300,000 が直近 24 本の最高値 10,250,000 を上抜け。現在値 10,300,000 は買値 10,000,000 から +3.0%（+2% 以上）。保有中の 0.010 BTC を売却（利確の条件）",
+					),
+					exitKind: "takeProfit",
+				},
+				BTC_JPY,
+			)?.text,
 		).toBe("利確: 24本の高値上抜け・+2%");
 	});
 
 	test("条件の種類ごとの名前", () => {
 		const text = (why: string) =>
-			exitBadge({
-				...sell(`${why}。保有中の 0.010 BTC を売却（損切りの条件）`),
-				exitKind: "stopLoss",
-			})?.text;
+			exitBadge(
+				{
+					...sell(`${why}。保有中の 0.010 BTC を売却（損切りの条件）`),
+					exitKind: "stopLoss",
+				},
+				BTC_JPY,
+			)?.text;
 		expect(text("RSI(14) 72.3 が 70 以上")).toBe("損切り: RSI14 70以上");
 		expect(text("RSI(14) が 70 を下抜け（前の足 72.1 → 今 68.0）")).toBe(
 			"損切り: RSI14 70下抜け",
@@ -87,10 +97,13 @@ describe("売りのバッジ", () => {
 
 	test("足を持つ条件は足を付ける", () => {
 		const text = (why: string) =>
-			exitBadge({
-				...sell(`${why}。保有中の 0.010 BTC を売却（損切りの条件）`),
-				exitKind: "stopLoss",
-			})?.text;
+			exitBadge(
+				{
+					...sell(`${why}。保有中の 0.010 BTC を売却（損切りの条件）`),
+					exitKind: "stopLoss",
+				},
+				BTC_JPY,
+			)?.text;
 		expect(text("日足のRSI(14) 28.0 が 30 以下")).toBe(
 			"損切り: 日足 RSI14 30以下",
 		);
@@ -115,8 +128,10 @@ describe("売りのバッジ", () => {
 		const reason =
 			"現在値 10,300,000 は買値 10,000,000 から +3.0%（+2% 以上）。買値 10,000,000 のロット 0.010 BTC を売却（利確の条件）。現在値 10,300,000 は買値 10,600,000 から −2.8%（−2% 以上）。買値 10,600,000 のロット 0.010 BTC を売却（損切りの条件）";
 		expect(
-			exitBadge({ ...sell(reason), lotPrice: 10_600_000, exitKind: "stopLoss" })
-				?.text,
+			exitBadge(
+				{ ...sell(reason), lotPrice: 10_600_000, exitKind: "stopLoss" },
+				BTC_JPY,
+			)?.text,
 		).toBe("損切り: −2%");
 	});
 
@@ -126,31 +141,38 @@ describe("売りのバッジ", () => {
 				sell(
 					"短期EMA(12) 12,470,000 が長期EMA(48) 12,480,000 を下抜け。保有中の 0.020 BTC を売却（利確の条件）",
 				),
+				BTC_JPY,
 			),
 		).toEqual({ kind: null, text: "EMA12/48下抜け" });
 	});
 
 	test("一部利確と、発動の条件つきのトレーリングストップ", () => {
 		expect(
-			exitBadge({
-				...sell(
-					"現在値 10,800,000 は買値 10,000,000 から +8.0%（+8% 以上）。買値 10,000,000 のロット 0.010 BTC のうち 0.005 BTC を売却（一部利確の条件）",
-				),
-				lotPrice: 10_000_000,
-				exitKind: "partialTakeProfit",
-			}),
+			exitBadge(
+				{
+					...sell(
+						"現在値 10,800,000 は買値 10,000,000 から +8.0%（+8% 以上）。買値 10,000,000 のロット 0.010 BTC のうち 0.005 BTC を売却（一部利確の条件）",
+					),
+					lotPrice: 10_000_000,
+					exitKind: "partialTakeProfit",
+				},
+				BTC_JPY,
+			),
 		).toEqual({ kind: "partialTakeProfit", text: "一部利確: +8%" });
 		expect(
-			exitBadge({
-				...sell(
-					"現在値 10,300,000 は買ってからの最高値 10,700,000 から −3.7%（−3% 以上）。最高値が買値から +5% 以上になってから発動。保有中の 0.005 BTC を売却（利確の条件）",
-				),
-				exitKind: "takeProfit",
-			})?.text,
+			exitBadge(
+				{
+					...sell(
+						"現在値 10,300,000 は買ってからの最高値 10,700,000 から −3.7%（−3% 以上）。最高値が買値から +5% 以上になってから発動。保有中の 0.005 BTC を売却（利確の条件）",
+					),
+					exitKind: "takeProfit",
+				},
+				BTC_JPY,
+			)?.text,
 		).toBe("利確: 最高値−3%");
 	});
 
 	test("買いには付けない", () => {
-		expect(exitBadge({ ...sell("買い"), side: "buy" })).toBeNull();
+		expect(exitBadge({ ...sell("買い"), side: "buy" }, BTC_JPY)).toBeNull();
 	});
 });

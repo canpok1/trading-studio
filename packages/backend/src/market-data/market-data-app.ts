@@ -10,7 +10,9 @@ import type { MarketDataService } from "./types-domain";
 export function marketDataRoutes(service: MarketDataService) {
 	return new Hono()
 		.get("/coverage", (c) => c.json({ timeframes: service.coverage() }))
-		.get("/latest", (c) => c.json({ latest: service.latestClose() }))
+		.get("/latest", (c) =>
+			c.json({ instrument: service.instrument, latest: service.latestClose() }),
+		)
 		.get(
 			"/usable-timeframes",
 			validator("query", (q, c) => {

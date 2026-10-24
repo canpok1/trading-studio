@@ -94,6 +94,7 @@ const ORDER_COLUMNS = `*, (select p.fill_price from trading_orders p
 
 const toOrder = (r: OrderRow): StoredOrder => ({
 	runId: r.run_id,
+	instrument: r.instrument,
 	mode: r.mode,
 	id: r.id,
 	side: r.side,
@@ -325,7 +326,7 @@ export class SqliteTradingRepository implements TradingRepository {
 	}
 
 	/** 条件に合う注文の件数と、損益の合計（件数で切らない） */
-	orderSummary(filter: RunOrderFilter = {}): OrderSummary {
+	orderSummary(filter: RunOrderFilter = {}): Omit<OrderSummary, "currency"> {
 		const { where, args } = orderWhere(filter);
 		const r = this.sql
 			.query<{ count: number; pnl: number }, (string | number)[]>(

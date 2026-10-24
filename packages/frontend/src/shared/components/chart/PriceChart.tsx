@@ -1,10 +1,10 @@
 // 価格チャート。バックテスト結果とホーム（のちにデモ・リアルも）で使う
 
-import type { WatchActionKind } from "@trading-studio/core";
+import type { Instrument, WatchActionKind } from "@trading-studio/core";
 import {
-	BTC_JPY,
 	bollinger,
 	ema,
+	formatPrice,
 	formatQuantity,
 	formatRsi,
 	JUDGE_LABELS,
@@ -35,7 +35,6 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChartIndicators } from "../../lib/chart-indicators";
 import { formatDateTime } from "../../lib/format";
-import { formatInt } from "../../lib/number";
 import type { ChartTrigger } from "../../lib/strategy-watch";
 import { Help } from "../Help";
 import { JudgmentBadge, SHORT_JUDGE_LABELS } from "../judgment/JudgmentBadge";
@@ -79,6 +78,8 @@ import type { PriceTag } from "./price-tags";
 import { PriceTags } from "./price-tags";
 
 type Props = {
+	/** 足の銘柄。価格・出来高の桁と単位に使う。足も口座もまだ届いていなければ null（価格を出さない） */
+	instrument: Instrument | null;
 	bars: readonly ChartBar[];
 	markers?: readonly ChartMarker[];
 	/** EMA・RSI の本数と表示の有無 */
@@ -295,6 +296,7 @@ const MIN_CHART_PX = 260;
 const HIT_PX = 18;
 
 export function PriceChart({
+	instrument,
 	bars,
 	markers = NO_MARKERS,
 	indicators,
@@ -317,6 +319,10 @@ export function PriceChart({
 	onBgChange,
 }: Props) {
 	const box = useRef<HTMLDivElement>(null);
+	// チャートは一度だけ作るので、軸と札の価格の書式は今の銘柄を参照で読む
+	const priceOf = (p: number) => (instrument ? formatPrice(instrument, p) : "");
+	const priceText = useRef(priceOf);
+	priceText.current = priceOf;
 	const chartRef = useRef<{
 		chart: IChartApi;
 		line: ISeriesApi<"Line">;
@@ -463,7 +469,7 @@ export function PriceChart({
 			},
 			localization: {
 				locale: "ja-JP",
-				priceFormatter: (p: number) => formatInt(p),
+				priceFormatter: (p: number) => priceText.current(p),
 				timeFormatter: (t: Time) => formatDateTime(fromChartTime(t as number)),
 			},
 			crosshair: { mode: 0 },
@@ -501,7 +507,7 @@ export function PriceChart({
 		const marks = createSeriesMarkers(line, []);
 		const layer = new JudgeLayer(cssVar);
 		line.attachPrimitive(layer);
-		const tags = new PriceTags();
+		const tags = new PriceTags((p) => priceText.current(p));
 		line.attachPrimitive(tags);
 		chartRef.current = {
 			chart,
@@ -1393,29 +1399,31 @@ export function PriceChart({
 					<span className="font-semibold text-text-2">データなし</span>
 				</>
 			)}
-			{bar && (
+			{bar && instrument && (
 				<>
 					<span className="text-text-2">{formatDateTime(bar.time)}</span>
 					{showValues && candle && bar.open !== undefined && (
 						<span className="text-text-2">
-							始 {formatInt(bar.open)} 高 {formatInt(bar.high ?? 0)} 安{" "}
-							{formatInt(bar.low ?? 0)}
+							始 {priceOf(bar.open)} 高 {priceOf(bar.high ?? 0)} 安{" "}
+							{priceOf(bar.low ?? 0)}
 						</span>
 					)}
 					<span data-testid="chart-close" className="font-semibold">
-						{formatInt(bar.close)}円
+						{priceOf(bar.close)}
+						{instrument.currency.unit}
 					</span>
 					{atLastSlot && latestNote}
 				</>
 			)}
-			{bar && showValues && (
+			{bar && instrument && showValues && (
 				<>
 					{showVolume && bar.volume !== undefined && (
 						<span
 							data-testid="chart-volume"
 							className={`text-text-2 ${short ? "max-lg:hidden" : ""}`}
 						>
-							出来高 {formatQuantity(BTC_JPY, bar.volume)} BTC
+							出来高 {formatQuantity(instrument, bar.volume)}{" "}
+							{instrument.quantityUnit}
 						</span>
 					)}
 					{judgments &&
@@ -1446,8 +1454,7 @@ export function PriceChart({
 										className="inline-block h-[3px] w-2.5"
 										style={{ background: `var(${emaVar(j)})` }}
 									/>
-									EMA{n}{" "}
-									{v === undefined || Number.isNaN(v) ? "—" : formatInt(v)}
+									EMA{n} {v === undefined || Number.isNaN(v) ? "—" : priceOf(v)}
 								</span>
 							);
 						})}
@@ -1461,9 +1468,7 @@ export function PriceChart({
 							{[bbValues.upper, bbValues.middle, bbValues.lower]
 								.map((vs) => {
 									const v = vs[shown as number];
-									return v === undefined || Number.isNaN(v)
-										? "—"
-										: formatInt(v);
+									return v === undefined || Number.isNaN(v) ? "—" : priceOf(v);
 								})
 								.join("/")}
 						</span>

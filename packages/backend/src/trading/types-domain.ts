@@ -1,6 +1,7 @@
 // 自動取引の API が使う型。app.ts から参照されるため、Bun 固有の型を持ち込まない
 
 import type {
+	Currency,
 	DecisionLog,
 	ExitKind,
 	Instrument,
@@ -22,6 +23,8 @@ export type TradingMode = "paper" | "live";
 export type StoredOrder = TradeOrder & {
 	/** 口座（trading_runs）の id。注文の id はこの中で振る */
 	runId: number;
+	/** 銘柄（core の Instrument の id） */
+	instrument: string;
 	mode: TradingMode;
 	/** 発注した判断。無ければ null */
 	decisionId: number | null;
@@ -41,8 +44,10 @@ export type OrderFilter = {
 
 export type OrderSummary = {
 	count: number;
-	/** 損益（売りの約定の手数料込みの損益）の合計（円） */
+	/** 損益（売りの約定の手数料込みの損益）の合計 */
 	realizedPnl: number;
+	/** 損益の通貨（自動取引の市場の通貨） */
+	currency: Currency;
 };
 
 export type StoredDecision = {
@@ -165,9 +170,11 @@ export interface TradingService {
 	run(strategyId: number): AutoTradingStatus | null;
 	/**
 	 * 戦略を今の価格で試算した見張り（条件ごとの成立と発動価格）。注文も state の変更もしない。
-	 * 戦略が無ければ null、価格がまだ無ければ watch が null
+	 * 戦略が無ければ null、価格がまだ無ければ watch が null。instrument は見張る銘柄
 	 */
-	watch(strategyId: number): { watch: StrategyWatch | null } | null;
+	watch(
+		strategyId: number,
+	): { instrument: Instrument; watch: StrategyWatch | null } | null;
 	/** ホームのカードに出す戦略（デモで、オンか、オフでも保有か未約定の注文がある）の要約。作った順 */
 	summaries(): StrategySummary[];
 	/** 戦略を作り、その口座（デモ・開始時の資金は既定）も作る */

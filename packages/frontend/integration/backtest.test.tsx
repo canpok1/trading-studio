@@ -597,6 +597,24 @@ describe("結果の画面", () => {
 		});
 	});
 
+	test("期間の終わりに持っていた量を単位付きで知らせる", async () => {
+		const base = resultRun({ id: 9, name: "保有で終わった" });
+		const holding = {
+			...base,
+			summary: base.summary && {
+				...base.summary,
+				openPositionQuantity: 1_000_000,
+			},
+		};
+		const view = renderApp(
+			"/backtest/runs/9",
+			withResults(createFakeApi(), new Map([[holding.id, holding]])),
+		);
+		expect(
+			await view.findByText(/^期間の終わりに 0\.010 BTC を保有していた。/),
+		).toBeTruthy();
+	});
+
 	test("「← 履歴」で履歴のタブへ戻り、名前で絞れ、「実行」のタブへ戻せる", async () => {
 		const other = resultRun({ id: 8, name: "別の実行" });
 		const api = withResults(

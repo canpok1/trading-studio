@@ -5,9 +5,9 @@ import type {
 	Timeframe,
 } from "@trading-studio/core";
 import {
-	BTC_JPY,
 	buyHoldPercentOf,
 	conditionSetChanges,
+	formatAmount,
 	formatQuantity,
 	gradeMaxDrawdown,
 	gradePnl,
@@ -71,8 +71,7 @@ import {
 	toDateInputValue,
 } from "../../shared/lib/format";
 import {
-	formatInt,
-	formatSignedInt,
+	formatSignedAmount,
 	formatSignedPercent,
 	holdingText,
 } from "../../shared/lib/number";
@@ -243,6 +242,7 @@ export function RunHeader({
 	const [savedAs, setSavedAs] = useState<string | null>(null);
 	const [open, setOpen] = useState(false);
 	const p = run.params;
+	const { currency } = run.instrument;
 	const chips = [
 		frequencyText(p),
 		// 買いが複数なら、どの買いの項目か分かるよう頭に名前を付ける
@@ -258,12 +258,14 @@ export function RunHeader({
 					: []),
 				`${tag}利確: ${groupText(b.takeProfit)}`,
 				`${tag}損切り: ${groupText(b.stopLoss)}`,
-				`${tag}${formatQuantity(BTC_JPY, b.orderSize)} BTC`,
+				`${tag}${formatQuantity(run.instrument, b.orderSize)} ${run.instrument.quantityUnit}`,
 				`${tag}最大ロット数 ${b.maxPositions}`,
 			];
 		}),
 		...(run.dailyLossLimitApplied
-			? [`1日の損失上限 ${formatInt(p.dailyLossLimit)}円`]
+			? [
+					`1日の損失上限 ${formatAmount(currency, p.dailyLossLimit)}${currency.unit}`,
+				]
 			: []),
 		...(p.stopLossCooldownBars > 0
 			? [`損切り後 ${p.stopLossCooldownBars}本は買わない`]
@@ -297,7 +299,8 @@ export function RunHeader({
 					{run.segment &&
 						`相場データ ${segmentName({ ...run, regime: run.segment.regime })} · `}
 					{formatDate(run.from)}〜{formatDate(run.to - 1)} · 初期資金{" "}
-					{formatInt(run.initialCash)}円
+					{formatAmount(run.instrument.currency, run.initialCash)}
+					{run.instrument.currency.unit}
 					{run.skipGaps ? " · 欠損を飛ばして実行" : ""}
 					{" · "}
 					{TIMEFRAME_LABELS[run.stepTimeframe]}で判定
@@ -439,6 +442,7 @@ function useResultChart(runId: number, timeframe: Timeframe) {
 
 function Result({ run }: { run: BacktestRun }) {
 	const api = useApi();
+	const { currency } = run.instrument;
 	const [timeframe, setTimeframe] = useChartTimeframe();
 	const loaded = useResultChart(run.id, timeframe);
 	// 粒度を切り替えている間は前の足を出したままにする
@@ -535,7 +539,8 @@ function Result({ run }: { run: BacktestRun }) {
 						<span
 							className={`num text-[30px] font-semibold tracking-tight ${tone(s.pnl)}`}
 						>
-							{formatSignedInt(s.pnl)}円
+							{formatSignedAmount(currency, s.pnl)}
+							{currency.unit}
 						</span>
 						<span className={`num text-base font-semibold ${tone(s.pnl)}`}>
 							{formatSignedPercent(s.pnlPercent)}
@@ -589,12 +594,17 @@ function Result({ run }: { run: BacktestRun }) {
 								: "—"
 						}
 					/>
-					<Stat label="最終資金" value={`${formatInt(s.finalEquity)}円`} />
+					<Stat
+						label="最終資金"
+						value={`${formatAmount(currency, s.finalEquity)}${currency.unit}`}
+					/>
 				</div>
 				<FewTradesNote trades={s.trades} />
 				{s.openPositionQuantity > 0 && (
 					<p className="text-xs text-text-2">
-						期間の終わりに {formatQuantity(BTC_JPY, s.openPositionQuantity)} BTC
+						期間の終わりに{" "}
+						{formatQuantity(run.instrument, s.openPositionQuantity)}{" "}
+						{run.instrument.quantityUnit}{" "}
 						を保有していた。損益・最終資金は最後の終値で評価し、取引回数・勝率には含めない。
 					</p>
 				)}
@@ -602,6 +612,7 @@ function Result({ run }: { run: BacktestRun }) {
 			<div className="rounded-xl border border-line bg-surface px-3 py-3.5 lg:col-span-2">
 				{chart ? (
 					<PriceChart
+						instrument={run.instrument}
 						bars={chart.bars}
 						markers={chart.markers}
 						indicators={indicators}
@@ -687,6 +698,7 @@ function Result({ run }: { run: BacktestRun }) {
 								<OrderRow
 									key={o.id}
 									order={o}
+									instrument={run.instrument}
 									selected={selected?.id === o.id}
 									onClick={() => setSelected(o)}
 								/>
@@ -711,6 +723,7 @@ function Result({ run }: { run: BacktestRun }) {
 			{selected && (
 				<OrderSheet
 					order={selected}
+					instrument={run.instrument}
 					onClose={() => setSelected(null)}
 					onPair={(oid) => pick(oid)}
 				/>

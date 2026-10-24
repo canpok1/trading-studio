@@ -6,7 +6,7 @@ import type {
 	StoredStrategy,
 	TimeframeCoverage,
 } from "@trading-studio/backend";
-import type { Timeframe } from "@trading-studio/core";
+import type { Instrument, Timeframe } from "@trading-studio/core";
 import {
 	LIVE_AVAILABLE,
 	TIMEFRAME_LABELS,
@@ -238,8 +238,9 @@ function DashboardBody({
 		visible && hasAccount,
 	);
 	const perf = useTradingPerformance(runId, visible && hasAccount && !home);
-	const watch = useStrategyWatch(runId, visible && hasAccount);
-	const showMoves = hasAccount && watch !== null;
+	const watched = useStrategyWatch(runId, visible && hasAccount);
+	const watch = watched?.watch ?? null;
+	const showMoves = hasAccount && watched !== null;
 	// 見張りは定期的に取り直すので、発動価格が変わったときだけ線を引き直す
 	const triggerKey = JSON.stringify(chartTriggers(watch));
 	// biome-ignore lint/correctness/useExhaustiveDependencies: 発動価格が変わったとき（triggerKey）だけ作り直す
@@ -281,6 +282,7 @@ function DashboardBody({
 
 	const [bars, setBars] = useState<{
 		key: string;
+		instrument: Instrument;
 		bars: ChartBar[];
 	} | null>(null);
 	const [barsError, setBarsError] = useState<string | null>(null);
@@ -301,9 +303,11 @@ function DashboardBody({
 				.$get({
 					query: { timeframe, range, history: String(history) },
 				})
-				.then((res) => readJson<{ bars: ChartBar[] }>(res));
+				.then((res) =>
+					readJson<{ instrument: Instrument; bars: ChartBar[] }>(res),
+				);
 			if (my === barsSeq.current) {
-				setBars({ key: barsKey, bars: r.bars });
+				setBars({ key: barsKey, instrument: r.instrument, bars: r.bars });
 				setBarsError(null);
 			}
 			// 判定は読めなくても価格のチャートは出すので、失敗は表示を前のまま残すだけにする
@@ -350,6 +354,7 @@ function DashboardBody({
 		if (!fresh) return bars.bars;
 		return withLatestPrice(
 			bars.bars,
+			bars.instrument,
 			timeframe,
 			latest?.price ?? null,
 			latest?.priceTime ?? null,
@@ -422,9 +427,10 @@ function DashboardBody({
 						stackAtLg={showMoves}
 						className={showMoves ? "col-span-2 lg:col-span-1" : "col-span-2"}
 					/>
-					{showMoves && (
+					{hasAccount && watched && (
 						<NextMovesCard
-							watch={watch}
+							watch={watched.watch}
+							instrument={watched.instrument}
 							stopped={!run?.enabled}
 							className="col-span-full lg:col-span-2 xl:col-span-1"
 						/>
@@ -450,6 +456,7 @@ function DashboardBody({
 				</section>
 			) : (
 				<PriceChart
+					instrument={bars?.instrument ?? run?.instrument ?? null}
 					bars={shownBars}
 					indicators={indicators}
 					hideIndicators={!fresh}
@@ -491,8 +498,12 @@ function DashboardBody({
 					}
 				/>
 			)}
-			{!home && hasAccount && watch && (
-				<StrategyWatchPanel strategyId={runId} watch={watch} />
+			{!home && hasAccount && watched && (
+				<StrategyWatchPanel
+					strategyId={runId}
+					watch={watched.watch}
+					instrument={watched.instrument}
+				/>
 			)}
 			{!home && hasAccount && run && (
 				<>

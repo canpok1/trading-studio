@@ -68,6 +68,8 @@ export type StartImportResult =
 	| { ok: false; reason: "busy"; job: ImportJob };
 
 export interface MarketDataService {
+	/** 相場データの銘柄 */
+	readonly instrument: Instrument;
 	startImport(input: {
 		text: string;
 		timeframe: Timeframe;

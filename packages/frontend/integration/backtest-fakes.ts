@@ -95,7 +95,10 @@ export function onRunPage(
 				timeframeCoverage("4h", START, END),
 			],
 		}))
-		.on(routes.api.data.latest, "$get", () => ({ latest: null }))
+		.on(routes.api.data.latest, "$get", () => ({
+			instrument: BTC_JPY,
+			latest: null,
+		}))
 		.on(routes.api.data["usable-timeframes"], "$get", () => ({
 			timeframes: USABLE,
 		}))

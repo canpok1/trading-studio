@@ -419,6 +419,7 @@ export function storedOrder(
 	over: Partial<StoredOrder> & Pick<StoredOrder, "id">,
 ): StoredOrder {
 	return {
+		instrument: BTC_JPY.id,
 		side: "buy",
 		type: "market",
 		price: null,

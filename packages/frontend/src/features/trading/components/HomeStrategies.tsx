@@ -372,6 +372,7 @@ function CardMoves({
 				<MoveRow
 					key={`${m.buyId}:${m.kind}`}
 					move={m}
+					instrument={s.status.instrument}
 					price={n.price}
 					multi={n.multiBuy}
 					detailed={false}

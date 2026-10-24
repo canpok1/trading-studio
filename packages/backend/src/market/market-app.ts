@@ -26,7 +26,7 @@ export function marketRoutes(service: MarketService) {
 						400,
 					);
 				}
-				return c.json({ bars: r.bars }, 200);
+				return c.json({ instrument: r.instrument, bars: r.bars }, 200);
 			},
 		);
 }

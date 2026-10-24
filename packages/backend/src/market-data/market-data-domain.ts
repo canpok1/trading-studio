@@ -197,6 +197,7 @@ export function createMarketDataService(
 	}
 
 	return {
+		instrument: repo.instrument,
 		startImport({ text, timeframe, fileName }): StartImportResult {
 			if (current && current.job.status === "running") {
 				return { ok: false, reason: "busy", job: snapshot(current.job) };

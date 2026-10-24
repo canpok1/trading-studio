@@ -2,7 +2,7 @@
 
 import type { StoredOrder, TradingMode } from "@trading-studio/backend";
 import type { JudgmentValue } from "@trading-studio/core";
-import { JUDGES } from "@trading-studio/core";
+import { instrumentOf, JUDGES } from "@trading-studio/core";
 import { useEffect, useState } from "react";
 import { JudgmentBadge } from "../../../shared/components/judgment/JudgmentBadge";
 import { Modal } from "../../../shared/components/Modal";
@@ -74,7 +74,12 @@ export function TradeOrderSheet({
 	}
 	const judgments = detail?.judgments ?? null;
 	return (
-		<OrderSheet order={order} onClose={onClose} onPair={onSelect}>
+		<OrderSheet
+			order={order}
+			instrument={instrumentOf(order.instrument)}
+			onClose={onClose}
+			onPair={onSelect}
+		>
 			<div className="flex flex-col gap-1.5">
 				<h3 className="text-xs font-semibold text-text-2">
 					このときの市場評価
