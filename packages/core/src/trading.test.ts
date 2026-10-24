@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { defaultFillModel, runBacktest } from "./backtest";
 import { conditionStrategy } from "./condition-strategy";
+import type { Instrument } from "./instrument";
 import { BTC_JPY, COINCHECK } from "./instrument";
 import type { Strategy } from "./strategy";
 import { strategyTemplate } from "./templates";
@@ -8,6 +9,7 @@ import { TIMEFRAME_MS } from "./timeframe";
 import type { Account, StepOutput, TradeOrder } from "./trading";
 import {
 	decide,
+	decideAll,
 	expireOrders,
 	inferExitKind,
 	newAccount,
@@ -378,6 +380,92 @@ describe("注文の作成と約定", () => {
 			);
 		};
 		expect(run()).toEqual(run());
+	});
+});
+
+describe("複数銘柄の資金配分", () => {
+	// 同じ市場の2つ目の銘柄（テスト用）
+	const ETH_JPY: Instrument = {
+		...BTC_JPY,
+		id: "coincheck:eth_jpy",
+		symbol: "ETH/JPY",
+		quantityUnit: "ETH",
+	};
+	const market = (instrument: Instrument) => ({
+		instrument,
+		price: 10_000_000,
+		candles: {},
+		recent: { timeframeMs: H, candles: [] },
+		dvol: [],
+		state: null,
+	});
+	const run = (instruments: Instrument[], account: Account) =>
+		decideAll({
+			strategy: fixed([
+				{
+					kind: "place",
+					side: "buy",
+					type: "limit",
+					price: 10_000_000,
+					quantity: 1_000_000,
+				},
+			]),
+			events: { events: [], covered: [] },
+			params: null,
+			now: 10 * H,
+			judgments: {},
+			account,
+			fees: FEES,
+			markets: instruments.map(market),
+		});
+
+	test("同時に買いが成り立ち資金が1件ぶんなら、並び順で先の銘柄だけ買う", () => {
+		// 1件は手数料込み 100,100 円
+		for (const order of [
+			[BTC_JPY, ETH_JPY],
+			[ETH_JPY, BTC_JPY],
+		]) {
+			const out = run(order, newAccount(150_000));
+			expect(out.account.openOrders.map((x) => x.order.instrument)).toEqual([
+				order[0]?.id,
+			]);
+			expect(out.results.map((r) => r.decision.instrument)).toEqual(
+				order.map((i) => i.id),
+			);
+			expect(out.results[1]?.decision.note).toContain(
+				"未約定の買い 100,100 円を除くと",
+			);
+		}
+	});
+
+	test("約定は銘柄ごとに反映し、ロットはその銘柄の判定にだけ渡す", () => {
+		const placed = run([BTC_JPY, ETH_JPY], newAccount(1_000_000));
+		const filled = settleFills(
+			placed.account,
+			() => 10_000_000,
+			11 * H,
+			FEES,
+			ETH_JPY,
+		);
+		expect(filled.account.lots.map((l) => l.instrument)).toEqual([ETH_JPY.id]);
+		expect(filled.account.openOrders.map((x) => x.order.instrument)).toEqual([
+			BTC_JPY.id,
+		]);
+		const next = decideAll({
+			strategy: fixed([]),
+			events: { events: [], covered: [] },
+			params: null,
+			now: 12 * H,
+			judgments: {},
+			account: filled.account,
+			fees: FEES,
+			markets: [market(BTC_JPY), market(ETH_JPY)],
+		});
+		expect(next.results.map((r) => r.decision.lots?.length)).toEqual([0, 1]);
+		expect(next.results.map((r) => r.decision.openOrderIds)).toEqual([
+			[placed.account.openOrders[0]?.order.id as string],
+			[],
+		]);
 	});
 });
 

@@ -57,6 +57,8 @@ export type Order = {
 	lotId?: string | null;
 	/** 買いが属する買い（戦略の買いの id）。売りと、買いを複数持つ前の注文では持たない */
 	buyId?: string | null;
+	/** 銘柄の id。銘柄を持つ前の注文では持たない（口座の銘柄として読む） */
+	instrument?: string;
 };
 
 /** 約定。手数料は円 */
@@ -92,6 +94,8 @@ export type Lot = {
 	partialExitDone?: boolean;
 	/** 買った買い（戦略の買いの id）。買いを複数持つ前のロットは持たない（先頭の買いとして売る） */
 	buyId?: string | null;
+	/** 銘柄の id。銘柄を持つ前のロットでは持たない（口座の銘柄として読む） */
+	instrument?: string;
 };
 
 export const EMPTY_POSITION: Position = {
