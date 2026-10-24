@@ -6,10 +6,11 @@ export interface StrategyRepository {
 	get(id: number): StoredStrategy | null;
 	/** 名前が name の戦略の ID。無ければ null */
 	idByName(name: string): number | null;
-	/** market は戦略が扱う市場の id */
+	/** market は戦略が扱う市場の id、instruments は対象の銘柄の id */
 	insert(
 		name: string,
 		market: string,
+		instruments: readonly string[],
 		params: ConditionSet,
 		at: number,
 	): StoredStrategy;

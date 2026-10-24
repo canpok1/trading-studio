@@ -2,17 +2,15 @@ import type { Locator } from "@playwright/test";
 import { strategyTemplate } from "@trading-studio/core";
 import { expect, test } from "./browser";
 import { routes } from "./fake-api";
-import { tradingRun } from "./fixtures";
+import { storedStrategy, tradingRun } from "./fixtures";
 import { onHome } from "./home-api";
 
 test("戦略の編集画面は横にはみ出さない", async ({ page, api }) => {
-	const strategy = {
+	const strategy = storedStrategy({
 		id: 1,
 		name: "トレンド",
 		params: strategyTemplate("trend").params,
-		createdAt: 0,
-		updatedAt: 0,
-	};
+	});
 	api
 		.on(routes.api.strategies, "$get", () => ({ strategies: [strategy] }))
 		.on(routes.api.data.latest, "$get", () => ({ latest: null }));

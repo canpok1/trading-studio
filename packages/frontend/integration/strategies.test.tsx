@@ -5,7 +5,7 @@ import { strategyTemplate } from "@trading-studio/core";
 import { changeValue, setupDom } from "../src/shared/lib/test-setup";
 import type { FakeApi } from "./fake-api";
 import { createFakeApi, routes } from "./fake-api";
-import { tradingRun } from "./fixtures";
+import { storedStrategy, tradingRun } from "./fixtures";
 import { renderApp } from "./render-app";
 
 setupDom();
@@ -47,7 +47,7 @@ function strategiesApi(): FakeApi {
 					? strategyTemplate(from.template).params
 					: store.get(from.copyOf)?.params;
 			if (!params) return reply(404, NOT_FOUND);
-			const s = { id: nextId++, name, params, createdAt: 0, updatedAt: 0 };
+			const s = storedStrategy({ id: nextId++, name, params });
 			store.set(s.id, s);
 			return { strategy: s };
 		})

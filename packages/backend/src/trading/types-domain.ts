@@ -148,6 +148,7 @@ export type TradingFailure =
 	| { kind: "not_running"; message: string }
 	| { kind: "invalid_strategy"; message: string; errors: ValidationError[] }
 	| { kind: "unsupported_mode"; message: string }
+	| { kind: "unsupported_instrument"; message: string }
 	| { kind: "invalid_cash"; message: string }
 	| { kind: "not_found"; message: string }
 	| { kind: "limit"; message: string }

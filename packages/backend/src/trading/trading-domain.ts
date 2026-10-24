@@ -538,6 +538,16 @@ export function createTradingService({
 					`同時に動かせる戦略は ${TRADING_LIMITS.running} つまで。ほかの戦略を停止してから開始する`,
 				);
 			}
+			// 自動取引が相場データを持つのは1銘柄だけ
+			if (
+				s.instruments.length !== 1 ||
+				s.instruments[0] !== marketData.instrument.id
+			) {
+				return fail(
+					"unsupported_instrument",
+					`自動取引できるのは ${marketData.instrument.symbol} の1銘柄だけ`,
+				);
+			}
 			const errors = validateConditionSet(s.params, RUN_LIMITS);
 			if (errors.length > 0) {
 				return {

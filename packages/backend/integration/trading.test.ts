@@ -227,6 +227,16 @@ describe("自動取引のオンオフ", () => {
 		expect((await t.call("POST", "/strategies/99/start")).status).toBe(404);
 	});
 
+	test("相場データの無い銘柄を対象にした戦略はオンにできない", async () => {
+		const t = setup();
+		t.db.$client.run(
+			`update strategies set instruments = '["coincheck:btc_jpy","coincheck:eth_jpy"]'`,
+		);
+		const r = await t.call("POST", "/start");
+		expect(r.status).toBe(400);
+		expect(r.body.kind).toBe("unsupported_instrument");
+	});
+
 	test("オフにすると新しい注文を出さず、未約定の注文は残る", async () => {
 		const t = setup(
 			always({

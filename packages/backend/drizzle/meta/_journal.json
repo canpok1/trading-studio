@@ -218,6 +218,13 @@
       "when": 1792765361272,
       "tag": "0030_instrument",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1792807241637,
+      "tag": "0031_strategy_instruments",
+      "breakpoints": true
     }
   ]
 }

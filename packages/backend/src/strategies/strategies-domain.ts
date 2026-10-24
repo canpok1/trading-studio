@@ -79,12 +79,16 @@ export function createStrategyService(
 			const bad = nameError(name);
 			if (bad) return bad;
 			let params: ConditionSet;
+			let market = DEFAULT_INSTRUMENT.marketId;
+			let instruments = [DEFAULT_INSTRUMENT.id];
 			if ("template" in from) {
 				params = strategyTemplate(from.template).params;
 			} else if ("copyOf" in from) {
 				const src = service.get(from.copyOf);
 				if (!src) return { ok: false, error: { kind: "not_found" } };
 				params = src.params;
+				market = src.market;
+				instruments = src.instruments;
 			} else {
 				// 結果から新しい戦略として保存するときは、条件を検証する
 				const errors = validateConditionSet(from.params);
@@ -94,12 +98,7 @@ export function createStrategyService(
 			}
 			return {
 				ok: true,
-				strategy: repo.insert(
-					name.trim(),
-					DEFAULT_INSTRUMENT.marketId,
-					params,
-					now(),
-				),
+				strategy: repo.insert(name.trim(), market, instruments, params, now()),
 			};
 		},
 

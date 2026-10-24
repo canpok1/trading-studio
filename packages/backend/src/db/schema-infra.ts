@@ -100,6 +100,8 @@ export const strategies = sqliteTable("strategies", {
 	name: text("name").notNull().unique(),
 	/** 市場（core の Market の id）。既定は市場を持つ前の行のため */
 	market: text("market").notNull().default("coincheck"),
+	/** 対象の銘柄（core の Instrument の id の JSON 配列）。並び順が資金配分の優先順位。既定は銘柄を持つ前の行のため */
+	instruments: text("instruments").notNull().default('["coincheck:btc_jpy"]'),
 	/** 条件のセット（JSON） */
 	params: text("params").notNull(),
 	createdAt: integer("created_at").notNull(),

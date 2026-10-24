@@ -9,6 +9,10 @@ import type {
 export type StoredStrategy = {
 	id: number;
 	name: string;
+	/** 市場（core の Market の id） */
+	market: string;
+	/** 対象の銘柄（core の Instrument の id）。並び順が資金配分の優先順位 */
+	instruments: string[];
 	params: ConditionSet;
 	createdAt: number;
 	updatedAt: number;

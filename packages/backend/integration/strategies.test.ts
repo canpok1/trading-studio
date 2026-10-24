@@ -89,6 +89,15 @@ describe("戦略の API", () => {
 			})
 		).body.strategy as StoredStrategy;
 		expect(copy.params).toEqual(a.params);
+		// 作った戦略は BTC/JPY の1銘柄を対象にし、複製は元の対象を引き継ぐ
+		expect(a).toMatchObject({
+			market: "coincheck",
+			instruments: ["coincheck:btc_jpy"],
+		});
+		expect(copy).toMatchObject({
+			market: a.market,
+			instruments: a.instruments,
+		});
 		const renamed = await call(app, "PUT", `/${a.id}/name`, {
 			name: "新しい名前",
 		});
