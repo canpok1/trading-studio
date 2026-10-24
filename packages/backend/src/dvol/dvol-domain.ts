@@ -2,6 +2,7 @@
 
 import type { ConditionSet, DvolPoint, Timeframe } from "@trading-studio/core";
 import {
+	COINCHECK,
 	candleStart,
 	conditionStrategy,
 	dvolAverageSeries,
@@ -99,6 +100,9 @@ export function withAverage(
 	return bars.map((b, i) => ({ ...b, average: avgs[i] ?? null }));
 }
 
+// DVOL は BTC の指標なので、BTC/JPY を扱う Coincheck の暦で足を区切る（市場への紐づけは #263）
+const DVOL_CALENDAR = COINCHECK.calendar;
+
 /** 1時間より粗い足では、足ごとに最後の1時間足だけ残す。チャートが使うのはそれだけで、全期間の日足でも本数を抑えるため */
 function thin(bars: DvolBar[], timeframe: Timeframe | undefined): DvolBar[] {
 	if (timeframe === undefined || !isCoarser(timeframe, "1h")) return bars;
@@ -106,7 +110,8 @@ function thin(bars: DvolBar[], timeframe: Timeframe | undefined): DvolBar[] {
 		const next = bars[i + 1];
 		return (
 			next === undefined ||
-			candleStart(next.time, timeframe) !== candleStart(b.time, timeframe)
+			candleStart(next.time, timeframe, DVOL_CALENDAR) !==
+				candleStart(b.time, timeframe, DVOL_CALENDAR)
 		);
 	});
 }

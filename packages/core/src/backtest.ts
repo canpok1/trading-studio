@@ -5,6 +5,7 @@ import type { DvolPoint } from "./dvol";
 import type { EventCalendar } from "./event-calendar";
 import { HOUR_MS } from "./event-calendar";
 import type { Instrument } from "./instrument";
+import { marketOf } from "./instrument";
 import { notional } from "./money";
 import type { AggregationRule, ScoredNews } from "./news-judgment";
 import { judgmentCursor } from "./news-judgment";
@@ -154,6 +155,7 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 		(x, y) => TIMEFRAME_MS[x] - TIMEFRAME_MS[y],
 	);
 	checkDataResolution(config.dataTimeframe, timeframes[0] ?? null);
+	const { calendar } = marketOf(config.instrument);
 	const steps = config.stepCandles;
 	const stepTimeframe = config.stepTimeframe;
 	if (timeframes.some((t) => isCoarser(stepTimeframe, t))) {
@@ -243,7 +245,7 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 		const closeAt = bar.time + stepMs;
 
 		for (const x of series) {
-			const barStart = candleStart(bar.time, x.timeframe);
+			const barStart = candleStart(bar.time, x.timeframe, calendar);
 			const prev = x.forming;
 			x.forming =
 				prev?.time === barStart
@@ -372,6 +374,6 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 		orders: [...orders.values()],
 		trades,
 		decisions,
-		candles: aggregateCandles(inRange, "1d"),
+		candles: aggregateCandles(inRange, "1d", calendar),
 	};
 }

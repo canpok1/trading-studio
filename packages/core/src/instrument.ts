@@ -1,5 +1,8 @@
 // 通貨・市場・銘柄（ADR 0036）。金額は通貨の、価格・数量は銘柄の最小単位の整数で持つ
 
+import type { TradingCalendar } from "./trading-calendar";
+import { alwaysOpenCalendar } from "./trading-calendar";
+
 export type Currency = {
 	code: string;
 	/** 画面で値の後ろに付ける単位 */
@@ -16,6 +19,9 @@ export type Market = {
 	currency: Currency;
 	/** IANA のタイムゾーン */
 	timeZone: string;
+	calendar: TradingCalendar;
+	/** 値幅制限。基準の価格（前日の終値）から上下に動ける幅。制限が無ければ null */
+	priceLimit: ((basePrice: number) => number) | null;
 };
 
 export type Instrument = {
@@ -43,6 +49,8 @@ export const COINCHECK: Market = {
 	name: "Coincheck",
 	currency: JPY,
 	timeZone: "Asia/Tokyo",
+	calendar: alwaysOpenCalendar(9 * 3_600_000),
+	priceLimit: null,
 };
 
 export const BTC_JPY: Instrument = {
@@ -72,6 +80,13 @@ export function instrumentOf(id: string): Instrument {
 	const i = findInstrument(id);
 	if (!i) throw new RangeError(`未定義の銘柄: ${id}`);
 	return i;
+}
+
+/** 銘柄の市場。銘柄の定義は必ず定義済みの市場を指す */
+export function marketOf(instrument: Instrument): Market {
+	const m = findMarket(instrument.marketId);
+	if (!m) throw new RangeError(`未定義の市場: ${instrument.marketId}`);
+	return m;
 }
 
 /** 数量 1（BTC なら 1 BTC）を最小単位で表した値 */

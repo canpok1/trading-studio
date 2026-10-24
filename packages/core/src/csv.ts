@@ -1,7 +1,7 @@
 // 過去データの CSV の読み書きと検証
 
 import type { Instrument } from "./instrument";
-import { toPriceUnits } from "./instrument";
+import { marketOf, toPriceUnits } from "./instrument";
 import { parseQuantity, priceToString, quantityToString } from "./money";
 import type { Timeframe } from "./timeframe";
 import { candleStart, JST_OFFSET_MS } from "./timeframe";
@@ -84,6 +84,7 @@ export function parseCandleCsv(
 	timeframe: Timeframe,
 	onProgress?: (done: number, total: number) => void,
 ): CsvParseResult {
+	const { calendar } = marketOf(instrument);
 	const lines = text.split(/\r?\n/);
 	const total = lines.filter((l) => l.trim() !== "").length;
 	const errors: CsvRowError[] = [];
@@ -148,7 +149,7 @@ export function parseCandleCsv(
 			fail(lineNo, raw, "出来高が読めない（0 以上の数値が必要）");
 			continue;
 		}
-		const start = candleStart(time, timeframe);
+		const start = candleStart(time, timeframe, calendar);
 		if (byTime.has(start)) {
 			duplicateRows++;
 			continue;

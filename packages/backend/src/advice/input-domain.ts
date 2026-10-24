@@ -1,6 +1,10 @@
 // アドバイスで AI に渡すバックテストの資料を文章にする。値動きは戦略が参照する足で渡し、多すぎるときは絞る
 
-import type { BacktestOrder, Timeframe } from "@trading-studio/core";
+import type {
+	BacktestOrder,
+	Timeframe,
+	TradingCalendar,
+} from "@trading-studio/core";
 import {
 	accountScreenText,
 	BTC_JPY,
@@ -10,6 +14,7 @@ import {
 	JUDGE_LABELS,
 	JUDGES,
 	JUDGMENT_VALUE_LABELS,
+	marketOf,
 	quantityToString,
 	ruleScreenText,
 	TIMEFRAME_LABELS,
@@ -68,10 +73,14 @@ function barIndex(bars: Bar[], time: number): number {
 }
 
 /** 足を粗い粒度にまとめる。4本値の無い古い実行は終値だけで作る */
-export function aggregateBars(bars: Bar[], timeframe: Timeframe): Bar[] {
+export function aggregateBars(
+	bars: Bar[],
+	timeframe: Timeframe,
+	calendar: TradingCalendar,
+): Bar[] {
 	const out: Bar[] = [];
 	for (const b of bars) {
-		const t = candleStart(b.time, timeframe);
+		const t = candleStart(b.time, timeframe, calendar);
 		const last = out.at(-1);
 		if (last?.time !== t) {
 			out.push({ ...b, time: t });
@@ -108,6 +117,7 @@ export type BarSelection =
 export function selectBars(
 	bars: Bar[],
 	timeframe: Timeframe,
+	calendar: TradingCalendar,
 	orders: BacktestOrder[],
 	maxBars = MAX_BARS,
 	windowBars = ORDER_WINDOW_BARS,
@@ -115,9 +125,9 @@ export function selectBars(
 	if (bars.length <= maxBars) return { kind: "all", bars };
 	const coarser = coarserTimeframes(timeframe);
 	let overviewTimeframe = coarser.at(-1) ?? timeframe;
-	let overview = aggregateBars(bars, overviewTimeframe);
+	let overview = aggregateBars(bars, overviewTimeframe, calendar);
 	for (const tf of coarser) {
-		const a = aggregateBars(bars, tf);
+		const a = aggregateBars(bars, tf, calendar);
 		if (a.length <= maxBars / 2) {
 			overviewTimeframe = tf;
 			overview = a;
@@ -297,7 +307,13 @@ export function buildAdviceSource(
 	lines.push(`## 注文（${orders.length} 件、古い順）`);
 	lines.push(orderTable(orders));
 
-	const sel = selectBars(bars, tf, orders, maxBars);
+	const sel = selectBars(
+		bars,
+		tf,
+		marketOf(run.instrument).calendar,
+		orders,
+		maxBars,
+	);
 	lines.push("");
 	if (sel.kind === "all") {
 		lines.push(`## 値動き（${TIMEFRAME_LABELS[tf]}、${sel.bars.length} 本）`);

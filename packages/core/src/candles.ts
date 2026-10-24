@@ -2,6 +2,7 @@
 
 import type { Timeframe } from "./timeframe";
 import { candleStart, TIMEFRAME_MS } from "./timeframe";
+import type { TradingCalendar } from "./trading-calendar";
 import type { Candle } from "./types";
 
 /**
@@ -11,11 +12,12 @@ import type { Candle } from "./types";
 export function aggregateCandles(
 	candles: readonly Candle[],
 	to: Timeframe,
+	calendar: TradingCalendar,
 ): Candle[] {
 	const out: Candle[] = [];
 	let cur: Candle | null = null;
 	for (const c of candles) {
-		const start = candleStart(c.time, to);
+		const start = candleStart(c.time, to, calendar);
 		if (cur && cur.time === start) {
 			cur.high = Math.max(cur.high, c.high);
 			cur.low = Math.min(cur.low, c.low);

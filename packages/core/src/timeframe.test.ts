@@ -1,33 +1,36 @@
 import { describe, expect, test } from "bun:test";
+import { COINCHECK } from "./instrument";
 import { candleStart, coarserTimeframes, isCoarser } from "./timeframe";
+
+const CAL = COINCHECK.calendar;
 
 // JST の日時をエポックミリ秒へ
 const jst = (s: string) => Date.parse(`${s}+09:00`);
 
 describe("candleStart", () => {
 	test("日足は JST 0:00 で区切る", () => {
-		expect(candleStart(jst("2026-09-26T08:59:59"), "1d")).toBe(
+		expect(candleStart(jst("2026-09-26T08:59:59"), "1d", CAL)).toBe(
 			jst("2026-09-26T00:00:00"),
 		);
-		expect(candleStart(jst("2026-09-26T23:59:59"), "1d")).toBe(
+		expect(candleStart(jst("2026-09-26T23:59:59"), "1d", CAL)).toBe(
 			jst("2026-09-26T00:00:00"),
 		);
 	});
 
 	test("4時間足は JST 0:00 から 4 時間ごと", () => {
-		expect(candleStart(jst("2026-09-26T03:59:00"), "4h")).toBe(
+		expect(candleStart(jst("2026-09-26T03:59:00"), "4h", CAL)).toBe(
 			jst("2026-09-26T00:00:00"),
 		);
-		expect(candleStart(jst("2026-09-26T05:00:00"), "4h")).toBe(
+		expect(candleStart(jst("2026-09-26T05:00:00"), "4h", CAL)).toBe(
 			jst("2026-09-26T04:00:00"),
 		);
 	});
 
 	test("分足は分の区切り", () => {
-		expect(candleStart(jst("2026-09-26T12:14:59"), "5m")).toBe(
+		expect(candleStart(jst("2026-09-26T12:14:59"), "5m", CAL)).toBe(
 			jst("2026-09-26T12:10:00"),
 		);
-		expect(candleStart(jst("2026-09-26T12:14:59"), "1m")).toBe(
+		expect(candleStart(jst("2026-09-26T12:14:59"), "1m", CAL)).toBe(
 			jst("2026-09-26T12:14:00"),
 		);
 	});

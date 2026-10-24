@@ -2,7 +2,12 @@
 
 import type { CollectorStatus } from "@trading-studio/backend";
 import type { Timeframe } from "@trading-studio/core";
-import { candleStart, TIMEFRAME_MS } from "@trading-studio/core";
+import {
+	BTC_JPY,
+	candleStart,
+	marketOf,
+	TIMEFRAME_MS,
+} from "@trading-studio/core";
 import type {
 	ChartBar,
 	ChartRange,
@@ -72,7 +77,7 @@ export function withLatestPrice(
 	time: number | null,
 ): ChartBar[] {
 	if (price === null || time === null) return [...bars];
-	const start = candleStart(time, timeframe);
+	const start = candleStart(time, timeframe, marketOf(BTC_JPY).calendar);
 	const last = bars.at(-1);
 	if (last && last.time > start) return [...bars];
 	if (last && last.time === start) {

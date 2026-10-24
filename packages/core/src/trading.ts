@@ -4,8 +4,11 @@
 import type { EventCalendar } from "./event-calendar";
 import { formatDuration, formatQuantity, formatYen } from "./format";
 import type { Instrument } from "./instrument";
+import { marketOf } from "./instrument";
 import { feeAmount, notional } from "./money";
 import type { Strategy, StrategyInput, StrategyOutput } from "./strategy";
+import type { TradingCalendar } from "./trading-calendar";
+import { addOpenTime, isOpen, nextOpen } from "./trading-calendar";
 import type {
 	ExitKind,
 	JsonValue,
@@ -253,17 +256,15 @@ export function normalizeAccount(raw: LegacyAccount): Account {
 	};
 }
 
-const DAY_MS = 86_400_000;
-const JST_OFFSET_MS = 9 * 3_600_000;
-
-/** その時刻を含む日の 0:00（JST）。1日の損失はこの区切りで数える */
-export function jstDayStart(time: number): number {
-	return Math.floor((time + JST_OFFSET_MS) / DAY_MS) * DAY_MS - JST_OFFSET_MS;
-}
-
-/** その時刻の日（JST）に確定した損益。前の日の分は数えない */
-export function realizedPnlOn(account: Account, time: number): number {
-	return account.today.dayStart === jstDayStart(time) ? account.today.pnl : 0;
+/** その時刻の日（市場の日の区切り）に確定した損益。前の日の分は数えない */
+export function realizedPnlOn(
+	account: Account,
+	time: number,
+	calendar: TradingCalendar,
+): number {
+	return account.today.dayStart === calendar.dayStart(time)
+		? account.today.pnl
+		: 0;
 }
 
 /** 1日の損失上限で新しい買いを止める理由。止めなければ null */
@@ -271,9 +272,10 @@ export function dailyLossBlock(
 	account: Account,
 	time: number,
 	limit: number | null,
+	calendar: TradingCalendar,
 ): string | null {
 	if (limit === null) return null;
-	const loss = -realizedPnlOn(account, time);
+	const loss = -realizedPnlOn(account, time, calendar);
 	return loss >= limit
 		? `本日の確定損失 ${formatYen(loss)} 円が1日の損失上限 ${formatYen(limit)} 円に達したため買わない（翌 0 時に再開）`
 		: null;
@@ -323,6 +325,11 @@ export function settleFills(
 	const trades: Trade[] = [];
 	const remaining: OpenOrder[] = [];
 	let filled = false;
+	const { calendar } = marketOf(instrument);
+	// 取引時間外は約定しない
+	if (!isOpen(calendar, time)) {
+		return { account, changed, trades, filled };
+	}
 	for (const item of account.openOrders) {
 		const { order } = item;
 		const price = fillPrice(order);
@@ -412,7 +419,7 @@ export function settleFills(
 					pnl: pnl + (lot.realizedPnl ?? 0),
 				});
 			}
-			const day = jstDayStart(time);
+			const day = calendar.dayStart(time);
 			today = {
 				dayStart: day,
 				pnl: (today.dayStart === day ? today.pnl : 0) + pnl,
@@ -519,6 +526,7 @@ export type DecideOutput = StepChanges & {
 /** 戦略の評価と注文の作成 */
 export function decide<P>(input: DecideInput<P>): DecideOutput {
 	const { strategy, params, now, fees, instrument } = input;
+	const { calendar } = marketOf(instrument);
 	const prefix = input.idPrefix ?? "o";
 	const { cash, position, lots } = input.account;
 	let { seq } = input.account;
@@ -530,6 +538,7 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 		input.account,
 		now,
 		strategy.dailyLossLimit?.(params) ?? null,
+		calendar,
 	);
 
 	const out: StrategyOutput = strategy.evaluate({
@@ -606,7 +615,9 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 			quantity: intent.quantity,
 			placedAt: now,
 			expiresAt:
-				intent.expireAfterMs === undefined ? null : now + intent.expireAfterMs,
+				intent.expireAfterMs === undefined
+					? null
+					: addOpenTime(calendar, now, intent.expireAfterMs),
 			status: "open",
 			lotId: intent.side === "sell" ? (intent.lotId ?? null) : null,
 			buyId: intent.side === "buy" ? (intent.buyId ?? null) : null,
@@ -658,12 +669,14 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 		record: changed.find((r) => r.id === x.record.id) ?? x.record,
 	}));
 
+	// 取引時間外は判定しない。次の判定は次の立会まで送る
+	const nextEvalAt = nextOpen(calendar, out.nextEvalAt);
 	return {
 		account: { ...input.account, seq, openOrders: open },
 		changed,
 		trades: [],
 		state: out.state,
-		nextEvalAt: out.nextEvalAt,
+		nextEvalAt,
 		decision: {
 			time: now,
 			price: input.price,
@@ -672,7 +685,7 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 			lots: publicLots(lots),
 			openOrderIds: openOrders.map((o) => o.id),
 			intents: out.intents,
-			nextEvalAt: out.nextEvalAt,
+			nextEvalAt,
 			note: notes.length ? notes.join("。") : null,
 			state: out.state,
 		},
