@@ -175,13 +175,13 @@ export type StrategySummary = {
 	status: AutoTradingStatus;
 	/** 口座のリセット以降の成績 */
 	performance: TradingPerformance | null;
-	/** 次の動き（行動ごとのきっかけ。優先度の高い順）。価格がまだ無ければ null */
+	/** 次の動き（行動ごとのきっかけ。優先度の高い順）。候補の先頭の銘柄の価格がまだ無ければ null */
 	nextMoves: {
 		price: number;
 		moves: WatchMove[];
 		/** 買いが2つ以上。売買の種類に買いの名前を添える */
 		multiBuy: boolean;
-		/** 候補が2つ以上の戦略だけ持つ。銘柄ごとの次の動き（候補の並び順。価格が無い銘柄は除く）。price と moves は先頭のもの */
+		/** 候補が2つ以上の戦略だけ持つ。銘柄ごとの次の動き（候補の並び順。価格が無い銘柄は除く）。price と moves は候補の先頭のもの */
 		markets?: { instrument: string; price: number; moves: WatchMove[] }[];
 	} | null;
 };

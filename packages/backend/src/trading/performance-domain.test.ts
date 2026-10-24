@@ -224,4 +224,44 @@ describe("tradingPerformance", () => {
 		// ガチホは銘柄ごとの率（BTC +10%・ETH +25%）を等分する
 		expect(r.buyHoldPercent).toBeCloseTo(17.5);
 	});
+
+	test("同じ時刻の価格は全銘柄に当ててから測り、新旧の価格が混ざった資産を最大DDに数えない", () => {
+		const E = 500_000;
+		const r = tradingPerformance({
+			initialCash: 1_000_000,
+			resetAt: 0,
+			now: 3 * H,
+			cash: 800_000,
+			fills: [
+				order({ id: "p1", filledAt: H }),
+				order({
+					id: "p2",
+					instrument: ETH_JPY.id,
+					quantity: 20_000,
+					fillPrice: E,
+					filledAt: H,
+				}),
+			],
+			markets: [
+				{
+					instrument: BTC_JPY,
+					position: { quantity: 1_000_000, entryPrice: P, openedAt: H },
+					price: P,
+					// 同じ1時間で BTC が倍・ETH が半値（合計は変わらない）
+					prices: [{ time: 2 * H, price: 2 * P }],
+					basePrice: P,
+				},
+				{
+					instrument: ETH_JPY,
+					position: { quantity: 20_000, entryPrice: E, openedAt: H },
+					price: E,
+					prices: [{ time: 2 * H, price: 0.5 * E }],
+					basePrice: E,
+				},
+			],
+		});
+		// 2時間後は 800,000 + 200,000 + 50,000 = 1,050,000。BTC だけ先に当てた 1,100,000 を山にしない
+		expect(r.maxDrawdownFrom).toBe(2 * H);
+		expect(r.maxDrawdownPercent).toBeCloseTo((1 - 1_000_000 / 1_050_000) * 100);
+	});
 });

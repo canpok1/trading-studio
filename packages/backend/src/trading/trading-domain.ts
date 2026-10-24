@@ -241,24 +241,25 @@ export function createTradingService({
 		row: TradingRunRow,
 	): Record<string, MarketState> => {
 		const start = row.nextEvalAt ?? Number.POSITIVE_INFINITY;
+		const saved = (
+			row.state && typeof row.state === "object" && !Array.isArray(row.state)
+				? (row.state.markets ?? null)
+				: null
+		) as Record<string, MarketState> | null;
 		if (isSingle(s)) {
+			// オフの間に候補を変えると、前の形の state が残っている（オンにすると初めからにする）
 			return {
 				[primary.id]: {
-					state: row.state,
+					state: saved ? null : row.state,
 					nextEvalAt: start,
 					reevaluate: row.reevaluate,
 				},
 			};
 		}
-		const saved = (
-			row.state && typeof row.state === "object" && !Array.isArray(row.state)
-				? (row.state.markets ?? {})
-				: {}
-		) as Record<string, MarketState>;
 		return Object.fromEntries(
 			s.instruments.map((id) => [
 				id,
-				saved[id] ?? { state: null, nextEvalAt: start, reevaluate: false },
+				saved?.[id] ?? { state: null, nextEvalAt: start, reevaluate: false },
 			]),
 		);
 	};
@@ -539,7 +540,12 @@ export function createTradingService({
 								? strategies.get(row.strategyId)
 								: null;
 						if (!s) {
-							repo.saveRun({ ...row, account });
+							// 戦略が消えていれば、次の見回りの評価で口座をオフにする
+							repo.saveRun({
+								...row,
+								account,
+								reevaluate: row.reevaluate || (filled && row.enabled),
+							});
 							return;
 						}
 						const states = marketStates(s, row);
@@ -663,15 +669,15 @@ export function createTradingService({
 							? [{ instrument: i.id, price: w.price, moves: w.moves }]
 							: [];
 					});
-					const head = markets[0];
-					const nextMoves =
-						status.instruments.length > 1
-							? head
-								? { price: head.price, moves: head.moves, multiBuy, markets }
-								: null
-							: head
-								? { price: head.price, moves: head.moves, multiBuy }
-								: null;
+					const head = markets.find(
+						(m) => m.instrument === status.instrument.id,
+					);
+					const nextMoves = head && {
+						price: head.price,
+						moves: head.moves,
+						multiBuy,
+						...(status.instruments.length > 1 ? { markets } : {}),
+					};
 					return {
 						status,
 						performance: this.performance(status.id),

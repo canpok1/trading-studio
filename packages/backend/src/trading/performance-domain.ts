@@ -1,7 +1,7 @@
 // 自動取引の成績。口座をリセットした時点以降の約定から、バックテスト結果と同じ指標を出す
 
 import type { Instrument, Position, TradeOrder } from "@trading-studio/core";
-import { notional } from "@trading-studio/core";
+import { findInstrument, notional } from "@trading-studio/core";
 import type { RoundTripStats, TradingPerformance } from "./types-domain";
 
 /** 評価に使う価格。足の終値なら足の終わりの時刻 */
@@ -63,8 +63,11 @@ export function tradingPerformance({
 	const [head] = markets;
 	const idOf = (f: { instrument?: string }) =>
 		f.instrument ?? head.instrument.id;
+	// 候補を変えた後は、リセット以降の約定に今の候補に無い銘柄が残りうる
 	const instrumentOf = (id: string) =>
-		markets.find((m) => m.instrument.id === id)?.instrument ?? head.instrument;
+		markets.find((m) => m.instrument.id === id)?.instrument ??
+		findInstrument(id) ??
+		head.instrument;
 	// 約定をたどって、各時点の現金と銘柄ごとの数量・最後の価格を出す（core の約定と同じ丸め）
 	let c = initialCash;
 	const qty = new Map<string, number>();
@@ -110,15 +113,19 @@ export function tradingPerformance({
 			mark(f.filledAt ?? 0);
 		}
 	};
-	// 同じ時刻の価格は、銘柄の並び順に当てる
+	// 同じ時刻の価格は、全銘柄に当ててから1回だけ評価する（銘柄ごとに評価すると、新旧の価格が混ざった資産を測る）
 	const points = markets
 		.flatMap((m) => m.prices.map((pt) => ({ id: m.instrument.id, ...pt })))
 		.filter((pt) => pt.time > resetAt && pt.time <= now)
 		.sort((a, b) => a.time - b.time);
-	for (const pt of points) {
-		applyUntil(pt.time);
-		last.set(pt.id, pt.price);
-		mark(pt.time);
+	for (let k = 0; k < points.length; ) {
+		const time = (points[k] as (typeof points)[number]).time;
+		applyUntil(time);
+		for (; k < points.length && points[k]?.time === time; k++) {
+			const pt = points[k] as (typeof points)[number];
+			last.set(pt.id, pt.price);
+		}
+		mark(time);
 	}
 	applyUntil(now);
 	const holdings = markets.map((m) => ({
