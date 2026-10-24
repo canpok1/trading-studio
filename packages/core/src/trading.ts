@@ -2,8 +2,13 @@
 // 1ステップは「約定の反映 → 期限切れの指値の取消 → 戦略の評価 → 注文の作成」。約定の判定（足か約定データか）だけ呼び出し側が差し替える
 
 import type { EventCalendar } from "./event-calendar";
-import { formatDuration, formatQuantity, formatYen } from "./format";
-import type { Instrument } from "./instrument";
+import {
+	formatDuration,
+	formatMoney,
+	formatPrice,
+	formatQuantity,
+} from "./format";
+import type { Instrument, Market } from "./instrument";
 import { marketOf } from "./instrument";
 import { feeAmount, notional } from "./money";
 import type { Strategy, StrategyInput, StrategyOutput } from "./strategy";
@@ -61,12 +66,13 @@ export type TradeOrder = {
  */
 export function withSellDetails<T extends TradeOrder>(
 	orders: readonly T[],
+	instrument: Instrument,
 ): (T & { lotPrice: number | null; exitKind: ExitKind | null })[] {
 	const price = new Map(orders.map((o) => [o.id, o.fillPrice]));
 	return orders.map((o) => {
 		const lotPrice =
 			o.side === "sell" && o.pairId ? (price.get(o.pairId) ?? null) : null;
-		return { ...o, lotPrice, exitKind: inferExitKind(o, lotPrice) };
+		return { ...o, lotPrice, exitKind: inferExitKind(o, lotPrice, instrument) };
 	});
 }
 
@@ -80,6 +86,7 @@ const SELL_SENTENCE = /を売却（(損切り|一部利確|利確)の条件）$/
 export function sellReasonPart(
 	reason: string,
 	lotPrice: number | null,
+	instrument: Instrument,
 ): string[] | null {
 	const parts: string[][] = [];
 	let current: string[] = [];
@@ -94,7 +101,9 @@ export function sellReasonPart(
 		parts.length === 1 || lotPrice === null
 			? parts
 			: parts.filter((p) =>
-					p.at(-1)?.includes(`買値 ${formatYen(lotPrice)} のロット`),
+					p
+						.at(-1)
+						?.includes(`買値 ${formatPrice(instrument, lotPrice)} のロット`),
 				);
 	return mine.length === 1 ? (mine[0] as string[]) : null;
 }
@@ -103,10 +112,11 @@ export function sellReasonPart(
 export function inferExitKind(
 	order: Pick<TradeOrder, "side" | "reason" | "exitKind">,
 	lotPrice: number | null,
+	instrument: Instrument,
 ): ExitKind | null {
 	if (order.side !== "sell") return null;
 	if (order.exitKind != null) return order.exitKind;
-	const last = sellReasonPart(order.reason, lotPrice)?.at(-1);
+	const last = sellReasonPart(order.reason, lotPrice, instrument)?.at(-1);
 	if (last === undefined) return null;
 	if (last.endsWith("（損切りの条件）")) return "stopLoss";
 	return last.endsWith("（一部利確の条件）")
@@ -274,12 +284,13 @@ export function dailyLossBlock(
 	account: Account,
 	time: number,
 	limit: number | null,
-	calendar: TradingCalendar,
+	market: Market,
 ): string | null {
 	if (limit === null) return null;
-	const loss = -realizedPnlOn(account, time, calendar);
+	const loss = -realizedPnlOn(account, time, market.calendar);
+	const { currency } = market;
 	return loss >= limit
-		? `本日の確定損失 ${formatYen(loss)} 円が1日の損失上限 ${formatYen(limit)} 円に達したため買わない（翌 0 時に再開）`
+		? `本日の確定損失 ${formatMoney(currency, loss)}が1日の損失上限 ${formatMoney(currency, limit)}に達したため買わない（翌 0 時に再開）`
 		: null;
 }
 
@@ -367,7 +378,7 @@ export function settleFills(
 					cancelRecord(
 						item.record,
 						time,
-						`資金 ${formatYen(cash)} 円が手数料込みの約定額 ${formatYen(cost + fee)} 円に足りないため取消`,
+						`資金 ${formatMoney(instrument.currency, cash)}が手数料込みの約定額 ${formatMoney(instrument.currency, cost + fee)}に足りないため取消`,
 					),
 				);
 				continue;
@@ -469,11 +480,17 @@ export function settleFills(
 	};
 }
 
-/** 期限切れの指値の取消。期限（発注時刻 + 戦略が決めた時間）が now 以前の注文を取り消す */
+/**
+ * 期限切れの指値の取消。期限（発注時刻 + 戦略が決めた時間）が now 以前の注文を取り消す。
+ * instruments は口座の銘柄（並び順）。銘柄を持たない注文は先頭の銘柄として価格を書く
+ */
 export function expireOrders(
 	account: Account,
 	now: number,
+	instruments: readonly [Instrument, ...Instrument[]],
 ): { account: Account; changed: TradeOrder[] } {
+	const instrumentOf = (o: Order) =>
+		instruments.find((i) => i.id === o.instrument) ?? instruments[0];
 	const changed: TradeOrder[] = [];
 	const remaining: OpenOrder[] = [];
 	for (const item of account.openOrders) {
@@ -483,7 +500,7 @@ export function expireOrders(
 				cancelRecord(
 					item.record,
 					now,
-					`指値 ${formatYen(item.order.price ?? 0)} が ${formatDuration(exp - item.order.placedAt)}のあいだ約定しなかったため取消`,
+					`指値 ${formatPrice(instrumentOf(item.order), item.order.price ?? 0)} が ${formatDuration(exp - item.order.placedAt)}のあいだ約定しなかったため取消`,
 				),
 			);
 		} else {
@@ -597,7 +614,9 @@ export function decideAll<P>(input: DecideAllInput<P>): DecideAllOutput {
 
 	for (const m of markets) {
 		const { instrument } = m;
-		const { calendar } = marketOf(instrument);
+		const market = marketOf(instrument);
+		const { calendar } = market;
+		const money = (x: number) => formatMoney(market.currency, x);
 		const mine = <T extends { instrument?: string }>(x: T) =>
 			ofInstrument(x, instrument.id, first);
 		const myLots = lots.filter(mine);
@@ -610,7 +629,7 @@ export function decideAll<P>(input: DecideAllInput<P>): DecideAllOutput {
 			input.account,
 			now,
 			strategy.dailyLossLimit?.(params) ?? null,
-			calendar,
+			market,
 		);
 
 		const out: StrategyOutput = strategy.evaluate({
@@ -670,8 +689,8 @@ export function decideAll<P>(input: DecideAllInput<P>): DecideAllOutput {
 					cash - reserved < need
 				) {
 					return reserved > 0
-						? `資金 ${formatYen(cash)} 円から未約定の買い ${formatYen(reserved)} 円を除くと、手数料込みの注文額 ${formatYen(need)} 円に足りないため注文しない`
-						: `資金 ${formatYen(cash)} 円が手数料込みの注文額 ${formatYen(need)} 円に足りないため注文しない`;
+						? `資金 ${money(cash)}から未約定の買い ${money(reserved)}を除くと、手数料込みの注文額 ${money(need)}に足りないため注文しない`
+						: `資金 ${money(cash)}が手数料込みの注文額 ${money(need)}に足りないため注文しない`;
 				}
 			}
 			if (intent.side === "sell") {
@@ -816,7 +835,7 @@ export function tradingStep<P>(input: StepInput<P>): StepOutput {
 		input.fees,
 		input.instrument,
 	);
-	const expired = expireOrders(settled.account, input.now);
+	const expired = expireOrders(settled.account, input.now, [input.instrument]);
 	const changed = [...settled.changed];
 	for (const r of expired.changed) withChanged(changed, r);
 	if (!settled.filled && input.now < input.nextEvalAt) {

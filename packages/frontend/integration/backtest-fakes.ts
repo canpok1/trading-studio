@@ -13,6 +13,7 @@ import type {
 	Timeframe,
 } from "@trading-studio/core";
 import {
+	BTC_JPY,
 	DEFAULT_AGGREGATION_RULE,
 	strategyTemplate,
 	withSellDetails,
@@ -200,14 +201,14 @@ export function onResults(
 			chart ? chart : new Promise<never>(() => {}),
 		)
 		.on(routes.api.backtests[":id"].orders, "$get", () => ({
-			orders: withSellDetails(ORDERS),
+			orders: withSellDetails(ORDERS, BTC_JPY),
 			total: ORDERS.length,
 		}))
 		.on(
 			routes.api.backtests[":id"].orders[":orderId"],
 			"$get",
 			({ params }, reply) => {
-				const order = withSellDetails(ORDERS).find(
+				const order = withSellDetails(ORDERS, BTC_JPY).find(
 					(o) => o.id === params.orderId,
 				);
 				return order ? { order } : reply(404, { message: "無い" });

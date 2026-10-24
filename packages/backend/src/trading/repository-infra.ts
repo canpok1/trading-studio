@@ -8,6 +8,7 @@ import type {
 } from "@trading-studio/core";
 import {
 	inferExitKind,
+	instrumentOf,
 	newAccount,
 	normalizeAccount,
 } from "@trading-studio/core";
@@ -62,6 +63,7 @@ const toRun = (r: RunRow): TradingRunRow => ({
 
 type OrderRow = {
 	run_id: number;
+	instrument: string;
 	mode: TradingMode;
 	id: string;
 	side: TradeOrder["side"];
@@ -117,6 +119,7 @@ const toOrder = (r: OrderRow): StoredOrder => ({
 	exitKind: inferExitKind(
 		{ side: r.side, reason: r.reason, exitKind: r.exit_kind },
 		r.lot_price ?? null,
+		instrumentOf(r.instrument),
 	),
 });
 

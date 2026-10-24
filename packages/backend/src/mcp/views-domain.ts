@@ -19,6 +19,7 @@ import {
 	gradePnl,
 	gradeProfitFactor,
 	gradeWinRate,
+	instrumentOf,
 	JUDGES,
 	JUDGMENT_VALUE_LABELS,
 	JUDGMENT_VALUES,
@@ -38,6 +39,7 @@ import type {
 	JudgmentService,
 } from "../judgments/types-domain";
 import type { MarketBarsResult } from "../market/types-domain";
+import { DEFAULT_INSTRUMENT } from "../market-data/instrument-domain";
 import type { NewsItem } from "../news/types-domain";
 import { MOVE_LABELS } from "../scoring-analysis/accuracy-domain";
 import type {
@@ -81,7 +83,10 @@ export function strategyView(
 		name: s.name,
 		lock: strategyLock(s.id),
 		updatedAt: jst(s.updatedAt),
-		screenText: conditionSetScreenText(s.params).join("\n"),
+		screenText: conditionSetScreenText(
+			s.params,
+			instrumentOf(s.instruments[0] as string),
+		).join("\n"),
 		params: s.params,
 	};
 }
@@ -506,7 +511,7 @@ export function segmentView(d: Segment) {
 export function runDetailView(r: BacktestRun) {
 	return {
 		...runView(r),
-		screenText: conditionSetScreenText(r.params).join("\n"),
+		screenText: conditionSetScreenText(r.params, r.instrument).join("\n"),
 		params: r.params,
 	};
 }
@@ -515,7 +520,8 @@ export function runDetailView(r: BacktestRun) {
 export function datasetRunDetailView(r: DatasetRunDetail) {
 	return {
 		...datasetRunView(r),
-		screenText: conditionSetScreenText(r.params).join("\n"),
+		// データセットは既定の銘柄の相場データだけで作る
+		screenText: conditionSetScreenText(r.params, DEFAULT_INSTRUMENT).join("\n"),
 		params: r.params,
 	};
 }

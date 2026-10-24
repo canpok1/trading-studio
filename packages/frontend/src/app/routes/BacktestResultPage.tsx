@@ -208,7 +208,9 @@ function improvedState(
 		...rerunState(run),
 		name: base.slice(0, BACKTEST_NAME_MAX - suffix.length) + suffix,
 		params,
-		improvement: { changes: conditionSetChanges(run.params, params) },
+		improvement: {
+			changes: conditionSetChanges(run.params, params, run.instrument),
+		},
 	};
 }
 

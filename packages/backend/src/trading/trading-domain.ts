@@ -90,7 +90,8 @@ export function createTradingService({
 	now?: () => number;
 	fees?: FeeRates;
 }): TradingEngine {
-	const { calendar: marketCalendar } = marketOf(marketData.instrument);
+	const tradedMarket = marketOf(marketData.instrument);
+	const marketCalendar = tradedMarket.calendar;
 	/**
 	 * オンにしたときの最初の判定時刻。バックテストで判定に使う足の次の足の終わり（バックテストで足の終わりに判定するのと揃える）。
 	 * 秒単位の判定頻度でどの足でも割り切れなければ1分足
@@ -210,7 +211,7 @@ export function createTradingService({
 		}
 		// 戦略が使わない判定も、注文の詳細で「そのときの判定」として見せるため記録する
 		const values = judgmentValues();
-		const expired = expireOrders(row.account, t);
+		const expired = expireOrders(row.account, t, [marketData.instrument]);
 		saveChanges(row, expired.changed, { decisionId: null, strategy: null });
 		const out = decide({
 			instrument: marketData.instrument,
@@ -280,8 +281,7 @@ export function createTradingService({
 				loss: Math.max(0, -realizedPnlOn(a, t, marketCalendar)),
 				limit: s.params.dailyLossLimit,
 				blocked:
-					dailyLossBlock(a, t, s.params.dailyLossLimit, marketCalendar) !==
-					null,
+					dailyLossBlock(a, t, s.params.dailyLossLimit, tradedMarket) !== null,
 			},
 			strategyLock: lockOf(row),
 			account: {
@@ -360,7 +360,9 @@ export function createTradingService({
 						for (const trade of sorted) {
 							if (account.openOrders.length === 0) break;
 							// 期限を過ぎてから届いた約定では約定させない
-							const expired = expireOrders(account, trade.time);
+							const expired = expireOrders(account, trade.time, [
+								marketData.instrument,
+							]);
 							saveChanges(row, expired.changed, {
 								decisionId: null,
 								strategy: null,
@@ -400,7 +402,9 @@ export function createTradingService({
 					repo.transaction(() => {
 						const row = repo.run(id);
 						if (!row) return;
-						const expired = expireOrders(row.account, t);
+						const expired = expireOrders(row.account, t, [
+							marketData.instrument,
+						]);
 						if (expired.changed.length === 0) {
 							evaluate(row, t);
 							return;
@@ -443,7 +447,7 @@ export function createTradingService({
 			if (price === null) return { watch: null };
 			const t = now();
 			// 期限切れの指値は次の判定の前に取り消されるので、取り消した後の口座で試算する
-			const a = expireOrders(row.account, t).account;
+			const a = expireOrders(row.account, t, [marketData.instrument]).account;
 			return {
 				watch: watchConditionSet({
 					instrument: marketData.instrument,
@@ -462,7 +466,7 @@ export function createTradingService({
 						a,
 						t,
 						s.params.dailyLossLimit,
-						marketCalendar,
+						tradedMarket,
 					),
 				}),
 			};

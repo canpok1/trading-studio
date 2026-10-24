@@ -101,7 +101,7 @@ export function exitBadge(
 ): { kind: ExitKind | null; text: string } | null {
 	if (o.side !== "sell") return null;
 	const kind = o.exitKind ?? null;
-	const part = sellReasonPart(o.reason, o.lotPrice ?? null);
+	const part = sellReasonPart(o.reason, o.lotPrice ?? null, BTC_JPY);
 	const names = (part?.slice(0, -1) ?? [])
 		.map(conditionName)
 		.filter((n) => n !== null);

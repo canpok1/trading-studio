@@ -298,7 +298,7 @@ export function readImprovedStrategy(
 		return fail(
 			`AI の出した改善版の戦略が設定として正しくない（${errors.map((e) => e.message).join("・")}）`,
 		);
-	if (conditionSetChanges(base, params).length === 0)
+	if (conditionSetChanges(base, params, BTC_JPY).length === 0)
 		return fail("改善案に戦略設定の変更が無い");
 	return { ok: true, params };
 }

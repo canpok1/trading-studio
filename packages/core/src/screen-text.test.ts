@@ -5,6 +5,7 @@ import {
 	DEFAULT_PARTIAL_SELL,
 	singleBuy,
 } from "./condition-strategy";
+import { BTC_JPY } from "./instrument";
 import { conditionScreenText, conditionSetChanges } from "./screen-text";
 
 const BASE: ConditionSet = singleBuy({
@@ -42,7 +43,9 @@ const rule = (p: ConditionSet) => p.buys[0] as ConditionSet["buys"][number];
 
 describe("戦略設定の変更点", () => {
 	test("同じなら無い", () => {
-		expect(conditionSetChanges(BASE, structuredClone(BASE))).toEqual([]);
+		expect(conditionSetChanges(BASE, structuredClone(BASE), BTC_JPY)).toEqual(
+			[],
+		);
 	});
 
 	test("値を変えた条件は、変える前と後の行で出す", () => {
@@ -55,7 +58,7 @@ describe("戦略設定の変更点", () => {
 			direction: "up",
 		};
 		rule(after).maxPositions = 3;
-		expect(conditionSetChanges(BASE, after)).toEqual([
+		expect(conditionSetChanges(BASE, after, BTC_JPY)).toEqual([
 			{
 				section: "注文量とロット数",
 				removed: ["最大ロット数: 1"],
@@ -87,7 +90,7 @@ describe("戦略設定の変更点", () => {
 		rule(after).stopLoss.conditions = [
 			{ type: "trailingStop", percent: 3, activatePercent: 0 },
 		];
-		expect(conditionSetChanges(BASE, after)).toEqual([
+		expect(conditionSetChanges(BASE, after, BTC_JPY)).toEqual([
 			{
 				section: "売り注文（利確）する条件",
 				removed: ["組み合わせ方: どれか1つ"],
@@ -107,7 +110,7 @@ describe("戦略設定の変更点", () => {
 		one.buys.pop();
 		one.buys[0] = { ...rule(one), name: "押し目" };
 		two.buys[0] = { ...rule(two), name: "押し目" };
-		const changes = conditionSetChanges(two, one);
+		const changes = conditionSetChanges(two, one, BTC_JPY);
 		const sections = changes.map((c) => c.section);
 		expect(sections).toContain("【買い2】注文量とロット数");
 		expect(
