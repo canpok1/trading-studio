@@ -203,6 +203,7 @@ export function createDatasetService({
 					skipGaps: run.skipGaps,
 					criteriaVersion: run.criteriaVersion,
 					eventCriteriaVersion: run.eventCriteriaVersion,
+					instruments: run.instruments,
 					segmentId,
 				},
 				{
@@ -338,6 +339,7 @@ export function createDatasetService({
 					skipGaps: input.skipGaps,
 					criteriaVersion: input.criteriaVersion,
 					eventCriteriaVersion,
+					instruments: input.instruments,
 				},
 				startedAt: now(),
 			});

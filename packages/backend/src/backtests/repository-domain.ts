@@ -35,7 +35,11 @@ export interface BacktestRepository {
 	list({ limit, q, hideFailed, sort }?: Partial<RunFilter>): RunListResult;
 	/** 開始時刻が [from, to) の完了した実行（新しい順） */
 	listDoneStartedBetween(from: number, to: number): BacktestRun[];
-	chart(id: number): Omit<BacktestChart, "judgments"> | null;
+	/** instrument は候補の銘柄の id。省くと候補の先頭。候補に無い銘柄は足も注文も空 */
+	chart(
+		id: number,
+		instrument?: string,
+	): Omit<BacktestChart, "judgments"> | null;
 	/** 往復の取引。結果が無ければ null */
 	trades(id: number): Trade[] | null;
 	orders(id: number): BacktestOrder[] | null;

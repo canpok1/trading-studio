@@ -90,6 +90,7 @@ function addBacktest(t: T, startedAt: number): number {
 	const id = t.backtestRepo.create({
 		name: "テスト",
 		instrument: BTC_JPY,
+		instruments: [BTC_JPY],
 		params: strategyTemplate("trend").params,
 		timeframe: "1h",
 		from: DAY,

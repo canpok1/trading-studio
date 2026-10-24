@@ -253,7 +253,7 @@ const compatible = createCompatibleService({
 });
 const backtests = createBacktestService({
 	repo: backtestRepo,
-	marketData: marketDataRepo,
+	marketData: collectedRepos,
 	strategies,
 	runner: workerRunner,
 	judgments,

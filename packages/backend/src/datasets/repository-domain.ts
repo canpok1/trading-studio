@@ -53,4 +53,6 @@ export type StoredDatasetInput = {
 	criteriaVersion: number | null;
 	/** 足す前に保存した実行には無い */
 	eventCriteriaVersion?: number | null;
+	/** 候補の銘柄の id。足す前に保存した実行には無い（BTC/JPY だけ） */
+	instruments?: string[];
 };

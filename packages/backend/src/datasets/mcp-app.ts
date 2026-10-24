@@ -3,6 +3,10 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ConditionSet } from "@trading-studio/core";
 import * as z from "zod";
+import {
+	COLLECTED_IDS,
+	DEFAULT_INSTRUMENT,
+} from "../market-data/instrument-domain";
 import { feeSchema } from "../mcp/schemas-domain";
 import type { ToolDeps } from "../mcp/tool-app";
 import { fail, paramsSchema, readOnly, text } from "../mcp/tool-app";
@@ -85,6 +89,12 @@ export function registerDatasetTools(
 				name: z.string().describe("バックテスト名（1〜40 文字）"),
 				strategyId: z.number().int().optional(),
 				params: paramsSchema.optional(),
+				instruments: z
+					.array(z.enum(COLLECTED_IDS))
+					.optional()
+					.describe(
+						"候補の銘柄の id（ADR 0037）。並びは順位が無いときの優先順。省けば strategyId の戦略の候補、params なら BTC/JPY だけ",
+					),
 				initialCash: z.number().int().default(2_000_000).describe("円"),
 				...feeSchema,
 				skipGaps: z
@@ -108,12 +118,15 @@ export function registerDatasetTools(
 		},
 		async (a) => {
 			let params: ConditionSet | null;
+			let instruments: string[] = [DEFAULT_INSTRUMENT.id];
 			if (a.strategyId !== undefined && a.params !== undefined) {
 				return fail("strategyId と params はどちらか一方だけ渡す");
 			}
 			if (a.strategyId !== undefined) {
-				params = strategies.get(a.strategyId)?.params ?? null;
-				if (!params) return fail("戦略が見つからない");
+				const strategy = strategies.get(a.strategyId);
+				if (!strategy) return fail("戦略が見つからない");
+				params = strategy.params;
+				instruments = strategy.instruments;
 			} else if (a.params !== undefined) {
 				params = parseParamsInput({ params: a.params });
 				if (!params) return fail("条件セットの形が違う。get_guide を参照");
@@ -127,6 +140,7 @@ export function registerDatasetTools(
 				initialCash: a.initialCash,
 				fees: { limitPpm: a.limitFeePpm, marketPpm: a.marketFeePpm },
 				skipGaps: a.skipGaps,
+				instruments: a.instruments ?? instruments,
 				criteriaVersion: a.criteriaVersion ?? null,
 				eventCriteriaVersion: a.eventCriteriaVersion ?? null,
 			});

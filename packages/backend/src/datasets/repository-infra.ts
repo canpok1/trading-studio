@@ -5,6 +5,7 @@ import { parseConditionSet } from "@trading-studio/core";
 import type { BacktestRepository } from "../backtests/repository-domain";
 import type { BacktestStatus, RunFilter } from "../backtests/types-domain";
 import type { Db } from "../db/open-infra";
+import { DEFAULT_INSTRUMENT } from "../market-data/instrument-domain";
 import type {
 	DatasetRepository,
 	StoredDataset,
@@ -57,6 +58,7 @@ function toRun(r: RunRow): DatasetRun {
 		skipGaps: input.skipGaps,
 		criteriaVersion: input.criteriaVersion,
 		eventCriteriaVersion: input.eventCriteriaVersion ?? null,
+		instruments: input.instruments ?? [DEFAULT_INSTRUMENT.id],
 		segmentIds: JSON.parse(r.segment_ids) as number[],
 		status: r.status,
 		progress: r.status === "done" ? 1 : 0,

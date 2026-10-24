@@ -111,8 +111,10 @@ export const strategies = sqliteTable("strategies", {
 /** バックテストの実行。実行時の条件の写しと成績を持つ */
 export const backtestRuns = sqliteTable("backtest_runs", {
 	id: integer("id").primaryKey({ autoIncrement: true }),
-	/** 銘柄（core の Instrument の id）。既定は銘柄を持つ前の行のため */
+	/** 銘柄（core の Instrument の id）。候補の先頭。既定は銘柄を持つ前の行のため */
 	instrument: text("instrument").notNull().default("coincheck:btc_jpy"),
+	/** 候補の銘柄の id（JSON の配列、ADR 0037）。null は instrument だけ（候補を持つ前の行） */
+	instruments: text("instruments"),
 	/** 使わない。バックテストが戦略と結び付いていた頃の元の戦略 */
 	strategyId: integer("strategy_id"),
 	/** バックテスト名。戦略と結び付いていた頃の実行は、実行したときの戦略名 */

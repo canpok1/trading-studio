@@ -65,10 +65,17 @@ export function createTestApp(
 	const marketData = createMarketDataService(marketDataRepo, {
 		now: () => 1_000,
 	});
-	const ethMarketData = createMarketDataService(
-		new SqliteMarketDataRepository(db, ETH_JPY),
-		{ now: () => 1_000 },
-	);
+	const otherRepos = COLLECTED_INSTRUMENTS.filter(
+		(i) => i.id !== BTC_JPY.id,
+	).map((i) => new SqliteMarketDataRepository(db, i));
+	const collectedRepos = [marketDataRepo, ...otherRepos];
+	const repoOf = (id: string) =>
+		collectedRepos.find(
+			(r) => r.instrument.id === id,
+		) as SqliteMarketDataRepository;
+	const ethMarketData = createMarketDataService(repoOf(ETH_JPY.id), {
+		now: () => 1_000,
+	});
 	const strategies = createStrategyService(
 		new SqliteStrategyRepository(db),
 		() => 2_000,
@@ -161,7 +168,7 @@ export function createTestApp(
 	const backtestRepo = new SqliteBacktestRepository(db);
 	const backtests = createBacktestService({
 		repo: backtestRepo,
-		marketData: marketDataRepo,
+		marketData: collectedRepos,
 		strategies,
 		runner,
 		judgments,
@@ -219,11 +226,7 @@ export function createTestApp(
 	// 定期の削除は動かさず、テストから retention.tick() を呼ぶ
 	const retention = createRetentionService({
 		repo: new SqliteRetentionRepository(db),
-		marketData: COLLECTED_INSTRUMENTS.map((i) =>
-			i.id === BTC_JPY.id
-				? marketDataRepo
-				: new SqliteMarketDataRepository(db, i),
-		),
+		marketData: collectedRepos,
 		dvol: dvolRepo,
 		now: () => clock.now,
 	});
@@ -277,6 +280,7 @@ export function createTestApp(
 		marketData,
 		ethMarketData,
 		marketDataRepo,
+		repoOf,
 		market,
 		strategies,
 		backtests,

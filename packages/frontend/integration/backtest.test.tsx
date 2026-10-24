@@ -224,6 +224,7 @@ describe("実行の画面", () => {
 				return reply(409, {
 					kind: "gaps",
 					message: "期間内にデータの欠損がある",
+					instrument: "coincheck:btc_jpy",
 					gaps: [{ from: START + 720 * H, to: START + 723 * H, missing: 3 }],
 					gapCount: 1,
 					missingBars: 3,

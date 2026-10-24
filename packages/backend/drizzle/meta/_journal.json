@@ -232,6 +232,13 @@
       "when": 1792848398187,
       "tag": "0032_news_instrument_scores",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1792850287313,
+      "tag": "0033_backtest_instruments",
+      "breakpoints": true
     }
   ]
 }

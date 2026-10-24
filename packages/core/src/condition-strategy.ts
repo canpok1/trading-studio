@@ -2655,6 +2655,12 @@ function parseBuyRuleBody(
 		return null;
 	return {
 		orderSize: typeof v.orderSize === "number" ? v.orderSize : Number.NaN,
+		...(v.orderAmount === undefined || v.orderAmount === null
+			? {}
+			: {
+					orderAmount:
+						typeof v.orderAmount === "number" ? v.orderAmount : Number.NaN,
+				}),
 		maxPositions:
 			v.maxPositions === undefined
 				? DEFAULT_MAX_POSITIONS
