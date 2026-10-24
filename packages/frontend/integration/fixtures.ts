@@ -354,6 +354,8 @@ export function storedStrategy(
 	over: Partial<StoredStrategy> & Pick<StoredStrategy, "id" | "name">,
 ): StoredStrategy {
 	return {
+		market: "coincheck",
+		instruments: ["coincheck:btc_jpy"],
 		params: strategyTemplate("blank").params,
 		createdAt: 0,
 		updatedAt: 0,

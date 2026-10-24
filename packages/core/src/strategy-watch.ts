@@ -41,7 +41,7 @@ import {
 	jstDateTime,
 	nextEvent,
 } from "./event-calendar";
-import { formatQuantity, formatYen } from "./format";
+import { formatPriceWithUnit, formatQuantity } from "./format";
 import { bollinger } from "./indicators";
 import { marketOf } from "./instrument";
 import { limitBuyPriceBelow, notional } from "./money";
@@ -282,7 +282,7 @@ function detailOf(c: Condition, ctx: Ctx): string {
 		if (c.activatePercent > 0 && rise < c.activatePercent) {
 			return `未発動・最高値 ${signed(rise)}`;
 		}
-		return `最高値 ${formatYen(peak)} 円から ${signed((ctx.price / peak - 1) * 100)}`;
+		return `最高値 ${formatPriceWithUnit(ctx.instrument, peak)}から ${signed((ctx.price / peak - 1) * 100)}`;
 	}
 	if (c.type === "holdingBars") {
 		if (!ctx.lot) return "";
@@ -307,12 +307,12 @@ function detailOf(c: Condition, ctx: Ctx): string {
 	if ("insufficient" in h) return h.insufficient;
 	switch (c.type) {
 		case "emaCross":
-			return `短期 ${formatYen(emaOf(sr, c.fast)[n - 1] as number)} 円 ・ 長期 ${formatYen(emaOf(sr, c.slow)[n - 1] as number)} 円`;
+			return `短期 ${formatPriceWithUnit(ctx.instrument, emaOf(sr, c.fast)[n - 1] as number)} ・ 長期 ${formatPriceWithUnit(ctx.instrument, emaOf(sr, c.slow)[n - 1] as number)}`;
 		case "breakout": {
 			const window = sr.candles.slice(n - 1 - c.lookback, n - 1);
 			return c.direction === "high"
-				? `高値 ${formatYen(Math.max(...window.map((x) => x.high)))} 円`
-				: `安値 ${formatYen(Math.min(...window.map((x) => x.low)))} 円`;
+				? `高値 ${formatPriceWithUnit(ctx.instrument, Math.max(...window.map((x) => x.high)))}`
+				: `安値 ${formatPriceWithUnit(ctx.instrument, Math.min(...window.map((x) => x.low)))}`;
 		}
 		case "rsi":
 		case "rsiCross":
@@ -320,7 +320,7 @@ function detailOf(c: Condition, ctx: Ctx): string {
 		case "adx":
 			return `今 ${formatRsi(adxOf(sr, c.period)[n - 1] as number)}`;
 		case "emaPosition":
-			return `EMA ${formatYen(emaOf(sr, c.period)[n - 1] as number)} 円`;
+			return `EMA ${formatPriceWithUnit(ctx.instrument, emaOf(sr, c.period)[n - 1] as number)}`;
 		case "emaSlope": {
 			const e = emaOf(sr, c.period);
 			const now = e[n - 1] as number;
@@ -330,23 +330,23 @@ function detailOf(c: Condition, ctx: Ctx): string {
 		case "bollinger": {
 			const b = bollinger(sr.closes, c.period, c.sigma);
 			return c.band === "upper"
-				? `上限 ${formatYen(b.upper[n - 1] as number)} 円`
-				: `下限 ${formatYen(b.lower[n - 1] as number)} 円`;
+				? `上限 ${formatPriceWithUnit(ctx.instrument, b.upper[n - 1] as number)}`
+				: `下限 ${formatPriceWithUnit(ctx.instrument, b.lower[n - 1] as number)}`;
 		}
 		case "entryAtr":
 		case "trailingAtr": {
 			if (!ctx.lot) return "";
 			const a = lotAtrOf(c, ctx);
 			const { entryPrice, peak } = ctx.lot;
-			const atr = `ATR ${formatYen(a.atr)} 円${a.current ? "（今の値）" : ""}`;
+			const atr = `ATR ${formatPriceWithUnit(ctx.instrument, a.atr)}${a.current ? "（今の値）" : ""}`;
 			if (c.type === "entryAtr") {
-				return `${atr} ・ 基準 ${formatYen(entryAtrLine(c, entryPrice, a.atr))} 円`;
+				return `${atr} ・ 基準 ${formatPriceWithUnit(ctx.instrument, entryAtrLine(c, entryPrice, a.atr))}`;
 			}
 			const t = trailingAtrLines(c, entryPrice, peak, a.atr);
 			if (!t.active) {
-				return `未発動・最高値 ${formatYen(peak)} 円（発動 ${formatYen(t.activate)} 円）`;
+				return `未発動・最高値 ${formatPriceWithUnit(ctx.instrument, peak)}（発動 ${formatPriceWithUnit(ctx.instrument, t.activate)}）`;
 			}
-			return `${atr} ・ 基準 ${formatYen(t.line)} 円`;
+			return `${atr} ・ 基準 ${formatPriceWithUnit(ctx.instrument, t.line)}`;
 		}
 	}
 }
@@ -637,6 +637,7 @@ export function watchConditionSet(input: WatchInput): StrategyWatch {
 	const { calendar } = marketOf(input.instrument);
 	const series = new Map<Timeframe, Series>();
 	const ctx: Ctx = {
+		instrument: input.instrument,
 		series: (tf) => {
 			let v = series.get(tf);
 			if (!v) {

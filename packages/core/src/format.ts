@@ -1,13 +1,45 @@
 // 判断理由などの文言に使う数値の書式
 
-import type { Instrument } from "./instrument";
+import type { Currency, Instrument } from "./instrument";
 import { quantityToString } from "./money";
 
-/** 円の3桁区切り（小数は四捨五入）。例: 13488215 → "13,488,215" */
-export function formatYen(value: number): string {
+/** 最小単位の整数を3桁区切りの小数へ（最小単位未満は四捨五入）。小数は decimals 桁まで出す */
+function grouped(value: number, decimals: number): string {
 	const sign = value < 0 ? "-" : "";
-	const digits = String(Math.abs(Math.round(value)));
-	return sign + digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+	const digits = String(Math.abs(Math.round(value))).padStart(
+		decimals + 1,
+		"0",
+	);
+	const int = digits.slice(0, digits.length - decimals);
+	const frac = digits.slice(digits.length - decimals);
+	return (
+		sign +
+		int.replace(/\B(?=(\d{3})+(?!\d))/g, ",") +
+		(decimals > 0 ? `.${frac}` : "")
+	);
+}
+
+/** 価格の表示（単位なし）。例: BTC/JPY の 13488215 → "13,488,215" */
+export function formatPrice(instrument: Instrument, price: number): string {
+	return grouped(price, instrument.priceDecimals);
+}
+
+/** 金額の表示（単位なし）。例: 円の 13488215 → "13,488,215" */
+export function formatAmount(currency: Currency, amount: number): string {
+	return grouped(amount, currency.decimals);
+}
+
+/** 単位付きの金額。例: 円の 13488215 → "13,488,215 円" */
+export function formatMoney(currency: Currency, amount: number): string {
+	return `${formatAmount(currency, amount)} ${currency.unit}`;
+}
+
+/** 単位付きの価格。例: BTC/JPY の 13488215 → "13,488,215 円" */
+export function formatPriceWithUnit(
+	instrument: Instrument,
+	price: number,
+): string {
+	return `${formatPrice(instrument, price)} ${instrument.currency.unit}`;
 }
 
 /** 数量の表示（単位なし）。BTC は小数3桁までは0で埋める。例: 2000000 → "0.020" */

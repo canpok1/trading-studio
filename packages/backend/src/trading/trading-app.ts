@@ -29,6 +29,7 @@ function failure(c: Context, e: TradingFailure) {
 				400,
 			);
 		case "unsupported_mode":
+		case "unsupported_instrument":
 		case "invalid_cash":
 			return c.json({ kind: e.kind, message: e.message }, 400);
 	}

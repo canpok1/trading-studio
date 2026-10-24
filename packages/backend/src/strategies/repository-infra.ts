@@ -7,6 +7,8 @@ import type { StoredStrategy } from "./types-domain";
 type Row = {
 	id: number;
 	name: string;
+	market: string;
+	instruments: string;
 	params: string;
 	created_at: number;
 	updated_at: number;
@@ -16,6 +18,8 @@ function toStrategy(r: Row): StoredStrategy {
 	return {
 		id: r.id,
 		name: r.name,
+		market: r.market,
+		instruments: JSON.parse(r.instruments),
 		// 保存するときに形を検証しているので、読み出しでは形が崩れていない前提で読む
 		params: parseConditionSet(JSON.parse(r.params)) as ConditionSet,
 		createdAt: r.created_at,
@@ -57,14 +61,22 @@ export class SqliteStrategyRepository implements StrategyRepository {
 	insert(
 		name: string,
 		market: string,
+		instruments: readonly string[],
 		params: ConditionSet,
 		at: number,
 	): StoredStrategy {
 		const r = this.sql
-			.query<Row, [string, string, string, number, number]>(
-				"insert into strategies (name, market, params, created_at, updated_at) values (?, ?, ?, ?, ?) returning *",
+			.query<Row, [string, string, string, string, number, number]>(
+				"insert into strategies (name, market, instruments, params, created_at, updated_at) values (?, ?, ?, ?, ?, ?) returning *",
 			)
-			.get(name, market, JSON.stringify(params), at, at) as Row;
+			.get(
+				name,
+				market,
+				JSON.stringify(instruments),
+				JSON.stringify(params),
+				at,
+				at,
+			) as Row;
 		return toStrategy(r);
 	}
 

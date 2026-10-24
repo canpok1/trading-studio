@@ -13,8 +13,8 @@ import {
 	importanceText,
 	isEventImportance,
 } from "./event-calendar";
-import { formatQuantity, formatYen } from "./format";
-import { BTC_JPY } from "./instrument";
+import { formatAmount, formatMoney, formatQuantity } from "./format";
+import type { Instrument } from "./instrument";
 import type { AggregationRule, Judge } from "./news-judgment";
 import {
 	DURATION_LABELS,
@@ -83,13 +83,17 @@ function conditionBody(c: Condition): string {
  * 戦略設定。戦略画面の見出しと項目の並びどおりに書く。
  * 買いごとの見出しは、買いが2つ以上なら頭に【買いの名前】を付ける
  */
-export function conditionSetScreenText(p: ConditionSet): string[] {
+export function conditionSetScreenText(
+	p: ConditionSet,
+	instrument: Instrument,
+): string[] {
+	const { currency } = instrument;
 	const lines = [
 		"### 判定の間隔",
 		`- 保有なしのとき: ${freq(p.frequency.flat)}ごとに買いの条件を判定`,
 		`- 保有中のとき: ${freq(p.frequency.holding)}ごとに売りの条件を判定`,
 		"### リスク上限",
-		`- 1日の損失上限（円）: ${formatYen(p.dailyLossLimit)}`,
+		`- 1日の損失上限（${currency.unit}）: ${formatAmount(currency, p.dailyLossLimit)}`,
 		`- 損切り後に買わない本数: ${p.stopLossCooldownBars > 0 ? `${TIMEFRAME_LABELS[p.stopLossCooldownTimeframe]}で ${p.stopLossCooldownBars} 本` : "0（止めない）"}`,
 	];
 	if (p.buys.length >= 2) {
@@ -102,8 +106,8 @@ export function conditionSetScreenText(p: ConditionSet): string[] {
 		lines.push(
 			`### ${tag}注文量とロット数`,
 			b.orderAmount == null
-				? `- 1回の注文量: ${formatQuantity(BTC_JPY, b.orderSize)} BTC`
-				: `- 1回の注文額: ${formatYen(b.orderAmount)} 円（買える量を売買単位で切り捨てて注文）`,
+				? `- 1回の注文量: ${formatQuantity(instrument, b.orderSize)} ${instrument.quantityUnit}`
+				: `- 1回の注文額: ${formatMoney(currency, b.orderAmount)}（買える量を売買単位で切り捨てて注文）`,
 			`- 最大ロット数: ${b.maxPositions}`,
 		);
 		for (const key of CONDITION_GROUPS) {
@@ -137,9 +141,14 @@ export function conditionSetScreenText(p: ConditionSet): string[] {
 }
 
 /** 実行画面の「口座」の項目 */
-export function accountScreenText(initialCash: number, fees: FeeRates) {
+export function accountScreenText(
+	initialCash: number,
+	fees: FeeRates,
+	instrument: Instrument,
+) {
+	const { currency } = instrument;
 	return [
-		`- 初期資金（円）: ${formatYen(initialCash)}`,
+		`- 初期資金（${currency.unit}）: ${formatAmount(currency, initialCash)}`,
 		`- 手数料率: 指値 ${pct(fees.limitPpm)}・成行 ${pct(fees.marketPpm)}`,
 	];
 }
@@ -174,9 +183,10 @@ export type ConditionSetChange = {
 export function conditionSetChanges(
 	before: ConditionSet,
 	after: ConditionSet,
+	instrument: Instrument,
 ): ConditionSetChange[] {
-	const a = sections(conditionSetScreenText(before));
-	const b = sections(conditionSetScreenText(after));
+	const a = sections(conditionSetScreenText(before, instrument));
+	const b = sections(conditionSetScreenText(after, instrument));
 	const out: ConditionSetChange[] = [];
 	for (const [section, lines] of b) {
 		const prev = a.get(section) ?? [];

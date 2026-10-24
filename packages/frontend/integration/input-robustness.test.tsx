@@ -11,7 +11,7 @@ import type {
 import { DEFAULT_AGGREGATION_RULE } from "@trading-studio/core";
 import { changeValue, setupDom } from "../src/shared/lib/test-setup";
 import { createFakeApi, routes } from "./fake-api";
-import { coverage } from "./fixtures";
+import { coverage, storedStrategy } from "./fixtures";
 import { renderApp } from "./render-app";
 
 setupDom();
@@ -125,13 +125,13 @@ function robustApi() {
 	return createFakeApi()
 		.on(routes.api.strategies, "$get", () => ({
 			strategies: [
-				{
+				storedStrategy({
 					id: 1,
 					name: "空欄",
 					params: PARAMS,
 					createdAt: START,
 					updatedAt: START,
-				},
+				}),
 			],
 		}))
 		.on(routes.api.data.coverage, "$get", () => ({

@@ -263,7 +263,7 @@ export function buildAdviceSource(
 	lines.push("### 期間");
 	lines.push(`- ${jst(run.from)} 〜 ${jst(run.to)}（終わりは含まない）`);
 	lines.push("### 口座");
-	lines.push(...accountScreenText(run.initialCash, run.fees));
+	lines.push(...accountScreenText(run.initialCash, run.fees, run.instrument));
 	if (run.stepTimeframe !== tf || run.stepLimited) {
 		lines.push(
 			"### 判定と約定に使った足",
@@ -272,7 +272,7 @@ export function buildAdviceSource(
 	}
 	lines.push("");
 	lines.push("## 戦略設定（戦略画面の項目どおり）");
-	lines.push(...conditionSetScreenText(run.params));
+	lines.push(...conditionSetScreenText(run.params, run.instrument));
 	if (run.aggregationRule && judgments) {
 		lines.push("");
 		lines.push("## 市場評価の評価ルール（設定 > ニュース > 評価ルール）");

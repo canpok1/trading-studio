@@ -688,3 +688,14 @@ describe("0030 銘柄・市場を持たせる", () => {
 		expect(rows("select count(*) as n from candles")).toEqual([{ n: 2 }]);
 	});
 });
+
+describe("0031 戦略に対象の銘柄の一覧を持たせる", () => {
+	test("既存の戦略は BTC/JPY の1銘柄を対象にする", async () => {
+		const db = await dbUpTo(30);
+		insert(db, "strategies", { name: "s" });
+		migrateDb(db, { now: 1 });
+		expect(
+			db.$client.query("select instruments from strategies").all(),
+		).toEqual([{ instruments: '["coincheck:btc_jpy"]' }]);
+	});
+});

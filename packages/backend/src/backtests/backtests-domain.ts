@@ -560,8 +560,9 @@ export function createBacktestService({
 
 		orders(id, filter, offset, limit) {
 			const stored = repo.orders(id);
-			if (!stored) return null;
-			const all = withSellDetails(stored);
+			const run = repo.get(id);
+			if (!stored || !run) return null;
+			const all = withSellDetails(stored, run.instrument);
 			// 新しい順に並べる
 			const list = (
 				filter === "filled" ? all.filter((o) => o.status === "filled") : all
@@ -574,8 +575,11 @@ export function createBacktestService({
 
 		order(id, orderId) {
 			const stored = repo.orders(id);
-			return stored
-				? (withSellDetails(stored).find((o) => o.id === orderId) ?? null)
+			const run = repo.get(id);
+			return stored && run
+				? (withSellDetails(stored, run.instrument).find(
+						(o) => o.id === orderId,
+					) ?? null)
 				: null;
 		},
 

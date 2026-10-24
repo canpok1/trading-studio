@@ -186,8 +186,10 @@ describe("注文の作成と約定", () => {
 
 	test("期限を過ぎた指値は取り消す", () => {
 		const placed = decideWith(buyLimit, newAccount(1_000_000));
-		expect(expireOrders(placed.account, 13 * H - 1).changed).toEqual([]);
-		const out = expireOrders(placed.account, 13 * H);
+		expect(expireOrders(placed.account, 13 * H - 1, [BTC_JPY]).changed).toEqual(
+			[],
+		);
+		const out = expireOrders(placed.account, 13 * H, [BTC_JPY]);
 		expect(out.account.openOrders).toEqual([]);
 		expect(out.changed[0]).toMatchObject({
 			status: "canceled",
@@ -754,11 +756,14 @@ describe("withSellDetails", () => {
 	test("売りに、売るロット（対応する買い）の約定価格を添える", () => {
 		const o = (x: Partial<TradeOrder>) => x as TradeOrder;
 		expect(
-			withSellDetails([
-				o({ id: "b", side: "buy", fillPrice: 100, pairId: "s" }),
-				o({ id: "s", side: "sell", fillPrice: 120, pairId: "b", reason: "" }),
-				o({ id: "t", side: "sell", fillPrice: 90, pairId: null, reason: "" }),
-			]).map((x) => x.lotPrice),
+			withSellDetails(
+				[
+					o({ id: "b", side: "buy", fillPrice: 100, pairId: "s" }),
+					o({ id: "s", side: "sell", fillPrice: 120, pairId: "b", reason: "" }),
+					o({ id: "t", side: "sell", fillPrice: 90, pairId: null, reason: "" }),
+				],
+				BTC_JPY,
+			).map((x) => x.lotPrice),
 		).toEqual([null, 100, null]);
 	});
 });
@@ -771,12 +776,14 @@ describe("inferExitKind", () => {
 	});
 
 	test("記録があればそれを使う", () => {
-		expect(inferExitKind(sell("", "takeProfit"), null)).toBe("takeProfit");
+		expect(inferExitKind(sell("", "takeProfit"), null, BTC_JPY)).toBe(
+			"takeProfit",
+		);
 	});
 
 	test("買いは null", () => {
 		expect(
-			inferExitKind({ ...sell("", "stopLoss"), side: "buy" }, null),
+			inferExitKind({ ...sell("", "stopLoss"), side: "buy" }, null, BTC_JPY),
 		).toBeNull();
 	});
 
@@ -787,6 +794,7 @@ describe("inferExitKind", () => {
 					"買値から −2% 以上下がったため保有中の 0.001 BTC を売却（損切りの条件）",
 				),
 				null,
+				BTC_JPY,
 			),
 		).toBe("stopLoss");
 	});
@@ -794,19 +802,23 @@ describe("inferExitKind", () => {
 	test("複数のロットを売った理由は、ロットの買値で自分の文を選ぶ", () => {
 		const reason =
 			"A のため買値 10,000,000 のロット 0.001 BTC を売却（利確の条件）。B のため買値 9,500,000 のロット 0.001 BTC を売却（損切りの条件）";
-		expect(inferExitKind(sell(reason), 10_000_000)).toBe("takeProfit");
-		expect(inferExitKind(sell(reason), 9_500_000)).toBe("stopLoss");
-		expect(inferExitKind(sell(reason), null)).toBeNull();
+		expect(inferExitKind(sell(reason), 10_000_000, BTC_JPY)).toBe("takeProfit");
+		expect(inferExitKind(sell(reason), 9_500_000, BTC_JPY)).toBe("stopLoss");
+		expect(inferExitKind(sell(reason), null, BTC_JPY)).toBeNull();
 	});
 
 	test("一部利確の文も、ロットの買値で自分の文を選べる", () => {
 		const reason =
 			"A のため買値 10,000,000 のロット 0.010 BTC のうち 0.005 BTC を売却（一部利確の条件）。B のため買値 9,500,000 のロット 0.010 BTC を売却（利確の条件）";
-		expect(inferExitKind(sell(reason), 10_000_000)).toBe("partialTakeProfit");
-		expect(inferExitKind(sell(reason), 9_500_000)).toBe("takeProfit");
+		expect(inferExitKind(sell(reason), 10_000_000, BTC_JPY)).toBe(
+			"partialTakeProfit",
+		);
+		expect(inferExitKind(sell(reason), 9_500_000, BTC_JPY)).toBe("takeProfit");
 	});
 
 	test("読めなければ null", () => {
-		expect(inferExitKind(sell("売りの条件を満たさない"), null)).toBeNull();
+		expect(
+			inferExitKind(sell("売りの条件を満たさない"), null, BTC_JPY),
+		).toBeNull();
 	});
 });

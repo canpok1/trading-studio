@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { strategyTemplate } from "@trading-studio/core";
+import { createTestDb } from "../src/db/test-db-infra";
 import type { StoredStrategy } from "../src/strategies/types-domain";
 import { createTestApp } from "./test-app";
 
@@ -78,10 +79,22 @@ describe("戦略の API", () => {
 	});
 
 	test("複製・リネーム・削除", async () => {
-		const { app } = createTestApp();
+		const db = createTestDb();
+		const { app } = createTestApp({}, db);
 		const a = (
 			await call(app, "POST", "", { name: "a", from: { template: "range" } })
 		).body.strategy as StoredStrategy;
+		// 作った戦略は BTC/JPY の1銘柄を対象にする
+		expect(a).toMatchObject({
+			market: "coincheck",
+			instruments: ["coincheck:btc_jpy"],
+		});
+		// 複製は元の対象を引き継ぐ（既定と区別するため元を書き換えておく）
+		const instruments = ["coincheck:btc_jpy", "coincheck:eth_jpy"];
+		db.$client.run("update strategies set instruments = ? where id = ?", [
+			JSON.stringify(instruments),
+			a.id,
+		]);
 		const copy = (
 			await call(app, "POST", "", {
 				name: "a のコピー",
@@ -89,6 +102,7 @@ describe("戦略の API", () => {
 			})
 		).body.strategy as StoredStrategy;
 		expect(copy.params).toEqual(a.params);
+		expect(copy).toMatchObject({ market: "coincheck", instruments });
 		const renamed = await call(app, "PUT", `/${a.id}/name`, {
 			name: "新しい名前",
 		});

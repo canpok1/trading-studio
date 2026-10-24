@@ -17,7 +17,13 @@ import {
 	importanceText,
 	isEventImportance,
 } from "./event-calendar";
-import { formatQuantity, formatYen } from "./format";
+import {
+	formatAmount,
+	formatMoney,
+	formatPrice,
+	formatPriceWithUnit,
+	formatQuantity,
+} from "./format";
 import { adx, atr, bollinger, ema, rsi } from "./indicators";
 import type { Instrument } from "./instrument";
 import { BTC_JPY, marketOf, quantityScale } from "./instrument";
@@ -529,6 +535,7 @@ export type Series = {
 export type LotAtr = { atr: number; current: boolean };
 
 export type Ctx = {
+	instrument: Instrument;
 	/** 粒度ごとの足。渡されていない粒度は足が0本 */
 	series: (timeframe: Timeframe) => Series;
 	/** 判定器ごとの今の判定。まだ無ければ入らない */
@@ -655,6 +662,11 @@ export function historyShortfalls(
 	return out;
 }
 
+/** 条件の文に書く価格（単位なし・単位付き） */
+const px = (ctx: Ctx, price: number) => formatPrice(ctx.instrument, price);
+const pu = (ctx: Ctx, price: number) =>
+	formatPriceWithUnit(ctx.instrument, price);
+
 export function checkCondition(c: Condition, ctx: Ctx): Hit {
 	if (!needsCandles(c)) return checkOther(c, ctx);
 	const sr = ctx.series(c.timeframe);
@@ -681,7 +693,7 @@ export function checkCondition(c: Condition, ctx: Ctx): Hit {
 			return hit
 				? {
 						ok: true,
-						why: `${tf}短期EMA(${c.fast}) ${formatYen(f1)} が長期EMA(${c.slow}) ${formatYen(s1)} を${c.direction === "up" ? "上抜け" : "下抜け"}`,
+						why: `${tf}短期EMA(${c.fast}) ${px(ctx, f1)} が長期EMA(${c.slow}) ${px(ctx, s1)} を${c.direction === "up" ? "上抜け" : "下抜け"}`,
 					}
 				: { ok: false };
 		}
@@ -699,7 +711,7 @@ export function checkCondition(c: Condition, ctx: Ctx): Hit {
 				return ctx.price > high
 					? {
 							ok: true,
-							why: `終値 ${formatYen(ctx.price)} が${tf}直近 ${c.lookback} 本の最高値 ${formatYen(high)} を上抜け`,
+							why: `終値 ${px(ctx, ctx.price)} が${tf}直近 ${c.lookback} 本の最高値 ${px(ctx, high)} を上抜け`,
 						}
 					: { ok: false };
 			}
@@ -707,7 +719,7 @@ export function checkCondition(c: Condition, ctx: Ctx): Hit {
 			return ctx.price < low
 				? {
 						ok: true,
-						why: `終値 ${formatYen(ctx.price)} が${tf}直近 ${c.lookback} 本の最安値 ${formatYen(low)} を下抜け`,
+						why: `終値 ${px(ctx, ctx.price)} が${tf}直近 ${c.lookback} 本の最安値 ${px(ctx, low)} を下抜け`,
 					}
 				: { ok: false };
 		}
@@ -767,7 +779,7 @@ export function checkCondition(c: Condition, ctx: Ctx): Hit {
 			return hit
 				? {
 						ok: true,
-						why: `終値 ${formatYen(ctx.price)} が${tf}EMA(${c.period}) ${formatYen(v)} より${c.direction === "above" ? "上" : "下"}`,
+						why: `終値 ${px(ctx, ctx.price)} が${tf}EMA(${c.period}) ${px(ctx, v)} より${c.direction === "above" ? "上" : "下"}`,
 					}
 				: { ok: false };
 		}
@@ -795,7 +807,7 @@ export function checkCondition(c: Condition, ctx: Ctx): Hit {
 			return hit
 				? {
 						ok: true,
-						why: `${tf}EMA(${c.period}) ${formatYen(now)} は ${c.bars} 本前 ${formatYen(before)} から ${sign}${Math.abs(change).toFixed(2)}%${target}`,
+						why: `${tf}EMA(${c.period}) ${px(ctx, now)} は ${c.bars} 本前 ${px(ctx, before)} から ${sign}${Math.abs(change).toFixed(2)}%${target}`,
 					}
 				: { ok: false };
 		}
@@ -817,7 +829,7 @@ export function checkCondition(c: Condition, ctx: Ctx): Hit {
 				return ctx.price >= v
 					? {
 							ok: true,
-							why: `終値 ${formatYen(ctx.price)} が${name}の上限 ${formatYen(v)} 以上`,
+							why: `終値 ${px(ctx, ctx.price)} が${name}の上限 ${px(ctx, v)} 以上`,
 						}
 					: { ok: false };
 			}
@@ -825,7 +837,7 @@ export function checkCondition(c: Condition, ctx: Ctx): Hit {
 			return ctx.price <= v
 				? {
 						ok: true,
-						why: `終値 ${formatYen(ctx.price)} が${name}の下限 ${formatYen(v)} 以下`,
+						why: `終値 ${px(ctx, ctx.price)} が${name}の下限 ${px(ctx, v)} 以下`,
 					}
 				: { ok: false };
 		}
@@ -842,7 +854,7 @@ export function checkCondition(c: Condition, ctx: Ctx): Hit {
 			}
 			const { entryPrice, peak } = ctx.lot;
 			const a = lotAtrOf(c, ctx);
-			const name = `${tf}ATR(${c.period}) ${formatYen(a.atr)} 円`;
+			const name = `${tf}ATR(${c.period}) ${pu(ctx, a.atr)}`;
 			// 代えたことは別の文にする（売りのバッジが条件の文の終わりから条件名を読むため）
 			const fallback = a.current
 				? "。買った時点の ATR を求める足が足りないため、今の ATR で代えた"
@@ -853,7 +865,7 @@ export function checkCondition(c: Condition, ctx: Ctx): Hit {
 				return (up ? ctx.price >= line : ctx.price <= line)
 					? {
 							ok: true,
-							why: `現在値 ${formatYen(ctx.price)} 円が基準 ${formatYen(line)} 円（買値 ${formatYen(entryPrice)} 円 ${up ? "+" : "−"} ${name} × ${c.multiple}）${up ? "以上" : "以下"}${fallback}`,
+							why: `現在値 ${pu(ctx, ctx.price)}が基準 ${pu(ctx, line)}（買値 ${pu(ctx, entryPrice)} ${up ? "+" : "−"} ${name} × ${c.multiple}）${up ? "以上" : "以下"}${fallback}`,
 						}
 					: { ok: false };
 			}
@@ -870,7 +882,7 @@ export function checkCondition(c: Condition, ctx: Ctx): Hit {
 			return ctx.price <= line
 				? {
 						ok: true,
-						why: `現在値 ${formatYen(ctx.price)} 円が基準 ${formatYen(line)} 円（買ってからの最高値 ${formatYen(peak)} 円 − ${name} × ${c.multiple}）以下${since}${fallback}`,
+						why: `現在値 ${pu(ctx, ctx.price)}が基準 ${pu(ctx, line)}（買ってからの最高値 ${pu(ctx, peak)} − ${name} × ${c.multiple}）以下${since}${fallback}`,
 					}
 				: { ok: false };
 		}
@@ -960,7 +972,7 @@ function checkOther(c: Exclude<Condition, CandleCondition>, ctx: Ctx): Hit {
 			return hit
 				? {
 						ok: true,
-						why: `現在値 ${formatYen(ctx.price)} は買値 ${formatYen(entryPrice)} から ${sign}${Math.abs(change).toFixed(1)}%（${c.direction === "up" ? "+" : "−"}${c.percent}% 以上）`,
+						why: `現在値 ${px(ctx, ctx.price)} は買値 ${px(ctx, entryPrice)} から ${sign}${Math.abs(change).toFixed(1)}%（${c.direction === "up" ? "+" : "−"}${c.percent}% 以上）`,
 					}
 				: { ok: false };
 		}
@@ -985,7 +997,7 @@ function checkOther(c: Exclude<Condition, CandleCondition>, ctx: Ctx): Hit {
 			return drop >= c.percent
 				? {
 						ok: true,
-						why: `現在値 ${formatYen(ctx.price)} は買ってからの最高値 ${formatYen(peak)} から −${drop.toFixed(1)}%（−${c.percent}% 以上）${since}`,
+						why: `現在値 ${px(ctx, ctx.price)} は買ってからの最高値 ${px(ctx, peak)} から −${drop.toFixed(1)}%（−${c.percent}% 以上）${since}`,
 					}
 				: { ok: false };
 		}
@@ -1324,7 +1336,7 @@ export function validateConditionSet(
 	if (!isIntIn(p.dailyLossLimit, limits.dailyLossLimit)) {
 		err(
 			"dailyLossLimit",
-			`${formatYen(limits.dailyLossLimit.min)}〜${formatYen(limits.dailyLossLimit.max)} 円の整数で入れる`,
+			`${formatAmount(BTC_JPY.currency, limits.dailyLossLimit.min)}〜${formatMoney(BTC_JPY.currency, limits.dailyLossLimit.max)}の整数で入れる`,
 		);
 	}
 	for (const k of ["flat", "holding"] as const) {
@@ -1384,7 +1396,7 @@ function validateBuyRule(
 	if (p.orderAmount != null && !isIntIn(p.orderAmount, limits.orderAmount)) {
 		err(
 			"orderAmount",
-			`${formatYen(limits.orderAmount.min)}〜${formatYen(limits.orderAmount.max)} 円の整数で入れる`,
+			`${formatAmount(BTC_JPY.currency, limits.orderAmount.min)}〜${formatMoney(BTC_JPY.currency, limits.orderAmount.max)}の整数で入れる`,
 		);
 	}
 	for (const g of CONDITION_GROUPS) {
@@ -1863,6 +1875,7 @@ export function evaluateConditionSet(
 
 	const series = new Map<Timeframe, Series>();
 	const ctx: Ctx = {
+		instrument: input.instrument,
 		series: (tf) => {
 			let v = series.get(tf);
 			if (!v) {
@@ -1936,7 +1949,7 @@ export function evaluateConditionSet(
 			// 建値ストップ: 一部利確の後、現在値が買値を下回ったら残りを損切りとして売る
 			const breakeven =
 				done && rule.partialSell.breakevenStop && ctx.price < lot.entryPrice
-					? `一部利確の後、現在値 ${formatYen(ctx.price)} が買値 ${formatYen(lot.entryPrice)} を下回った。`
+					? `一部利確の後、現在値 ${px(ctx, ctx.price)} が買値 ${px(ctx, lot.entryPrice)} を下回った。`
 					: null;
 			const hit =
 				sl.kind === "hit"
@@ -1959,7 +1972,7 @@ export function evaluateConditionSet(
 				(multi ? `「${rule.name}」で買った` : "") +
 				(lots.length === 1
 					? `保有中の ${formatQuantity(input.instrument, lot.quantity)} ${input.instrument.quantityUnit}`
-					: `買値 ${formatYen(lot.entryPrice)} のロット ${formatQuantity(input.instrument, lot.quantity)} ${input.instrument.quantityUnit}`);
+					: `買値 ${formatPrice(input.instrument, lot.entryPrice)} のロット ${formatQuantity(input.instrument, lot.quantity)} ${input.instrument.quantityUnit}`);
 			const part =
 				quantity < lot.quantity
 					? ` のうち ${formatQuantity(input.instrument, quantity)} ${input.instrument.quantityUnit}`
@@ -2083,6 +2096,7 @@ function buyIntents(
 	const { lines, expireBars, expireTimeframe } = b.buyOrder;
 	const intents: Extract<OrderIntent, { kind: "place" }>[] = [];
 	const texts: string[] = [];
+	const money = (x: number) => formatMoney(instrument.currency, x);
 	let total = 0;
 	let short: string | null = null;
 	for (const line of lines.slice(0, free)) {
@@ -2093,15 +2107,15 @@ function buyIntents(
 				: limitBuyPriceBelow(price, Math.round(line.belowPercent * 10_000));
 		const size = buyQuantity(instrument, b, at);
 		if (size < instrument.minOrderQuantity) {
-			short = `注文額 ${formatYen(b.orderAmount ?? 0)} 円で買える量が最小の注文量 ${formatQuantity(instrument, instrument.minOrderQuantity)} ${instrument.quantityUnit} に届かないため買わない`;
+			short = `注文額 ${formatMoney(instrument.currency, b.orderAmount ?? 0)}で買える量が最小の注文量 ${formatQuantity(instrument, instrument.minOrderQuantity)} ${instrument.quantityUnit} に届かないため買わない`;
 			break;
 		}
 		const cost = notional(instrument, at, size, "ceil");
 		if (cash < total + cost) {
 			short =
 				line.type === "market"
-					? `資金 ${formatYen(cash - total)} 円が注文額の見積もり ${formatYen(cost)} 円に足りないため買わない`
-					: `資金 ${formatYen(cash - total)} 円が注文額 ${formatYen(cost)} 円に足りないため買わない`;
+					? `資金 ${money(cash - total)}が注文額の見積もり ${money(cost)}に足りないため買わない`
+					: `資金 ${money(cash - total)}が注文額 ${money(cost)}に足りないため買わない`;
 			break;
 		}
 		total += cost;
@@ -2117,7 +2131,7 @@ function buyIntents(
 			});
 		} else {
 			texts.push(
-				`現在値 ${formatYen(price)} より ${line.belowPercent}% 下の ${formatYen(at)} に指値で ${formatQuantity(instrument, size)} ${instrument.quantityUnit} を買い（${TIMEFRAME_LABELS[expireTimeframe]}で ${expireBars} 本のあいだ約定しなければ取消）`,
+				`現在値 ${formatPrice(instrument, price)} より ${line.belowPercent}% 下の ${formatPrice(instrument, at)} に指値で ${formatQuantity(instrument, size)} ${instrument.quantityUnit} を買い（${TIMEFRAME_LABELS[expireTimeframe]}で ${expireBars} 本のあいだ約定しなければ取消）`,
 			);
 			intents.push({
 				kind: "place",
