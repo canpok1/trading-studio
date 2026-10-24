@@ -6,7 +6,7 @@ import type {
 	StoredStrategy,
 } from "@trading-studio/backend";
 import type { StrategyWatch, Timeframe, WatchMove } from "@trading-studio/core";
-import { TIMEFRAME_MS } from "@trading-studio/core";
+import { BTC_JPY, TIMEFRAME_MS } from "@trading-studio/core";
 import type { FakeApi } from "./fake-api";
 import { routes } from "./fake-api";
 import {
@@ -131,10 +131,14 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 			}),
 		)
 		.on(routes.api.market.bars, "$get", (req) => ({
+			instrument: BTC_JPY,
 			bars: chartBars(req.query.get("timeframe") as Timeframe, Date.now()),
 		}))
 		.on(routes.api.data.coverage, "$get", () => ({ timeframes: [] }))
-		.on(routes.api.data.latest, "$get", () => ({ latest: null }))
+		.on(routes.api.data.latest, "$get", () => ({
+			instrument: BTC_JPY,
+			latest: null,
+		}))
 		.on(routes.api.strategies, "$get", () => ({
 			strategies: state.strategies,
 		}))
@@ -226,7 +230,7 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 		.on(routes.api.trading.strategies[":id"].watch, "$get", (req, reply) => {
 			const run = find(req.params.id as string);
 			if (!run) return reply(404, RUN_NOT_FOUND);
-			return { watch: watchOf(state.price, state.moves) };
+			return { instrument: BTC_JPY, watch: watchOf(state.price, state.moves) };
 		})
 		.on(routes.api.trading.summaries, "$get", () => ({
 			summaries: state.runs
@@ -259,6 +263,7 @@ export function onHome(api: FakeApi, init: Partial<HomeState> = {}): HomeState {
 				orders: hit.slice(0, Number(q.get("limit") ?? hit.length)),
 				count: hit.length,
 				realizedPnl: hit.reduce((n, o) => n + (o.pnl ?? 0), 0),
+				currency: BTC_JPY.currency,
 			};
 		})
 		.on(routes.api.trading.orders[":strategy"][":id"], "$get", (req, reply) => {

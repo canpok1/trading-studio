@@ -2,6 +2,7 @@
 // 戦略を今の価格で試算し、価格がいくらになれば何が起きるかと、条件ごとの今の値を出す
 
 import type {
+	Instrument,
 	StrategyWatch,
 	WatchBuy,
 	WatchCondition,
@@ -9,11 +10,10 @@ import type {
 	WatchLot,
 	WatchMove,
 } from "@trading-studio/core";
-import { BTC_JPY, formatQuantity } from "@trading-studio/core";
+import { formatPrice, formatQuantity } from "@trading-studio/core";
 import { useCallback, useState } from "react";
 import { Help } from "../../../shared/components/Help";
 import { conditionText } from "../../../shared/lib/condition-text";
-import { formatInt } from "../../../shared/lib/number";
 import type { TriggerView } from "../../../shared/lib/strategy-watch";
 import {
 	ACTION_LABELS,
@@ -72,18 +72,20 @@ const ICON_CLASS: Record<TriggerView["icon"], string> = {
  */
 export function MoveRow({
 	move,
+	instrument,
 	price,
 	multi,
 	detailed,
 	nameClass,
 }: {
 	move: WatchMove;
+	instrument: Instrument;
 	price: number;
 	multi: boolean;
 	detailed: boolean;
 	nameClass?: string;
 }) {
-	const t = triggerView(move.trigger, price);
+	const t = triggerView(move.trigger, price, instrument);
 	return (
 		<span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
 			<KindBadge
@@ -117,10 +119,12 @@ export function MoveRow({
 /** チャートの上に置く次の動き。行動ごとのきっかけを優先度の高い順に全部出す */
 export function NextMovesCard({
 	watch,
+	instrument,
 	stopped,
 	className = "",
 }: {
 	watch: StrategyWatch;
+	instrument: Instrument;
 	/** オフ。判定しないので、出している注文だけを出す */
 	stopped: boolean;
 	className?: string;
@@ -150,7 +154,13 @@ export function NextMovesCard({
 				{stopped && <li className="text-text-2">{STOPPED_TEXT}</li>}
 				{moves.map((m) => (
 					<li key={`${m.buyId}:${m.kind}`}>
-						<MoveRow move={m} price={watch.price} multi={multi} detailed />
+						<MoveRow
+							move={m}
+							instrument={instrument}
+							price={watch.price}
+							multi={multi}
+							detailed
+						/>
 					</li>
 				))}
 				{!stopped && moves.length === 0 && (
@@ -207,7 +217,15 @@ function MetMark({ met }: { met: boolean | null }) {
 	);
 }
 
-function ConditionRow({ c, price }: { c: WatchCondition; price: number }) {
+function ConditionRow({
+	c,
+	instrument,
+	price,
+}: {
+	c: WatchCondition;
+	instrument: Instrument;
+	price: number;
+}) {
 	const edge = c.met === false ? c.edge : null;
 	return (
 		<li className="grid grid-cols-[18px_1fr] gap-x-1.5 border-t border-dashed border-grid py-1.5 text-[13px] sm:grid-cols-[18px_1fr_auto]">
@@ -216,7 +234,7 @@ function ConditionRow({ c, price }: { c: WatchCondition; price: number }) {
 			<span className="num col-start-2 text-xs text-text-2 sm:col-start-3 sm:text-right">
 				{c.detail}
 				{edge &&
-					`${c.detail ? " → " : ""}${formatInt(edge.price)} 円（${distanceText(edge.price, price)}）`}
+					`${c.detail ? " → " : ""}${formatPrice(instrument, edge.price)} ${instrument.currency.unit}（${distanceText(edge.price, price)}）`}
 			</span>
 		</li>
 	);
@@ -230,14 +248,18 @@ const GROUP_TITLES = {
 } as const;
 
 /** 閉じた行に出す要約。発動価格があれば一番近いもの、無ければ成立の数 */
-function groupSummary(g: WatchGroup, price: number): string {
+function groupSummary(
+	g: WatchGroup,
+	instrument: Instrument,
+	price: number,
+): string {
 	if (g.met === null) return "判定できない";
 	if (g.met) return "成立";
 	const nearest = [...g.triggers].sort(
 		(a, b) => Math.abs(a - price) - Math.abs(b - price),
 	)[0];
 	if (nearest !== undefined) {
-		return `${formatInt(nearest)} 円（${distanceText(nearest, price)}）`;
+		return `${formatPrice(instrument, nearest)} ${instrument.currency.unit}（${distanceText(nearest, price)}）`;
 	}
 	const { met, total } = metCount(g);
 	return `${met}/${total} 成立`;
@@ -247,6 +269,7 @@ function GroupRow({
 	id,
 	kind,
 	group,
+	instrument,
 	price,
 	open,
 	onToggle,
@@ -255,6 +278,7 @@ function GroupRow({
 	id: string;
 	kind: keyof typeof GROUP_TITLES;
 	group: WatchGroup;
+	instrument: Instrument;
 	price: number;
 	open: boolean;
 	onToggle: (id: string, open: boolean) => void;
@@ -283,13 +307,13 @@ function GroupRow({
 					{group.match === "all" ? "すべて満たす" : "どれか1つ"}
 				</span>
 				<span className="num text-right text-xs font-semibold">
-					{groupSummary(group, price)}
+					{groupSummary(group, instrument, price)}
 				</span>
 			</summary>
 			<ul className="pb-1.5 pl-[22px]">
 				{group.conditions.map((c, i) => (
 					// biome-ignore lint/suspicious/noArrayIndexKey: 条件は並びで決まり、入れ替えない
-					<ConditionRow key={i} c={c} price={price} />
+					<ConditionRow key={i} c={c} instrument={instrument} price={price} />
 				))}
 				{extra && (
 					<li className="border-t border-dashed border-grid py-1.5 text-xs text-text-2">
@@ -305,6 +329,7 @@ function LotBlock({
 	strategyId,
 	buyId,
 	lot,
+	instrument,
 	price,
 	open,
 	onToggle,
@@ -312,6 +337,7 @@ function LotBlock({
 	strategyId: number;
 	buyId: string;
 	lot: WatchLot;
+	instrument: Instrument;
 	price: number;
 	open: Set<string>;
 	onToggle: (id: string, open: boolean) => void;
@@ -321,8 +347,9 @@ function LotBlock({
 	return (
 		<div className="mt-1 border-t border-line pt-1.5">
 			<p className="num text-xs text-text-2">
-				ロット 買値 {formatInt(lot.entryPrice)} 円 ・{" "}
-				{formatQuantity(BTC_JPY, lot.quantity)} BTC{" "}
+				ロット 買値 {formatPrice(instrument, lot.entryPrice)}{" "}
+				{instrument.currency.unit} ・ {formatQuantity(instrument, lot.quantity)}{" "}
+				{instrument.quantityUnit}{" "}
 				<span className={change >= 0 ? "text-profit" : "text-loss"}>
 					{distanceText(price, lot.entryPrice)}
 				</span>
@@ -342,12 +369,13 @@ function LotBlock({
 							id={key(k)}
 							kind={k}
 							group={g}
+							instrument={instrument}
 							price={price}
 							open={open.has(key(k))}
 							onToggle={onToggle}
 							extra={
 								k === "stopLoss" && lot.breakeven !== null
-									? `建値ストップ: 買値 ${formatInt(lot.breakeven)} 円を下回ると残りを損切り`
+									? `建値ストップ: 買値 ${formatPrice(instrument, lot.breakeven)} ${instrument.currency.unit}を下回ると残りを損切り`
 									: null
 							}
 						/>
@@ -361,12 +389,14 @@ function LotBlock({
 function BuyBlock({
 	strategyId,
 	buy,
+	instrument,
 	price,
 	open,
 	onToggle,
 }: {
 	strategyId: number;
 	buy: WatchBuy;
+	instrument: Instrument;
 	price: number;
 	open: Set<string>;
 	onToggle: (id: string, open: boolean) => void;
@@ -396,6 +426,7 @@ function BuyBlock({
 				id={key}
 				kind="buy"
 				group={buy.buy}
+				instrument={instrument}
 				price={price}
 				open={open.has(key)}
 				onToggle={onToggle}
@@ -406,6 +437,7 @@ function BuyBlock({
 					strategyId={strategyId}
 					buyId={buy.id}
 					lot={lot}
+					instrument={instrument}
 					price={price}
 					open={open}
 					onToggle={onToggle}
@@ -419,9 +451,11 @@ function BuyBlock({
 export function StrategyWatchPanel({
 	strategyId,
 	watch,
+	instrument,
 }: {
 	strategyId: number;
 	watch: StrategyWatch;
+	instrument: Instrument;
 }) {
 	const [open, setOpen] = useOpenGroups();
 	return (
@@ -433,8 +467,8 @@ export function StrategyWatchPanel({
 				<h2 className="text-[15px] font-bold">戦略の見張り</h2>
 				<Help label="戦略の見張り">
 					<p>
-						戦略の条件を、今の価格（{formatInt(watch.price)}{" "}
-						円）で試算した結果。✓ は成立、○ は不成立。
+						戦略の条件を、今の価格（{formatPrice(instrument, watch.price)}{" "}
+						{instrument.currency.unit}）で試算した結果。✓ は成立、○ は不成立。
 					</p>
 					<p>
 						「→」の後は、ほかの値はそのままに価格だけが動いたとき、その条件が成立する価格。
@@ -447,6 +481,7 @@ export function StrategyWatchPanel({
 					key={b.id}
 					strategyId={strategyId}
 					buy={b}
+					instrument={instrument}
 					price={watch.price}
 					open={open}
 					onToggle={setOpen}

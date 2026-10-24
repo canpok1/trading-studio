@@ -1,3 +1,6 @@
+import type { Currency } from "@trading-studio/core";
+import { formatAmount } from "@trading-studio/core";
+
 /** 3桁区切り。例: 1234567 → "1,234,567" */
 export function formatInt(n: number): string {
 	return Math.round(n).toLocaleString("ja-JP");
@@ -17,4 +20,9 @@ export function formatSignedInt(n: number): string {
 export function holdingText(ms: number): string {
 	const h = ms / 3_600_000;
 	return h >= 24 ? `${(h / 24).toFixed(1)}日` : `${h.toFixed(1)}時間`;
+}
+
+/** 符号付きの金額（単位なし）。通貨の桁まで出す。例: 円の 1234 → "+1,234" */
+export function formatSignedAmount(currency: Currency, n: number): string {
+	return `${n >= 0 ? "+" : "−"}${formatAmount(currency, Math.abs(n))}`;
 }

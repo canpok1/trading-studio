@@ -51,7 +51,7 @@ export interface TradingRepository {
 	/** from より後に約定した注文を約定の古い順に。リセットと同じ時刻の約定はリセット前の口座のもの */
 	filledSince(runId: number, from: number): StoredOrder[];
 	/** 条件に合う注文の件数と、損益の合計（件数で切らない） */
-	orderSummary(filter?: RunOrderFilter): OrderSummary;
+	orderSummary(filter?: RunOrderFilter): Omit<OrderSummary, "currency">;
 	addDecision(
 		run: {
 			id: number;

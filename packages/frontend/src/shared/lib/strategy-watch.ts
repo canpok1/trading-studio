@@ -1,15 +1,19 @@
 // 戦略の見張り（今の価格での試算）を、ホームの「次の動き」・チャートの発動価格・「戦略の見張り」に向けて読み替える
 
 import type {
+	Instrument,
 	StrategyWatch,
 	WatchActionKind,
 	WatchBuyStatus,
 	WatchGroup,
 	WatchTrigger,
 } from "@trading-studio/core";
-import { jstDateTime, TIMEFRAME_LABELS } from "@trading-studio/core";
+import {
+	formatPrice,
+	jstDateTime,
+	TIMEFRAME_LABELS,
+} from "@trading-studio/core";
 import { conditionText } from "./condition-text";
-import { formatInt } from "./number";
 
 /** チャートに引く発動価格 */
 export type ChartTrigger = {
@@ -31,15 +35,16 @@ export function distanceText(price: number, from: number): string {
 	return `${p >= 0 ? "+" : "−"}${Math.abs(p).toFixed(2)}%`;
 }
 
-/** 今の価格から発動価格までの幅。% も円の差も符号付き */
+/** 今の価格から発動価格までの幅。% も価格の差（通貨の単位付き）も符号付き */
 export function moveText(
+	instrument: Instrument,
 	price: number,
 	from: number,
-): { percent: string; yen: string } {
+): { percent: string; diff: string } {
 	const d = price - from;
 	return {
 		percent: distanceText(price, from),
-		yen: `${d >= 0 ? "+" : "−"}${formatInt(Math.abs(d))} 円`,
+		diff: `${d >= 0 ? "+" : "−"}${formatPrice(instrument, Math.abs(d))} ${instrument.currency.unit}`,
 	};
 }
 
@@ -97,20 +102,24 @@ export const STOPPED_TEXT = "停止中のため新しい注文は出さない";
 export type TriggerView = {
 	icon: "●" | "↑" | "↓" | "⏱" | "◇" | "…";
 	text: string;
-	/** 円の差・今の値など。戦略の画面だけで出す */
+	/** 価格の差・今の値など。戦略の画面だけで出す */
 	note: string | null;
 	/** 種類のバッジの後ろに続けて読むので「〜待ち」にする */
 	suffix: "待ち" | " 約定待ち" | " まで待ち";
 };
 
 /** 例: 「+10.00%（+1,000,000 円）待ち」「−1.50% 約定待ち」「センチメント やや強気（今 中立）待ち」 */
-export function triggerView(t: WatchTrigger, price: number): TriggerView {
+export function triggerView(
+	t: WatchTrigger,
+	price: number,
+	instrument: Instrument,
+): TriggerView {
 	const priced = (p: number, ordered: boolean): TriggerView => {
-		const m = moveText(p, price);
+		const m = moveText(instrument, p, price);
 		return {
 			icon: p > price ? "↑" : "↓",
 			text: m.percent,
-			note: m.yen,
+			note: m.diff,
 			suffix: ordered ? " 約定待ち" : "待ち",
 		};
 	};

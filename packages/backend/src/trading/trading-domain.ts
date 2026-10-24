@@ -444,13 +444,15 @@ export function createTradingService({
 			const { s, row } = found;
 			const live = market();
 			const price = currentPrice(live);
-			if (price === null) return { watch: null };
+			const { instrument } = marketData;
+			if (price === null) return { instrument, watch: null };
 			const t = now();
 			// 期限切れの指値は次の判定の前に取り消されるので、取り消した後の口座で試算する
 			const a = expireOrders(row.account, t, [marketData.instrument]).account;
 			return {
+				instrument,
 				watch: watchConditionSet({
-					instrument: marketData.instrument,
+					instrument,
 					now: t,
 					price,
 					...candlesAt(s, t, live),
@@ -625,7 +627,11 @@ export function createTradingService({
 
 		orderSummary(filter) {
 			const f = runFilter(filter);
-			return f ? repo.orderSummary(f) : { count: 0, realizedPnl: 0 };
+			const { currency } = tradedMarket;
+			return {
+				...(f ? repo.orderSummary(f) : { count: 0, realizedPnl: 0 }),
+				currency,
+			};
 		},
 
 		performance(strategyId) {

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import type { StoredStrategy } from "@trading-studio/backend";
-import { strategyTemplate } from "@trading-studio/core";
+import { BTC_JPY, strategyTemplate } from "@trading-studio/core";
 import { changeValue, setupDom } from "../src/shared/lib/test-setup";
 import type { FakeApi } from "./fake-api";
 import { createFakeApi, routes } from "./fake-api";
@@ -27,7 +27,10 @@ function strategiesApi(): FakeApi {
 	} as const;
 	const NOT_FOUND = { message: "戦略が見つからない" };
 	return createFakeApi()
-		.on(routes.api.data.latest, "$get", () => ({ latest: null }))
+		.on(routes.api.data.latest, "$get", () => ({
+			instrument: BTC_JPY,
+			latest: null,
+		}))
 		.on(routes.api.strategies, "$get", () => ({
 			strategies: [...store.values()],
 		}))

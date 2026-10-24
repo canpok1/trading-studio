@@ -8,7 +8,7 @@ import type {
 	TradingMode,
 	TradingPerformance,
 } from "@trading-studio/backend";
-import type { StrategyWatch } from "@trading-studio/core";
+import type { Instrument, StrategyWatch } from "@trading-studio/core";
 import type { ReactNode } from "react";
 import {
 	createContext,
@@ -140,7 +140,11 @@ export function useTradingOrders(query: OrderQuery, active: boolean) {
 				setState({
 					key,
 					orders: r.orders,
-					summary: { count: r.count, realizedPnl: r.realizedPnl },
+					summary: {
+						count: r.count,
+						realizedPnl: r.realizedPnl,
+						currency: r.currency,
+					},
 					error: null,
 				});
 			}
@@ -213,6 +217,7 @@ export function useStrategyWatch(strategyId: number, active: boolean) {
 	// どの戦略の見張りかを持ち、切り替え直後に前の見張りを出さない
 	const [loaded, setLoaded] = useState<{
 		strategyId: number;
+		instrument: Instrument;
 		watch: StrategyWatch | null;
 	} | null>(null);
 	const seq = useRef(0);
@@ -221,8 +226,14 @@ export function useStrategyWatch(strategyId: number, active: boolean) {
 		try {
 			const r = await api.api.trading.strategies[":id"].watch
 				.$get({ param: { id: String(strategyId) } })
-				.then((res) => readJson<{ watch: StrategyWatch | null }>(res));
-			if (my === seq.current) setLoaded({ strategyId, watch: r.watch });
+				.then((res) =>
+					readJson<{ instrument: Instrument; watch: StrategyWatch | null }>(
+						res,
+					),
+				);
+			if (my === seq.current) {
+				setLoaded({ strategyId, instrument: r.instrument, watch: r.watch });
+			}
 		} catch {
 			// 見張りは補助の表示なので、読めなければ前の値のまま残す
 		}
@@ -231,5 +242,8 @@ export function useStrategyWatch(strategyId: number, active: boolean) {
 		if (active) load();
 	}, [active, load]);
 	useInterval(load, STATUS_MS, active);
-	return loaded?.strategyId === strategyId ? loaded.watch : null;
+	// 見張る銘柄は見張りと一緒に返す。見張りが無ければ null
+	return loaded?.strategyId === strategyId && loaded.watch
+		? { instrument: loaded.instrument, watch: loaded.watch }
+		: null;
 }

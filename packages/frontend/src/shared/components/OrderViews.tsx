@@ -4,12 +4,18 @@ import type {
 	BacktestOrder,
 	ExitKind,
 	GradeBadgeValue,
+	Instrument,
 } from "@trading-studio/core";
-import { BTC_JPY, formatQuantity, sellReasonPart } from "@trading-studio/core";
+import {
+	formatAmount,
+	formatPrice,
+	formatQuantity,
+	sellReasonPart,
+} from "@trading-studio/core";
 import type { ReactNode } from "react";
 import { Fragment } from "react";
 import { formatDateTime } from "../lib/format";
-import { formatInt, formatSignedInt } from "../lib/number";
+import { formatSignedAmount } from "../lib/number";
 import { GradeBadge } from "./Grade";
 import { Modal } from "./Modal";
 import { Button } from "./ui";
@@ -21,7 +27,8 @@ const STATUS_LABEL: Record<BacktestOrder["status"], string> = {
 };
 
 /** 成り立った条件の文を、バッジに出す短い名前にする。名前は結果の条件の要約（conditionText）と揃える。知らない形の文は null */
-function conditionName(why: string): string | null {
+function conditionName(why: string, instrument: Instrument): string | null {
+	const yen = instrument.currency.unit.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 	// 足は「1時間足の」のように条件の前に付く。足を持つ前の記録には無い
 	const tf = "(?:(1分足|5分足|15分足|1時間足|4時間足|日足)の)?";
 	const at = (m: RegExpMatchArray, name: string) =>
@@ -62,13 +69,13 @@ function conditionName(why: string): string | null {
 		[/^(.+)判定が(.+?)（/, (m) => `${m[1]}${m[2]}`],
 		[
 			new RegExp(
-				`（買ってからの最高値 \\S+ 円 − ${tf}ATR\\((\\d+)\\) \\S+ 円 × ([\\d.]+)）以下$`,
+				`（買ってからの最高値 \\S+ ${yen} − ${tf}ATR\\((\\d+)\\) \\S+ ${yen} × ([\\d.]+)）以下$`,
 			),
 			(m) => at(m, `最高値−ATR${m[2]}×${m[3]}`),
 		],
 		[
 			new RegExp(
-				`（買値 \\S+ 円 ([+−]) ${tf}ATR\\((\\d+)\\) \\S+ 円 × ([\\d.]+)）(?:以上|以下)$`,
+				`（買値 \\S+ ${yen} ([+−]) ${tf}ATR\\((\\d+)\\) \\S+ ${yen} × ([\\d.]+)）(?:以上|以下)$`,
 			),
 			(m) => (m[2] ? `${m[2]} ` : "") + `${m[1]}ATR${m[3]}×${m[4]}`,
 		],
@@ -98,12 +105,13 @@ const EXIT_LABEL: Record<ExitKind, string> = {
  */
 export function exitBadge(
 	o: ListedOrder,
+	instrument: Instrument,
 ): { kind: ExitKind | null; text: string } | null {
 	if (o.side !== "sell") return null;
 	const kind = o.exitKind ?? null;
-	const part = sellReasonPart(o.reason, o.lotPrice ?? null, BTC_JPY);
+	const part = sellReasonPart(o.reason, o.lotPrice ?? null, instrument);
 	const names = (part?.slice(0, -1) ?? [])
-		.map(conditionName)
+		.map((why) => conditionName(why, instrument))
 		.filter((n) => n !== null);
 	const text = [kind ? EXIT_LABEL[kind] : null, names.join("・") || null]
 		.filter((x) => x !== null)
@@ -117,9 +125,11 @@ export function exitBadge(
  */
 export function ExitBadge({
 	order,
+	instrument,
 	wrap = false,
 }: {
 	order: ListedOrder;
+	instrument: Instrument;
 	wrap?: boolean;
 }) {
 	if (order.side === "buy" && order.buyName) {
@@ -132,7 +142,7 @@ export function ExitBadge({
 			</span>
 		);
 	}
-	const b = exitBadge(order);
+	const b = exitBadge(order, instrument);
 	if (!b) return null;
 	const tone =
 		b.kind === "takeProfit" || b.kind === "partialTakeProfit"
@@ -205,24 +215,27 @@ function SideText({ order, long }: { order: BacktestOrder; long?: boolean }) {
 type ListedOrder = BacktestOrder & { lotPrice?: number | null };
 
 /** 売りが売るロットの説明。ロットの買値が分からなければ空 */
-const lotText = (o: ListedOrder) =>
+const lotText = (o: ListedOrder, instrument: Instrument) =>
 	o.side === "sell" && o.lotPrice != null
-		? ` · 買値 ${formatInt(o.lotPrice)}円 のロット`
+		? ` · 買値 ${formatPrice(instrument, o.lotPrice)}${instrument.currency.unit} のロット`
 		: "";
 
 export function OrderRow({
 	order: o,
+	instrument,
 	selected,
 	onClick,
 	tag,
 }: {
 	order: ListedOrder;
+	instrument: Instrument;
 	selected: boolean;
 	onClick: () => void;
 	/** 損益が無い行の右端に、状態の代わりに出すもの */
 	tag?: ReactNode;
 }) {
 	const price = o.fillPrice ?? o.price;
+	const unit = instrument.currency.unit;
 	return (
 		<button
 			type="button"
@@ -236,20 +249,22 @@ export function OrderRow({
 					<span className="shrink-0">
 						<SideText order={o} />{" "}
 						{o.type === "limit" && o.status !== "filled" ? "指値 " : ""}
-						{formatQuantity(BTC_JPY, o.quantity)} BTC · {STATUS_LABEL[o.status]}
+						{formatQuantity(instrument, o.quantity)} {instrument.quantityUnit} ·{" "}
+						{STATUS_LABEL[o.status]}
 					</span>
-					<ExitBadge order={o} />
+					<ExitBadge order={o} instrument={instrument} />
 				</span>
 				<span className="num text-xs text-text-2">
 					{formatDateTime(orderTime(o))}
-					{price !== null ? ` · @${formatInt(price)}円` : ""}
-					{lotText(o)}
+					{price !== null ? ` · @${formatPrice(instrument, price)}${unit}` : ""}
+					{lotText(o, instrument)}
 				</span>
 			</span>
 			<span className="num text-right text-[13px] font-semibold">
 				{o.pnl !== null ? (
 					<span className={o.pnl >= 0 ? "text-profit" : "text-loss"}>
-						{formatSignedInt(o.pnl)}円
+						{formatSignedAmount(instrument.currency, o.pnl)}
+						{unit}
 					</span>
 				) : (
 					(tag ?? (
@@ -265,17 +280,20 @@ export function OrderRow({
 
 export function OrderSheet({
 	order: o,
+	instrument,
 	onClose,
 	onPair,
 	children,
 }: {
 	order: ListedOrder;
+	instrument: Instrument;
 	onClose: () => void;
 	onPair: (id: string) => void;
 	/** 戦略の理由の後に足す欄 */
 	children?: ReactNode;
 }) {
 	const price = o.fillPrice ?? o.price;
+	const { currency } = instrument;
 	return (
 		<Modal title="注文の詳細" onClose={onClose}>
 			<div className="flex items-center gap-2.5">
@@ -285,34 +303,42 @@ export function OrderSheet({
 						<SideText order={o} long /> · {STATUS_LABEL[o.status]}
 					</strong>
 					<span className="flex min-w-0 py-0.5">
-						<ExitBadge order={o} wrap />
+						<ExitBadge order={o} instrument={instrument} wrap />
 					</span>
 					<span className="num text-xs text-text-2">
 						{formatDateTime(orderTime(o))} ·{" "}
 						{o.type === "limit" ? "指値" : "成行"}
-						{lotText(o)}
+						{lotText(o, instrument)}
 					</span>
 				</div>
 			</div>
 			<div className="grid grid-cols-3 gap-2 rounded-[10px] bg-bg p-3">
 				<Stat
 					label={o.status === "filled" ? "約定価格" : "指値"}
-					value={price !== null ? `${formatInt(price)}円` : "—"}
+					value={
+						price !== null
+							? `${formatPrice(instrument, price)}${currency.unit}`
+							: "—"
+					}
 				/>
 				<Stat
 					label="数量"
-					value={`${formatQuantity(BTC_JPY, o.quantity)} BTC`}
+					value={`${formatQuantity(instrument, o.quantity)} ${instrument.quantityUnit}`}
 				/>
 				{o.pnl !== null ? (
 					<Stat
 						label="損益"
-						value={`${formatSignedInt(o.pnl)}円`}
+						value={`${formatSignedAmount(currency, o.pnl)}${currency.unit}`}
 						tone={o.pnl >= 0 ? "text-profit" : "text-loss"}
 					/>
 				) : (
 					<Stat
 						label="手数料"
-						value={o.fee !== null ? `${formatInt(o.fee)}円` : "—"}
+						value={
+							o.fee !== null
+								? `${formatAmount(currency, o.fee)}${currency.unit}`
+								: "—"
+						}
 					/>
 				)}
 			</div>

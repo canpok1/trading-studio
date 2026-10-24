@@ -1,6 +1,7 @@
 // ホームの注文・約定。状態と売買で絞り込み、日ごとにまとめて10件ずつ出す
 
 import type { StoredOrder } from "@trading-studio/backend";
+import { instrumentOf } from "@trading-studio/core";
 import { useMemo, useState } from "react";
 import { OrderRow, orderTime } from "../../../shared/components/OrderViews";
 import {
@@ -10,7 +11,7 @@ import {
 } from "../../../shared/components/States";
 import { Button } from "../../../shared/components/ui";
 import { formatDate, formatDateWeekday } from "../../../shared/lib/format";
-import { formatSignedInt } from "../../../shared/lib/number";
+import { formatSignedAmount } from "../../../shared/lib/number";
 import { useTradingOrders } from "../../../shared/lib/trading";
 import { PANEL, PanelHeader } from "./Panel";
 
@@ -128,11 +129,14 @@ export function OrdersPanel({
 				<>
 					<p data-testid="trades-summary" className="num text-xs text-text-2">
 						{summary?.count ?? orders.length} 件 · 実現損益{" "}
-						<span
-							className={`font-semibold ${realized >= 0 ? "text-profit" : "text-loss"}`}
-						>
-							{formatSignedInt(realized)}円
-						</span>
+						{summary && (
+							<span
+								className={`font-semibold ${realized >= 0 ? "text-profit" : "text-loss"}`}
+							>
+								{formatSignedAmount(summary.currency, realized)}
+								{summary.currency.unit}
+							</span>
+						)}
 					</p>
 					{groups.length === 0 ? (
 						filtered ? (
@@ -166,6 +170,7 @@ export function OrdersPanel({
 										<OrderRow
 											key={o.id}
 											order={o}
+											instrument={instrumentOf(o.instrument)}
 											selected={o.id === selectedId}
 											onClick={() => onSelect(o.id)}
 										/>

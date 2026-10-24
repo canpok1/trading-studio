@@ -8,7 +8,7 @@ import type {
 	ConditionGroup,
 	ConditionSet,
 } from "@trading-studio/core";
-import { DEFAULT_AGGREGATION_RULE } from "@trading-studio/core";
+import { BTC_JPY, DEFAULT_AGGREGATION_RULE } from "@trading-studio/core";
 import { changeValue, setupDom } from "../src/shared/lib/test-setup";
 import { createFakeApi, routes } from "./fake-api";
 import { coverage, storedStrategy } from "./fixtures";
@@ -145,6 +145,7 @@ function robustApi() {
 			],
 		}))
 		.on(routes.api.data.latest, "$get", () => ({
+			instrument: BTC_JPY,
 			latest: { time: END, close: 10_000_000 },
 		}))
 		.on(routes.api.judgments.current, "$get", () => ({
