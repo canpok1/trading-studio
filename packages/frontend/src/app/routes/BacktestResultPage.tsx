@@ -551,8 +551,12 @@ function Result({ run }: { run: BacktestRun }) {
 
 	// 合計は全銘柄の注文。先頭の銘柄も銘柄を付けて頼む（他の銘柄の注文を除くため）
 	const orderInstrument = multi && view !== TOTAL ? view : null;
+	// 銘柄・絞り込みを切り替えた後に届いた前の応答を捨てるため、最後に頼んだものを覚える
+	const latestQuery = useRef("");
 	const loadPage = useCallback(
 		async (offset: number) => {
+			const key = `${filter}:${orderInstrument}:${offset}`;
+			latestQuery.current = key;
 			try {
 				// 銘柄は API の型に出していないので、変数に入れて渡す
 				const query: {
@@ -571,11 +575,12 @@ function Result({ run }: { run: BacktestRun }) {
 					.then((res) =>
 						readJson<{ orders: BacktestOrder[]; total: number }>(res),
 					);
+				if (latestQuery.current !== key) return;
 				setOrders((cur) => (offset === 0 ? r.orders : [...cur, ...r.orders]));
 				setTotal(r.total);
 				setListError(null);
 			} catch (e) {
-				setListError(errorMessage(e));
+				if (latestQuery.current === key) setListError(errorMessage(e));
 			}
 		},
 		[api, run.id, filter, orderInstrument],
@@ -583,6 +588,13 @@ function Result({ run }: { run: BacktestRun }) {
 	useEffect(() => {
 		loadPage(0);
 	}, [loadPage]);
+	// 銘柄を切り替えたら、前の銘柄の注文を出したままにしない
+	const switchView = (v: string) => {
+		setView(v);
+		setOrders([]);
+		setTotal(0);
+		setSelected(null);
+	};
 
 	const pick = async (orderId: string) => {
 		try {
@@ -629,7 +641,7 @@ function Result({ run }: { run: BacktestRun }) {
 							),
 						]}
 						value={view}
-						onChange={setView}
+						onChange={switchView}
 					/>
 				</div>
 			) : (
@@ -731,7 +743,7 @@ function Result({ run }: { run: BacktestRun }) {
 							を保有していた。損益・最終資金は最後の終値で評価し、取引回数・勝率には含めない。
 						</p>
 					)}
-					{isTotal && <InstrumentTable run={run} onPick={setView} />}
+					{isTotal && <InstrumentTable run={run} onPick={switchView} />}
 				</section>
 			)}
 			{isTotal ? (

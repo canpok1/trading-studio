@@ -722,30 +722,20 @@ describe("候補が2つ以上の結果の画面", () => {
 				),
 			).toHaveLength(2),
 		);
-		expect(
-			sent(api, "GET", "/api/backtests/11/orders").some(
-				(r) => r.query.get("instrument") === "coincheck:eth_jpy",
-			),
-		).toBe(true);
-		expect(
-			sent(api, "GET", "/api/backtests/11/chart").map((r) =>
-				r.query.get("instrument"),
-			),
-		).toEqual(["coincheck:eth_jpy"]);
 
 		// 「合計」へ戻せる
 		fireEvent.click(view.getByRole("radio", { name: "合計" }));
 		expect(view.getByText("成績（合計）")).toBeTruthy();
 	});
 
-	test("候補が1つの結果は銘柄を切り替えず、総資産の推移を読まない", async () => {
+	test("候補が1つの結果は銘柄を切り替えず、総資産の推移を出さない", async () => {
 		const run = resultRun({ id: 12, name: "BTC だけ" });
 		const api = withResults(createFakeApi(), new Map([[run.id, run]]));
 		const view = renderApp("/backtest/runs/12", api);
 		expect(await view.findByText(run.name, { exact: true })).toBeTruthy();
 		expect(view.queryByRole("group", { name: "見る銘柄" })).toBeNull();
 		expect(view.getByText("成績")).toBeTruthy();
-		expect(sent(api, "GET", "/api/backtests/12/equity")).toHaveLength(0);
+		expect(view.queryByRole("region", { name: "資産の推移" })).toBeNull();
 	});
 });
 

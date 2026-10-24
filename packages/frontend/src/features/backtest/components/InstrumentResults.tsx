@@ -180,8 +180,11 @@ export function EquityChart({
 		return <p className="text-xs text-text-2">総資産の記録が無い</p>;
 	}
 	const values = points.map((p) => p.value);
-	const max = Math.max(initialCash, ...values);
-	const min = Math.min(initialCash, ...values);
+	const high = Math.max(...values);
+	const low = Math.min(...values);
+	// 初期資金の点線も入るよう、縦の範囲には初期資金を含める
+	const max = Math.max(initialCash, high);
+	const min = Math.min(initialCash, low);
 	const span = max - min || 1;
 	const x = (i: number) =>
 		points.length > 1 ? (i / (points.length - 1)) * W : W / 2;
@@ -190,7 +193,7 @@ export function EquityChart({
 	return (
 		<figure className="flex flex-col gap-1">
 			<div className="num flex justify-between text-[11px] text-text-2">
-				<span>最高 {money(max)}</span>
+				<span>最高 {money(high)}</span>
 				<span>最後 {money(last.value)}</span>
 			</div>
 			<svg
@@ -219,7 +222,7 @@ export function EquityChart({
 			</svg>
 			<div className="num flex justify-between text-[11px] text-text-2">
 				<span>{formatDate(first.time)}</span>
-				<span>最低 {money(min)}</span>
+				<span>最低 {money(low)}</span>
 				<span>{formatDate(last.time)}</span>
 			</div>
 		</figure>
