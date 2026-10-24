@@ -15,6 +15,7 @@ import type {
 	ConditionSet,
 	ConditionSetChange,
 	Gap,
+	Instrument,
 	Timeframe,
 } from "@trading-studio/core";
 import {
@@ -253,6 +254,8 @@ type Data = {
 	strategies: StoredStrategy[];
 	coverage: TimeframeCoverage[];
 	latest: number | null;
+	/** 取り込んだ足の銘柄 */
+	instrument: Instrument;
 	/** AI 判定の採点の記録の始まり。まだ無ければ null */
 	firstScoredAt: number | null;
 	criteriaVersions: CriteriaVersion[];
@@ -278,9 +281,12 @@ export function BacktestRunPage() {
 			api.api.data.coverage
 				.$get()
 				.then((res) => readJson<{ timeframes: TimeframeCoverage[] }>(res)),
-			api.api.data.latest
-				.$get()
-				.then((res) => readJson<{ latest: { close: number } | null }>(res)),
+			api.api.data.latest.$get().then((res) =>
+				readJson<{
+					instrument: Instrument;
+					latest: { close: number } | null;
+				}>(res),
+			),
 			api.api.judgments.current
 				.$get()
 				.then((res) => readJson<{ firstScoredAt: number | null }>(res)),
@@ -301,6 +307,7 @@ export function BacktestRunPage() {
 			strategies: s.strategies,
 			coverage: c.timeframes,
 			latest: l.latest?.close ?? null,
+			instrument: l.instrument,
 			firstScoredAt: j.firstScoredAt,
 			criteriaVersions: cv.versions,
 			eventCriteria: ec,
@@ -445,6 +452,7 @@ export function BacktestRunPage() {
 			strategies={state.data.strategies}
 			coverage={coverage}
 			latest={state.data.latest}
+			instrument={state.data.instrument}
 			firstScoredAt={state.data.firstScoredAt}
 			criteriaVersions={state.data.criteriaVersions}
 			eventCriteria={state.data.eventCriteria}
@@ -460,6 +468,7 @@ function RunForm({
 	strategies,
 	coverage,
 	latest,
+	instrument,
 	firstScoredAt: latestFirstScoredAt,
 	criteriaVersions,
 	eventCriteria,
@@ -471,6 +480,7 @@ function RunForm({
 	strategies: StoredStrategy[];
 	coverage: TimeframeCoverage[];
 	latest: number | null;
+	instrument: Instrument;
 	firstScoredAt: number | null;
 	criteriaVersions: CriteriaVersion[];
 	eventCriteria: EventCriteria;
@@ -1232,7 +1242,11 @@ function RunForm({
 					</div>
 				</div>
 				<div className="contents lg:flex lg:flex-col lg:gap-3.5">
-					<BuyRulesEditor {...editor} latestPrice={latest} />
+					<BuyRulesEditor
+						{...editor}
+						latestPrice={latest}
+						instrument={instrument}
+					/>
 				</div>
 				<div className="order-2 flex flex-col gap-3.5 lg:col-span-2 lg:order-none">
 					{running && (

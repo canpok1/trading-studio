@@ -9,6 +9,7 @@ import type {
 	ConditionSet,
 	EventImportance,
 	FrequencyUnit,
+	Instrument,
 	Judge,
 	JudgmentConditionValue,
 	JudgmentValue,
@@ -18,7 +19,6 @@ import type {
 	ValidationError,
 } from "@trading-studio/core";
 import {
-	BTC_JPY,
 	buyRuleName,
 	CONDITION_GROUP_LABELS,
 	CONDITION_GROUPS,
@@ -30,6 +30,7 @@ import {
 	EVENT_IMPORTANCES,
 	FREQUENCY_UNIT_LABELS,
 	FREQUENCY_UNITS,
+	formatAmount,
 	formatQuantity,
 	hasTimeframe,
 	isAtrCondition,
@@ -183,32 +184,46 @@ export function FrequencyCard({ params, onChange, errors }: Props) {
 	);
 }
 
-const SIZE_STEP = 100_000; // 0.001 BTC
+/** 数量 × 価格を通貨の最小単位で（四捨五入）。入力途中の値でも例外にしないため notional は使わない */
+function estimatedAmount(
+	instrument: Instrument,
+	quantity: number,
+	price: number,
+): number {
+	return Math.round(
+		(quantity / quantityScale(instrument)) *
+			price *
+			10 ** (instrument.currency.decimals - instrument.priceDecimals),
+	);
+}
 
-/** 買い1つの、1回の注文量と最大ロット数。円換算は最後に取り込んだ足の終値で出す */
+/** 買い1つの、1回の注文量と最大ロット数。金額の換算は最後に取り込んだ足の終値で出す */
 function OrderSizeFields({
 	rule,
 	onChange,
 	errors,
 	latestPrice,
+	instrument,
 }: {
 	rule: BuyRule;
 	onChange: (r: BuyRule) => void;
 	errors: ValidationError[];
 	latestPrice: number | null;
+	instrument: Instrument;
 }) {
 	const errs = errorsAt(errors, "orderSize");
 	const maxErrs = errorsAt(errors, "maxPositions");
 	const size = rule.orderSize;
 	const set = (orderSize: number) => onChange({ ...rule, orderSize });
+	// −/＋ は1回の注文の最小の数量ずつ動かす
+	const unit = instrument.minOrderQuantity;
+	const unitText = formatQuantity(instrument, unit);
 	const step = (d: number) =>
 		set(
 			Math.max(
-				SIZE_STEP,
-				(Number.isFinite(size)
-					? Math.round(size / SIZE_STEP) * SIZE_STEP
-					: SIZE_STEP) +
-					d * SIZE_STEP,
+				unit,
+				(Number.isFinite(size) ? Math.round(size / unit) * unit : unit) +
+					d * unit,
 			),
 		);
 	return (
@@ -228,7 +243,7 @@ function OrderSizeFields({
 			<div className="flex items-center gap-2">
 				<Button
 					className="w-11 px-0"
-					aria-label="0.001 減らす"
+					aria-label={`${unitText} 減らす`}
 					onClick={() => step(-1)}
 				>
 					−
@@ -236,26 +251,29 @@ function OrderSizeFields({
 				<NumberInput
 					value={size}
 					onChange={set}
-					format={(n) => formatQuantity(BTC_JPY, n)}
-					parse={parseBtc}
+					format={(n) => formatQuantity(instrument, n)}
+					parse={(s) => parseQuantityInput(instrument, s)}
 					invalid={errs.length > 0}
-					aria-label="1回の注文量（BTC）"
+					aria-label={`1回の注文量（${instrument.quantityUnit}）`}
 					className="h-11 flex-1 text-[15px]"
 				/>
 				<Button
 					className="w-11 px-0"
-					aria-label="0.001 増やす"
+					aria-label={`${unitText} 増やす`}
 					onClick={() => step(1)}
 				>
 					＋
 				</Button>
 			</div>
 			<span className="num text-xs text-text-2">
-				BTC · 約{" "}
+				{instrument.quantityUnit} · 約{" "}
 				{latestPrice && Number.isFinite(size)
-					? formatInt((size / quantityScale(BTC_JPY)) * latestPrice)
+					? formatAmount(
+							instrument.currency,
+							estimatedAmount(instrument, size, latestPrice),
+						)
 					: "—"}
-				円 （取り込み済みデータの最新の終値で換算）
+				{instrument.currency.unit} （取り込み済みデータの最新の終値で換算）
 			</span>
 			<ErrorText messages={errs} />
 			<div className="flex flex-col gap-1 rounded-[10px] bg-bg px-3 py-2">
@@ -356,12 +374,12 @@ export function RiskLimitCard({ params, onChange, errors }: Props) {
 }
 
 /** 数量の文字列を最小単位へ。最小単位より細かい桁があれば読めないとして NaN */
-function parseBtc(s: string): number {
-	const digits = BTC_JPY.quantityDecimals;
+function parseQuantityInput(instrument: Instrument, s: string): number {
+	const digits = instrument.quantityDecimals;
 	const m = new RegExp(`^\\s*(\\d+)(?:\\.(\\d{0,${digits}}))?\\s*$`).exec(s);
 	if (!m) return Number.NaN;
 	return (
-		Number(m[1]) * quantityScale(BTC_JPY) +
+		Number(m[1]) * quantityScale(instrument) +
 		Number((m[2] ?? "").padEnd(digits, "0"))
 	);
 }
@@ -1440,8 +1458,10 @@ function PartialSellFields({
 	rule,
 	onChange,
 	errors,
+	instrument,
 }: {
 	rule: BuyRule;
+	instrument: Instrument;
 	onChange: (v: PartialSell) => void;
 	errors: ValidationError[];
 }) {
@@ -1468,8 +1488,10 @@ function PartialSellFields({
 				{sold !== null && Number.isFinite(rule.orderSize) && (
 					<p className="text-xs text-text-2">
 						1ロットにつき1回だけ。1回の注文量なら{" "}
-						{formatQuantity(BTC_JPY, sold)} BTC を売り、
-						{formatQuantity(BTC_JPY, rule.orderSize - sold)} BTC を残す
+						{formatQuantity(instrument, sold)} {instrument.quantityUnit}{" "}
+						を売り、
+						{formatQuantity(instrument, rule.orderSize - sold)}{" "}
+						{instrument.quantityUnit} を残す
 					</p>
 				)}
 				<ErrorText messages={percentErrs} />
@@ -1493,11 +1515,13 @@ function RuleGroups({
 	onChange,
 	errors,
 	labelPrefix,
+	instrument,
 }: {
 	rule: BuyRule;
 	onChange: (r: BuyRule) => void;
 	errors: ValidationError[];
 	labelPrefix: string;
+	instrument: Instrument;
 }) {
 	const [adding, setAdding] = useState<ConditionGroupKey | null>(null);
 	const params = rule;
@@ -1577,6 +1601,7 @@ function RuleGroups({
 						{g === "partialTakeProfit" && group.conditions.length > 0 && (
 							<PartialSellFields
 								rule={rule}
+								instrument={instrument}
 								onChange={(partialSell) => onChange({ ...rule, partialSell })}
 								errors={errors}
 							/>
@@ -1641,14 +1666,14 @@ function RuleGroups({
 }
 
 /** 新しく足す買い。損切りが無いと保存できないので、空の戦略のひな形と同じ損切りを入れておく */
-function newBuyRule(params: ConditionSet): BuyRule {
+function newBuyRule(params: ConditionSet, instrument: Instrument): BuyRule {
 	const names = new Set(params.buys.map((b) => b.name.trim()));
 	let n = params.buys.length + 1;
 	while (names.has(buyRuleName(n))) n++;
 	return {
 		id: newBuyRuleId(params),
 		name: buyRuleName(n),
-		orderSize: params.buys[0]?.orderSize ?? SIZE_STEP * 10,
+		orderSize: params.buys[0]?.orderSize ?? instrument.minOrderQuantity * 10,
 		maxPositions: 1,
 		buy: { match: "all", conditions: [] },
 		buyOrder: { ...DEFAULT_BUY_ORDER, lines: [...DEFAULT_BUY_ORDER.lines] },
@@ -1684,7 +1709,8 @@ export function BuyRulesEditor({
 	onChange,
 	errors,
 	latestPrice,
-}: Props & { latestPrice: number | null }) {
+	instrument,
+}: Props & { latestPrice: number | null; instrument: Instrument }) {
 	const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
 	const multi = params.buys.length >= 2;
 	const setBuys = (buys: BuyRule[]) => onChange({ ...params, buys });
@@ -1798,6 +1824,7 @@ export function BuyRulesEditor({
 										onChange={(r) => setRule(i, r)}
 										errors={ruleErrors}
 										latestPrice={latestPrice}
+										instrument={instrument}
 									/>
 								</Card>
 								<RuleGroups
@@ -1805,6 +1832,7 @@ export function BuyRulesEditor({
 									onChange={(r) => setRule(i, r)}
 									errors={ruleErrors}
 									labelPrefix={multi ? `「${rule.name}」の` : ""}
+									instrument={instrument}
 								/>
 							</>
 						)}
@@ -1816,7 +1844,9 @@ export function BuyRulesEditor({
 				<div className="flex flex-col gap-1">
 					<Button
 						className="self-start"
-						onClick={() => setBuys([...params.buys, newBuyRule(params)])}
+						onClick={() =>
+							setBuys([...params.buys, newBuyRule(params, instrument)])
+						}
 					>
 						＋ 買いを追加
 					</Button>
