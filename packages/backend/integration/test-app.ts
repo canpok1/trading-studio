@@ -1,6 +1,6 @@
 // テスト用。メモリ上の DB で本物のサービスをつないだ app を作る
 
-import { BTC_JPY, ETH_JPY } from "@trading-studio/core";
+import { BTC_JPY, COLLECTED_INSTRUMENTS } from "@trading-studio/core";
 import { createAdviceService } from "../src/advice/advice-domain";
 import { demoAdviceModel } from "../src/advice/fake-model-infra";
 import { DEFAULT_INSTRUCTIONS } from "../src/advice/prompt-domain";
@@ -215,7 +215,11 @@ export function createTestApp(
 	// 定期の削除は動かさず、テストから retention.tick() を呼ぶ
 	const retention = createRetentionService({
 		repo: new SqliteRetentionRepository(db),
-		marketData: [marketDataRepo, new SqliteMarketDataRepository(db, ETH_JPY)],
+		marketData: COLLECTED_INSTRUMENTS.map((i) =>
+			i.id === BTC_JPY.id
+				? marketDataRepo
+				: new SqliteMarketDataRepository(db, i),
+		),
 		dvol: dvolRepo,
 		now: () => clock.now,
 	});

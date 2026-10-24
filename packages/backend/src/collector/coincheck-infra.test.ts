@@ -48,7 +48,7 @@ describe("Coincheck の約定の読み取り", () => {
 			"eth_jpy",
 			"xrp_jpy",
 		]);
-		// XRP は価格が 0.001 円、数量が 1e-6 XRP の単位
+		// XRP は価格が 0.001 円、数量が 0.01 XRP の単位
 		expect(
 			parseWsTrade(XRP_JPY, [
 				"1792845339",
@@ -62,7 +62,7 @@ describe("Coincheck の約定の読み取り", () => {
 			id: 310564638,
 			time: 1792845339000,
 			price: 201_998,
-			quantity: 95_050_000,
+			quantity: 9_505,
 		});
 		expect(
 			parseRestTrade(ETH_JPY, {
@@ -76,7 +76,7 @@ describe("Coincheck の約定の読み取り", () => {
 			id: 310564563,
 			time: Date.UTC(2026, 9, 24, 12, 31, 24),
 			price: 371_427,
-			quantity: 20_000_000,
+			quantity: 20_000,
 		});
 		expect(
 			parseRestTrade(ETH_JPY, {
