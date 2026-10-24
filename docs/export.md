@@ -34,17 +34,20 @@
 
 | ファイル | 中身 | 期間の絞り方 |
 |---|---|---|
-| `strategies.csv` | 今ある戦略の条件 | 全部 |
-| `paper_decisions.csv` | 自動取引の判断の記録と、そのときの市場評価。どの戦略・口座の判断か | 判断した時刻が期間内 |
-| `paper_orders.csv` | 自動取引の注文（約定・損益）。どの戦略・口座の注文か | 発注した時刻が期間内 |
-| `backtest_runs.csv` | 選んだ実行の条件・評価ルール・成績 | 選んだもの |
-| `backtest_orders.csv` `backtest_trades.csv` `backtest_decisions.csv` | 選んだ実行の注文・往復の取引・判断ログ | 選んだもの |
+| `strategies.csv` | 今ある戦略の対象の銘柄と条件 | 全部 |
+| `paper_decisions.csv` | 自動取引の判断の記録と、そのときの市場評価。どの戦略・口座・銘柄の判断か | 判断した時刻が期間内 |
+| `paper_orders.csv` | 自動取引の注文（約定・損益）。どの戦略・口座・銘柄の注文か | 発注した時刻が期間内 |
+| `backtest_runs.csv` | 選んだ実行の候補の銘柄・条件・評価ルール・成績 | 選んだもの |
+| `backtest_instruments.csv` | 選んだ実行の銘柄ごとの成績。候補ごとに1行。候補が1つの実行は全体の成績をその銘柄の行にする | 選んだもの |
+| `backtest_orders.csv` `backtest_trades.csv` `backtest_decisions.csv` | 選んだ実行の注文・往復の取引・判断ログ。どの銘柄のものか | 選んだもの |
+
+銘柄の列は、記録が銘柄を持たない（バックテストは候補の先頭、デモは収集の先頭の BTC/JPY のもの）ときも埋める。`paper_decisions.csv` の判定はその行の銘柄に対するもの。`judgments.csv`・`dvol_1h.csv`・`candles_1m.csv` は BTC/JPY のものだけ入れる。
 
 ### 書式
 
 - UTF-8・LF。値に `,` `"` 改行を含むときは `"` で囲む
 - 時刻はエポックミリ秒の列と、列名に `_jst` を付けた JST の文字列（`2026-09-26T12:00:00.000+09:00`）の列の2つで出す。`candles_1m.csv` は取り込み形式どおり JST の文字列だけ
-- 金額は円、数量は satoshi の整数のまま出す。`candles_1m.csv` の出来高だけは取り込み形式どおり BTC の小数
+- 金額は円、価格と数量は銘柄ごとの最小単位の整数のまま出す（BTC/JPY は価格が円、数量が satoshi）。単位は README に銘柄ごとの表で載せる。`candles_1m.csv` だけは取り込み形式どおり（出来高は BTC の小数）
 - 条件のセット・発注の内容・戦略の状態・評価ルール（バックテストの写し）は JSON の文字列で1列に入れる
 
 ## 価格データ（CSV）
