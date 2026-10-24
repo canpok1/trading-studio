@@ -71,7 +71,6 @@ import {
 	toDateInputValue,
 } from "../../shared/lib/format";
 import {
-	formatInt,
 	formatSignedAmount,
 	formatSignedPercent,
 	holdingText,
@@ -605,7 +604,7 @@ function Result({ run }: { run: BacktestRun }) {
 					<p className="text-xs text-text-2">
 						期間の終わりに{" "}
 						{formatQuantity(run.instrument, s.openPositionQuantity)}{" "}
-						{run.instrument.quantityUnit}
+						{run.instrument.quantityUnit}{" "}
 						を保有していた。損益・最終資金は最後の終値で評価し、取引回数・勝率には含めない。
 					</p>
 				)}
