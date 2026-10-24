@@ -317,13 +317,17 @@ test("−・＋を「最新へ」と同じ行に出し、押しても最新の�
 }) => {
 	onHome(api, { runs: fourRuns() });
 	await page.goto("/home");
-	const latest = await page
-		.getByRole("button", { name: "最新へ" })
-		.boundingBox();
 	const minus = page.getByRole("button", { name: "縮小" });
 	const plus = page.getByRole("button", { name: "拡大" });
 	await expect(minus).toBeVisible();
 	await expect(plus).toBeVisible();
+	// 札が出そろうと −・＋・最新へ が次の行へ移ることがあるので、出そろってから位置を測る
+	await expect(
+		page.getByRole("button", { name: "チャートの設定" }),
+	).toContainText("背景");
+	const latest = await page
+		.getByRole("button", { name: "最新へ" })
+		.boundingBox();
 	const m = await minus.boundingBox();
 	const p = await plus.boundingBox();
 	if (!latest || !m || !p) throw new Error("見つからない");
