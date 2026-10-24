@@ -1,19 +1,22 @@
-// Coincheck の公開 WebSocket と公開 API から BTC/JPY の約定を受ける（docs/adr/0007）
+// Coincheck の公開 WebSocket と公開 API から1銘柄の約定を受ける（docs/adr/0007）
 
-import type { MarketTrade } from "@trading-studio/core";
-import { BTC_JPY, parseQuantity, toPriceUnits } from "@trading-studio/core";
+import type { Instrument, MarketTrade } from "@trading-studio/core";
+import { parseQuantity, toPriceUnits } from "@trading-studio/core";
 import type { TradeFeed } from "./collector-domain";
 
 const WS_URL = "wss://ws-api.coincheck.com/";
-const TRADES_URL = "https://coincheck.com/api/trades?pair=btc_jpy&limit=100";
-const PAIR = "btc_jpy";
 
-/** 取引所の数量の文字列（"0.5" や "7.0e-08"）を satoshi へ */
-function toSatoshi(amount: string): number {
+/** 取引所の通貨ペアの名前。"BTC/JPY" → "btc_jpy" */
+export function coincheckPair(instrument: Instrument): string {
+	return instrument.symbol.replace("/", "_").toLowerCase();
+}
+
+/** 取引所の数量の文字列（"0.5" や "7.0e-08"）を数量の最小単位へ */
+function toQuantityUnits(instrument: Instrument, amount: string): number {
 	return parseQuantity(
-		BTC_JPY,
+		instrument,
 		/e/i.test(amount)
-			? Number(amount).toFixed(BTC_JPY.quantityDecimals)
+			? Number(amount).toFixed(instrument.quantityDecimals)
 			: amount,
 	);
 }
@@ -22,48 +25,56 @@ function toSatoshi(amount: string): number {
  * WebSocket の取引履歴チャンネルの1件。
  * [約定時刻(秒), 約定ID, 取引ペア, レート, 量, 注文方法, TakerID, MakerID, 板寄せID]
  */
-export function parseWsTrade(row: unknown): MarketTrade | null {
-	if (!Array.isArray(row) || row[2] !== PAIR) return null;
+export function parseWsTrade(
+	instrument: Instrument,
+	row: unknown,
+): MarketTrade | null {
+	if (!Array.isArray(row) || row[2] !== coincheckPair(instrument)) return null;
 	const [time, id, , rate, amount] = row as string[];
 	const trade = {
 		id: Number(id),
 		time: Number(time) * 1000,
-		price: toPriceUnits(BTC_JPY, Number(rate)),
-		quantity: toSatoshi(String(amount)),
+		price: toPriceUnits(instrument, Number(rate)),
+		quantity: toQuantityUnits(instrument, String(amount)),
 	};
 	return Object.values(trade).every(Number.isSafeInteger) ? trade : null;
 }
 
 /** 公開 API の全取引履歴の1件 */
-export function parseRestTrade(row: {
-	id: number;
-	amount: string;
-	rate: string;
-	pair: string;
-	created_at: string;
-}): MarketTrade | null {
-	if (row.pair !== PAIR) return null;
+export function parseRestTrade(
+	instrument: Instrument,
+	row: {
+		id: number;
+		amount: string;
+		rate: string;
+		pair: string;
+		created_at: string;
+	},
+): MarketTrade | null {
+	if (row.pair !== coincheckPair(instrument)) return null;
 	const trade = {
 		id: row.id,
 		time: Date.parse(row.created_at),
-		price: toPriceUnits(BTC_JPY, Number(row.rate)),
-		quantity: toSatoshi(row.amount),
+		price: toPriceUnits(instrument, Number(row.rate)),
+		quantity: toQuantityUnits(instrument, row.amount),
 	};
 	return Object.values(trade).every(Number.isSafeInteger) ? trade : null;
 }
 
-export function coincheckFeed(): TradeFeed {
+export function coincheckFeed(instrument: Instrument): TradeFeed {
+	const pair = coincheckPair(instrument);
+	const tradesUrl = `https://coincheck.com/api/trades?pair=${pair}&limit=100`;
 	return {
 		connect(handlers) {
 			const ws = new WebSocket(WS_URL);
 			let ready = false;
 			ws.onopen = () => {
 				ws.send(
-					JSON.stringify({ type: "subscribe", channel: `${PAIR}-trades` }),
+					JSON.stringify({ type: "subscribe", channel: `${pair}-trades` }),
 				);
 				// 板情報は頻繁に届くので、接続が生きている印と購読が始まった合図に使う
 				ws.send(
-					JSON.stringify({ type: "subscribe", channel: `${PAIR}-orderbook` }),
+					JSON.stringify({ type: "subscribe", channel: `${pair}-orderbook` }),
 				);
 			};
 			ws.onmessage = (e) => {
@@ -77,7 +88,7 @@ export function coincheckFeed(): TradeFeed {
 				if (!Array.isArray(msg)) return;
 				if (Array.isArray(msg[0])) {
 					const trades = msg
-						.map(parseWsTrade)
+						.map((row) => parseWsTrade(instrument, row))
 						.filter((t): t is MarketTrade => t !== null);
 					if (trades.length > 0) handlers.onTrades(trades);
 				}
@@ -99,17 +110,17 @@ export function coincheckFeed(): TradeFeed {
 		},
 
 		async recentTrades() {
-			const res = await fetch(TRADES_URL, {
+			const res = await fetch(tradesUrl, {
 				signal: AbortSignal.timeout(10_000),
 			});
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 			const body = (await res.json()) as {
 				success: boolean;
-				data: Parameters<typeof parseRestTrade>[0][];
+				data: Parameters<typeof parseRestTrade>[1][];
 			};
 			if (!body.success) throw new Error("success=false");
 			return body.data
-				.map(parseRestTrade)
+				.map((row) => parseRestTrade(instrument, row))
 				.filter((t): t is MarketTrade => t !== null);
 		},
 	};

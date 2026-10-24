@@ -26,7 +26,7 @@ import { icalFeed } from "./calendar/ical-infra";
 import { SqliteCalendarRepository } from "./calendar/repository-infra";
 import { coincheckFeed } from "./collector/coincheck-infra";
 import { createCollector } from "./collector/collector-domain";
-import { demoFeed } from "./collector/fake-feed-infra";
+import { demoFeedOf } from "./collector/fake-feed-infra";
 import { createDatasetService } from "./datasets/datasets-domain";
 import { SqliteDatasetRepository } from "./datasets/repository-infra";
 import { migrateDb } from "./db/migrate-infra";
@@ -37,7 +37,7 @@ import { demoDvol } from "./dvol/fake-deribit-infra";
 import { SqliteDvolRepository } from "./dvol/repository-infra";
 import { createJudgmentService } from "./judgments/judgments-domain";
 import { createMarketService } from "./market/market-domain";
-import { DEFAULT_INSTRUMENT } from "./market-data/instrument-domain";
+import { COLLECTED, DEFAULT_INSTRUMENT } from "./market-data/instrument-domain";
 import { createMarketDataService } from "./market-data/market-data-domain";
 import { SqliteMarketDataRepository } from "./market-data/repository-infra";
 import { mcpRoutes } from "./mcp/mcp-app";
@@ -105,13 +105,33 @@ const strategies = createStrategyService(new SqliteStrategyRepository(db));
 // 自動取引は収集より後に作るので、届いた約定は作った後から渡す
 let trading: TradingEngine | null = null;
 // 収集はサーバーが動いている間は常に行う（ON/OFF は作らない）
-const collector = createCollector({
-	onTrades: (trades) => trading?.onTrades(trades),
-	// E2E では取引所へつながず、偽物の約定を流す
-	feed: process.env.MARKET_FEED === "demo" ? demoFeed() : coincheckFeed(),
-	repo: marketDataRepo,
-});
-const collectorTimer = setInterval(() => collector.tick(), 1_000);
+/** 収集する銘柄ごとの足の読み書き */
+const collectedRepos = COLLECTED.map((instrument) =>
+	instrument.id === DEFAULT_INSTRUMENT.id
+		? marketDataRepo
+		: new SqliteMarketDataRepository(db, instrument),
+);
+const collectors = COLLECTED.map((instrument, i) =>
+	createCollector({
+		// 自動取引は BTC/JPY だけを扱う（#280 まで）
+		onTrades:
+			instrument.id === DEFAULT_INSTRUMENT.id
+				? (trades) => trading?.onTrades(trades)
+				: undefined,
+		// E2E では取引所へつながず、偽物の約定を流す
+		feed:
+			process.env.MARKET_FEED === "demo"
+				? demoFeedOf(instrument)
+				: coincheckFeed(instrument),
+		repo: collectedRepos[i] as SqliteMarketDataRepository,
+	}),
+);
+const collector = collectors[
+	COLLECTED.findIndex((i) => i.id === DEFAULT_INSTRUMENT.id)
+] as (typeof collectors)[number];
+const collectorTimer = setInterval(() => {
+	for (const c of collectors) c.tick();
+}, 1_000);
 
 const newsRepo = new SqliteNewsRepository(db);
 newsRepo.seedSources(DEFAULT_NEWS_SOURCES, Date.now());
@@ -180,7 +200,7 @@ const tradingTimer = setInterval(() => tradingEngine.tick(), 1_000);
 
 const retention = createRetentionService({
 	repo: new SqliteRetentionRepository(db),
-	marketData: marketDataRepo,
+	marketData: collectedRepos,
 	dvol: dvolRepo,
 });
 const retentionTimer = setInterval(() => retention.tick(), 60_000);
@@ -359,7 +379,7 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
 		clearInterval(segmentTimer);
 		clearInterval(dvolTimer);
 		stopLagWatch();
-		collector.stop();
+		for (const c of collectors) c.stop();
 		await http.stop();
 		db.$client.close();
 		process.exit(0);
