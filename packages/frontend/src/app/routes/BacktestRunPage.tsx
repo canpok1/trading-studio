@@ -20,16 +20,17 @@ import type {
 } from "@trading-studio/core";
 import {
 	acceptsNoJudgment,
+	brokerOf,
 	candleTimeframes,
 	chooseStepTimeframe,
 	conditionStrategy,
 	DEFAULT_CONDITION_TIMEFRAME,
-	DEFAULT_FEE_RATES,
 	eventWindowHours,
 	HOUR_MS,
 	historyShortfalls,
 	isCoarser,
 	LIMITS,
+	marketOf,
 	parseConditionSet,
 	percentToPpm,
 	ppmToPercent,
@@ -333,8 +334,10 @@ export function BacktestRunPage() {
 
 	// 下書きの初期値: 他の画面から渡された条件 > ブラウザに残した下書き > 最初の戦略かトレンド追随のひな形
 	const strategies = state.kind === "ok" ? state.data.strategies : null;
+	const instrument = state.kind === "ok" ? state.data.instrument : null;
 	useEffect(() => {
-		if (!strategies || draft) return;
+		if (!strategies || !instrument || draft) return;
+		const defaultFees = brokerOf(marketOf(instrument)).fees;
 		const passed = location.state as Partial<BacktestDraft> | null;
 		const passedParams = passed?.params && parseConditionSet(passed.params);
 		// 「戦略」の画面から、その戦略をテンプレートにして来た
@@ -358,10 +361,7 @@ export function BacktestRunPage() {
 				fromDate: passed?.fromDate ?? base?.fromDate ?? null,
 				toDate: passed?.toDate ?? base?.toDate ?? null,
 				initialCash: passed?.initialCash ?? base?.initialCash ?? DEFAULT_CASH,
-				fees: passed?.fees ??
-					base?.fees ?? {
-						...DEFAULT_FEE_RATES,
-					},
+				fees: passed?.fees ?? base?.fees ?? { ...defaultFees },
 				criteriaVersion:
 					passed?.criteriaVersion !== undefined
 						? passed.criteriaVersion
@@ -392,10 +392,10 @@ export function BacktestRunPage() {
 				fromDate: null,
 				toDate: null,
 				initialCash: DEFAULT_CASH,
-				fees: { ...DEFAULT_FEE_RATES },
+				fees: { ...defaultFees },
 			});
 		}
-	}, [strategies, draft, location, search, navigate, setDraft]);
+	}, [strategies, instrument, draft, location, search, navigate, setDraft]);
 
 	// 履歴は実行の条件を作るためのデータを待たずに出す
 	if (search.get("tab") === "history") {
@@ -527,8 +527,13 @@ function RunForm({
 		(draft.savedParams != null &&
 			JSON.stringify(draft.savedParams) === JSON.stringify(p));
 	const errors = useMemo(
-		() => validateConditionSet(p, unchanged ? RUN_LIMITS : LIMITS),
-		[p, unchanged],
+		() =>
+			validateConditionSet(
+				p,
+				marketOf(instrument),
+				unchanged ? RUN_LIMITS : LIMITS,
+			),
+		[p, instrument, unchanged],
 	);
 
 	// 期間。未指定ならその足のデータの最後から1か月

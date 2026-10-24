@@ -10,6 +10,7 @@ import {
 	EVENT_IMPORTANCES,
 	JUDGES,
 	JUDGMENT_CONDITION_VALUES,
+	marketOf,
 	parseConditionSet,
 	quantityScale,
 	TIMEFRAME_LABELS,
@@ -293,7 +294,7 @@ export function readImprovedStrategy(
 			: buys,
 	});
 	if (!params) return fail("AI の出した改善版の戦略の形が正しくない");
-	const errors = validateConditionSet(params);
+	const errors = validateConditionSet(params, marketOf(BTC_JPY));
 	if (errors.length > 0)
 		return fail(
 			`AI の出した改善版の戦略が設定として正しくない（${errors.map((e) => e.message).join("・")}）`,

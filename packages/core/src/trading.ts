@@ -30,9 +30,6 @@ import { EMPTY_POSITION } from "./types";
 /** 手数料率（ppm） */
 export type FeeRates = { limitPpm: number; marketPpm: number };
 
-/** 既定の手数料率。Coincheck の取引所の BTC/JPY に合わせてどちらも 0%（https://coincheck.com/ja/exchange/fee） */
-export const DEFAULT_FEE_RATES: FeeRates = { limitPpm: 0, marketPpm: 0 };
-
 /** 注文の記録。発注から約定・取消までを1件で持つ */
 export type TradeOrder = {
 	id: string;

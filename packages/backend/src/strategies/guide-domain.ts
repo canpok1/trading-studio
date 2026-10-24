@@ -2,18 +2,22 @@
 
 import type { ConditionType, Judge } from "@trading-studio/core";
 import {
-	DEFAULT_FEE_RATES,
+	brokerOf,
 	DVOL_AVERAGE_COVERAGE,
 	DVOL_STALE_MS,
 	HOUR_MS,
 	JUDGMENT_VALUE_LABELS,
 	JUDGMENT_VALUES,
 	LIMITS,
+	marketOf,
 	NO_JUDGMENT,
 	strategyTemplate,
 	TEMPLATE_IDS,
 	TIMEFRAMES,
 } from "@trading-studio/core";
+import { DEFAULT_INSTRUMENT } from "../market-data/instrument-domain";
+
+const DEFAULT_BROKER = brokerOf(marketOf(DEFAULT_INSTRUMENT));
 
 // Record にしておき、条件の種類を足したら型エラーでここの書き足しに気づけるようにする
 const CONDITIONS: Record<ConditionType, string> = {
@@ -76,7 +80,7 @@ export function conditionSetGuide(): string {
 		...Object.values(CONDITIONS),
 		"",
 		"## バックテストの既定",
-		`- 手数料率は ppm（100 万分率）。既定は指値 ${DEFAULT_FEE_RATES.limitPpm}・成行 ${DEFAULT_FEE_RATES.marketPpm}（Coincheck の取引所の BTC/JPY と同じ）`,
+		`- 手数料率は ppm（100 万分率）。既定は指値 ${DEFAULT_BROKER.fees.limitPpm}・成行 ${DEFAULT_BROKER.fees.marketPpm}（${DEFAULT_BROKER.name} の取引所の ${DEFAULT_INSTRUMENT.symbol} と同じ）`,
 		"- 使える期間と粒度は get_data_coverage で確かめる。期間より前の足も指標の計算に使う（EMA・RSI・ATR・ADX は始めの値の影響が 0.25% 以下になる本数を足す。EMA 200 は800本、RSI 14 は96本。ボリンジャーバンドは本数ぶん）",
 		"",
 		"## ひな形",

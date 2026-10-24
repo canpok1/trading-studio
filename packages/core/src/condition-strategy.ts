@@ -25,7 +25,7 @@ import {
 	formatQuantity,
 } from "./format";
 import { adx, atr, bollinger, ema, rsi } from "./indicators";
-import type { Instrument } from "./instrument";
+import type { Instrument, Market, MarketSignal } from "./instrument";
 import { BTC_JPY, marketOf, quantityScale } from "./instrument";
 import { limitBuyPriceBelow, notional, quantityForAmount } from "./money";
 import type {
@@ -220,6 +220,37 @@ export const TIMEFRAME_CONDITION_TYPES = [
 
 export function hasTimeframe(c: Condition): c is TimeframeCondition {
 	return (TIMEFRAME_CONDITION_TYPES as readonly string[]).includes(c.type);
+}
+
+/** 条件が使う市場の材料。価格と保有だけで決まる条件は null。Record にして、種類を足したらここに気づけるようにする */
+const CONDITION_SIGNALS: Record<ConditionType, MarketSignal | null> = {
+	emaCross: null,
+	breakout: null,
+	rsi: null,
+	rsiCross: null,
+	emaPosition: null,
+	emaSlope: null,
+	bollinger: null,
+	adx: null,
+	entryChange: null,
+	trailingStop: null,
+	entryAtr: null,
+	trailingAtr: null,
+	holdingBars: null,
+	judgment: "judgment",
+	dvol: "dvol",
+	dvolAverage: "dvol",
+	eventWindow: "events",
+};
+
+export function conditionSignal(type: ConditionType): MarketSignal | null {
+	return CONDITION_SIGNALS[type];
+}
+
+/** その市場の戦略で条件を使えるか。市場に紐づかない材料を使う条件は使えない */
+export function usableIn(market: Market, type: ConditionType): boolean {
+	const signal = conditionSignal(type);
+	return signal === null || market.signals.includes(signal);
 }
 
 /** 買った時点の ATR で見る条件 */
@@ -1321,6 +1352,7 @@ function isNumIn(v: unknown, r: { min: number; max: number }): v is number {
 /** 条件セットの入力検証。path は「buys.0.buy.conditions.0.fast」のようにフォームの項目を指す */
 export function validateConditionSet(
 	p: ConditionSet,
+	market: Market,
 	limits: Limits = LIMITS,
 ): ValidationError[] {
 	const errors: ValidationError[] = [];
@@ -1372,7 +1404,7 @@ export function validateConditionSet(
 			err(`${at}.name`, "ほかの買いと違う名前にする");
 		}
 		names.add(name);
-		validateBuyRule(b, at, err, limits);
+		validateBuyRule(b, at, err, market, limits);
 	});
 	return errors;
 }
@@ -1382,6 +1414,7 @@ function validateBuyRule(
 	p: BuyRule,
 	prefix: string,
 	report: (path: string, message: string) => void,
+	market: Market,
 	limits: Limits,
 ) {
 	const err = (path: string, message: string) =>
@@ -1403,6 +1436,9 @@ function validateBuyRule(
 		p[g].conditions.forEach((c, i) => {
 			const at = `${g}.conditions.${i}`;
 			const range = (r: { min: number; max: number }) => `${r.min}〜${r.max}`;
+			if (!usableIn(market, c.type)) {
+				err(at, `${market.name} の戦略では使えない`);
+			}
 			if (hasTimeframe(c) && !isTimeframe(c.timeframe)) {
 				err(`${at}.timeframe`, "足を選ぶ");
 			}

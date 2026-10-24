@@ -10,10 +10,10 @@ import type {
 } from "@trading-studio/core";
 import {
 	aggregateCandles,
+	brokerOf,
 	cancelAll,
 	candleStart,
 	conditionStrategy,
-	DEFAULT_FEE_RATES,
 	dailyLossBlock,
 	decide,
 	expireOrders,
@@ -75,7 +75,7 @@ export function createTradingService({
 	marketData,
 	market,
 	now = Date.now,
-	fees = DEFAULT_FEE_RATES,
+	fees: feesOverride,
 }: {
 	repo: TradingRepository;
 	strategies: Pick<StrategyService, "get" | "list" | "create" | "remove">;
@@ -88,9 +88,11 @@ export function createTradingService({
 	>;
 	market: () => LiveMarket;
 	now?: () => number;
+	/** 省けば口座の先（取引所）の既定の率 */
 	fees?: FeeRates;
 }): TradingEngine {
 	const tradedMarket = marketOf(marketData.instrument);
+	const fees = feesOverride ?? brokerOf(tradedMarket).fees;
 	const marketCalendar = tradedMarket.calendar;
 	/**
 	 * オンにしたときの最初の判定時刻。バックテストで判定に使う足の次の足の終わり（バックテストで足の終わりに判定するのと揃える）。
@@ -554,7 +556,7 @@ export function createTradingService({
 					`自動取引できるのは ${marketData.instrument.symbol} の1銘柄だけ`,
 				);
 			}
-			const errors = validateConditionSet(s.params, RUN_LIMITS);
+			const errors = validateConditionSet(s.params, tradedMarket, RUN_LIMITS);
 			if (errors.length > 0) {
 				return {
 					ok: false,

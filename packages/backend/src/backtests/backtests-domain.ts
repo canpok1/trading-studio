@@ -11,6 +11,7 @@ import {
 	eventWindowHours,
 	HOUR_MS,
 	isTimeframe,
+	marketOf,
 	maxWindowMs,
 	parseConditionSet,
 	RUN_LIMITS,
@@ -226,7 +227,11 @@ export function createBacktestService({
 		const input = segment
 			? { ...requested, from: segment.from, to: segment.to }
 			: requested;
-		const errors = validateConditionSet(input.params, RUN_LIMITS);
+		const errors = validateConditionSet(
+			input.params,
+			marketOf(marketData.instrument),
+			RUN_LIMITS,
+		);
 		if (errors.length > 0) return planFail({ kind: "invalid_params", errors });
 		const invalid = checkInput(input);
 		if (invalid) return planFail(invalid);

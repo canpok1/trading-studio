@@ -3,7 +3,11 @@ import type {
 	StoredStrategy,
 } from "@trading-studio/backend";
 import type { ConditionSet } from "@trading-studio/core";
-import { instrumentOf, validateConditionSet } from "@trading-studio/core";
+import {
+	instrumentOf,
+	marketOf,
+	validateConditionSet,
+} from "@trading-studio/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import {
@@ -70,8 +74,14 @@ export function StrategyEditPage() {
 			? draft.params
 			: (current?.params ?? null);
 	const errors = useMemo(
-		() => (params ? validateConditionSet(params) : []),
-		[params],
+		() =>
+			params && current
+				? validateConditionSet(
+						params,
+						marketOf(instrumentOf(current.instruments[0] as string)),
+					)
+				: [],
+		[params, current],
 	);
 
 	const back = {

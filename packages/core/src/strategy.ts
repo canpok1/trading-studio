@@ -3,7 +3,7 @@
 
 import type { DvolPoint } from "./dvol";
 import type { EventCalendar } from "./event-calendar";
-import type { Instrument } from "./instrument";
+import type { Instrument, Market } from "./instrument";
 import type { Timeframe } from "./timeframe";
 import type {
 	Candle,
@@ -69,8 +69,8 @@ export type Strategy<P> = {
 	recentMs(params: P): number;
 	/** 判定に渡してほしい DVOL の時間の長さ（ミリ秒）。要らなければ 0 */
 	dvolMs(params: P): number;
-	/** パラメータの入力検証。問題が無ければ空配列 */
-	validate(params: P): ValidationError[];
+	/** パラメータの入力検証。market はその戦略の市場。問題が無ければ空配列 */
+	validate(params: P, market: Market): ValidationError[];
 	evaluate(input: StrategyInput<P>): StrategyOutput;
 	/**
 	 * 1日の損失上限（円）。その日（JST）の確定損失が達したら新しい買いを止める。無ければ止めない。

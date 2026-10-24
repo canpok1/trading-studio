@@ -2,13 +2,15 @@
 
 import type { MarketRegime, Timeframe } from "@trading-studio/core";
 import {
-	DEFAULT_FEE_RATES,
+	brokerOf,
 	DURATIONS,
 	LIMITS,
 	MARKET_REGIMES,
+	marketOf,
 	TIMEFRAMES,
 } from "@trading-studio/core";
 import * as z from "zod";
+import { DEFAULT_INSTRUMENT } from "../market-data/instrument-domain";
 
 export const regimeSchema = z.enum(
 	MARKET_REGIMES as [MarketRegime, ...MarketRegime[]],
@@ -27,8 +29,10 @@ export const dvolAverageDaysSchema = z
 	.min(LIMITS.dvolDays.min)
 	.max(LIMITS.dvolDays.max);
 
-/** 手数料率（ppm）。省けば既定の率 */
+const DEFAULT_FEES = brokerOf(marketOf(DEFAULT_INSTRUMENT)).fees;
+
+/** 手数料率（ppm）。省けばバックテストの銘柄の口座の先の既定の率 */
 export const feeSchema = {
-	limitFeePpm: z.number().int().default(DEFAULT_FEE_RATES.limitPpm),
-	marketFeePpm: z.number().int().default(DEFAULT_FEE_RATES.marketPpm),
+	limitFeePpm: z.number().int().default(DEFAULT_FEES.limitPpm),
+	marketFeePpm: z.number().int().default(DEFAULT_FEES.marketPpm),
 };
