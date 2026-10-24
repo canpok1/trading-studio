@@ -2,7 +2,7 @@
 
 import type { ScoreModel } from "../ai/model-domain";
 
-/** 見出しから決まる点数を返す。予定には件名で重要度を返す（FOMC・CPI・雇用統計・日銀は高、PPI は中、ほかは低） */
+/** 見出しから決まる点数を返す（見出しに ETH・XRP があればその銘柄の個別の点数も）。予定には件名で重要度を返す（FOMC・CPI・雇用統計・日銀は高、PPI は中、ほかは低） */
 export function demoScoreModel(): ScoreModel {
 	return {
 		unavailable: () => null,
@@ -20,10 +20,21 @@ export function demoScoreModel(): ScoreModel {
 			let h = 0;
 			for (const ch of title)
 				h = (h * 31 + (ch.codePointAt(0) ?? 0)) % 1_000_003;
+			const sentiment = -40 + 2 * (h % 41);
+			const risk = h % 3 === 0 ? 0 : 20 + (h % 51);
 			return {
-				sentiment: -40 + 2 * (h % 41),
-				risk: h % 3 === 0 ? 0 : 20 + (h % 51),
+				sentiment,
+				risk,
 				duration: "short",
+				// 見出しに ETH・XRP があれば、その銘柄に個別の点数（市場全体と向きを逆に）を付ける
+				instruments: ["ETH", "XRP"]
+					.filter((s) => title.includes(s))
+					.map((s) => ({
+						symbol: `${s}/JPY`,
+						sentiment: -sentiment,
+						risk,
+						duration: "short",
+					})),
 				comment: "デモの採点。",
 			};
 		},

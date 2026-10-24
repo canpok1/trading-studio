@@ -2,7 +2,7 @@ import type { AggregationRule } from "@trading-studio/core";
 import { LASTING_DURATIONS, windowMs } from "@trading-studio/core";
 import type { Db } from "../db/open-infra";
 import type { FeedItem, NewsRepository } from "./repository-domain";
-import { toNewsScore } from "./score-repository-infra";
+import { BTC_DURATION_SQL, toNewsScore } from "./score-repository-infra";
 import type {
 	LiveRescore,
 	NewsFilter,
@@ -311,9 +311,9 @@ export class SqliteNewsRepository implements NewsRepository {
 			args.push(...f.durations);
 		}
 		if (f.activeAt !== null) {
-			// core の newsWeight が 0 より大きいもの。新しさの時刻は公開時刻と取得時刻の早いほう
+			// core の newsWeight が 0 より大きいもの。重みは BTC/JPY に対する評価のもの（個別の持続があればそれ）。新しさの時刻は公開時刻と取得時刻の早いほう
 			where.push(
-				`(s.status = 'done' and s.scored_at <= ? and ? - min(n.published_at, n.fetched_at) < case s.duration ${LASTING_DURATIONS.map(() => "when ? then ?").join(" ")} else 0 end)`,
+				`(s.status = 'done' and s.scored_at <= ? and ? - min(n.published_at, n.fetched_at) < case ${BTC_DURATION_SQL} ${LASTING_DURATIONS.map(() => "when ? then ?").join(" ")} else 0 end)`,
 			);
 			args.push(
 				f.activeAt,

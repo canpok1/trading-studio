@@ -169,15 +169,15 @@ function ModelSetting() {
 	);
 }
 
+const SLOT_LABELS: Record<string, string> = {
+	"{news}": "{ニュースの見出し・概要}",
+	"{criteria}": "{採点の基準}",
+	"{instruments}": "{対象の銘柄}",
+};
+
 function Template({ template }: { template: string }) {
-	// 差し込む場所を目立たせる。ひな形は {news} → {criteria} の順に1回ずつ含む
-	const [head = "", rest = ""] = template.split("{news}");
-	const [middle = "", tail = ""] = rest.split("{criteria}");
-	const slot = (label: string) => (
-		<mark className="rounded bg-accent px-1 font-bold text-accent-ink">
-			{label}
-		</mark>
-	);
+	// 差し込む場所を目立たせる
+	const parts = template.split(/(\{(?:news|criteria|instruments)\})/);
 	return (
 		<div className="flex flex-col gap-1.5 rounded-[10px] bg-surface-2 px-3 py-2.5">
 			<span className="inline-flex items-center gap-1 text-[11px] font-bold text-text-2">
@@ -196,11 +196,20 @@ function Template({ template }: { template: string }) {
 				固定のひな形（編集不可）· 点数の範囲と出力形式は集計の前提
 			</span>
 			<pre className="num m-0 text-xs leading-relaxed whitespace-pre-wrap text-text-2">
-				{head}
-				{slot("{ニュースの見出し・概要}")}
-				{middle}
-				{slot("{採点の基準}")}
-				{tail}
+				{parts.map((part) => {
+					const label = SLOT_LABELS[part];
+					return label ? (
+						// 差し込む場所はひな形に1回ずつなので名前で見分けられる
+						<mark
+							key={part}
+							className="rounded bg-accent px-1 font-bold text-accent-ink"
+						>
+							{label}
+						</mark>
+					) : (
+						part
+					);
+				})}
 			</pre>
 		</div>
 	);

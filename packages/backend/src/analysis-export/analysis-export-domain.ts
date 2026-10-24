@@ -10,6 +10,7 @@ import type {
 	Trade,
 } from "@trading-studio/core";
 import {
+	BTC_JPY,
 	CSV_HEADER,
 	DURATION_LABELS,
 	DURATIONS,
@@ -21,6 +22,7 @@ import {
 	judgmentRecordStart,
 	LASTING_DURATIONS,
 	maxWindowMs,
+	scoredNewsFor,
 } from "@trading-studio/core";
 import type { BacktestRepository } from "../backtests/repository-domain";
 import type { BacktestRun } from "../backtests/types-domain";
@@ -122,7 +124,7 @@ const newsTable: Table<NewsExportRow> = {
 		col("score_status", SCORE_STATUS, (r) => r.status ?? "unscored"),
 		col(
 			"sentiment",
-			"センチメントの点数（-100〜100、0 が中立、高いほど BTC の価格にとって強気材料）。関係ない観点は 0。採点済みでなければ空",
+			"市場全体のセンチメントの点数（-100〜100、0 が中立、高いほど価格にとって強気材料）。関係ない観点は 0。採点済みでなければ空",
 			(r) => (r.status === "done" ? r.sentiment : null),
 		),
 		col(
@@ -134,6 +136,11 @@ const newsTable: Table<NewsExportRow> = {
 			"duration",
 			`影響の持続（${DURATIONS.map((d) => `${d}: ${DURATION_LABELS[d]}`).join(" / ")}）。none は相場に関係ない記事で、市場評価に使わない。半減期は aggregation_rule.csv。採点済みでなければ空`,
 			(r) => (r.status === "done" ? r.duration : null),
+		),
+		col(
+			"instruments",
+			'記事が個別に関係する銘柄の点数。JSON で 銘柄の id → {"sentiment","risk","duration"}。点数の意味は上の列と同じ。個別の点数が無い銘柄は上の市場全体の点数で評価する。無ければ空',
+			(r) => (r.status === "done" ? r.instruments : null),
 		),
 		col("comment", "AI が書いた採点の理由", (r) => r.comment),
 		...time<NewsExportRow>(
@@ -253,7 +260,7 @@ const JUDGE_DESC: Record<Judge, string> = {
 
 const judgmentsTable: Table<JudgmentRow> = {
 	file: "judgments.csv",
-	desc: "1時間ごとの市場評価。1時間足の終わりの時刻ごとに、今の評価ルール（aggregation_rule.csv）で計算した。採点の記録が始まる前の時刻は評価の列が空",
+	desc: "1時間ごとの BTC/JPY に対する市場評価（記事に BTC/JPY の個別の点数があればそれ、無ければ市場全体の点数で集計）。1時間足の終わりの時刻ごとに、今の評価ルール（aggregation_rule.csv）で計算した。採点の記録が始まる前の時刻は評価の列が空",
 	columns: [
 		...time<JudgmentRow>(
 			"time",
@@ -817,7 +824,10 @@ export function createAnalysisExportService({
 			);
 			add(ruleTable, ruleRows(rule));
 			// 期間内の判定（運用の判定）に使うニュースは、採点時刻が (期間の始まり − 集計に使う一番長い長さ, 期間の終わり] にある
-			const scored = scoreRepo.scoredNews(from - windowMs, to + 1);
+			const scored = scoredNewsFor(
+				scoreRepo.scoredNews(from - windowMs, to + 1),
+				BTC_JPY.id,
+			);
 			add(
 				judgmentsTable,
 				hourlyJudgments(

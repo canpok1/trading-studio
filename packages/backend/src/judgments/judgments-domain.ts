@@ -1,5 +1,7 @@
 import type { AggregationRule, Timeframe } from "@trading-studio/core";
 import {
+	BTC_JPY,
+	COLLECTED_INSTRUMENTS,
 	isTimeframe,
 	JUDGES,
 	judgeAt,
@@ -8,6 +10,7 @@ import {
 	judgmentSeries,
 	maxWindowMs,
 	parseAggregationRule,
+	scoredNewsFor,
 	TIMEFRAME_MS,
 	validateAggregationRule,
 } from "@trading-studio/core";
@@ -42,6 +45,17 @@ export function parseSeriesQuery(
 	return { ok: true, from, to, timeframe: q.timeframe };
 }
 
+/** 評価できる銘柄の id（ADR 0037。価格を収集している銘柄） */
+export const EVALUATED_INSTRUMENT_IDS = COLLECTED_INSTRUMENTS.map((i) => i.id);
+
+/** 評価する銘柄の入力。省くと undefined（BTC/JPY）。収集していない銘柄は null */
+export function parseInstrumentQuery(
+	v: string | undefined,
+): string | undefined | null {
+	if (v === undefined || v === "") return undefined;
+	return EVALUATED_INSTRUMENT_IDS.includes(v) ? v : null;
+}
+
 /** { rule } の形の入力から評価ルールを取り出す。形が違えば null（値の範囲は確かめない） */
 export function parseRuleInput(v: unknown): AggregationRule | null {
 	return parseAggregationRule(
@@ -66,11 +80,18 @@ export function createJudgmentService({
 			segmentFrom,
 		);
 	const service: JudgmentService = {
-		current(rule = repo.aggregationRule(), at?: number): CurrentJudgment {
+		current(
+			rule = repo.aggregationRule(),
+			at?: number,
+			instrument = BTC_JPY.id,
+		): CurrentJudgment {
 			// 先の時刻は今として扱う
 			const t = at === undefined ? now() : Math.min(at, now());
 			// 集計に使うニュースは使い始める時刻もその長さの内にある（使い始める時刻は新しさの時刻より後か同時のため）
-			const news = repo.scoredNews(t - maxWindowMs(rule), t + 1);
+			const news = scoredNewsFor(
+				repo.scoredNews(t - maxWindowMs(rule), t + 1),
+				instrument,
+			);
 			const s = judgeAt(news, t, rule);
 			return {
 				time: t,
@@ -89,6 +110,7 @@ export function createJudgmentService({
 			version = null,
 			delayMs = null,
 			segmentFrom = null,
+			instrument = BTC_JPY.id,
 		): JudgmentSeries {
 			const t = now();
 			const firstScoredAt = recordStart(segmentFrom);
@@ -106,11 +128,14 @@ export function createJudgmentService({
 					? []
 					: judgmentSeries(
 							// 集計に使うニュースは使い始める時刻もその長さの内にある（current と同じ理由）
-							repo.scoredNews(
-								from - maxWindowMs(rule),
-								to + 1,
-								version,
-								delayMs,
+							scoredNewsFor(
+								repo.scoredNews(
+									from - maxWindowMs(rule),
+									to + 1,
+									version,
+									delayMs,
+								),
+								instrument,
 							),
 							times,
 							rule,
@@ -127,8 +152,17 @@ export function createJudgmentService({
 			});
 			return { from, step, firstScoredAt, values };
 		},
-		seriesOf: (from, to, timeframe) =>
-			service.series(from, to, TIMEFRAME_MS[timeframe]),
+		seriesOf: (from, to, timeframe, instrument) =>
+			service.series(
+				from,
+				to,
+				TIMEFRAME_MS[timeframe],
+				undefined,
+				null,
+				null,
+				null,
+				instrument,
+			),
 		rule: () => repo.aggregationRule(),
 		firstScoredAt: (segmentFrom) => recordStart(segmentFrom),
 		scoredNews: (from, to, version, delayMs) =>

@@ -228,6 +228,7 @@ export function newsView(
 		status: s?.status ?? "unscored",
 		scores: done ? s.scores : null,
 		duration: done ? s.duration : null,
+		instruments: done ? s.instruments : {},
 		comment: s?.comment ?? null,
 		scoredAt: s?.scoredAt == null ? null : jst(s.scoredAt),
 		rescoredAt: s?.rescoredAt == null ? null : jst(s.rescoredAt),

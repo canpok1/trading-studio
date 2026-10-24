@@ -268,6 +268,11 @@ export const newsScores = sqliteTable(
 		/** 影響の持続（none・short・medium・long）。採点済みでなければ null */
 		duration: text("duration"),
 		comment: text("comment"),
+		/**
+		 * 記事が個別に関係する銘柄の点数（ADR 0037）。JSON で 銘柄の id → { sentiment, risk, duration }。
+		 * 上の点数は市場全体。個別に関係する銘柄が無いか、銘柄ごとに採点する前の採点は null
+		 */
+		instruments: text("instruments"),
 		/** 採点した時刻。運用の判定ではこれより前には使わない。採点し直して置き換えても変えない */
 		scoredAt: integer("scored_at"),
 		/** 採点し直して点数を置き換えた時刻（記録用）。置き換えていなければ null */
@@ -306,6 +311,8 @@ export const newsRescores = sqliteTable(
 		sentiment: integer("sentiment"),
 		duration: text("duration"),
 		comment: text("comment"),
+		/** news_scores の instruments と同じ */
+		instruments: text("instruments"),
 		/** 採点し直した時刻（記録用。判定には使わない） */
 		scoredAt: integer("scored_at"),
 		model: text("model"),

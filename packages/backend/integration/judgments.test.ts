@@ -15,7 +15,12 @@ function setup() {
 		{ name: "A", url: "https://a.example/feed", language: "ja" },
 		0,
 	);
-	const add = (title: string, hoursAgo: number, sentiment: number) => {
+	const add = (
+		title: string,
+		hoursAgo: number,
+		sentiment: number,
+		instruments?: Record<string, number>,
+	) => {
 		const at = t.clock.now - hoursAgo * H;
 		t.newsRepo.saveFetched(
 			source,
@@ -34,7 +39,17 @@ function setup() {
 		).id;
 		t.scoreRepo.saveScore(
 			id,
-			{ scores: { sentiment, risk: 0 }, duration: "short", comment: "c" },
+			{
+				scores: { sentiment, risk: 0 },
+				duration: "short",
+				instruments: Object.fromEntries(
+					Object.entries(instruments ?? {}).map(([id, v]) => [
+						id,
+						{ scores: { sentiment: v, risk: 0 }, duration: "short" },
+					]),
+				),
+				comment: "c",
+			},
 			{
 				scoredAt: at,
 				criteriaVersion: 1,
@@ -181,4 +196,36 @@ test("時刻を指定するとその時点の判定。先の時刻は今", async
 	expect(past.results.sentiment).toMatchObject({ average: 60, count: 1 });
 	expect((await at(200 * H)).time).toBe(100 * H);
 	expect((await t.app.request("/api/judgments/current?at=x")).status).toBe(400);
+});
+
+test("銘柄を指定すると、記事にその銘柄の個別の点数があればそれ、無ければ市場全体の点数で評価する", async () => {
+	const t = setup();
+	t.add("a", 0, 60, { "coincheck:eth_jpy": -60 });
+	t.add("b", 1, 60);
+	const sentiment = async (q: string) =>
+		(
+			(await (
+				await t.app.request(`/api/judgments/current${q}`)
+			).json()) as CurrentJudgment
+		).results.sentiment;
+	expect((await sentiment("")).average).toBeCloseTo(60);
+	expect(
+		(await sentiment("?instrument=coincheck:btc_jpy")).average,
+	).toBeCloseTo(60);
+	// ETH は a の個別の -60 と b の市場全体の 60 の重み付き平均（a のほうが新しく重い）
+	const eth = await sentiment("?instrument=coincheck:eth_jpy");
+	expect(eth.average).toBeLessThan(0);
+	const series = (await (
+		await t.app.request(
+			`/api/judgments/series?from=${99 * H}&to=${100 * H}&timeframe=1h&instrument=coincheck:eth_jpy`,
+		)
+	).json()) as JudgmentSeries;
+	expect(series.values.sentiment).toEqual([eth.value]);
+	expect(eth.value).not.toBe((await sentiment("")).value);
+	for (const path of ["current", `series?from=0&to=${H}&timeframe=1h&`]) {
+		const sep = path.includes("?") ? "" : "?";
+		expect(
+			(await t.app.request(`/api/judgments/${path}${sep}instrument=x`)).status,
+		).toBe(400);
+	}
 });

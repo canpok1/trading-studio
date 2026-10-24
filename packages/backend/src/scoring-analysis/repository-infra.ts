@@ -1,5 +1,6 @@
 // 精度を測るニュースと採点。読むだけで書き換えない。書くのは精度の設定だけ
 
+import { BTC_JPY } from "@trading-studio/core";
 import type { Db } from "../db/open-infra";
 import { NEWS_TIME_SQL } from "../news/score-repository-infra";
 import type {
@@ -13,9 +14,13 @@ import {
 	DEFAULT_ACCURACY_SETTINGS,
 } from "./types-domain";
 
+/** 精度は BTC/JPY の値動きで測るので、点数は BTC/JPY に対するもの（個別の点数があればそれ、無ければ市場全体。ADR 0037） */
+const btc = (column: string) =>
+	`coalesce(json_extract(s.instruments, '$."${BTC_JPY.id}".${column}'), s.${column}) as ${column}`;
+
 const COLUMNS = `n.id, n.source_name as sourceName, n.language, n.url, n.title, n.summary,
-  n.published_at as publishedAt, n.fetched_at as fetchedAt, s.status, s.risk, s.sentiment,
-  s.duration, s.comment, s.scored_at as scoredAt, s.criteria_version as criteriaVersion, s.model,
+  n.published_at as publishedAt, n.fetched_at as fetchedAt, s.status, ${btc("risk")}, ${btc("sentiment")},
+  ${btc("duration")}, s.comment, s.scored_at as scoredAt, s.criteria_version as criteriaVersion, s.model,
   s.app_built_at as appBuiltAt, s.error`;
 
 const ACCURACY_SETTINGS_KEY = "accuracy_settings";

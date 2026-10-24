@@ -21,7 +21,7 @@ export function registerNewsTools(
 		"get_scoring_setup",
 		{
 			description:
-				"ニュースの AI 採点の仕組み: プロンプトの固定のひな形（{news} と {criteria} を差し込む）、採点の基準（編集できる部分）の全版と使用中の版、モデル、点数から市場評価を出す評価ルール（コード上の名前は aggregationRule）、採点の状態",
+				"ニュースの AI 採点の仕組み: プロンプトの固定のひな形（{news}・{criteria}・{instruments}（対象の銘柄）を差し込む）、採点の基準（編集できる部分）の全版と使用中の版、モデル、点数から市場評価を出す評価ルール（コード上の名前は aggregationRule）、採点の状態",
 			annotations: readOnly,
 		},
 		() => {
@@ -55,7 +55,7 @@ export function registerNewsTools(
 		"list_news_scores",
 		{
 			description:
-				"ニュースと AI の採点（点数・持続・理由・基準の版・モデル）、市場評価での重み、記事ごとの精度。ニュース画面の一覧と同じ条件で絞れる。weight は市場評価の時点（to が今より前ならその時刻、それ以外は今）での重み（0〜1）。precision は get_market_evaluation_analysis と同じ精度で、measuring は測る長さがまだたっていない、unknown は価格が無い、null は持続なし・採点済みでない記事。rescore は画面から頼んだ運用の採点の置き換え（採点し直し）で終わっていないもの。status は running: 採点し直し中 / waiting: 順番待ち（ahead は先に採点し直す件数。採点し直し中の1件とバックテスト用の分を含む。新着の採点が先） / retry: 失敗して nextAttemptAt に再試行 / failed: 失敗して止まっている",
+				"ニュースと AI の採点（点数・持続・理由・基準の版・モデル）、市場評価での重み、記事ごとの精度。scores・duration は市場全体、instruments は記事が個別に関係する銘柄の点数（銘柄の id → 点数と持続。無い銘柄は市場全体の点数で評価する）。重みと精度は BTC/JPY に対する評価のもの。ニュース画面の一覧と同じ条件で絞れる。weight は市場評価の時点（to が今より前ならその時刻、それ以外は今）での重み（0〜1）。precision は get_market_evaluation_analysis と同じ精度で、measuring は測る長さがまだたっていない、unknown は価格が無い、null は持続なし・採点済みでない記事。rescore は画面から頼んだ運用の採点の置き換え（採点し直し）で終わっていないもの。status は running: 採点し直し中 / waiting: 順番待ち（ahead は先に採点し直す件数。採点し直し中の1件とバックテスト用の分を含む。新着の採点が先） / retry: 失敗して nextAttemptAt に再試行 / failed: 失敗して止まっている",
 			inputSchema: {
 				from: z
 					.string()

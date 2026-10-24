@@ -930,6 +930,49 @@ describe("複数の銘柄", () => {
 		).toThrow("だめ");
 	});
 
+	test("AI 判定は銘柄ごとの評価（個別の点数があればそれ、無ければ市場全体）で渡す", () => {
+		const strategy: Strategy<Script> = {
+			...scripted,
+			requiredJudges: () => ["sentiment"],
+			evaluate: ({ now, judgments, state }) => ({
+				intents: [],
+				nextEvalAt: now + H,
+				state,
+				note: judgments.sentiment?.[0]?.label ?? "なし",
+			}),
+		};
+		const r = runBacktest({
+			...config(flat(3), { buyPrice: 0 }),
+			strategy,
+			otherMarkets: [
+				{ instrument: ETH, candles: { "1h": flat(3) }, stepCandles: flat(3) },
+			],
+			judgments: {
+				news: [
+					{
+						id: 1,
+						publishedAt: 0,
+						fetchedAt: 0,
+						usableAt: 0,
+						scores: { sentiment: 90, risk: 0 },
+						duration: "short",
+						instruments: {
+							[ETH.id]: {
+								scores: { sentiment: -90, risk: 0 },
+								duration: "short",
+							},
+						},
+					},
+				],
+				rule: DEFAULT_AGGREGATION_RULE,
+			},
+		});
+		expect(r.decisions.slice(0, 2).map((d) => [d.instrument, d.note])).toEqual([
+			[undefined, "+2"],
+			[ETH.id, "-2"],
+		]);
+	});
+
 	test("ほかの銘柄の足が欠けた時刻も、ある銘柄で判定する", () => {
 		const r = run({ [XRP.id]: 1 }, flat(1, 2 * H));
 		expect(r.decisions.filter((d) => d.instrument === XRP.id)).toHaveLength(1);
