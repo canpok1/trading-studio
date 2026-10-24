@@ -5,6 +5,7 @@ import type {
 } from "@trading-studio/backend";
 import type { AggregationRule, Duration, Scores } from "@trading-studio/core";
 import {
+	BTC_JPY,
 	HALF_LIVES_IN_WINDOW,
 	INSTRUMENTS,
 	JUDGES,
@@ -144,6 +145,8 @@ function NewsCard({
 		const score = n.score?.instruments[instrument.id];
 		return score ? [{ instrument, score }] : [];
 	});
+	// 重みは BTC/JPY に対する評価のものなので、BTC の個別の持続があればそれで決まる
+	const weightDuration = n.score?.instruments[BTC_JPY.id]?.duration ?? duration;
 
 	const send = async (
 		what: string,
@@ -252,9 +255,9 @@ function NewsCard({
 							</span>
 							{weight === null && (
 								<span className="num text-xs text-text-2">
-									{duration === "none"
+									{weightDuration === "none"
 										? "集計の対象外（相場に関係ない）"
-										: `集計の対象外（持続の半減期の${HALF_LIVES_IN_WINDOW}倍、${rule.halfLifeHours[duration] * HALF_LIVES_IN_WINDOW}時間より前）`}
+										: `集計の対象外（持続の半減期の${HALF_LIVES_IN_WINDOW}倍、${rule.halfLifeHours[weightDuration] * HALF_LIVES_IN_WINDOW}時間より前）`}
 								</span>
 							)}
 							{canRescore && (
