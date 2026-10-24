@@ -79,10 +79,16 @@ test("候補の銘柄を設定で選ぶと見る銘柄の切り替えと同じ�
 	await expect(page.getByText(/候補外のため印なし/)).toHaveCount(0);
 });
 
-test("ホームでも候補外の銘柄を選べる", async ({ page, api }) => {
+test("ホームでも候補外の銘柄を選べ、カードを替えると戦略の銘柄に戻る", async ({
+	page,
+	api,
+}) => {
 	onHome(api, {
-		strategies: [templateStrategy(1, "BTC")],
-		runs: [tradingRun({ id: 1, name: "BTC", enabled: true })],
+		strategies: [templateStrategy(1, "BTC1"), templateStrategy(2, "BTC2")],
+		runs: [
+			tradingRun({ id: 1, name: "BTC1", enabled: true }),
+			tradingRun({ id: 2, name: "BTC2", enabled: true }),
+		],
 		prices: PRICES,
 	});
 	await page.goto("/home");
@@ -101,4 +107,10 @@ test("ホームでも候補外の銘柄を選べる", async ({ page, api }) => {
 		() => document.documentElement.scrollWidth > window.innerWidth,
 	);
 	expect(overflow).toBe(false);
+
+	const cards = page.getByTestId("home-strategy");
+	await cards.nth(1).getByRole("button").first().click();
+	await expect(tag).toHaveText("BTC");
+	await cards.nth(0).getByRole("button").first().click();
+	await expect(tag).toHaveText("BTC");
 });

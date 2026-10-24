@@ -143,6 +143,10 @@ export function StrategyDashboard({
 		strategyId: number | null;
 		id: string;
 	} | null>(null);
+	// ホームでカードを替えて戻ったときに前の選択を出さない
+	useEffect(() => {
+		if (strategyId !== undefined) setOutside(null);
+	}, [strategyId]);
 	const candidates = run?.instruments.map((i) => i.id) ?? [BTC_JPY.id];
 	const chartOutside =
 		outside?.strategyId === strategyId && !candidates.includes(outside.id)
