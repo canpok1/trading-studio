@@ -2,6 +2,7 @@
 
 import type { DvolPoint } from "./dvol";
 import {
+	DVOL_INSTRUMENT,
 	DVOL_STALE_MS,
 	dvolAt,
 	dvolAverage,
@@ -398,6 +399,32 @@ export type ConditionSet = {
 	stopLossCooldownTimeframe: Timeframe;
 	/** 買い。同じ判定で複数の買いが成立したら、買えるもののうち上の1つだけ注文する */
 	buys: BuyRule[];
+	/** 同時に持つ銘柄数の上限（ADR 0037）。持っている銘柄と、買いが約定待ちの銘柄を数える。無ければ DEFAULT_MAX_HOLDINGS */
+	maxHoldings?: number;
+	/** 買いが同時に成り立った銘柄の順位の決め方（ADR 0037）。無ければ候補の並び順 */
+	ranking?: Ranking | null;
+};
+
+/** 同時に持つ銘柄数の上限の既定。これを持たない保存済みの戦略もこの数で読む */
+export const DEFAULT_MAX_HOLDINGS = 1;
+
+/** 順位に使う指標。turnover は売買代金（終値 × 出来高）。銘柄ごとに数量の単位が違うので、出来高は金額で比べる */
+export const RANKING_INDICATORS = ["return", "rsi", "adx", "turnover"] as const;
+export type RankingIndicator = (typeof RANKING_INDICATORS)[number];
+
+export const RANKING_INDICATOR_LABELS: Record<RankingIndicator, string> = {
+	return: "上昇率",
+	rsi: "RSI",
+	adx: "ADX",
+	turnover: "売買代金",
+};
+
+/** 順位の決め方。timeframe の足で period 本の indicator が高い順（desc）か低い順（asc） */
+export type Ranking = {
+	indicator: RankingIndicator;
+	timeframe: Timeframe;
+	period: number;
+	order: "desc" | "asc";
 };
 
 /** 買いが1つの条件セットを、買いを持たない平らな形で書いたもの。買いを持つ前の保存済みの戦略とテストで使う */
@@ -500,6 +527,10 @@ export const LIMITS = {
 	buys: { min: 1, max: 5 },
 	/** 買いの名前の文字数 */
 	buyName: { min: 1, max: 20 },
+	/** 同時に持つ銘柄数の上限 */
+	maxHoldings: { min: 1, max: 10 },
+	/** 順位の指標の本数 */
+	rankingPeriod: { min: 1, max: 200 },
 } as const;
 
 /** 1日の損失上限の既定（仮置き）。これを持たない保存済みの戦略もこの上限で読む */
@@ -1283,7 +1314,95 @@ export function candleNeeds(
 			out[c.timeframe] = Math.max(out[c.timeframe] ?? 1, n);
 		}
 	}
+	const r = params.ranking;
+	if (r) out[r.timeframe] = Math.max(out[r.timeframe] ?? 1, rankingNeed(r));
 	return out;
+}
+
+/** 順位の指標に要る足の本数（現在の足を含む） */
+function rankingNeed(r: Ranking): number {
+	switch (r.indicator) {
+		case "return":
+			return r.period + 1;
+		case "turnover":
+			return r.period;
+		case "rsi":
+			return r.period + 1 + unstableWilder(r.period);
+		case "adx":
+			return (
+				r.period +
+				1 +
+				unstableWilder(r.period) +
+				(r.period + unstableWilder(r.period))
+			);
+	}
+}
+
+/**
+ * 順位の指標の値。足が足りなければ null。
+ * 上昇率は period 本前の終値からの %、RSI・ADX は今の値、売買代金は直近 period 本の終値 × 出来高の合計（通貨の単位）
+ */
+export function rankingValue(
+	r: Ranking,
+	instrument: Instrument,
+	candles: readonly Candle[],
+): number | null {
+	if (candles.length < rankingNeed(r)) return null;
+	const last = candles.at(-1) as Candle;
+	switch (r.indicator) {
+		case "return": {
+			const base = (candles.at(-1 - r.period) as Candle).close;
+			return base > 0 ? (last.close / base - 1) * 100 : null;
+		}
+		case "turnover":
+			return candles
+				.slice(-r.period)
+				.reduce(
+					(a, c) => a + notional(instrument, c.close, c.volume, "floor"),
+					0,
+				);
+		case "rsi":
+			return rsi(
+				candles.map((c) => c.close),
+				r.period,
+			).at(-1) as number;
+		case "adx":
+			return adx(candles, r.period).at(-1) as number;
+	}
+}
+
+/** 順位の指標の値の見せ方（判断の理由に出す） */
+export function rankingValueText(
+	r: Ranking,
+	instrument: Instrument,
+	v: number,
+): string {
+	const label = `${TIMEFRAME_LABELS[r.timeframe]}${RANKING_INDICATOR_LABELS[r.indicator]}(${r.period})`;
+	switch (r.indicator) {
+		case "return":
+			return `${label} ${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+		case "turnover":
+			return `${label} ${formatMoney(instrument.currency, v)}`;
+		case "rsi":
+		case "adx":
+			return `${label} ${formatRsi(v)}`;
+	}
+}
+
+/** 戦略の順位付け。高いほど上位になる値と、その説明。足りなければ null（最下位） */
+function rankScore(
+	params: ConditionSet,
+	instrument: Instrument,
+	candles: StrategyInput<ConditionSet>["candles"],
+): { score: number; text: string } | null {
+	const r = params.ranking;
+	if (!r) return null;
+	const v = rankingValue(r, instrument, candles[r.timeframe] ?? []);
+	if (v === null || !Number.isFinite(v)) return null;
+	return {
+		score: r.order === "desc" ? v : -v,
+		text: rankingValueText(r, instrument, v),
+	};
 }
 
 function candleNeed(c: CandleCondition): number {
@@ -1406,6 +1525,56 @@ export function validateConditionSet(
 		names.add(name);
 		validateBuyRule(b, at, err, market, limits);
 	});
+	if (
+		p.maxHoldings !== undefined &&
+		!isIntIn(p.maxHoldings, limits.maxHoldings)
+	) {
+		const r = limits.maxHoldings;
+		err("maxHoldings", `${r.min}〜${r.max} の整数で入れる`);
+	}
+	const r = p.ranking;
+	if (r) {
+		if (!RANKING_INDICATORS.includes(r.indicator))
+			err("ranking.indicator", "指標を選ぶ");
+		if (!isTimeframe(r.timeframe)) err("ranking.timeframe", "足を選ぶ");
+		if (!isIntIn(r.period, limits.rankingPeriod)) {
+			const x = limits.rankingPeriod;
+			err("ranking.period", `${x.min}〜${x.max} の整数で入れる`);
+		}
+		if (r.order !== "desc" && r.order !== "asc")
+			err("ranking.order", "高い順か低い順を選ぶ");
+	}
+	return errors;
+}
+
+/**
+ * 候補の銘柄の検証（ADR 0037）。path は「instruments」。
+ * BTC/JPY だけの戦略は今までどおり数量で注文できる。それ以外は銘柄ごとに価格と単位が違うので金額で注文させる
+ */
+export function validateCandidates(
+	p: ConditionSet,
+	instruments: readonly Instrument[],
+): ValidationError[] {
+	const errors: ValidationError[] = [];
+	const err = (message: string) =>
+		errors.push({ path: "instruments", message });
+	const ids = instruments.map((i) => i.id);
+	if (ids.length === 0) err("候補の銘柄を1つ以上選ぶ");
+	if (new Set(ids).size !== ids.length) err("同じ銘柄を2回選ばない");
+	if (new Set(instruments.map((i) => i.marketId)).size > 1)
+		err("候補は同じ市場の銘柄だけにする");
+	if (
+		(usesCondition(p, "dvol") || usesCondition(p, "dvolAverage")) &&
+		ids.some((id) => id !== DVOL_INSTRUMENT.id)
+	) {
+		err(
+			`DVOL の条件は ${DVOL_INSTRUMENT.symbol} の指標なので、候補を ${DVOL_INSTRUMENT.symbol} だけにする`,
+		);
+	}
+	const btcOnly = ids.length === 1 && ids[0] === BTC_JPY.id;
+	if (ids.length > 0 && !btcOnly && p.buys.some((b) => b.orderAmount == null)) {
+		err("銘柄ごとに価格と数量の単位が違うので、注文量を金額で入れる");
+	}
 	return errors;
 }
 
@@ -2197,6 +2366,8 @@ export const conditionStrategy: Strategy<ConditionSet> = {
 	validate: validateConditionSet,
 	evaluate: evaluateConditionSet,
 	dailyLossLimit: (p) => p.dailyLossLimit,
+	maxHoldings: (p) => p.maxHoldings ?? DEFAULT_MAX_HOLDINGS,
+	rankScore,
 };
 
 const isObj = (v: unknown): v is Record<string, unknown> =>
@@ -2544,5 +2715,24 @@ export function parseConditionSet(v: unknown): ConditionSet | null {
 			legacy,
 		),
 		buys,
+		...(v.maxHoldings === undefined
+			? {}
+			: {
+					maxHoldings:
+						typeof v.maxHoldings === "number" ? v.maxHoldings : Number.NaN,
+				}),
+		...(v.ranking === undefined ? {} : { ranking: parseRanking(v.ranking) }),
+	};
+}
+
+/** 順位の決め方。null は並び順。形が違えば値のまま返し、入力検証で弾く */
+function parseRanking(v: unknown): Ranking | null {
+	if (v === null) return null;
+	const r = isObj(v) ? v : {};
+	return {
+		indicator: r.indicator as RankingIndicator,
+		timeframe: r.timeframe as Timeframe,
+		period: typeof r.period === "number" ? r.period : Number.NaN,
+		order: r.order as Ranking["order"],
 	};
 }

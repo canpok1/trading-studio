@@ -24,15 +24,17 @@ import {
 	MAX_CANDLE_NEED,
 	parseConditionSet as parseConditionSetOf,
 	RUN_LIMITS,
+	rankingValue,
 	recentMs as recentMsOf,
 	rsiLines as rsiLinesOf,
 	singleBuy,
 	usableIn,
+	validateCandidates,
 	validateConditionSet as validateConditionSetOf,
 } from "./condition-strategy";
 import type { EventCalendar } from "./event-calendar";
 import type { Market } from "./instrument";
-import { BTC_JPY, COINCHECK } from "./instrument";
+import { BTC_JPY, COINCHECK, ETH_JPY, XRP_JPY } from "./instrument";
 import type { StrategyInput } from "./strategy";
 import type { TemplateId } from "./templates";
 import {
@@ -3010,6 +3012,141 @@ describe("市場に紐づく材料の条件", () => {
 		expect(errs(dvolOnly, judgment, dvol, dvolAverage, events)).toEqual([
 			"buys.0.buy.conditions.0",
 			"buys.0.buy.conditions.3",
+		]);
+	});
+});
+
+describe("候補の銘柄の選び方（ADR 0037）", () => {
+	const bar = (close: number, volume = 0, i = 0): Candle => ({
+		time: i * H,
+		open: close,
+		high: close,
+		low: close,
+		close,
+		volume,
+	});
+
+	test("上昇率は period 本前の終値から、売買代金は直近 period 本の終値 × 出来高の合計", () => {
+		const cs = [bar(100), bar(110), bar(121)];
+		expect(
+			rankingValue(
+				{ indicator: "return", timeframe: "1h", period: 2, order: "desc" },
+				BTC_JPY,
+				cs,
+			),
+		).toBeCloseTo(21);
+		// 足りなければ null
+		expect(
+			rankingValue(
+				{ indicator: "return", timeframe: "1h", period: 3, order: "desc" },
+				BTC_JPY,
+				cs,
+			),
+		).toBeNull();
+		// XRP は 0.001 円・0.01 XRP 単位。200 円 × 100 XRP + 210 円 × 50 XRP = 30,500 円
+		expect(
+			rankingValue(
+				{ indicator: "turnover", timeframe: "1h", period: 2, order: "desc" },
+				XRP_JPY,
+				[bar(1, 1), bar(200_000, 10_000), bar(210_000, 5_000)],
+			),
+		).toBe(30_500);
+	});
+
+	test("順位は低い順なら値の小さい銘柄を上にし、判断の理由に値を出す", () => {
+		const p: ConditionSet = {
+			...toSet(params()),
+			ranking: {
+				indicator: "return",
+				timeframe: "1h",
+				period: 1,
+				order: "asc",
+			},
+		};
+		const score = (closes: number[]) =>
+			conditionStrategyOf.rankScore?.(p, BTC_JPY, {
+				"1h": closes.map((c, i) => bar(c, 0, i)),
+			});
+		expect(score([100, 90])?.score).toBeGreaterThan(
+			score([100, 110])?.score as number,
+		);
+		expect(score([100, 110])?.text).toBe("1時間足上昇率(1) +10.00%");
+		// 順位の決め方が無ければ順位を付けない
+		expect(
+			conditionStrategyOf.rankScore?.(toSet(params()), BTC_JPY, {}),
+		).toBeNull();
+	});
+
+	test("順位に使う足を判定に渡してもらい、上限の既定は1", () => {
+		const p: ConditionSet = {
+			...toSet(params()),
+			ranking: { indicator: "rsi", timeframe: "4h", period: 14, order: "desc" },
+		};
+		// RSI 14 は96本（docs/backtests.md）
+		expect(candleNeedsOf(p)["4h"]).toBe(96);
+		expect(conditionStrategyOf.maxHoldings?.(toSet(params()))).toBe(1);
+		expect(conditionStrategyOf.maxHoldings?.({ ...p, maxHoldings: 3 })).toBe(3);
+	});
+
+	test("上限と順位の決め方は範囲内で入れ、保存した戦略から読む", () => {
+		const p: ConditionSet = {
+			...toSet(params()),
+			maxHoldings: 0,
+			ranking: {
+				indicator: "volume" as never,
+				timeframe: "1h",
+				period: 0,
+				order: "asc",
+			},
+		};
+		expect(
+			validateConditionSetOf(p, COINCHECK)
+				.map((e) => e.path)
+				.filter((x) => !x.startsWith("buys.")),
+		).toEqual(["maxHoldings", "ranking.indicator", "ranking.period"]);
+		const ok: ConditionSet = {
+			...toSet(params()),
+			maxHoldings: 2,
+			ranking: { indicator: "adx", timeframe: "1d", period: 14, order: "desc" },
+		};
+		expect(
+			validateConditionSetOf(ok, COINCHECK).filter(
+				(e) => !e.path.startsWith("buys."),
+			),
+		).toEqual([]);
+		expect(parseConditionSetOf(JSON.parse(JSON.stringify(ok)))).toEqual(ok);
+		// 持たない保存済みの戦略は持たないまま読む（上限は既定、順位は並び順）
+		expect(parseConditionSetOf(toSet(params()))).not.toHaveProperty(
+			"maxHoldings",
+		);
+	});
+
+	test("候補は同じ市場の重ならない銘柄で、BTC/JPY 以外を含むなら注文量は金額。DVOL の条件は BTC/JPY だけ", () => {
+		const p = toSet(params());
+		expect(validateCandidates(p, [BTC_JPY])).toEqual([]);
+		expect(validateCandidates(p, []).map((e) => e.message)).toEqual([
+			"候補の銘柄を1つ以上選ぶ",
+		]);
+		expect(
+			validateCandidates(p, [BTC_JPY, BTC_JPY]).map((e) => e.message),
+		).toContain("同じ銘柄を2回選ばない");
+		expect(
+			validateCandidates(p, [BTC_JPY, ETH_JPY]).map((e) => e.message),
+		).toEqual(["銘柄ごとに価格と数量の単位が違うので、注文量を金額で入れる"]);
+		const amount = toSet(params({ orderAmount: 100_000 }));
+		expect(validateCandidates(amount, [BTC_JPY, ETH_JPY])).toEqual([]);
+		const dvol = toSet({
+			...params({ orderAmount: 100_000 }),
+			buy: {
+				match: "all",
+				conditions: [{ type: "dvol", threshold: 50, direction: "below" }],
+			},
+		});
+		expect(validateCandidates(dvol, [BTC_JPY])).toEqual([]);
+		expect(
+			validateCandidates(dvol, [BTC_JPY, XRP_JPY]).map((e) => e.message),
+		).toEqual([
+			"DVOL の条件は BTC/JPY の指標なので、候補を BTC/JPY だけにする",
 		]);
 	});
 });
