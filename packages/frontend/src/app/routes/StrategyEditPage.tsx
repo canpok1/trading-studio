@@ -227,7 +227,9 @@ export function StrategyEditPage() {
 					<BuyRulesEditor
 						{...editor}
 						latestPrice={state.data.latest}
-						instrument={instrumentOf(current.instruments[0] as string)}
+						instrument={instrumentOf(
+							(instruments[0] ?? current.instruments[0]) as string,
+						)}
 						instruments={instruments}
 					/>
 				</fieldset>

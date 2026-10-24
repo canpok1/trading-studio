@@ -584,6 +584,15 @@ describe("候補の銘柄", () => {
 		expect(value(view.getByLabelText("順位の本数"))).toBe("14");
 		expect(checked(view.getByRole("radio", { name: "低い順" }))).toBe(true);
 
+		// 順位を持たず候補の並び順で買うこともできる
+		fireEvent.change(view.getByLabelText("順位の指標"), {
+			target: { value: "" },
+		});
+		expect(view.queryByLabelText("順位の本数")).toBeNull();
+		await save(view);
+		view = await reopen(view);
+		expect(value(view.getByLabelText("順位の指標"))).toBe("");
+
 		toggle(view, "ETH");
 		toggle(view, "XRP");
 		expect(view.queryByLabelText("同時に持つ銘柄数")).toBeNull();

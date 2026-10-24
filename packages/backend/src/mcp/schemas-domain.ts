@@ -10,7 +10,10 @@ import {
 	TIMEFRAMES,
 } from "@trading-studio/core";
 import * as z from "zod";
-import { DEFAULT_INSTRUMENT } from "../market-data/instrument-domain";
+import {
+	COLLECTED_IDS,
+	DEFAULT_INSTRUMENT,
+} from "../market-data/instrument-domain";
 
 export const regimeSchema = z.enum(
 	MARKET_REGIMES as [MarketRegime, ...MarketRegime[]],
@@ -21,6 +24,9 @@ export const timeframeSchema = z.enum(
 );
 
 export const durationSchema = z.enum(DURATIONS);
+
+/** 候補の銘柄の id の並び。価格を集めている銘柄だけ */
+export const instrumentIdsSchema = z.array(z.enum(COLLECTED_IDS));
 
 /** DVOL の平均の日数。戦略の条件 DVOL（平均との比）と同じ範囲 */
 export const dvolAverageDaysSchema = z

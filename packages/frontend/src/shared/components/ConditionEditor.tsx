@@ -25,6 +25,7 @@ import type {
 import {
 	BTC_JPY,
 	buyRuleName,
+	COLLECTED_INSTRUMENTS,
 	CONDITION_GROUP_LABELS,
 	CONDITION_GROUPS,
 	DEFAULT_BUY_BELOW_PERCENT,
@@ -40,7 +41,6 @@ import {
 	formatAmount,
 	formatQuantity,
 	hasTimeframe,
-	INSTRUMENTS,
 	isAtrCondition,
 	JUDGE_LABELS,
 	JUDGES,
@@ -1998,10 +1998,10 @@ export function InstrumentsCard({
 		usesCondition(params, "dvol") || usesCondition(params, "dvolAverage");
 	const multi = instruments.length >= 2;
 	const toggle = (id: string) => {
-		const on = new Set(instruments);
-		if (on.has(id)) on.delete(id);
-		else on.add(id);
-		const next = INSTRUMENTS.filter((i) => on.has(i.id)).map((i) => i.id);
+		// 並びは順位が無いときの優先順なので、今の並びを崩さず後ろに足す
+		const next = instruments.includes(id)
+			? instruments.filter((x) => x !== id)
+			: [...instruments, id];
 		let p = params;
 		if (next.some((i) => i !== BTC_JPY.id)) {
 			p = {
@@ -2017,9 +2017,30 @@ export function InstrumentsCard({
 		}
 		onChange(p, next);
 	};
-	const r = params.ranking ?? DEFAULT_RANKING;
+	const r = params.ranking ?? null;
 	const setRanking = (next: Partial<Ranking>) =>
-		onChange({ ...params, ranking: { ...r, ...next } }, [...instruments]);
+		onChange({ ...params, ranking: { ...(r ?? DEFAULT_RANKING), ...next } }, [
+			...instruments,
+		]);
+	const indicatorSelect = (
+		<select
+			aria-label="順位の指標"
+			value={r?.indicator ?? ""}
+			onChange={(e) =>
+				e.target.value === ""
+					? onChange({ ...params, ranking: null }, [...instruments])
+					: setRanking({ indicator: e.target.value as RankingIndicator })
+			}
+			className={selectClass}
+		>
+			{RANKING_INDICATORS.map((x) => (
+				<option key={x} value={x}>
+					{RANKING_INDICATOR_LABELS[x]}
+				</option>
+			))}
+			<option value="">候補の並び順</option>
+		</select>
+	);
 	const maxErrs = errorsAt(errors, "maxHoldings");
 	const periodErrs = errorsAt(errors, "ranking");
 	return (
@@ -2028,7 +2049,7 @@ export function InstrumentsCard({
 			<div className="flex flex-col gap-2">
 				<span className="text-[13px] font-semibold">候補</span>
 				<fieldset aria-label="候補の銘柄" className="flex flex-wrap gap-2">
-					{INSTRUMENTS.map((i) => {
+					{COLLECTED_INSTRUMENTS.map((i) => {
 						const on = instruments.includes(i.id);
 						// 最後の1つは外せない。DVOL の条件がある間は BTC/JPY 以外を足せない
 						const disabled =
@@ -2084,54 +2105,52 @@ export function InstrumentsCard({
 						<span className="text-sm font-semibold">
 							買いが重なったときの順位
 						</span>
-						<div className="flex flex-wrap items-center gap-1.5 text-sm">
-							<TimeframeSelect
-								value={r.timeframe}
-								onChange={(timeframe) => setRanking({ timeframe })}
-								label="順位の足"
-							/>
-							<span>の</span>
-							<select
-								aria-label="順位の指標"
-								value={r.indicator}
-								onChange={(e) =>
-									setRanking({ indicator: e.target.value as RankingIndicator })
-								}
-								className={selectClass}
-							>
-								{RANKING_INDICATORS.map((x) => (
-									<option key={x} value={x}>
-										{RANKING_INDICATOR_LABELS[x]}
-									</option>
-								))}
-							</select>
-							<span className="flex items-center gap-1.5">
-								<NumberInput
-									value={r.period}
-									onChange={(period) => setRanking({ period })}
-									invalid={periodErrs.length > 0}
-									inputMode="numeric"
-									aria-label="順位の本数"
-									className="w-16"
+						{r ? (
+							<>
+								<div className="flex flex-wrap items-center gap-1.5 text-sm">
+									<TimeframeSelect
+										value={r.timeframe}
+										onChange={(timeframe) => setRanking({ timeframe })}
+										label="順位の足"
+									/>
+									<span>の</span>
+									{indicatorSelect}
+									<span className="flex items-center gap-1.5">
+										<NumberInput
+											value={r.period}
+											onChange={(period) => setRanking({ period })}
+											invalid={periodErrs.length > 0}
+											inputMode="numeric"
+											aria-label="順位の本数"
+											className="w-16"
+										/>
+										<span>本</span>
+									</span>
+								</div>
+								<Segmented
+									name="ranking-order"
+									label="順位の並び"
+									size="sm"
+									options={[
+										["desc", "高い順"],
+										["asc", "低い順"],
+									]}
+									value={r.order}
+									onChange={(order) => setRanking({ order })}
 								/>
-								<span>本</span>
-							</span>
-						</div>
-						<Segmented
-							name="ranking-order"
-							label="順位の並び"
-							size="sm"
-							options={[
-								["desc", "高い順"],
-								["asc", "低い順"],
-							]}
-							value={r.order}
-							onChange={(order) => setRanking({ order })}
-						/>
-						<ErrorText messages={periodErrs} />
-						<span className="text-xs text-text-2">
-							買いの条件が成り立った銘柄のうち、この順で上から上限まで買う
-						</span>
+								<ErrorText messages={periodErrs} />
+								<span className="text-xs text-text-2">
+									買いの条件が成り立った銘柄のうち、この順で上から上限まで買う
+								</span>
+							</>
+						) : (
+							<>
+								<div className="text-sm">{indicatorSelect}</div>
+								<span className="text-xs text-text-2">
+									買いの条件が成り立った銘柄のうち、候補のボタンを選んだ順で上から上限まで買う
+								</span>
+							</>
+						)}
 					</div>
 				</>
 			)}

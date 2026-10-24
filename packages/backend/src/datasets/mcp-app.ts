@@ -3,11 +3,8 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ConditionSet } from "@trading-studio/core";
 import * as z from "zod";
-import {
-	COLLECTED_IDS,
-	DEFAULT_INSTRUMENT,
-} from "../market-data/instrument-domain";
-import { feeSchema } from "../mcp/schemas-domain";
+import { DEFAULT_INSTRUMENT } from "../market-data/instrument-domain";
+import { feeSchema, instrumentIdsSchema } from "../mcp/schemas-domain";
 import type { ToolDeps } from "../mcp/tool-app";
 import { fail, paramsSchema, readOnly, text } from "../mcp/tool-app";
 import {
@@ -89,8 +86,7 @@ export function registerDatasetTools(
 				name: z.string().describe("バックテスト名（1〜40 文字）"),
 				strategyId: z.number().int().optional(),
 				params: paramsSchema.optional(),
-				instruments: z
-					.array(z.enum(COLLECTED_IDS))
+				instruments: instrumentIdsSchema
 					.optional()
 					.describe(
 						"候補の銘柄の id（ADR 0037）。並びは順位が無いときの優先順。省けば strategyId の戦略の候補、params なら BTC/JPY だけ",

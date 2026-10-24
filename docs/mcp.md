@@ -17,7 +17,7 @@ claude mcp add --transport http trading-studio https://<サーバー>/mcp
 | 道具 | 内容 |
 |---|---|
 | `get_guide` | 条件セット（戦略の params）の項目・単位・範囲とひな形の例 |
-| `list_strategies` `get_strategy` | 戦略の一覧・1件。条件は画面の文言と JSON の両方で返す。条件を変えられない理由（自動取引がオン・保有か未約定の注文がある）を `lock` で返す |
+| `list_strategies` `get_strategy` | 戦略の一覧・1件。条件は画面の文言と JSON の両方で返し、候補の銘柄の id（`instruments`）も返す。条件を変えられない理由（自動取引がオン・保有か未約定の注文がある）を `lock` で返す |
 | `create_strategy` | 条件セットから新しい戦略を保存する。`instruments` で候補の銘柄を渡せる（省くと BTC/JPY だけ） |
 | `update_strategy` | 戦略の条件を置き換える。`instruments` で候補の銘柄も置き換えられる（省くと今のまま）。`lock` がある戦略は変えられない |
 | `get_data_coverage` | 価格データの粒度ごとの範囲と欠損の数。`instrument` で銘柄を選ぶ（省くと BTC/JPY） |

@@ -2,7 +2,7 @@
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod";
-import { COLLECTED_IDS } from "../market-data/instrument-domain";
+import { instrumentIdsSchema } from "../mcp/schemas-domain";
 import type { ToolDeps } from "../mcp/tool-app";
 import { fail, paramsSchema, readOnly, text } from "../mcp/tool-app";
 import { strategyView } from "../mcp/views-domain";
@@ -10,7 +10,7 @@ import { conditionSetGuide } from "./guide-domain";
 import { parseParamsInput } from "./strategies-domain";
 import type { StrategyService } from "./types-domain";
 
-const instrumentsSchema = z.array(z.enum(COLLECTED_IDS)).optional();
+const instrumentsSchema = instrumentIdsSchema.optional();
 
 function strategyFailure(
 	e: Extract<ReturnType<StrategyService["create"]>, { ok: false }>["error"],
