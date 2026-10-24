@@ -77,6 +77,14 @@ import { slotAligned } from "./judgment-data";
 import type { PriceTag } from "./price-tags";
 import { PriceTags } from "./price-tags";
 
+export type InstrumentChoice = {
+	options: readonly { id: string; label: string }[];
+	value: string;
+	onChange: (id: string) => void;
+	/** 設定の銘柄の下に出す説明 */
+	hint?: string;
+};
+
 type Props = {
 	/** 足の銘柄。価格・出来高の桁と単位に使う。足も口座もまだ届いていなければ null（価格を出さない） */
 	instrument: Instrument | null;
@@ -103,6 +111,10 @@ type Props = {
 	toolbar?: ReactNode;
 	/** toolbar で選んでいるもの。設定はモーダルにしまうので、これを札で出す（足の粒度） */
 	toolbarLabel?: string;
+	/** 描く銘柄の切り替え。渡すと設定の先頭に置き、選んでいる銘柄を札の先頭に常に出す（ホーム・戦略の画面） */
+	instrumentChoice?: InstrumentChoice;
+	/** 設定の札の上に出すもの（戦略の候補外の銘柄を描いている旨） */
+	notice?: ReactNode;
 	/**
 	 * 包む要素をパネルにし、PC 幅では高く描く（ホーム・戦略の画面）
 	 */
@@ -309,6 +321,8 @@ export function PriceChart({
 	triggers: triggerProp,
 	toolbar,
 	toolbarLabel,
+	instrumentChoice,
+	notice,
 	compact = false,
 	latestNote,
 	headerExtra,
@@ -1363,6 +1377,30 @@ export function PriceChart({
 			</div>
 			{menuOpen && (
 				<Modal title="チャートの設定" onClose={() => setMenuOpen(false)}>
+					{instrumentChoice && (
+						<div className="flex flex-col gap-1.5">
+							<fieldset className="flex flex-wrap items-center gap-2">
+								<legend className="sr-only">描く銘柄</legend>
+								<span aria-hidden="true" className="text-xs text-text-2">
+									銘柄
+								</span>
+								{instrumentChoice.options.map((o) => (
+									<button
+										key={o.id}
+										type="button"
+										aria-pressed={o.id === instrumentChoice.value}
+										onClick={() => instrumentChoice.onChange(o.id)}
+										className={CHIP}
+									>
+										{o.label}
+									</button>
+								))}
+							</fieldset>
+							{instrumentChoice.hint && (
+								<p className="text-xs text-text-2">{instrumentChoice.hint}</p>
+							)}
+						</div>
+					)}
 					<div className="flex items-center gap-2">
 						<span className="text-xs text-text-2">足</span>
 						{toolbar}
@@ -1538,7 +1576,7 @@ export function PriceChart({
 		</div>
 	);
 	const zoomButtons = (
-		<div className="flex shrink-0 items-center justify-end gap-1.5">
+		<div className="ml-auto flex shrink-0 items-center justify-end gap-1.5">
 			<button
 				type="button"
 				aria-label="縮小"
@@ -1568,7 +1606,10 @@ export function PriceChart({
 			</button>
 		</div>
 	);
-	// 足・背景・表示はまとめて歯車のモーダルに入れ、普段は足と背景だけ札で出す
+	// 足・背景・表示はまとめて歯車のモーダルに入れ、普段は銘柄・足・背景だけ札で出す
+	const chosenInstrument = instrumentChoice?.options.find(
+		(o) => o.id === instrumentChoice.value,
+	)?.label;
 	const settingsChip = (
 		<button
 			type="button"
@@ -1576,6 +1617,11 @@ export function PriceChart({
 			onClick={() => setMenuOpen(true)}
 			className="flex min-w-0 items-center gap-1.5"
 		>
+			{chosenInstrument && (
+				<span data-testid="chart-instrument" className={TAG}>
+					{chosenInstrument}
+				</span>
+			)}
 			{toolbarLabel && <span className={TAG}>{toolbarLabel}</span>}
 			{judgments && (
 				<span className={TAG}>
@@ -1589,7 +1635,9 @@ export function PriceChart({
 	);
 	const chart = (
 		<>
-			<div className="flex items-center justify-between gap-2">
+			{notice}
+			{/* 札が増えてスマホ幅で入らないときは、−・＋・最新へ を次の行の右へ送る */}
+			<div className="flex flex-wrap items-center justify-between gap-2">
 				{settingsChip}
 				{zoomButtons}
 			</div>
