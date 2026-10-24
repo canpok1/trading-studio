@@ -8,7 +8,7 @@ import {
 	TIMEFRAMES,
 } from "@trading-studio/core";
 import type { DragEvent } from "react";
-import { useCallback, useId, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 import { Link } from "react-router";
 import { SegmentList } from "../../features/market-data/components/SegmentList";
 import { Help } from "../../shared/components/Help";
@@ -59,11 +59,22 @@ export function DataPage() {
 	const [instrument, setInstrument] = useState<string>(
 		(COLLECTED_INSTRUMENTS[0] as { id: string }).id,
 	);
-	const query = { instrument };
+	// 銘柄を切り替えた後に返った前の銘柄の読み込みで、取り込みを追い始めないため
+	const current = useRef(instrument);
+	current.current = instrument;
 	const symbol =
 		COLLECTED_INSTRUMENTS.find((i) => i.id === instrument)?.symbol ?? "";
 	const [timeframe, setTimeframe] = useState<Timeframe>("1m");
-	const [job, setJob] = useState<ImportJob | null>(null);
+	// 取り込みは送った銘柄で問い合わせる（backend は取り込みを銘柄で探すため）
+	const [tracked, setTracked] = useState<{
+		job: ImportJob;
+		query: { instrument: string };
+	} | null>(null);
+	const job = tracked?.job ?? null;
+	const setJob = (j: ImportJob) =>
+		setTracked((cur) => cur && { ...cur, job: j });
+	const [sending, setSending] = useState(false);
+	const busy = job !== null || sending;
 	const [failure, setFailure] = useState<{
 		fileName: string;
 		job: ImportJob | null;
@@ -84,14 +95,15 @@ export function DataPage() {
 		]);
 		// 画面を離れていた間に進んでいる取り込みがあれば、その進捗を追う
 		const running = imp.imports.find((j) => j.status === "running");
-		if (running) setJob((cur) => cur ?? running);
+		if (running && current.current === instrument)
+			setTracked((cur) => cur ?? { job: running, query: { instrument } });
 		return { coverage: cov.timeframes, imports: imp.imports };
 	}, [api, instrument]);
 	const { state, reload } = useAsync(load);
 
 	const settle = useCallback(
 		(j: ImportJob) => {
-			setJob(null);
+			setTracked(null);
 			if (j.status === "done") {
 				setNotice(
 					`${formatInt(j.insertedRows)} 行を取り込んだ${j.skippedRows ? `（同じ日時の ${formatInt(j.skippedRows)} 行は読み飛ばした）` : ""}`,
@@ -112,11 +124,11 @@ export function DataPage() {
 
 	useInterval(
 		async () => {
-			if (!job) return;
+			if (!tracked) return;
 			try {
 				const res = await api.api.data.imports[":id"].$get({
-					param: { id: String(job.id) },
-					query,
+					param: { id: String(tracked.job.id) },
+					query: tracked.query,
 				});
 				const { job: next } = await readJson<{ job: ImportJob }>(res);
 				if (next.status === "running") setJob(next);
@@ -132,42 +144,46 @@ export function DataPage() {
 	const upload = async (file: File) => {
 		setFailure(null);
 		setNotice(null);
+		setSending(true);
+		const sent = { instrument };
 		try {
 			const res = await api.api.data.imports.$post({
 				form: { file, timeframe, instrument },
 			});
 			const body = (await res.json()) as { job?: ImportJob; message?: string };
 			if (res.status === 409 && body.job) {
-				setJob(body.job);
+				setTracked({ job: body.job, query: sent });
 				setNotice(body.message ?? null);
 				return;
 			}
 			if (!res.ok || !body.job)
 				throw new Error(body.message ?? `HTTP ${res.status}`);
-			setJob(body.job);
+			setTracked({ job: body.job, query: sent });
 		} catch (e) {
 			setFailure({
 				fileName: file.name,
 				job: null,
 				message: `送信できなかった: ${errorMessage(e)}`,
 			});
+		} finally {
+			setSending(false);
 		}
 	};
 
 	const cancel = async () => {
-		if (!job) return;
+		if (!tracked) return;
 		await api.api.data.imports[":id"].cancel.$post({
-			param: { id: String(job.id) },
-			query,
+			param: { id: String(tracked.job.id) },
+			query: tracked.query,
 		});
 	};
 
 	const resolve = async (overwrite: boolean) => {
-		if (!job) return;
+		if (!tracked) return;
 		try {
 			const res = await api.api.data.imports[":id"].resolve.$post({
-				param: { id: String(job.id) },
-				query,
+				param: { id: String(tracked.job.id) },
+				query: tracked.query,
 				json: { overwrite },
 			});
 			const { job: next } = await readJson<{ job: ImportJob }>(res);
@@ -181,7 +197,7 @@ export function DataPage() {
 		e.preventDefault();
 		setDragging(false);
 		const file = e.dataTransfer.files[0];
-		if (file && !job) upload(file);
+		if (file && !busy) upload(file);
 	};
 
 	return (
@@ -212,7 +228,7 @@ export function DataPage() {
 					setNotice(null);
 					setFailure(null);
 				}}
-				disabled={job !== null}
+				disabled={busy}
 			/>
 			<section
 				aria-label="CSV の取り込み"
@@ -234,13 +250,13 @@ export function DataPage() {
 						options={TF_OPTIONS}
 						value={timeframe}
 						onChange={setTimeframe}
-						disabled={job !== null}
+						disabled={busy}
 						size="sm"
 					/>
 				</div>
 				<label
 					htmlFor={inputId}
-					aria-disabled={job !== null}
+					aria-disabled={busy}
 					className={`${buttonClass("primary")} cursor-pointer aria-disabled:pointer-events-none aria-disabled:opacity-45`}
 				>
 					{symbol} の{TIMEFRAME_LABELS[timeframe]}の CSV ファイルを選ぶ
@@ -250,7 +266,7 @@ export function DataPage() {
 					type="file"
 					accept=".csv,text/csv"
 					className="sr-only"
-					disabled={job !== null}
+					disabled={busy}
 					onChange={(e) => {
 						const file = e.target.files?.[0];
 						if (file) upload(file);

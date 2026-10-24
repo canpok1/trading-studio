@@ -55,9 +55,19 @@ describe("CSV の取り込み", () => {
 			.on(routes.api.data.imports, "$post", (_, reply) =>
 				reply(202, { job: importJob({ id: 1, timeframe: "1m" }) }),
 			)
-			.on(routes.api.data.imports[":id"], "$get", () => ({
-				job: importJob({ id: 1, status: "done", phase: null }),
-			}));
+			// 取り込みは銘柄で探すので、ほかの銘柄として問い合わせたら見つからない
+			.on(routes.api.data.imports[":id"], "$get", (req, reply) =>
+				req.query.get("instrument") === "coincheck:eth_jpy"
+					? reply(200, {
+							job: importJob({
+								id: 1,
+								status: "done",
+								phase: null,
+								insertedRows: 3,
+							}),
+						})
+					: reply(404, { message: "見つからない" }),
+			);
 		const view = renderApp("/data", api);
 		await view.findByText("取り込んだデータはまだ無い");
 		fireEvent.click(view.getByRole("radio", { name: "ETH" }));
@@ -66,19 +76,14 @@ describe("CSV の取り込み", () => {
 		).toBeTruthy();
 		expect(view.getByText("ETH/JPY の1分足の CSV ファイルを選ぶ")).toBeTruthy();
 		chooseFile(view, "eth.csv");
-		await view.findByRole("status", {}, WAIT);
+		// 進み具合をその銘柄で問い合わせたので終わりまで追える
+		expect(await view.findByText(/3 行を取り込んだ/, {}, WAIT)).toBeTruthy();
 		const sent = api.requests.find(
 			(r) => r.method === "POST" && r.path === "/api/data/imports",
 		);
 		expect(String(sent?.body)).toContain(
 			'name="instrument"\r\n\r\ncoincheck:eth_jpy',
 		);
-		// 進み具合もその銘柄で問い合わせる
-		expect(
-			api.requests
-				.filter((r) => r.path === "/api/data/imports/1")
-				.every((r) => r.query.get("instrument") === "coincheck:eth_jpy"),
-		).toBe(true);
 	});
 
 	test("選んだ粒度で CSV を送り、終わると件数と取り込み済みの期間が出る", async () => {
