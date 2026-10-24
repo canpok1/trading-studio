@@ -40,6 +40,8 @@ export type OrderFilter = {
 	strategyId?: number;
 	status?: TradeOrder["status"];
 	side?: TradeOrder["side"];
+	/** 銘柄の id */
+	instrument?: string;
 };
 
 export type OrderSummary = {
@@ -64,13 +66,27 @@ export type StoredDecision = {
 export type TradingAccountView = {
 	initialCash: number;
 	cash: number;
+	/** 候補の先頭の銘柄の保有 */
+	position: Position;
+	/** 候補の先頭の銘柄の保有中のロット（買いの約定順） */
+	lots: Lot[];
+	/** 全銘柄の未約定の注文の数 */
+	openOrderCount: number;
+	resetAt: number;
+	/** 現金と保有（全銘柄）を今の価格で評価した資産（手数料は含めない）。保有があって価格が分からない銘柄があれば null */
+	equity: number | null;
+	/** 候補の銘柄ごとの保有（候補の並び順） */
+	holdings: HoldingView[];
+};
+
+export type HoldingView = {
+	/** 銘柄の id */
+	instrument: string;
 	position: Position;
 	/** 保有中のロット（買いの約定順） */
 	lots: Lot[];
-	openOrderCount: number;
-	resetAt: number;
-	/** 現金と保有を今の価格で評価した資産（手数料は含めない）。保有があって価格が分からなければ null */
-	equity: number | null;
+	/** 資産の評価に使う今の価格。分からなければ null */
+	price: number | null;
 };
 
 /** 口座をリセットした時点以降の成績。指標の意味はバックテストの成績（core の BacktestSummary）と同じ */
@@ -78,15 +94,19 @@ export type TradingPerformance = {
 	resetAt: number;
 	initialCash: number;
 	cash: number;
+	/** 候補の先頭の銘柄の保有 */
 	position: Position;
-	/** 評価に使った今の価格。分からなければ null */
+	/** 候補の先頭の銘柄の、評価に使った今の価格。分からなければ null */
 	price: number | null;
-	/** 現金と保有を今の価格で評価した資産。保有があって価格が分からなければ null */
+	/** 現金と保有（全銘柄）を今の価格で評価した資産。保有があって価格が分からない銘柄があれば null */
 	equity: number | null;
 	/** 開始時の資金からの損益（保有の評価を含む） */
 	pnl: number | null;
 	pnlPercent: number | null;
-	/** リセットした時点で買って今まで持っていた場合（ガチホ）の損益率（%、手数料は含めない）。価格が分からなければ null */
+	/**
+	 * リセットした時点で買って今まで持っていた場合（ガチホ）の損益率（%、手数料は含めない）。価格が分からなければ null。
+	 * 候補が2つ以上なら、価格の分かる銘柄に等分して持っていた場合
+	 */
 	buyHoldPercent: number | null;
 	/** 確定した損益（往復の手数料込みの損益の合計） */
 	realizedPnl: number;
@@ -101,7 +121,21 @@ export type TradingPerformance = {
 	maxDrawdownFrom: number | null;
 	maxDrawdownTo: number | null;
 	averageHoldingMs: number | null;
+	/** 銘柄ごとの往復の成績（ADR 0037）。候補が2つ以上の戦略だけ持つ。銘柄の id ごと、候補の並び順 */
+	byInstrument?: Record<string, RoundTripStats>;
 };
+
+/** 往復の成績。指標の意味は TradingPerformance と同じ */
+export type RoundTripStats = Pick<
+	TradingPerformance,
+	| "realizedPnl"
+	| "trades"
+	| "wins"
+	| "losses"
+	| "winRate"
+	| "profitFactor"
+	| "averageHoldingMs"
+>;
 
 /** 戦略1つの自動取引の状態 */
 export type AutoTradingStatus = {
@@ -111,8 +145,10 @@ export type AutoTradingStatus = {
 	accountId: number;
 	/** 戦略の名前 */
 	name: string;
-	/** 売買する銘柄 */
+	/** 候補の先頭の銘柄。候補が1つならその銘柄だけを売買する */
 	instrument: Instrument;
+	/** 候補の銘柄（ADR 0037。戦略の並び順） */
+	instruments: Instrument[];
 	enabled: boolean;
 	mode: TradingMode;
 	/** 次の判定時刻。オフなら、今オンにしたときの最初の判定時刻 */
@@ -120,7 +156,7 @@ export type AutoTradingStatus = {
 	startedAt: number | null;
 	/** 口座をリセットしてから一度でもオンにした。戦略の一覧の「まだ動かしていない」に使う */
 	ranSinceReset: boolean;
-	/** 価格の収集が止まっていて判定を待っている */
+	/** 候補のどれかの価格の収集が止まっていて、その銘柄の判定を待っている */
 	waitingForMarket: boolean;
 	/** 今日（JST）の確定損失（円、損が無ければ 0）と、戦略の1日の損失上限。上限に達していれば新しい買いを止めている */
 	dailyLoss: { loss: number; limit: number | null; blocked: boolean };
@@ -139,12 +175,14 @@ export type StrategySummary = {
 	status: AutoTradingStatus;
 	/** 口座のリセット以降の成績 */
 	performance: TradingPerformance | null;
-	/** 次の動き（行動ごとのきっかけ。優先度の高い順）。価格がまだ無ければ null */
+	/** 次の動き（行動ごとのきっかけ。優先度の高い順）。候補の先頭の銘柄の価格がまだ無ければ null */
 	nextMoves: {
 		price: number;
 		moves: WatchMove[];
 		/** 買いが2つ以上。売買の種類に買いの名前を添える */
 		multiBuy: boolean;
+		/** 候補が2つ以上の戦略だけ持つ。銘柄ごとの次の動き（候補の並び順。価格が無い銘柄は除く）。price と moves は候補の先頭のもの */
+		markets?: { instrument: string; price: number; moves: WatchMove[] }[];
 	} | null;
 };
 
@@ -170,10 +208,12 @@ export interface TradingService {
 	run(strategyId: number): AutoTradingStatus | null;
 	/**
 	 * 戦略を今の価格で試算した見張り（条件ごとの成立と発動価格）。注文も state の変更もしない。
-	 * 戦略が無ければ null、価格がまだ無ければ watch が null。instrument は見張る銘柄
+	 * 戦略が無いか、instrument（銘柄の id。省くと候補の先頭）が候補に無ければ null。価格がまだ無ければ watch が null。
+	 * 返す instrument は見張る銘柄
 	 */
 	watch(
 		strategyId: number,
+		instrument?: string,
 	): { instrument: Instrument; watch: StrategyWatch | null } | null;
 	/** ホームのカードに出す戦略（デモで、オンか、オフでも保有か未約定の注文がある）の要約。作った順 */
 	summaries(): StrategySummary[];

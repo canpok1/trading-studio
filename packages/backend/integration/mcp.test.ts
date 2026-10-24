@@ -3,9 +3,11 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Candle, SingleBuyConditionSet } from "@trading-studio/core";
 import {
+	BTC_JPY,
 	DEFAULT_AGGREGATION_RULE,
 	DEFAULT_BUY_ORDER,
 	DEFAULT_PARTIAL_SELL,
+	ETH_JPY,
 	singleBuy,
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
@@ -403,7 +405,7 @@ describe("MCP", () => {
 		t.clock.now = T0 + M;
 		t.trading.tick();
 		t.live.current = { ...t.live.current, latestTrade: trade(2, P) };
-		t.trading.onTrades([trade(2, P)]);
+		t.trading.onTrades(BTC_JPY.id, [trade(2, P)]);
 		t.live.current = { ...t.live.current, latestTrade: trade(3, P + 50_000) };
 
 		const runs = (await call("list_auto_trading")).json as {
@@ -496,6 +498,104 @@ describe("MCP", () => {
 				{ time: jst(T0 - M) },
 			],
 		});
+	});
+
+	test("候補が2つ以上の戦略は、保有・次の動き・注文に銘柄を付けて返し、銘柄で絞れる", async () => {
+		const { t, call } = await setup();
+		const M = TIMEFRAME_MS["1m"];
+		const T0 = 1_800_000_000_000;
+		const prices = { [BTC_JPY.id]: 10_000_000, [ETH_JPY.id]: 500_000 };
+		t.clock.now = T0 + 30_000;
+		for (const [id, p] of Object.entries(prices)) {
+			t.repoOf(id).upsertCollected(
+				Array.from({ length: 5 }, (_, i) => ({
+					time: T0 - (5 - i) * M,
+					open: p,
+					high: p,
+					low: p,
+					close: p,
+					volume: 0,
+				})),
+			);
+			const live = t.liveOf(id);
+			live.current = {
+				...live.current,
+				latestTrade: { id: 1, time: t.clock.now, price: p, quantity: 1 },
+			};
+		}
+		const created = await call("create_strategy", {
+			name: "2銘柄",
+			instruments: [BTC_JPY.id, ETH_JPY.id],
+			params: {
+				...PARAMS,
+				orderAmount: 100_000,
+				maxHoldings: 2,
+				frequency: {
+					flat: { value: 1, unit: "m" },
+					holding: { value: 1, unit: "m" },
+				},
+				buy: {
+					match: "all",
+					conditions: [
+						{ type: "judgment", judge: "sentiment", values: ["none"] },
+					],
+				},
+				buyOrder: { type: "market" },
+			},
+		});
+		const strategyId = (created.json as { id: number }).id;
+		expect(t.trading.start(strategyId).ok).toBe(true);
+		t.clock.now = T0 + M;
+		t.trading.tick();
+		t.trading.onTrades(ETH_JPY.id, [
+			{
+				id: 2,
+				time: t.clock.now,
+				price: prices[ETH_JPY.id] as number,
+				quantity: 1,
+			},
+		]);
+
+		const runs = (await call("list_auto_trading")).json as Record<
+			string,
+			unknown
+		>[];
+		expect(runs[0]).toMatchObject({
+			instruments: [BTC_JPY.id, ETH_JPY.id],
+			account: {
+				holdings: [
+					{ instrument: BTC_JPY.id, lots: [] },
+					{ instrument: ETH_JPY.id, lots: [{ quantity: 20_000 }] },
+				],
+			},
+		});
+		const home = (await call("list_home_strategies")).json as {
+			nextMoves: { instrument: string }[];
+		}[];
+		expect(new Set(home[0]?.nextMoves.map((m) => m.instrument))).toEqual(
+			new Set([BTC_JPY.id, ETH_JPY.id]),
+		);
+		const eth = await call("list_trading_orders", {
+			strategyId,
+			instrument: ETH_JPY.id,
+		});
+		expect(eth.json).toMatchObject({
+			total: 1,
+			orders: [{ instrument: ETH_JPY.id, status: "filled" }],
+		});
+		const watch = await call("get_strategy_watch", {
+			strategyId,
+			instrument: ETH_JPY.id,
+		});
+		expect(watch.json).toMatchObject({ price: prices[ETH_JPY.id] });
+		expect(
+			(
+				await call("get_strategy_watch", {
+					strategyId,
+					instrument: "coincheck:xrp_jpy",
+				})
+			).isError,
+		).toBe(true);
 	});
 
 	test("get_dvol_bars は期間の新しいほうから limit 本を、JST の時刻と年率 % で古い順に返す", async () => {

@@ -46,6 +46,7 @@ export function tradingRun(
 	return {
 		accountId: over.id,
 		instrument: BTC_JPY,
+		instruments: [BTC_JPY],
 		enabled: false,
 		mode: "paper",
 		nextEvalAt: null,
@@ -61,6 +62,14 @@ export function tradingRun(
 			openOrderCount: 0,
 			resetAt: 0,
 			equity: 1_000_000,
+			holdings: [
+				{
+					instrument: BTC_JPY.id,
+					position: { quantity: 0, entryPrice: null, openedAt: null },
+					lots: [],
+					price: null,
+				},
+			],
 		},
 		strategyLock: null,
 		...over,

@@ -68,10 +68,11 @@ export function tradingRoutes(service: TradingService) {
 				),
 		)
 		.get("/strategies/:id/watch", (c) => {
-			const r = service.watch(strategyId(c));
+			// 銘柄は省ける。クエリの検査を足すとクライアントの型が変わるので直接読む
+			const r = service.watch(strategyId(c), c.req.query("instrument"));
 			return r
 				? c.json(r, 200)
-				: c.json({ message: "戦略が見つからない" }, 404);
+				: c.json({ message: "戦略か銘柄が見つからない" }, 404);
 		})
 		.get("/strategies/:id/performance", (c) => {
 			const performance = service.performance(strategyId(c));
@@ -95,6 +96,9 @@ export function tradingRoutes(service: TradingService) {
 					filter.status = q.status;
 				}
 				if (q.side === "buy" || q.side === "sell") filter.side = q.side;
+				if (typeof q.instrument === "string" && q.instrument !== "") {
+					filter.instrument = q.instrument;
+				}
 				// クエリの型は検査後の値から決まるので、件数は文字列のまま渡す
 				const out: OrderFilter & { limit?: string } = filter;
 				if (typeof q.limit === "string") out.limit = q.limit;

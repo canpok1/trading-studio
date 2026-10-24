@@ -142,6 +142,10 @@ function orderWhere(filter: RunOrderFilter): {
 		where.push("side = ?");
 		args.push(filter.side);
 	}
+	if (filter.instrument) {
+		where.push("instrument = ?");
+		args.push(filter.instrument);
+	}
 	return { where: where.length ? `where ${where.join(" and ")}` : "", args };
 }
 
@@ -267,7 +271,7 @@ export class SqliteTradingRepository implements TradingRepository {
 		);
 		for (const o of orders) {
 			stmt.run(
-				origin.instrument,
+				o.instrument ?? origin.instrument,
 				run.id,
 				run.mode,
 				o.id,

@@ -1,4 +1,4 @@
-// 自動取引で売買する銘柄（#280 までは BTC/JPY だけ）と、価格を収集する銘柄
+// 既定の銘柄（口座の先頭の銘柄・候補を省いたときの銘柄）と、価格を収集する銘柄
 import { BTC_JPY, COLLECTED_INSTRUMENTS } from "@trading-studio/core";
 
 export const DEFAULT_INSTRUMENT = BTC_JPY;
