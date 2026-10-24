@@ -117,7 +117,7 @@ export function inferExitKind(
 /** 判断の記録。評価のたびに1件 */
 export type DecisionLog = {
 	time: number;
-	/** 判定した銘柄の id。銘柄を持つ前の記録には無い */
+	/** 判定した銘柄の id。1銘柄の口座と銘柄を持つ前の記録には無い */
 	instrument?: string;
 	/** 判定時の現在値 */
 	price: number;
@@ -311,9 +311,18 @@ function cancelRecord(
 	};
 }
 
+/** 口座のロット・注文がその銘柄のものか。銘柄を持たないものは先頭の銘柄（first）として読む */
+function ofInstrument(
+	x: { instrument?: string },
+	id: string,
+	first: string,
+): boolean {
+	return (x.instrument ?? first) === id;
+}
+
 /**
  * 約定の反映。fillPrice が未約定の注文ごとに約定価格（約定しなければ null）を返す。
- * ほかの銘柄の注文はそのまま残す（銘柄を持たない注文はこの銘柄として扱う）。
+ * ほかの銘柄の注文はそのまま残す。first は口座の先頭の銘柄で、銘柄を持たない注文をその銘柄として読む。
  * 成行の買いは約定価格が発注後に決まるため、約定の時点で手数料込みの額が現金に足りなければ取り消す（全モード共通）
  */
 export function settleFills(
@@ -323,6 +332,7 @@ export function settleFills(
 	fees: FeeRates,
 	instrument: Instrument,
 	calendar: TradingCalendar = marketOf(instrument).calendar,
+	first: string = instrument.id,
 ): StepChanges & { account: Account; filled: boolean } {
 	let { cash, lots, today } = account;
 	const changed: TradeOrder[] = [];
@@ -335,10 +345,9 @@ export function settleFills(
 	}
 	for (const item of account.openOrders) {
 		const { order } = item;
-		const price =
-			(order.instrument ?? instrument.id) === instrument.id
-				? fillPrice(order)
-				: null;
+		const price = ofInstrument(order, instrument.id, first)
+			? fillPrice(order)
+			: null;
 		if (price === null) {
 			remaining.push(item);
 			continue;
@@ -553,15 +562,6 @@ export type DecideAllOutput = StepChanges & {
 	account: Account;
 	results: MarketDecision[];
 };
-
-/** 口座のロット・注文がその銘柄のものか。銘柄を持たない保存済みのものは先頭の銘柄として読む */
-function ofInstrument(
-	x: { instrument?: string },
-	id: string,
-	first: string,
-): boolean {
-	return (x.instrument ?? first) === id;
-}
 
 /** 戦略の評価と注文の作成（1銘柄） */
 export function decide<P>(input: DecideInput<P>): DecideOutput {

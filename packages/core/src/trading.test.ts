@@ -435,6 +435,8 @@ describe("複数銘柄の資金配分", () => {
 			expect(out.results[1]?.decision.note).toContain(
 				"未約定の買い 100,100 円を除くと",
 			);
+			// 同じ入力なら同じ結果
+			expect(run(order, newAccount(150_000))).toEqual(out);
 		}
 	});
 
