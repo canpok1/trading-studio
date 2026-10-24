@@ -67,7 +67,7 @@ const ICON_CLASS: Record<TriggerView["icon"], string> = {
 };
 
 /**
- * 次の動き1行。「一部利確 ↑ +10.00%待ち」。種類を先に置き、入らなければきっかけを次の行へ折り返す。
+ * 次の動き1行。「一部利確 ↑ +10.00%待ち」（ホームは先頭に銘柄「BTC」）。種類を先に置き、入らなければきっかけを次の行へ折り返す。
  * detailed（戦略の画面）なら円の差・今の値も添える（「+10.00%（+1,000,000 円）待ち」）。買いが2つ以上なら種類に買いの名前を添える
  */
 export function MoveRow({
@@ -78,6 +78,7 @@ export function MoveRow({
 	detailed,
 	nameClass,
 	tag,
+	triggerClass = "",
 }: {
 	move: WatchMove;
 	instrument: Instrument;
@@ -85,20 +86,24 @@ export function MoveRow({
 	multi: boolean;
 	detailed: boolean;
 	nameClass?: string;
-	/** 候補が2つ以上の戦略で、どの銘柄の動きかを添える */
+	/** どの銘柄の動きか。行の先頭に置く */
 	tag?: string;
+	triggerClass?: string;
 }) {
 	const t = triggerView(move.trigger, price, instrument);
 	return (
 		<span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-			<KindBadge
-				kind={move.kind}
-				buyName={move.buyName}
-				multi={multi}
-				nameClass={nameClass}
-			/>
-			{tag && <span className="font-semibold">{tag}</span>}
-			<span className="flex items-baseline gap-x-0.5">
+			{/* 銘柄を種類から離して1行に残さないよう、長い買いの名前はバッジの中で折り返す */}
+			<span className="flex min-w-0 items-baseline gap-x-1.5">
+				{tag && <span className="shrink-0 font-semibold">{tag}</span>}
+				<KindBadge
+					kind={move.kind}
+					buyName={move.buyName}
+					multi={multi}
+					nameClass={nameClass}
+				/>
+			</span>
+			<span className={`flex items-baseline gap-x-0.5 ${triggerClass}`}>
 				<span aria-hidden className={ICON_CLASS[t.icon]}>
 					{t.icon}
 				</span>

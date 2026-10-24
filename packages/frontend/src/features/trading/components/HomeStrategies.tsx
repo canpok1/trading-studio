@@ -337,8 +337,11 @@ function StrategyCard({
 	);
 }
 
-/** スマホ幅の2列では、種類のバッジから買いの名前を外して1行に収める（名前は1列・戦略の画面で見る） */
+/** スマホ幅の2列では、種類のバッジから買いの名前を外して銘柄と同じ1行に収める（名前は1列・戦略の画面で見る） */
 const NARROW_HIDDEN = "hidden lg:inline";
+
+/** スマホ幅の2列では、きっかけを常に2行目に置く。銘柄を足すとほぼ全行が入らず、行ごとに1行・2行が混ざるより揃える */
+const NARROW_STACKED = "basis-full lg:basis-auto";
 
 /** カードに出す次の動きの数。全部は戦略の画面で見る */
 const CARD_MOVES = 2;
@@ -378,7 +381,8 @@ function CardMoves({
 					multi={n.multiBuy}
 					detailed={false}
 					nameClass={list ? "" : NARROW_HIDDEN}
-					tag={n.markets ? instrument.quantityUnit : undefined}
+					tag={instrument.quantityUnit}
+					triggerClass={list ? "" : NARROW_STACKED}
 				/>
 			))}
 			{s.status.enabled && moves.length === 0 && (

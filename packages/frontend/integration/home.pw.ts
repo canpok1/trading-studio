@@ -94,7 +94,7 @@ test("次の動きは優先度の高い上位2つだけ出し、オフの戦略�
 	await expect(cards.nth(2)).not.toContainText("一部利確");
 });
 
-test("買いが2つ以上なら種類に買いの名前を添え、スマホの2列だけは外して1行に収める", async ({
+test("買いが2つ以上なら種類に買いの名前を添え、スマホの2列だけは外して銘柄と種類を1行目・きっかけを2行目に置く", async ({
 	page,
 	api,
 	isMobile,
@@ -116,14 +116,16 @@ test("買いが2つ以上なら種類に買いの名前を添え、スマホの2
 	const badge = card.getByText("「押し目」");
 	if (isMobile) {
 		await expect(badge).toBeHidden();
-		const [kind, trigger] = await Promise.all([
+		const [tag, kind, trigger] = await Promise.all([
+			card.getByText("BTC", { exact: true }).boundingBox(),
 			badge.locator("..").boundingBox(),
 			card.getByText("+2.20%待ち").boundingBox(),
 		]);
-		if (!kind || !trigger) throw new Error("見つからない");
+		if (!tag || !kind || !trigger) throw new Error("見つからない");
 		expect(
-			Math.abs(kind.y + kind.height / 2 - (trigger.y + trigger.height / 2)),
+			Math.abs(tag.y + tag.height / 2 - (kind.y + kind.height / 2)),
 		).toBeLessThan(4);
+		expect(trigger.y).toBeGreaterThanOrEqual(kind.y + kind.height);
 		await page.getByRole("button", { name: "1列" }).click();
 	}
 	await expect(badge).toBeVisible();
