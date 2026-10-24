@@ -27,10 +27,12 @@ import {
 	recentMs as recentMsOf,
 	rsiLines as rsiLinesOf,
 	singleBuy,
+	usableIn,
 	validateConditionSet as validateConditionSetOf,
 } from "./condition-strategy";
 import type { EventCalendar } from "./event-calendar";
-import { BTC_JPY } from "./instrument";
+import type { Market } from "./instrument";
+import { BTC_JPY, COINCHECK } from "./instrument";
 import type { StrategyInput } from "./strategy";
 import type { TemplateId } from "./templates";
 import {
@@ -73,7 +75,7 @@ const recentMs = (p: Flat) => recentMsOf(toSet(p));
 const dvolMs = (p: Flat) => dvolMsOf(toSet(p));
 const rsiLines = (p: Flat) => rsiLinesOf(toSet(p));
 const validateConditionSet = (p: Flat | ConditionSet, limits?: Limits) =>
-	validateConditionSetOf(toSet(p), limits).map((e) => ({
+	validateConditionSetOf(toSet(p), COINCHECK, limits).map((e) => ({
 		...e,
 		path: e.path.replace(/^buys\.0\./, ""),
 	}));
@@ -2366,7 +2368,7 @@ describe("複数の買い", () => {
 	});
 
 	test("入力検証: 買いは1〜5個、名前は1〜20文字で重ならない、項目のパスは買いの番号から", () => {
-		const errs = (p: ConditionSet) => validateConditionSetOf(p);
+		const errs = (p: ConditionSet) => validateConditionSetOf(p, COINCHECK);
 		expect(errs(set(rule("b1", "押し目"), rule("b2", "突破")))).toEqual([]);
 		expect(errs(set())).toContainEqual({
 			path: "buys",
@@ -2951,5 +2953,63 @@ describe("金額での注文量", () => {
 		expect(
 			parseConditionSet(params({ orderAmount: 100_000 })),
 		).not.toHaveProperty("orderAmount");
+	});
+});
+
+describe("市場に紐づく材料の条件", () => {
+	const judgment: Condition = {
+		type: "judgment",
+		judge: "sentiment",
+		values: ["0"],
+	};
+	const dvol: Condition = { type: "dvol", threshold: 50, direction: "below" };
+	const dvolAverage: Condition = {
+		type: "dvolAverage",
+		days: 1,
+		percent: 10,
+		direction: "below",
+	};
+	const events: Condition = {
+		type: "eventWindow",
+		minImportance: "high",
+		beforeHours: 2,
+		afterHours: 24,
+		allowNoCalendar: false,
+	};
+	const noSignals: Market = { ...COINCHECK, id: "other", signals: [] };
+	const errs = (market: Market, ...cs: Condition[]) =>
+		validateConditionSetOf(toSet(buyWith(...cs)), market)
+			.map((e) => e.path)
+			.filter((p) => p.startsWith("buys.0.buy."));
+
+	test("BTC/JPY の市場では市場評価・DVOL・予定の条件を使える", () => {
+		for (const c of [judgment, dvol, dvolAverage, events]) {
+			expect(usableIn(COINCHECK, c.type)).toBe(true);
+		}
+		expect(errs(COINCHECK, judgment, dvol, dvolAverage, events)).toEqual([]);
+	});
+
+	test("材料の紐づかない市場では使えず、価格の条件だけ使える", () => {
+		for (const c of [judgment, dvol, dvolAverage, events]) {
+			expect(usableIn(noSignals, c.type)).toBe(false);
+		}
+		expect(usableIn(noSignals, "breakout")).toBe(true);
+		expect(errs(noSignals, judgment, dvol, dvolAverage, events)).toEqual([
+			"buys.0.buy.conditions.0",
+			"buys.0.buy.conditions.1",
+			"buys.0.buy.conditions.2",
+			"buys.0.buy.conditions.3",
+		]);
+		expect(
+			validateConditionSetOf(toSet(buyWith(judgment)), noSignals)[0]?.message,
+		).toBe("Coincheck の戦略では使えない");
+	});
+
+	test("材料の一部だけ紐づく市場では、その材料の条件だけ使える", () => {
+		const dvolOnly: Market = { ...noSignals, signals: ["dvol"] };
+		expect(errs(dvolOnly, judgment, dvol, dvolAverage, events)).toEqual([
+			"buys.0.buy.conditions.0",
+			"buys.0.buy.conditions.3",
+		]);
 	});
 });

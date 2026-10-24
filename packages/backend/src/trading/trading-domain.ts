@@ -554,7 +554,7 @@ export function createTradingService({
 					`自動取引できるのは ${marketData.instrument.symbol} の1銘柄だけ`,
 				);
 			}
-			const errors = validateConditionSet(s.params, RUN_LIMITS);
+			const errors = validateConditionSet(s.params, tradedMarket, RUN_LIMITS);
 			if (errors.length > 0) {
 				return {
 					ok: false,

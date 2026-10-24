@@ -7,12 +7,14 @@ import type {
 	Condition,
 	ConditionGroupKey,
 	ConditionSet,
+	ConditionType,
 	EventImportance,
 	FrequencyUnit,
 	Instrument,
 	Judge,
 	JudgmentConditionValue,
 	JudgmentValue,
+	Market,
 	OrderType,
 	PartialSell,
 	Timeframe,
@@ -39,12 +41,14 @@ import {
 	JUDGMENT_CONDITION_VALUES,
 	JUDGMENT_VALUE_LABELS,
 	LIMITS,
+	marketOf,
 	newBuyRuleId,
 	ORDER_TYPE_LABELS,
 	partialSellQuantity,
 	quantityScale,
 	TIMEFRAME_LABELS,
 	TIMEFRAMES,
+	usableIn,
 } from "@trading-studio/core";
 import type { ReactNode } from "react";
 import { useId, useState } from "react";
@@ -396,6 +400,9 @@ type ConditionKind =
 	| Exclude<Condition["type"], "judgment" | "dvolAverage">
 	| `judgment:${Judge}`;
 
+const kindType = (k: ConditionKind): ConditionType =>
+	k.startsWith("judgment:") ? "judgment" : (k as ConditionType);
+
 const CONDITION_NAMES: Record<ConditionKind, string> = {
 	emaCross: "EMA のクロス",
 	emaPosition: "終値と EMA の位置",
@@ -458,6 +465,26 @@ const EVENT_KINDS: Record<ConditionGroupKey, ConditionKind[]> = {
 	takeProfit: [],
 	stopLoss: [],
 };
+
+/** 条件を足すときの選択肢。見出しごとの種類で、その市場の戦略で使えない種類と空の見出しは外す */
+export function conditionMenu(
+	group: ConditionGroupKey,
+	market: Market,
+): [title: string, kinds: ConditionKind[]][] {
+	return (
+		[
+			["価格・保有", PRICE_KINDS[group]],
+			["市場評価", JUDGMENT_KINDS],
+			["ボラティリティ", VOLATILITY_KINDS],
+			["予定", EVENT_KINDS[group]],
+		] as const
+	)
+		.map(([title, kinds]): [string, ConditionKind[]] => [
+			title,
+			kinds.filter((k) => usableIn(market, kindType(k))),
+		])
+		.filter(([, kinds]) => kinds.length > 0);
+}
 
 /** 判定の条件の既定値。売りでは悪い側を選んでおく */
 const JUDGMENT_DEFAULTS: {
@@ -1622,42 +1649,33 @@ function RuleGroups({
 					title={`${labelPrefix}${CONDITION_GROUP_LABELS[adding]}を追加`}
 					onClose={() => setAdding(null)}
 				>
-					{(
-						[
-							["価格・保有", PRICE_KINDS[adding]],
-							["市場評価", JUDGMENT_KINDS],
-							["ボラティリティ", VOLATILITY_KINDS],
-							["予定", EVENT_KINDS[adding]],
-						] as const
-					)
-						.filter(([, kinds]) => kinds.length > 0)
-						.map(([title, kinds]) => (
-							<div key={title} className="flex flex-col gap-1.5">
-								<span className="text-xs text-text-2">{title}</span>
-								<div className="overflow-hidden rounded-xl border border-line">
-									{kinds.map((t) => (
-										<button
-											key={t}
-											type="button"
-											className="flex w-full border-b border-line px-4 py-3.5 text-left text-[15px] last:border-b-0 hover:bg-surface-2"
-											onClick={() => {
-												const group = params[adding];
-												setGroup(adding, {
-													...group,
-													conditions: [
-														...group.conditions,
-														defaultCondition(t, adding),
-													],
-												});
-												setAdding(null);
-											}}
-										>
-											{CONDITION_NAMES[t]}
-										</button>
-									))}
-								</div>
+					{conditionMenu(adding, marketOf(instrument)).map(([title, kinds]) => (
+						<div key={title} className="flex flex-col gap-1.5">
+							<span className="text-xs text-text-2">{title}</span>
+							<div className="overflow-hidden rounded-xl border border-line">
+								{kinds.map((t) => (
+									<button
+										key={t}
+										type="button"
+										className="flex w-full border-b border-line px-4 py-3.5 text-left text-[15px] last:border-b-0 hover:bg-surface-2"
+										onClick={() => {
+											const group = params[adding];
+											setGroup(adding, {
+												...group,
+												conditions: [
+													...group.conditions,
+													defaultCondition(t, adding),
+												],
+											});
+											setAdding(null);
+										}}
+									>
+										{CONDITION_NAMES[t]}
+									</button>
+								))}
 							</div>
-						))}
+						</div>
+					))}
 					<Button onClick={() => setAdding(null)}>やめる</Button>
 				</Modal>
 			)}

@@ -11,6 +11,9 @@ export type Currency = {
 	decimals: number;
 };
 
+/** 市場に紐づく判断の材料。ニュースの市場評価・DVOL・予定イベント */
+export type MarketSignal = "judgment" | "dvol" | "events";
+
 /** 市場。1つの戦略は1つの市場だけを扱う */
 export type Market = {
 	/** 保存するデータで市場を指す */
@@ -22,6 +25,8 @@ export type Market = {
 	calendar: TradingCalendar;
 	/** 値幅制限。基準の価格（前日の終値）から上下に動ける幅。制限が無ければ null */
 	priceLimit: ((basePrice: number) => number) | null;
+	/** この市場の戦略が条件に使える材料 */
+	signals: readonly MarketSignal[];
 };
 
 export type Instrument = {
@@ -55,6 +60,8 @@ export const COINCHECK: Market = {
 	timeZone: "Asia/Tokyo",
 	calendar: alwaysOpenCalendar(9 * 3_600_000),
 	priceLimit: null,
+	// 中身は BTC 専用（ADR 0036）
+	signals: ["judgment", "dvol", "events"],
 };
 
 export const BTC_JPY: Instrument = {

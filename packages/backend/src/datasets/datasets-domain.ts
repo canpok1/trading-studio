@@ -4,6 +4,7 @@ import type { DatasetMember } from "@trading-studio/core";
 import {
 	eventWindowHours,
 	MAX_DATASET_SEGMENTS,
+	marketOf,
 	RUN_LIMITS,
 	summarizeDataset,
 	validateConditionSet,
@@ -16,6 +17,7 @@ import type {
 	StartBacktestFailure,
 } from "../backtests/types-domain";
 import type { CalendarService } from "../calendar/types-domain";
+import { DEFAULT_INSTRUMENT } from "../market-data/instrument-domain";
 import type { Segment, SegmentService } from "../segments/types-domain";
 import { checkName } from "../strategies/strategies-domain";
 import type { DatasetRepository, StoredDataset } from "./repository-domain";
@@ -297,7 +299,11 @@ export function createDatasetService({
 						"データセットの相場データがすべて消えている。相場データを選び直す",
 				});
 			}
-			const errors = validateConditionSet(input.params, RUN_LIMITS);
+			const errors = validateConditionSet(
+				input.params,
+				marketOf(DEFAULT_INSTRUMENT),
+				RUN_LIMITS,
+			);
 			if (errors.length > 0) return fail({ kind: "invalid_params", errors });
 			// 実行の途中で使用中の版を切り替えても相場データごとに版が混ざらないよう、始めるときに決める
 			const eventCriteriaVersion =

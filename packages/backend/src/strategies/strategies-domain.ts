@@ -1,6 +1,8 @@
 import type { ConditionSet } from "@trading-studio/core";
 import {
+	instrumentOf,
 	isTemplateId,
+	marketOf,
 	parseConditionSet,
 	strategyTemplate,
 	validateConditionSet,
@@ -91,7 +93,10 @@ export function createStrategyService(
 				instruments = src.instruments;
 			} else {
 				// 結果から新しい戦略として保存するときは、条件を検証する
-				const errors = validateConditionSet(from.params);
+				const errors = validateConditionSet(
+					from.params,
+					marketOf(DEFAULT_INSTRUMENT),
+				);
 				if (errors.length)
 					return { ok: false, error: { kind: "invalid_params", errors } };
 				params = from.params;
@@ -103,8 +108,12 @@ export function createStrategyService(
 		},
 
 		updateParams(id, params) {
-			if (!service.get(id)) return { ok: false, error: { kind: "not_found" } };
-			const errors = validateConditionSet(params);
+			const s = service.get(id);
+			if (!s) return { ok: false, error: { kind: "not_found" } };
+			const errors = validateConditionSet(
+				params,
+				marketOf(instrumentOf(s.instruments[0] as string)),
+			);
 			if (errors.length)
 				return { ok: false, error: { kind: "invalid_params", errors } };
 			repo.updateParams(id, params, now());

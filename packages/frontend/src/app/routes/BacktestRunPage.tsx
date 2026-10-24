@@ -30,6 +30,7 @@ import {
 	historyShortfalls,
 	isCoarser,
 	LIMITS,
+	marketOf,
 	parseConditionSet,
 	percentToPpm,
 	ppmToPercent,
@@ -527,8 +528,13 @@ function RunForm({
 		(draft.savedParams != null &&
 			JSON.stringify(draft.savedParams) === JSON.stringify(p));
 	const errors = useMemo(
-		() => validateConditionSet(p, unchanged ? RUN_LIMITS : LIMITS),
-		[p, unchanged],
+		() =>
+			validateConditionSet(
+				p,
+				marketOf(instrument),
+				unchanged ? RUN_LIMITS : LIMITS,
+			),
+		[p, instrument, unchanged],
 	);
 
 	// 期間。未指定ならその足のデータの最後から1か月
