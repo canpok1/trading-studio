@@ -125,7 +125,7 @@ export function StrategyDashboard({
 				.$get()
 				.then((r) => readJson<{ strategies: StoredStrategy[] }>(r)),
 			api.api.data.coverage
-				.$get()
+				.$get({ query: {} })
 				.then((r) => readJson<{ timeframes: TimeframeCoverage[] }>(r)),
 		]);
 		const counts: Partial<Record<Timeframe, number>> = {};

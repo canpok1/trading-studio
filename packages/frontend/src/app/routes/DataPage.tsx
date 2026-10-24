@@ -65,10 +65,10 @@ export function DataPage() {
 	const load = useCallback(async (): Promise<Data> => {
 		const [cov, imp] = await Promise.all([
 			api.api.data.coverage
-				.$get()
+				.$get({ query: {} })
 				.then((r) => readJson<{ timeframes: TimeframeCoverage[] }>(r)),
 			api.api.data.imports
-				.$get()
+				.$get({ query: {} })
 				.then((r) => readJson<{ imports: ImportJob[] }>(r)),
 		]);
 		// 画面を離れていた間に進んでいる取り込みがあれば、その進捗を追う
@@ -105,6 +105,7 @@ export function DataPage() {
 			try {
 				const res = await api.api.data.imports[":id"].$get({
 					param: { id: String(job.id) },
+					query: {},
 				});
 				const { job: next } = await readJson<{ job: ImportJob }>(res);
 				if (next.status === "running") setJob(next);
@@ -146,6 +147,7 @@ export function DataPage() {
 		if (!job) return;
 		await api.api.data.imports[":id"].cancel.$post({
 			param: { id: String(job.id) },
+			query: {},
 		});
 	};
 
@@ -154,6 +156,7 @@ export function DataPage() {
 		try {
 			const res = await api.api.data.imports[":id"].resolve.$post({
 				param: { id: String(job.id) },
+				query: {},
 				json: { overwrite },
 			});
 			const { job: next } = await readJson<{ job: ImportJob }>(res);

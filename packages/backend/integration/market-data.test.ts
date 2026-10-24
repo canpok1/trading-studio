@@ -314,6 +314,49 @@ describe("過去データの取り込み", () => {
 		expect(count(t, "1m")).toBe(0);
 	});
 
+	test("銘柄を指定すると、その銘柄の足として取り込み、範囲も銘柄ごとに返す", async () => {
+		const t = createTestApp();
+		const form = new FormData();
+		form.set("file", new File([csv([DAY, DAY + M], 370000)], "eth.csv"));
+		form.set("timeframe", "1m");
+		form.set("instrument", "coincheck:eth_jpy");
+		const res = await t.app.request("/api/data/imports", {
+			method: "POST",
+			body: form,
+		});
+		expect(res.status).toBe(202);
+		const { job } = (await res.json()) as { job: ImportJob };
+		await t.ethMarketData.running();
+		const done = await t.app.request(
+			`/api/data/imports/${job.id}?instrument=coincheck:eth_jpy`,
+		);
+		expect(((await done.json()) as { job: ImportJob }).job.status).toBe("done");
+		expect(
+			t.db.$client
+				.query<{ instrument: string; n: number }, []>(
+					"select instrument, count(*) as n from candles where timeframe = '1m' group by instrument",
+				)
+				.all(),
+		).toEqual([{ instrument: "coincheck:eth_jpy", n: 2 }]);
+		const coverage = async (q: string) =>
+			(
+				(await (await t.app.request(`/api/data/coverage${q}`)).json()) as {
+					timeframes: { timeframe: string; count: number }[];
+				}
+			).timeframes.find((c) => c.timeframe === "1m")?.count;
+		expect(await coverage("?instrument=coincheck:eth_jpy")).toBe(2);
+		expect(await coverage("")).toBe(0);
+		// 既定（BTC/JPY）の取り込みの一覧には出ない
+		const list = (await (await t.app.request("/api/data/imports")).json()) as {
+			imports: ImportJob[];
+		};
+		expect(list.imports).toEqual([]);
+		expect(
+			(await t.app.request("/api/data/coverage?instrument=coincheck:sol_jpy"))
+				.status,
+		).toBe(400);
+	});
+
 	test("粒度が無ければ 400", async () => {
 		const t = createTestApp();
 		const f = new FormData();

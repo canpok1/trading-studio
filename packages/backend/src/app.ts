@@ -37,6 +37,8 @@ export type AppDeps = {
 	/** アプリのバージョン（ビルド日時）。開発版は null */
 	appBuiltAt: number | null;
 	marketData: MarketDataService;
+	/** 収集している銘柄ごとの過去データ（marketData の銘柄を含む） */
+	marketDataByInstrument: readonly MarketDataService[];
 	market: MarketService;
 	strategies: StrategyService;
 	backtests: BacktestService;
@@ -60,6 +62,7 @@ export function createApp({
 	isDbReachable,
 	appBuiltAt,
 	marketData,
+	marketDataByInstrument,
 	market,
 	strategies,
 	backtests,
@@ -85,7 +88,7 @@ export function createApp({
 			}),
 		)
 		.get("/version", (c) => c.json({ builtAt: appBuiltAt }))
-		.route("/data", marketDataRoutes(marketData))
+		.route("/data", marketDataRoutes(marketData, marketDataByInstrument))
 		.route("/market", marketRoutes(market))
 		.route("/strategies", strategyRoutes(strategies, trading))
 		.route("/backtests", backtestRoutes(backtests, datasets))

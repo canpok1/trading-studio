@@ -1,6 +1,6 @@
 // テスト用。メモリ上の DB で本物のサービスをつないだ app を作る
 
-import { BTC_JPY, COLLECTED_INSTRUMENTS } from "@trading-studio/core";
+import { BTC_JPY, COLLECTED_INSTRUMENTS, ETH_JPY } from "@trading-studio/core";
 import { createAdviceService } from "../src/advice/advice-domain";
 import { demoAdviceModel } from "../src/advice/fake-model-infra";
 import { DEFAULT_INSTRUCTIONS } from "../src/advice/prompt-domain";
@@ -65,6 +65,10 @@ export function createTestApp(
 	const marketData = createMarketDataService(marketDataRepo, {
 		now: () => 1_000,
 	});
+	const ethMarketData = createMarketDataService(
+		new SqliteMarketDataRepository(db, ETH_JPY),
+		{ now: () => 1_000 },
+	);
 	const strategies = createStrategyService(
 		new SqliteStrategyRepository(db),
 		() => 2_000,
@@ -248,6 +252,7 @@ export function createTestApp(
 		isDbReachable: () => true,
 		appBuiltAt: null,
 		marketData,
+		marketDataByInstrument: [marketData, ethMarketData],
 		market,
 		strategies,
 		backtests,
@@ -270,6 +275,7 @@ export function createTestApp(
 		app,
 		db,
 		marketData,
+		ethMarketData,
 		marketDataRepo,
 		market,
 		strategies,

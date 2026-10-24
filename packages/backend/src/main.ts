@@ -106,11 +106,12 @@ const strategies = createStrategyService(new SqliteStrategyRepository(db));
 let trading: TradingEngine | null = null;
 // 収集はサーバーが動いている間は常に行う（ON/OFF は作らない）
 /** 収集する銘柄ごとの足の読み書き */
-const collectedRepos = COLLECTED.map((instrument) =>
-	instrument.id === DEFAULT_INSTRUMENT.id
-		? marketDataRepo
-		: new SqliteMarketDataRepository(db, instrument),
-);
+const collectedRepos = COLLECTED.map((instrument) => {
+	if (instrument.id === DEFAULT_INSTRUMENT.id) return marketDataRepo;
+	const repo = new SqliteMarketDataRepository(db, instrument);
+	repo.failInterrupted(Date.now());
+	return repo;
+});
 const collectors = COLLECTED.map((instrument, i) =>
 	createCollector({
 		// 自動取引は BTC/JPY だけを扱う（#280 まで）
@@ -225,9 +226,12 @@ const segmentTimer = setInterval(() => segments.tick(), 60_000);
 segments.tick();
 
 const marketData = createMarketDataService(marketDataRepo, {
-	// 過去の足を取り込んだら、その期間の相場データをすぐ作る
+	// 過去の足を取り込んだら、その期間の相場データをすぐ作る（相場の分類は BTC/JPY で付ける）
 	onSettled: (job) => job.status === "done" && segments.refresh(),
 });
+const marketDataByInstrument = collectedRepos.map((repo) =>
+	repo === marketDataRepo ? marketData : createMarketDataService(repo),
+);
 const scoring = createScoringService({
 	repo: scoreRepo,
 	newsRepo,
@@ -324,6 +328,7 @@ const server = new Hono()
 			isDbReachable: () => isDbReachable(db),
 			appBuiltAt,
 			marketData,
+			marketDataByInstrument,
 			market,
 			strategies,
 			backtests,
