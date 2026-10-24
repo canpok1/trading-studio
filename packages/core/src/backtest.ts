@@ -134,7 +134,46 @@ export type BacktestSummary = {
 	averageHoldingMs: number | null;
 	/** 期間の最後に持っていた、候補の先頭の銘柄の数量（数量の最小単位） */
 	openPositionQuantity: number;
+	/** 銘柄ごとの成績（ADR 0037）。候補が2つ以上の実行だけ持つ。銘柄の id ごと、候補の並び順 */
+	byInstrument?: Record<string, InstrumentSummary>;
 };
+
+/**
+ * 1銘柄の成績。資金は銘柄で共有するので、元手に対する率と最大ドローダウンは持たない。
+ * pnl は確定した往復の損益と、期間の最後に持っていたロットの評価損益（最後の足の終値で評価）の和。全銘柄の和が全体の損益になる
+ */
+export type InstrumentSummary = {
+	pnl: number;
+	trades: number;
+	wins: number;
+	losses: number;
+	winRate: number | null;
+	profitFactor: number | null;
+	averageHoldingMs: number | null;
+	/** 期間の最初の足の始値から最後の足の終値まで、この銘柄だけを持っていた場合の損益率（%）。期間に足が無ければ null */
+	buyHoldPercent: number | null;
+	/** 期間の最後に持っていた数量（数量の最小単位） */
+	openPositionQuantity: number;
+};
+
+/** 往復の一覧から勝ち負けの集計を出す */
+function tradeStats(trades: readonly Trade[]) {
+	const wins = trades.filter((t) => t.pnl > 0);
+	const losses = trades.filter((t) => t.pnl <= 0);
+	const grossProfit = wins.reduce((a, t) => a + t.pnl, 0);
+	const grossLoss = -losses.reduce((a, t) => a + t.pnl, 0);
+	return {
+		trades: trades.length,
+		wins: wins.length,
+		losses: losses.length,
+		winRate: trades.length ? (wins.length / trades.length) * 100 : null,
+		profitFactor: grossLoss > 0 ? grossProfit / grossLoss : null,
+		averageHoldingMs: trades.length
+			? trades.reduce((a, t) => a + (t.exitTime - t.entryTime), 0) /
+				trades.length
+			: null,
+	};
+}
 
 export type BacktestResult = {
 	summary: BacktestSummary;
@@ -460,16 +499,36 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 		orders.set(r.id, r);
 	}
 	const finalEquity = equityOf();
+	const buyHoldOf = (m: Market) => {
+		const c = inRangeOf(m);
+		return c.length > 0
+			? ((c.at(-1) as Candle).close / (c[0] as Candle).open - 1) * 100
+			: null;
+	};
 	// ただ持っていた場合は、期間に足のある銘柄に等分したものとする
-	const holds = markets
-		.map(inRangeOf)
-		.filter((c) => c.length > 0)
-		.map((c) => ((c.at(-1) as Candle).close / (c[0] as Candle).open - 1) * 100);
-	const wins = trades.filter((t) => t.pnl > 0);
-	const losses = trades.filter((t) => t.pnl <= 0);
-	const grossProfit = wins.reduce((a, t) => a + t.pnl, 0);
-	const grossLoss = -losses.reduce((a, t) => a + t.pnl, 0);
+	const holds = markets.map(buyHoldOf).filter((x) => x !== null);
 	const others = markets.slice(1);
+	const instrumentOf = (x: { instrument?: string }) => x.instrument ?? primary;
+	const summaryOf = (m: Market): InstrumentSummary => {
+		const id = m.instrument.id;
+		const own = trades.filter((t) => instrumentOf(t) === id);
+		const lots = account.lots.filter((l) => instrumentOf(l) === id);
+		const bar = m.steps[m.current];
+		const unrealized = lots.reduce(
+			(a, l) =>
+				a +
+				(bar ? notional(m.instrument, bar.close, l.quantity, "floor") : 0) -
+				l.cost +
+				(l.realizedPnl ?? 0),
+			0,
+		);
+		return {
+			pnl: own.reduce((a, t) => a + t.pnl, 0) + unrealized,
+			...tradeStats(own),
+			buyHoldPercent: buyHoldOf(m),
+			openPositionQuantity: lots.reduce((q, l) => q + l.quantity, 0),
+		};
+	};
 
 	return {
 		summary: {
@@ -477,22 +536,21 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 			finalEquity,
 			pnl: finalEquity - initialCash,
 			pnlPercent: ((finalEquity - initialCash) / initialCash) * 100,
-			trades: trades.length,
-			wins: wins.length,
-			losses: losses.length,
-			winRate: trades.length ? (wins.length / trades.length) * 100 : null,
-			profitFactor: grossLoss > 0 ? grossProfit / grossLoss : null,
+			...tradeStats(trades),
 			maxDrawdownPercent: maxDd * 100,
 			maxDrawdownFrom: ddFrom,
 			maxDrawdownTo: ddTo,
-			averageHoldingMs: trades.length
-				? trades.reduce((a, t) => a + (t.exitTime - t.entryTime), 0) /
-					trades.length
-				: null,
 			openPositionQuantity: account.lots
-				.filter((l) => (l.instrument ?? primary) === primary)
+				.filter((l) => instrumentOf(l) === primary)
 				.reduce((q, l) => q + l.quantity, 0),
 			buyHoldPercent: holds.reduce((a, x) => a + x, 0) / holds.length,
+			...(others.length > 0
+				? {
+						byInstrument: Object.fromEntries(
+							markets.map((m) => [m.instrument.id, summaryOf(m)]),
+						),
+					}
+				: {}),
 		},
 		orders: [...orders.values()],
 		trades,
