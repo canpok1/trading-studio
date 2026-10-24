@@ -309,6 +309,7 @@ const server = new Hono()
 			strategies,
 			backtests,
 			marketData,
+			marketDataByInstrument,
 			segments,
 			datasets,
 			scoring,

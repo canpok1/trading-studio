@@ -21,6 +21,8 @@ export type McpDeps = {
 	strategies: StrategyService;
 	backtests: BacktestService;
 	marketData: MarketDataService;
+	/** 収集している銘柄ごとの過去データ（marketData の銘柄を含む） */
+	marketDataByInstrument: readonly MarketDataService[];
 	segments: SegmentService;
 	/** データセット（画面の呼び名。相場データを束ねたもの） */
 	datasets: DatasetService;
