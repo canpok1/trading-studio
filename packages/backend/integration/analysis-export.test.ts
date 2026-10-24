@@ -4,9 +4,15 @@ import type {
 	BacktestOrder,
 	BacktestSummary,
 	DecisionLog,
+	Instrument,
 	Trade,
 } from "@trading-studio/core";
-import { BTC_JPY, strategyTemplate } from "@trading-studio/core";
+import {
+	BTC_JPY,
+	ETH_JPY,
+	strategyTemplate,
+	XRP_JPY,
+} from "@trading-studio/core";
 import { crc32 } from "../src/analysis-export/zip-infra";
 import type { BacktestRun } from "../src/backtests/types-domain";
 import { createTestApp } from "./test-app";
@@ -86,11 +92,21 @@ function addNews(t: T, at: number, title: string) {
 	).id;
 }
 
-function addBacktest(t: T, startedAt: number): number {
+function addBacktest(
+	t: T,
+	startedAt: number,
+	instruments: [Instrument, ...Instrument[]] = [BTC_JPY],
+	more: {
+		orders?: BacktestOrder[];
+		trades?: Trade[];
+		decisions?: DecisionLog[];
+		summary?: Partial<BacktestSummary>;
+	} = {},
+): number {
 	const id = t.backtestRepo.create({
 		name: "テスト",
-		instrument: BTC_JPY,
-		instruments: [BTC_JPY],
+		instrument: instruments[0],
+		instruments,
 		params: strategyTemplate("trend").params,
 		timeframe: "1h",
 		from: DAY,
@@ -152,13 +168,23 @@ function addBacktest(t: T, startedAt: number): number {
 	t.backtestRepo.finishDone(
 		id,
 		{
-			summary: { pnl: 500, winRate: 100 } as BacktestSummary,
+			summary: {
+				pnl: 500,
+				trades: 1,
+				wins: 1,
+				losses: 0,
+				winRate: 100,
+				profitFactor: null,
+				averageHoldingMs: H,
+				openPositionQuantity: 0,
+				...more.summary,
+			} as BacktestSummary,
 			orderCount: 1,
 			filledCount: 1,
 			bars: pack({ times: [], closes: [] }),
-			orders: pack([order]),
-			trades: pack([trade]),
-			decisions: pack([decision]),
+			orders: pack([order, ...(more.orders ?? [])]),
+			trades: pack([trade, ...(more.trades ?? [])]),
+			decisions: pack([decision, ...(more.decisions ?? [])]),
 		},
 		startedAt + 1,
 	);
@@ -243,6 +269,7 @@ describe("分析用エクスポート", () => {
 			"paper_decisions.csv",
 			"paper_orders.csv",
 			"backtest_runs.csv",
+			"backtest_instruments.csv",
 			"backtest_orders.csv",
 			"backtest_trades.csv",
 			"backtest_decisions.csv",
@@ -322,28 +349,166 @@ describe("分析用エクスポート", () => {
 
 		expect(rows(files.get("backtest_runs.csv") as string)[0]).toMatchObject({
 			run_id: String(run),
+			instruments: BTC_JPY.id,
 			pnl: "500",
 			win_rate: "100",
 		});
+		// 候補が1つの実行は全体の成績をその銘柄の成績として出す
+		expect(rows(files.get("backtest_instruments.csv") as string)).toEqual([
+			expect.objectContaining({
+				run_id: String(run),
+				instrument: BTC_JPY.id,
+				pnl: "500",
+				trades: "1",
+				buy_hold_percent: "",
+			}),
+		]);
 		expect(rows(files.get("backtest_orders.csv") as string)[0]).toMatchObject({
 			run_id: String(run),
+			instrument: BTC_JPY.id,
 			order_id: "b1",
 			fill_price: "10000000",
 		});
 		expect(rows(files.get("backtest_trades.csv") as string)[0]).toMatchObject({
+			instrument: BTC_JPY.id,
 			sell_order_id: "s1",
 			pnl: "500",
 		});
 		expect(
 			rows(files.get("backtest_decisions.csv") as string)[0],
-		).toMatchObject({ note: "買う", position_quantity: "0" });
+		).toMatchObject({
+			instrument: BTC_JPY.id,
+			note: "買う",
+			position_quantity: "0",
+		});
+		expect(readme).toContain(
+			"| coincheck:xrp_jpy | XRP/JPY | 0.001 円 | 0.01 XRP |",
+		);
 	});
 
-	test("デモの判断と注文を、そのときの判定付きで入れる", async () => {
+	test("候補が複数のバックテストは、注文・往復・判断と成績を銘柄ごとに区別できる", async () => {
 		const t = createTestApp();
+		const xrp = { instrument: XRP_JPY.id };
+		const summary = (pnl: number) => ({
+			pnl,
+			trades: 1,
+			wins: 1,
+			losses: 0,
+			winRate: 100,
+			profitFactor: null,
+			averageHoldingMs: H,
+			buyHoldPercent: 1.5,
+			openPositionQuantity: 0,
+		});
+		const run = addBacktest(t, DAY + H, [ETH_JPY, XRP_JPY], {
+			orders: [
+				{
+					id: "b2",
+					side: "buy",
+					type: "market",
+					price: null,
+					quantity: 10_000,
+					placedAt: DAY + H,
+					status: "filled",
+					filledAt: DAY + H,
+					fillPrice: 250_123,
+					fee: 3,
+					canceledAt: null,
+					cancelReason: null,
+					reason: "買い",
+					pairId: null,
+					pnl: null,
+					...xrp,
+				},
+			],
+			trades: [
+				{
+					buyOrderId: "b2",
+					sellOrderId: "s2",
+					entryTime: DAY + H,
+					exitTime: DAY + 2 * H,
+					quantity: 10_000,
+					pnl: 7,
+					...xrp,
+				},
+			],
+			decisions: [
+				{
+					time: DAY + H,
+					price: 250_123,
+					cash: 900_000,
+					position: { quantity: 0, entryPrice: null, openedAt: null },
+					openOrderIds: [],
+					intents: [],
+					nextEvalAt: DAY + 2 * H,
+					note: "買う",
+					state: null,
+					...xrp,
+				},
+			],
+			summary: {
+				pnl: 507,
+				byInstrument: {
+					[ETH_JPY.id]: summary(500),
+					[XRP_JPY.id]: summary(7),
+				},
+			},
+		});
+		const res = await download(
+			t,
+			`from=${DAY}&to=${DAY + 24 * H}&backtests=${run}`,
+		);
+		const files = unzip(new Uint8Array(await res.arrayBuffer()));
+		expect(rows(files.get("backtest_runs.csv") as string)[0]).toMatchObject({
+			instruments: `${ETH_JPY.id} ${XRP_JPY.id}`,
+			pnl: "507",
+		});
+		expect(
+			rows(files.get("backtest_instruments.csv") as string).map((r) => [
+				r.instrument,
+				r.pnl,
+				r.buy_hold_percent,
+			]),
+		).toEqual([
+			[ETH_JPY.id, "500", "1.5"],
+			[XRP_JPY.id, "7", "1.5"],
+		]);
+		// 候補の先頭の銘柄のものは記録に銘柄が無いので、先頭の銘柄で埋める
+		const ids = (file: string, id: string) =>
+			rows(files.get(file) as string).map((r) => [r[id], r.instrument]);
+		expect(ids("backtest_orders.csv", "order_id")).toEqual([
+			["b1", ETH_JPY.id],
+			["b2", XRP_JPY.id],
+		]);
+		expect(ids("backtest_trades.csv", "buy_order_id")).toEqual([
+			["b1", ETH_JPY.id],
+			["b2", XRP_JPY.id],
+		]);
+		expect(ids("backtest_decisions.csv", "time")).toEqual([
+			[String(DAY), ETH_JPY.id],
+			[String(DAY + H), XRP_JPY.id],
+		]);
+	});
+
+	test("デモの判断と注文を、そのときの判定と銘柄付きで入れる", async () => {
+		const t = createTestApp();
+		const params = strategyTemplate("trend").params;
+		// BTC/JPY 以外を候補に入れるには金額で注文する
+		const created = t.strategies.create({
+			name: "戦略A",
+			from: {
+				params: {
+					...params,
+					buys: params.buys.map((b) => ({ ...b, orderAmount: 100_000 })),
+				},
+				instruments: [ETH_JPY.id, XRP_JPY.id],
+			},
+		});
+		if (!created.ok) throw new Error("setup");
+		const sid = created.strategy.id;
 		const decisionId = t.tradingRepo.addDecision(
 			{ id: 1, mode: "paper" },
-			{ id: 1, name: "戦略A" },
+			{ id: sid, name: "戦略A" },
 			{
 				time: DAY + M,
 				price: 10_000_000,
@@ -357,10 +522,63 @@ describe("分析用エクスポート", () => {
 			},
 			{ sentiment: "+1", risk: "normal" },
 		);
+		t.tradingRepo.addDecision(
+			{ id: 1, mode: "paper" },
+			{ id: sid, name: "戦略A" },
+			{
+				time: DAY + 2 * M,
+				instrument: XRP_JPY.id,
+				price: 250_123,
+				cash: 1_000_000,
+				position: { quantity: 0, entryPrice: null, openedAt: null },
+				openOrderIds: [],
+				intents: [],
+				nextEvalAt: DAY + H,
+				note: "XRP を見る",
+				state: null,
+			},
+			{},
+		);
+		t.tradingRepo.saveOrders(
+			{ id: 1, mode: "paper" },
+			[
+				{
+					id: "o1",
+					side: "buy",
+					type: "market",
+					price: null,
+					quantity: 10_000,
+					placedAt: DAY + 2 * M,
+					status: "filled",
+					filledAt: DAY + 2 * M,
+					fillPrice: 250_123,
+					fee: 3,
+					canceledAt: null,
+					cancelReason: null,
+					reason: "買い",
+					pairId: null,
+					pnl: null,
+				},
+			],
+			{
+				instrument: XRP_JPY.id,
+				decisionId: null,
+				strategyId: sid,
+				strategyName: "戦略A",
+			},
+		);
 		const res = await download(t, `from=${DAY}&to=${DAY + 24 * H}`);
 		const files = unzip(new Uint8Array(await res.arrayBuffer()));
-		expect(rows(files.get("paper_decisions.csv") as string)).toEqual([
+		expect(rows(files.get("strategies.csv") as string)).toEqual([
 			expect.objectContaining({
+				strategy_id: String(sid),
+				instruments: `${ETH_JPY.id} ${XRP_JPY.id}`,
+			}),
+		]);
+		expect(rows(files.get("paper_decisions.csv") as string)).toEqual([
+			// 銘柄を持たない判断は、戦略の候補に関わらず収集の先頭の銘柄のもの
+			expect.objectContaining({
+				instrument: BTC_JPY.id,
 				decision_id: String(decisionId),
 				run_id: "1",
 				run_name: "デモ",
@@ -368,6 +586,14 @@ describe("分析用エクスポート", () => {
 				note: "様子見",
 				judgment_sentiment: "+1",
 				judgment_risk: "normal",
+			}),
+			expect.objectContaining({ instrument: XRP_JPY.id, note: "XRP を見る" }),
+		]);
+		expect(rows(files.get("paper_orders.csv") as string)).toEqual([
+			expect.objectContaining({
+				order_id: "o1",
+				instrument: XRP_JPY.id,
+				fill_price: "250123",
 			}),
 		]);
 		// 選ばなければバックテストの表は列名だけ

@@ -35,7 +35,7 @@ export class SqliteAnalysisExportRepository
 	strategies(): StrategyExportRow[] {
 		return this.sql
 			.query<StrategyExportRow, []>(
-				"select id, name, params, created_at, updated_at from strategies order by id",
+				"select id, name, instruments, params, created_at, updated_at from strategies order by id",
 			)
 			.all();
 	}

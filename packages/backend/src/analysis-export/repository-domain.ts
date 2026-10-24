@@ -37,6 +37,8 @@ export type NewsExportRow = {
 export type StrategyExportRow = {
 	id: number;
 	name: string;
+	/** 対象の銘柄の id（JSON の配列） */
+	instruments: string;
 	params: string;
 	created_at: number;
 	updated_at: number;
@@ -57,6 +59,7 @@ export type DecisionExportRow = {
 export type OrderExportRow = {
 	run_id: number;
 	run_name: string | null;
+	instrument: string;
 	mode: string;
 	id: string;
 	side: string;
