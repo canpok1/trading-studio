@@ -14,6 +14,7 @@ export type {
 	BacktestChart,
 	BacktestMarker,
 	BacktestRun,
+	EquityPoint,
 	RunListResult,
 	RunSort,
 } from "./backtests/types-domain";

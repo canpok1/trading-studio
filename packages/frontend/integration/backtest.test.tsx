@@ -17,7 +17,9 @@ import type { RunPageSetup } from "./backtest-fakes";
 import {
 	END,
 	H,
+	multiRun,
 	ORDERS,
+	onMultiResults,
 	onResults,
 	onRunPage,
 	params,
@@ -661,6 +663,89 @@ describe("結果の画面", () => {
 		expect(
 			await view.findByRole("button", { name: "バックテストを実行" }),
 		).toBeTruthy();
+	});
+});
+
+describe("候補が2つ以上の結果の画面", () => {
+	test("合計では銘柄ごとの成績と総資産の推移と全銘柄の注文を出し、銘柄を選ぶとその銘柄の成績と注文に切り替わる", async () => {
+		const run = multiRun(11);
+		const api = onMultiResults(createFakeApi(), run);
+		const view = renderApp("/backtest/runs/11", api);
+		expect(await view.findByText(run.name, { exact: true })).toBeTruthy();
+		const conditions = view.getByRole("list", { name: "実行条件" });
+		expect(conditions.textContent).toContain("候補: BTC・ETH・XRP");
+		expect(conditions.textContent).toContain("同時に持つ: 2銘柄まで");
+		expect(conditions.textContent).toContain("順位: 1時間足 上昇率(24) 高い順");
+
+		const summary = within(view.getByRole("region", { name: "成績の要約" }));
+		expect(summary.getByText("成績（合計）")).toBeTruthy();
+		expect(summary.getByText(/（3銘柄の等分）/)).toBeTruthy();
+		// 期間の終わりに持っていた量は全銘柄ぶん
+		expect(
+			summary.getByText(/^期間の終わりに 500 XRP を保有していた。/),
+		).toBeTruthy();
+		const table = within(summary.getByRole("list", { name: "銘柄ごとの成績" }));
+		expect(table.getAllByRole("button").map((b) => b.textContent)).toEqual([
+			"BTC+899円1100.0%",
+			"ETH+1,347円1100.0%",
+			"XRP−200円0—",
+		]);
+		expect(
+			await view.findByRole("img", {
+				name: /^総資産の推移。初期資金 2,000,000円/,
+			}),
+		).toBeTruthy();
+		const orders = within(view.getByRole("region", { name: "注文と約定" }));
+		await waitFor(() =>
+			expect(
+				orders.getAllByRole("button", { name: /^(BTC|ETH) / }),
+			).toHaveLength(4),
+		);
+		expect(
+			orders.getByRole("button", { name: /^ETH 買 0\.15 ETH/ }),
+		).toBeTruthy();
+
+		// 行を押すと ETH に切り替わり、ETH の注文だけを頼む
+		fireEvent.click(table.getByRole("button", { name: /^ETH / }));
+		const eth = within(view.getByRole("region", { name: "成績の要約" }));
+		expect(eth.getByText("成績（ETH/JPY）")).toBeTruthy();
+		expect(eth.getByText(/ETH だけを持ち続けた場合/)).toBeTruthy();
+		expect(eth.queryByText("最大DD")).toBeNull();
+		expect(view.queryByRole("region", { name: "資産の推移" })).toBeNull();
+		await waitFor(() =>
+			expect(
+				within(view.getByRole("region", { name: "注文と約定" })).getAllByRole(
+					"button",
+					{
+						name: /^[買売] /,
+					},
+				),
+			).toHaveLength(2),
+		);
+		expect(
+			sent(api, "GET", "/api/backtests/11/orders").some(
+				(r) => r.query.get("instrument") === "coincheck:eth_jpy",
+			),
+		).toBe(true);
+		expect(
+			sent(api, "GET", "/api/backtests/11/chart").map((r) =>
+				r.query.get("instrument"),
+			),
+		).toEqual(["coincheck:eth_jpy"]);
+
+		// 「合計」へ戻せる
+		fireEvent.click(view.getByRole("radio", { name: "合計" }));
+		expect(view.getByText("成績（合計）")).toBeTruthy();
+	});
+
+	test("候補が1つの結果は銘柄を切り替えず、総資産の推移を読まない", async () => {
+		const run = resultRun({ id: 12, name: "BTC だけ" });
+		const api = withResults(createFakeApi(), new Map([[run.id, run]]));
+		const view = renderApp("/backtest/runs/12", api);
+		expect(await view.findByText(run.name, { exact: true })).toBeTruthy();
+		expect(view.queryByRole("group", { name: "見る銘柄" })).toBeNull();
+		expect(view.getByText("成績")).toBeTruthy();
+		expect(sent(api, "GET", "/api/backtests/12/equity")).toHaveLength(0);
 	});
 });
 

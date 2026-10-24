@@ -2,6 +2,8 @@ import type { Page } from "@playwright/test";
 import type { BacktestRun } from "@trading-studio/backend";
 import {
 	chartBars,
+	multiRun,
+	onMultiResults,
 	onResults,
 	onRunPage,
 	params,
@@ -58,6 +60,42 @@ test("結果の画面にチャートが描かれ、横にはみ出さない", as
 	await expect(
 		page.getByRole("button", { name: "ローソク足", exact: true }),
 	).toBeEnabled();
+	expect(await overflow(page)).toBeLessThanOrEqual(0);
+});
+
+test("候補が2つ以上の結果は、最長の損益でも銘柄ごとの表と注文が横にはみ出さず、銘柄を選ぶとチャートが描かれる", async ({
+	page,
+	api,
+}) => {
+	const { chart } = result();
+	// 損益の上限に近い桁数
+	const run = multiRun(7, {
+		"coincheck:btc_jpy": -99_999_999,
+		"coincheck:eth_jpy": -99_999_999,
+		"coincheck:xrp_jpy": -99_999_999,
+	});
+	onMultiResults(api, run, chart);
+	await page.goto("/backtest/runs/7");
+	await expect(page.getByRole("img", { name: /^総資産の推移/ })).toBeVisible();
+	const rows = page
+		.getByRole("list", { name: "銘柄ごとの成績" })
+		.getByRole("button");
+	await expect(rows).toHaveCount(3);
+	for (const row of await rows.all()) {
+		expect(
+			await row.evaluate((el) => el.scrollWidth - el.clientWidth),
+		).toBeLessThanOrEqual(0);
+	}
+	await expect(
+		page
+			.getByRole("region", { name: "注文と約定" })
+			.getByRole("button", { name: /^ETH / }),
+	).toHaveCount(2);
+	expect(await overflow(page)).toBeLessThanOrEqual(0);
+
+	await rows.nth(1).click();
+	await expect(page.getByRole("img", { name: "価格チャート" })).toBeVisible();
+	await expect(page.getByText("成績（ETH/JPY）")).toBeVisible();
 	expect(await overflow(page)).toBeLessThanOrEqual(0);
 });
 

@@ -15,8 +15,10 @@ import type {
 import {
 	BTC_JPY,
 	DEFAULT_AGGREGATION_RULE,
+	ETH_JPY,
 	strategyTemplate,
 	withSellDetails,
+	XRP_JPY,
 } from "@trading-studio/core";
 import type { FakeApi } from "./fake-api";
 import { routes } from "./fake-api";
@@ -267,4 +269,124 @@ export function resultRun(
 		dailyLossLimitApplied: true,
 		...over,
 	});
+}
+
+/** 候補が BTC・ETH・XRP の実行の ETH の往復（0.15 ETH を 50 万円で買い 51 万円で売る） */
+export const ETH_ORDERS: BacktestOrder[] = [
+	{
+		...(ORDERS[0] as BacktestOrder),
+		id: "e1",
+		instrument: ETH_JPY.id,
+		price: 500_000,
+		fillPrice: 500_000,
+		quantity: 15_000,
+		pairId: "e2",
+		placedAt: Date.UTC(2026, 4, 6),
+		filledAt: Date.UTC(2026, 4, 6, 1),
+	},
+	{
+		...(ORDERS[1] as BacktestOrder),
+		id: "e2",
+		instrument: ETH_JPY.id,
+		fillPrice: 510_000,
+		quantity: 15_000,
+		pairId: "e1",
+		reason: "買値から +2.0%（利確の条件）",
+		pnl: 1_347,
+		placedAt: Date.UTC(2026, 4, 7),
+		filledAt: Date.UTC(2026, 4, 7),
+	},
+];
+
+/** 候補が BTC・ETH・XRP、同時に2銘柄まで、順位付きの実行。pnl は銘柄ごとの損益を上書きする */
+export function multiRun(
+	id: number,
+	pnl: Partial<Record<string, number>> = {},
+): BacktestRun {
+	const base = resultRun({
+		id,
+		name: "3銘柄で上昇率順",
+		instruments: [BTC_JPY, ETH_JPY, XRP_JPY],
+		params: params(undefined, {
+			maxHoldings: 2,
+			ranking: {
+				indicator: "return",
+				timeframe: "1h",
+				period: 24,
+				order: "desc",
+			},
+			buys: [{ ...buyRule, orderAmount: 100_000 }],
+		}),
+		orderCount: ORDERS.length + ETH_ORDERS.length,
+		filledCount: ORDERS.length + ETH_ORDERS.length,
+	});
+	const summary = base.summary as NonNullable<BacktestRun["summary"]>;
+	const one = {
+		trades: 1,
+		wins: 1,
+		losses: 0,
+		winRate: 100,
+		profitFactor: null,
+		averageHoldingMs: 3_600_000,
+		buyHoldPercent: 1.5,
+		openPositionQuantity: 0,
+	};
+	return {
+		...base,
+		summary: {
+			...summary,
+			trades: 2,
+			wins: 2,
+			buyHoldPercent: 1.1,
+			byInstrument: {
+				[BTC_JPY.id]: { ...one, pnl: pnl[BTC_JPY.id] ?? 899 },
+				[ETH_JPY.id]: { ...one, pnl: pnl[ETH_JPY.id] ?? 1_347 },
+				[XRP_JPY.id]: {
+					...one,
+					pnl: pnl[XRP_JPY.id] ?? -200,
+					trades: 0,
+					wins: 0,
+					winRate: null,
+					averageHoldingMs: null,
+					buyHoldPercent: -2.3,
+					openPositionQuantity: 50_000,
+				},
+			},
+		},
+	};
+}
+
+/** 候補が2つ以上の実行の結果の画面が読む口。注文は銘柄で絞る */
+export function onMultiResults(
+	api: FakeApi,
+	run: BacktestRun,
+	chart?: BacktestChart,
+): FakeApi {
+	const all = [
+		...withSellDetails(ORDERS, BTC_JPY),
+		...withSellDetails(ETH_ORDERS, ETH_JPY),
+	];
+	const of = (q: URLSearchParams) => {
+		const i = q.get("instrument");
+		return i ? all.filter((o) => (o.instrument ?? BTC_JPY.id) === i) : all;
+	};
+	return onResults(api, new Map([[run.id, run]]), chart)
+		.on(routes.api.backtests[":id"].orders, "$get", ({ query }) => ({
+			orders: of(query),
+			total: of(query).length,
+		}))
+		.on(
+			routes.api.backtests[":id"].orders[":orderId"],
+			"$get",
+			({ params }, reply) => {
+				const order = all.find((o) => o.id === params.orderId);
+				return order ? { order } : reply(404, { message: "無い" });
+			},
+		)
+		.on(routes.api.backtests[":id"].equity, "$get", () => ({
+			equity: Array.from({ length: 23 }, (_, i) => ({
+				time: run.from + i * 24 * H,
+				value: 2_000_000 + Math.round(5_000 * Math.sin(i / 3)) + i * 100,
+			})),
+		}));
 }

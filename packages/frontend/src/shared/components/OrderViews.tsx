@@ -226,6 +226,7 @@ export function OrderRow({
 	selected,
 	onClick,
 	tag,
+	chip,
 }: {
 	order: ListedOrder;
 	instrument: Instrument;
@@ -233,6 +234,8 @@ export function OrderRow({
 	onClick: () => void;
 	/** 損益が無い行の右端に、状態の代わりに出すもの */
 	tag?: ReactNode;
+	/** 売買の前に出す銘柄の名前。複数の銘柄の注文を並べるときに付ける */
+	chip?: string;
 }) {
 	const price = o.fillPrice ?? o.price;
 	const unit = instrument.currency.unit;
@@ -246,6 +249,11 @@ export function OrderRow({
 			<OrderIcon order={o} />
 			<span className="flex min-w-0 flex-col gap-0.5">
 				<span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold">
+					{chip && (
+						<span className="shrink-0 rounded-md bg-surface-2 px-1.5 py-0.5 text-[11px]">
+							{chip}
+						</span>
+					)}
 					<span className="shrink-0">
 						<SideText order={o} />{" "}
 						{o.type === "limit" && o.status !== "filled" ? "指値 " : ""}

@@ -1,4 +1,8 @@
-import type { BacktestChart, BacktestRun } from "@trading-studio/backend";
+import type {
+	BacktestChart,
+	BacktestRun,
+	EquityPoint,
+} from "@trading-studio/backend";
 import type {
 	BacktestOrder,
 	ConditionSet,
@@ -7,6 +11,7 @@ import type {
 import {
 	buyHoldPercentOf,
 	conditionSetChanges,
+	DEFAULT_MAX_HOLDINGS,
 	formatAmount,
 	formatQuantity,
 	gradeMaxDrawdown,
@@ -14,6 +19,7 @@ import {
 	gradeProfitFactor,
 	gradeWinRate,
 	ppmToPercent,
+	RANKING_INDICATOR_LABELS,
 	TIMEFRAME_LABELS,
 	TIMEFRAMES,
 } from "@trading-studio/core";
@@ -28,6 +34,12 @@ import {
 } from "react";
 import { useNavigate, useParams } from "react-router";
 import { AdviceSection } from "../../features/backtest/components/AdviceSection";
+import {
+	EquityChart,
+	InstrumentSummaryCard,
+	InstrumentTable,
+	instrumentLabel,
+} from "../../features/backtest/components/InstrumentResults";
 import { useBacktestJob } from "../../features/backtest/utils/backtest-job";
 import { alignJudgments } from "../../shared/components/chart/judgment-data";
 import { PriceChart } from "../../shared/components/chart/PriceChart";
@@ -243,7 +255,18 @@ export function RunHeader({
 	const [open, setOpen] = useState(false);
 	const p = run.params;
 	const { currency } = run.instrument;
+	const multi = run.instruments.length > 1;
+	const r = p.ranking;
 	const chips = [
+		...(multi
+			? [
+					`候補: ${run.instruments.map(instrumentLabel).join("・")}`,
+					`同時に持つ: ${p.maxHoldings ?? DEFAULT_MAX_HOLDINGS}銘柄まで`,
+					r
+						? `順位: ${TIMEFRAME_LABELS[r.timeframe]} ${RANKING_INDICATOR_LABELS[r.indicator]}(${r.period}) ${r.order === "desc" ? "高い順" : "低い順"}`
+						: "順位: 候補の並び順",
+				]
+			: []),
 		frequencyText(p),
 		// 買いが複数なら、どの買いの項目か分かるよう頭に名前を付ける
 		...p.buys.flatMap((b) => {
@@ -258,7 +281,9 @@ export function RunHeader({
 					: []),
 				`${tag}利確: ${groupText(b.takeProfit)}`,
 				`${tag}損切り: ${groupText(b.stopLoss)}`,
-				`${tag}${formatQuantity(run.instrument, b.orderSize)} ${run.instrument.quantityUnit}`,
+				b.orderAmount != null
+					? `${tag}1回 ${formatAmount(currency, b.orderAmount)}${currency.unit}ぶん`
+					: `${tag}${formatQuantity(run.instrument, b.orderSize)} ${run.instrument.quantityUnit}`,
 				`${tag}最大ロット数 ${b.maxPositions}`,
 			];
 		}),
@@ -413,19 +438,29 @@ function SaveDialog({
 	);
 }
 
-/** チャートの足。選んだ粒度で読み直す */
-function useResultChart(runId: number, timeframe: Timeframe) {
+/** チャートの足。選んだ粒度で読み直す。instrument は候補の先頭以外の銘柄を見るときだけ */
+function useResultChart(
+	runId: number,
+	timeframe: Timeframe,
+	instrument: string | null,
+	enabled: boolean,
+) {
 	const api = useApi();
 	const [state, setState] = useState<
 		| { key: string; chart: BacktestChart; error: null }
 		| { key: string; chart: null; error: string }
 		| null
 	>(null);
-	const key = `${runId}:${timeframe}`;
+	const key = `${runId}:${timeframe}:${instrument}`;
 	useEffect(() => {
+		if (!enabled) return;
 		let alive = true;
+		// 銘柄は API の型に出していないので、変数に入れて渡す
+		const query: { timeframe: Timeframe; instrument?: string } = instrument
+			? { timeframe, instrument }
+			: { timeframe };
 		api.api.backtests[":id"].chart
-			.$get({ param: { id: String(runId) }, query: { timeframe } })
+			.$get({ param: { id: String(runId) }, query })
 			.then((r) => readJson<BacktestChart>(r))
 			.then((chart) => {
 				if (alive) setState({ key, chart, error: null });
@@ -436,21 +471,65 @@ function useResultChart(runId: number, timeframe: Timeframe) {
 		return () => {
 			alive = false;
 		};
-	}, [api, runId, timeframe, key]);
+	}, [api, runId, timeframe, instrument, key, enabled]);
 	return state?.key === key ? state : null;
 }
+
+/** 総資産の推移。候補が2つ以上の実行だけ読む */
+function useEquity(run: BacktestRun) {
+	const api = useApi();
+	const [equity, setEquity] = useState<EquityPoint[] | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const multi = run.instruments.length > 1;
+	useEffect(() => {
+		if (!multi) return;
+		let alive = true;
+		api.api.backtests[":id"].equity
+			.$get({ param: { id: String(run.id) } })
+			.then((r) => readJson<{ equity: EquityPoint[] }>(r))
+			.then((r) => {
+				if (alive) setEquity(r.equity);
+			})
+			.catch((e) => {
+				if (alive) setError(errorMessage(e));
+			});
+		return () => {
+			alive = false;
+		};
+	}, [api, run.id, multi]);
+	return { equity, error };
+}
+
+/** 銘柄の切り替えで「合計」を指す値 */
+const TOTAL = "total";
 
 function Result({ run }: { run: BacktestRun }) {
 	const api = useApi();
 	const { currency } = run.instrument;
+	const multi = run.instruments.length > 1;
+	// 合計か、候補の銘柄の id
+	const [view, setView] = useState<string>(TOTAL);
+	const viewed = run.instruments.find((i) => i.id === view) ?? run.instrument;
+	const isTotal = multi && view === TOTAL;
+	// 先頭の銘柄は銘柄を付けずに頼む（候補が1つの実行と同じ）
+	const target =
+		multi && view !== TOTAL && view !== run.instrument.id ? view : null;
+	const instrumentOf = (o: BacktestOrder) =>
+		run.instruments.find((i) => i.id === o.instrument) ?? run.instrument;
+	const { equity, error: equityError } = useEquity(run);
 	const [timeframe, setTimeframe] = useChartTimeframe();
-	const loaded = useResultChart(run.id, timeframe);
+	const loaded = useResultChart(run.id, timeframe, target, !isTotal);
 	// 粒度を切り替えている間は前の足を出したままにする
-	const [lastChart, setLastChart] = useState<BacktestChart | null>(null);
+	const [lastChart, setLastChart] = useState<{
+		target: string | null;
+		chart: BacktestChart;
+	} | null>(null);
 	useEffect(() => {
-		if (loaded?.chart) setLastChart(loaded.chart);
-	}, [loaded]);
-	const chart = loaded?.chart ?? lastChart;
+		if (loaded?.chart) setLastChart({ target, chart: loaded.chart });
+	}, [loaded, target]);
+	// 銘柄を切り替えたときは前の銘柄の足を出さない
+	const chart =
+		loaded?.chart ?? (lastChart?.target === target ? lastChart.chart : null);
 	const navigate = useNavigate();
 	const s = run.summary as NonNullable<BacktestRun["summary"]>;
 	const [filter, setFilter] = useState<"filled" | "all">("filled");
@@ -470,14 +549,25 @@ function Result({ run }: { run: BacktestRun }) {
 		[chart],
 	);
 
+	// 合計は全銘柄の注文。先頭の銘柄も銘柄を付けて頼む（他の銘柄の注文を除くため）
+	const orderInstrument = multi && view !== TOTAL ? view : null;
 	const loadPage = useCallback(
 		async (offset: number) => {
 			try {
+				// 銘柄は API の型に出していないので、変数に入れて渡す
+				const query: {
+					filter: "filled" | "all";
+					offset: string;
+					limit: string;
+					instrument?: string;
+				} = {
+					filter,
+					offset: String(offset),
+					limit: String(PAGE),
+					...(orderInstrument ? { instrument: orderInstrument } : {}),
+				};
 				const r = await api.api.backtests[":id"].orders
-					.$get({
-						param: { id: String(run.id) },
-						query: { filter, offset: String(offset), limit: String(PAGE) },
-					})
+					.$get({ param: { id: String(run.id) }, query })
 					.then((res) =>
 						readJson<{ orders: BacktestOrder[]; total: number }>(res),
 					);
@@ -488,7 +578,7 @@ function Result({ run }: { run: BacktestRun }) {
 				setListError(errorMessage(e));
 			}
 		},
-		[api, run.id, filter],
+		[api, run.id, filter, orderInstrument],
 	);
 	useEffect(() => {
 		loadPage(0);
@@ -506,6 +596,17 @@ function Result({ run }: { run: BacktestRun }) {
 	};
 
 	const indicators = useChartIndicators(run.params);
+	// 期間の終わりに持っていた量。候補が2つ以上なら全銘柄
+	const held = (
+		multi
+			? run.instruments.map(
+					(i) =>
+						[i, s.byInstrument?.[i.id]?.openPositionQuantity ?? 0] as const,
+				)
+			: [[run.instrument, s.openPositionQuantity] as const]
+	)
+		.filter(([, q]) => q > 0)
+		.map(([i, q]) => `${formatQuantity(i, q)} ${i.quantityUnit}`);
 	const noOrders = run.orderCount === 0;
 	const tone = (n: number) => (n >= 0 ? "text-profit" : "text-loss");
 	// 実行時に判定の足で求めた値。持たない実行はチャートの足から求める
@@ -515,156 +616,210 @@ function Result({ run }: { run: BacktestRun }) {
 	return (
 		// 広い画面は上段に条件と成績を並べ、チャート以下は2列幅で縦に積む
 		<div className="flex flex-col gap-3.5 lg:grid lg:grid-cols-2">
-			<RunHeader run={run} />
-			<section
-				aria-label="成績の要約"
-				className="flex flex-col gap-3.5 rounded-xl border border-line bg-surface px-4 py-3.5"
-			>
-				<div className="flex items-center gap-1.5">
-					<h2 className="text-[15px] font-bold">成績</h2>
-					<GradeHelp />
+			{multi ? (
+				<div className="flex flex-col gap-3.5">
+					<RunHeader run={run} />
+					<Segmented
+						name="result-instrument"
+						label="見る銘柄"
+						options={[
+							[TOTAL, "合計"],
+							...run.instruments.map(
+								(i) => [i.id, instrumentLabel(i)] as const,
+							),
+						]}
+						value={view}
+						onChange={setView}
+					/>
 				</div>
-				<div className="flex flex-col gap-0.5">
-					<span className="flex items-center gap-1.5 text-xs text-text-2">
-						損益
-						<GradeBadge
-							value={gradePnl(
-								s.pnlPercent,
-								buyHold,
-								s.trades === 0 && s.openPositionQuantity === 0,
-							)}
-						/>
-					</span>
-					<div className="flex items-baseline gap-2.5">
-						<span
-							className={`num text-[30px] font-semibold tracking-tight ${tone(s.pnl)}`}
-						>
-							{formatSignedAmount(currency, s.pnl)}
-							{currency.unit}
-						</span>
-						<span className={`num text-base font-semibold ${tone(s.pnl)}`}>
-							{formatSignedPercent(s.pnlPercent)}
-						</span>
+			) : (
+				<RunHeader run={run} />
+			)}
+			{multi && !isTotal ? (
+				<InstrumentSummaryCard run={run} instrument={viewed} />
+			) : (
+				<section
+					aria-label="成績の要約"
+					className="flex flex-col gap-3.5 rounded-xl border border-line bg-surface px-4 py-3.5"
+				>
+					<div className="flex items-center gap-1.5">
+						<h2 className="text-[15px] font-bold">
+							{multi ? "成績（合計）" : "成績"}
+						</h2>
+						<GradeHelp />
 					</div>
-					{buyHold !== null && (
-						<span className="num text-xs text-text-2">
-							ガチホなら {formatSignedPercent(buyHold)}
+					<div className="flex flex-col gap-0.5">
+						<span className="flex items-center gap-1.5 text-xs text-text-2">
+							損益
+							<GradeBadge
+								value={gradePnl(
+									s.pnlPercent,
+									buyHold,
+									s.trades === 0 && s.openPositionQuantity === 0,
+								)}
+							/>
 						</span>
-					)}
-				</div>
-				<div className="grid grid-cols-3 gap-x-2 gap-y-3 border-t border-line pt-3">
-					<Stat
-						label="勝率"
-						value={s.winRate !== null ? `${s.winRate.toFixed(1)}%` : "—"}
-						sub={`${s.wins}勝 ${s.losses}敗`}
-						grade={gradeWinRate(s.winRate)}
-					/>
-					<Stat
-						label="最大DD"
-						value={
-							s.maxDrawdownPercent > 0
-								? `−${s.maxDrawdownPercent.toFixed(1)}%`
-								: "0.0%"
-						}
-						tone="text-loss"
-						grade={gradeMaxDrawdown(s.maxDrawdownPercent)}
-						sub={
-							s.maxDrawdownFrom !== null && s.maxDrawdownTo !== null
-								? `${formatDate(s.maxDrawdownFrom).slice(5)}〜${formatDate(s.maxDrawdownTo).slice(5)}`
-								: undefined
-						}
-					/>
-					<Stat
-						label="損益比率（PF）"
-						value={
-							s.trades === 0
-								? "—"
-								: s.profitFactor === null
-									? "∞"
-									: s.profitFactor.toFixed(2)
-						}
-						grade={gradeProfitFactor(s.profitFactor, s.trades)}
-					/>
-					<Stat label="取引回数" value={String(s.trades)} sub="往復" />
-					<Stat
-						label="平均保有"
-						value={
-							s.averageHoldingMs !== null
-								? holdingText(s.averageHoldingMs)
-								: "—"
-						}
-					/>
-					<Stat
-						label="最終資金"
-						value={`${formatAmount(currency, s.finalEquity)}${currency.unit}`}
-					/>
-				</div>
-				<FewTradesNote trades={s.trades} />
-				{s.openPositionQuantity > 0 && (
-					<p className="text-xs text-text-2">
-						期間の終わりに{" "}
-						{formatQuantity(run.instrument, s.openPositionQuantity)}{" "}
-						{run.instrument.quantityUnit}{" "}
-						を保有していた。損益・最終資金は最後の終値で評価し、取引回数・勝率には含めない。
-					</p>
-				)}
-			</section>
-			<div className="rounded-xl border border-line bg-surface px-3 py-3.5 lg:col-span-2">
-				{chart ? (
-					<PriceChart
-						instrument={run.instrument}
-						bars={chart.bars}
-						markers={chart.markers}
-						indicators={indicators}
-						selectedId={selected?.id ?? null}
-						onMarker={(m) => pick(m.id)}
-						judgments={judgments}
-						bg={bg}
-						onBgChange={setBg}
-						viewKey={`${chart.timeframe}`}
-						toolbarLabel={TIMEFRAME_LABELS[timeframe]}
-						toolbar={
-							<select
-								aria-label="足の粒度"
-								value={timeframe}
-								onChange={(e) => setTimeframe(e.target.value as Timeframe)}
-								className="h-8 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold"
+						<div className="flex items-baseline gap-2.5">
+							<span
+								className={`num text-[30px] font-semibold tracking-tight ${tone(s.pnl)}`}
 							>
-								{TIMEFRAMES.map((t) => (
-									<option key={t} value={t}>
-										{TIMEFRAME_LABELS[t]}
-									</option>
-								))}
-							</select>
-						}
-					/>
-				) : (
-					!loaded?.error && <LoadingCard />
-				)}
-				{loaded?.error && (
-					<div className="mt-2 flex flex-wrap items-center gap-2">
-						<span role="alert" className="text-xs font-semibold text-loss">
-							チャートを読み込めなかった（{loaded.error}）
-						</span>
-						{timeframe !== DEFAULT_CHART_TIMEFRAME && (
-							<Button
-								size="sm"
-								onClick={() => setTimeframe(DEFAULT_CHART_TIMEFRAME)}
-							>
-								{TIMEFRAME_LABELS[DEFAULT_CHART_TIMEFRAME]}で見る
-							</Button>
+								{formatSignedAmount(currency, s.pnl)}
+								{currency.unit}
+							</span>
+							<span className={`num text-base font-semibold ${tone(s.pnl)}`}>
+								{formatSignedPercent(s.pnlPercent)}
+							</span>
+						</div>
+						{buyHold !== null && (
+							<span className="num text-xs text-text-2">
+								ガチホなら {formatSignedPercent(buyHold)}
+								{multi && `（${run.instruments.length}銘柄の等分）`}
+							</span>
 						)}
 					</div>
-				)}
-			</div>
-			<div className="lg:col-span-2">
-				<AdviceSection
-					runId={run.id}
-					onImprove={(params) =>
-						navigate("/backtest", { state: improvedState(run, params) })
-					}
-				/>
-			</div>
+					<div className="grid grid-cols-3 gap-x-2 gap-y-3 border-t border-line pt-3">
+						<Stat
+							label="勝率"
+							value={s.winRate !== null ? `${s.winRate.toFixed(1)}%` : "—"}
+							sub={`${s.wins}勝 ${s.losses}敗`}
+							grade={gradeWinRate(s.winRate)}
+						/>
+						<Stat
+							label="最大DD"
+							value={
+								s.maxDrawdownPercent > 0
+									? `−${s.maxDrawdownPercent.toFixed(1)}%`
+									: "0.0%"
+							}
+							tone="text-loss"
+							grade={gradeMaxDrawdown(s.maxDrawdownPercent)}
+							sub={
+								s.maxDrawdownFrom !== null && s.maxDrawdownTo !== null
+									? `${formatDate(s.maxDrawdownFrom).slice(5)}〜${formatDate(s.maxDrawdownTo).slice(5)}`
+									: undefined
+							}
+						/>
+						<Stat
+							label="損益比率（PF）"
+							value={
+								s.trades === 0
+									? "—"
+									: s.profitFactor === null
+										? "∞"
+										: s.profitFactor.toFixed(2)
+							}
+							grade={gradeProfitFactor(s.profitFactor, s.trades)}
+						/>
+						<Stat label="取引回数" value={String(s.trades)} sub="往復" />
+						<Stat
+							label="平均保有"
+							value={
+								s.averageHoldingMs !== null
+									? holdingText(s.averageHoldingMs)
+									: "—"
+							}
+						/>
+						<Stat
+							label="最終資金"
+							value={`${formatAmount(currency, s.finalEquity)}${currency.unit}`}
+						/>
+					</div>
+					<FewTradesNote trades={s.trades} />
+					{held.length > 0 && (
+						<p className="text-xs text-text-2">
+							期間の終わりに {held.join("・")}{" "}
+							を保有していた。損益・最終資金は最後の終値で評価し、取引回数・勝率には含めない。
+						</p>
+					)}
+					{isTotal && <InstrumentTable run={run} onPick={setView} />}
+				</section>
+			)}
+			{isTotal ? (
+				<section
+					aria-label="資産の推移"
+					className="flex flex-col gap-2 rounded-xl border border-line bg-surface px-4 py-3.5 lg:col-span-2"
+				>
+					<div className="flex flex-wrap items-baseline justify-between gap-x-2">
+						<h2 className="text-[15px] font-bold">資産の推移</h2>
+						<span className="text-xs text-text-2">
+							日ごとの総資産。点線は初期資金
+						</span>
+					</div>
+					{equity ? (
+						<EquityChart
+							points={equity}
+							initialCash={run.initialCash}
+							currency={currency}
+						/>
+					) : equityError ? (
+						<p role="alert" className="text-xs font-semibold text-loss">
+							資産の推移を読み込めなかった（{equityError}）
+						</p>
+					) : (
+						<LoadingCard />
+					)}
+				</section>
+			) : (
+				<div className="rounded-xl border border-line bg-surface px-3 py-3.5 lg:col-span-2">
+					{chart ? (
+						<PriceChart
+							instrument={viewed}
+							bars={chart.bars}
+							markers={chart.markers}
+							indicators={indicators}
+							selectedId={selected?.id ?? null}
+							onMarker={(m) => pick(m.id)}
+							judgments={judgments}
+							bg={bg}
+							onBgChange={setBg}
+							viewKey={`${chart.timeframe}`}
+							toolbarLabel={TIMEFRAME_LABELS[timeframe]}
+							toolbar={
+								<select
+									aria-label="足の粒度"
+									value={timeframe}
+									onChange={(e) => setTimeframe(e.target.value as Timeframe)}
+									className="h-8 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold"
+								>
+									{TIMEFRAMES.map((t) => (
+										<option key={t} value={t}>
+											{TIMEFRAME_LABELS[t]}
+										</option>
+									))}
+								</select>
+							}
+						/>
+					) : (
+						!loaded?.error && <LoadingCard />
+					)}
+					{loaded?.error && (
+						<div className="mt-2 flex flex-wrap items-center gap-2">
+							<span role="alert" className="text-xs font-semibold text-loss">
+								チャートを読み込めなかった（{loaded.error}）
+							</span>
+							{timeframe !== DEFAULT_CHART_TIMEFRAME && (
+								<Button
+									size="sm"
+									onClick={() => setTimeframe(DEFAULT_CHART_TIMEFRAME)}
+								>
+									{TIMEFRAME_LABELS[DEFAULT_CHART_TIMEFRAME]}で見る
+								</Button>
+							)}
+						</div>
+					)}
+				</div>
+			)}
+			{/* アドバイスは候補の先頭の銘柄の注文だけを見るので、合計にだけ出す */}
+			{(!multi || isTotal) && (
+				<div className="lg:col-span-2">
+					<AdviceSection
+						runId={run.id}
+						onImprove={(params) =>
+							navigate("/backtest", { state: improvedState(run, params) })
+						}
+					/>
+				</div>
+			)}
 			<section
 				aria-label="注文と約定"
 				className="flex flex-col gap-2 lg:col-span-2"
@@ -680,15 +835,26 @@ function Result({ run }: { run: BacktestRun }) {
 				) : (
 					<>
 						<div className="flex items-center justify-between gap-2">
-							<h2 className="text-[15px] font-bold">注文・約定</h2>
+							<h2 className="text-[15px] font-bold">
+								注文・約定
+								{multi && !isTotal && `（${instrumentLabel(viewed)}）`}
+							</h2>
 							<Segmented
 								name="order-filter"
 								label="一覧に出す注文"
 								size="sm"
-								options={[
-									["filled", `約定 ${run.filledCount}`],
-									["all", `注文 ${run.orderCount}`],
-								]}
+								// 件数は全銘柄の数なので、銘柄を見ているときは出さない
+								options={
+									multi && !isTotal
+										? [
+												["filled", "約定"],
+												["all", "注文"],
+											]
+										: [
+												["filled", `約定 ${run.filledCount}`],
+												["all", `注文 ${run.orderCount}`],
+											]
+								}
 								value={filter}
 								onChange={setFilter}
 							/>
@@ -698,7 +864,8 @@ function Result({ run }: { run: BacktestRun }) {
 								<OrderRow
 									key={o.id}
 									order={o}
-									instrument={run.instrument}
+									instrument={instrumentOf(o)}
+									chip={isTotal ? instrumentLabel(instrumentOf(o)) : undefined}
 									selected={selected?.id === o.id}
 									onClick={() => setSelected(o)}
 								/>
@@ -723,7 +890,7 @@ function Result({ run }: { run: BacktestRun }) {
 			{selected && (
 				<OrderSheet
 					order={selected}
-					instrument={run.instrument}
+					instrument={instrumentOf(selected)}
 					onClose={() => setSelected(null)}
 					onPair={(oid) => pick(oid)}
 				/>
