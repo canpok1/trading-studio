@@ -117,6 +117,8 @@ export function inferExitKind(
 /** 判断の記録。評価のたびに1件 */
 export type DecisionLog = {
 	time: number;
+	/** 判定した銘柄の id。1銘柄の口座と銘柄を持つ前の記録には無い */
+	instrument?: string;
 	/** 判定時の現在値 */
 	price: number;
 	cash: number;
@@ -309,8 +311,18 @@ function cancelRecord(
 	};
 }
 
+/** 口座のロット・注文がその銘柄のものか。銘柄を持たないものは先頭の銘柄（first）として読む */
+function ofInstrument(
+	x: { instrument?: string },
+	id: string,
+	first: string,
+): boolean {
+	return (x.instrument ?? first) === id;
+}
+
 /**
  * 約定の反映。fillPrice が未約定の注文ごとに約定価格（約定しなければ null）を返す。
+ * ほかの銘柄の注文はそのまま残す。first は口座の先頭の銘柄で、銘柄を持たない注文をその銘柄として読む。
  * 成行の買いは約定価格が発注後に決まるため、約定の時点で手数料込みの額が現金に足りなければ取り消す（全モード共通）
  */
 export function settleFills(
@@ -320,6 +332,7 @@ export function settleFills(
 	fees: FeeRates,
 	instrument: Instrument,
 	calendar: TradingCalendar = marketOf(instrument).calendar,
+	first: string = instrument.id,
 ): StepChanges & { account: Account; filled: boolean } {
 	let { cash, lots, today } = account;
 	const changed: TradeOrder[] = [];
@@ -332,7 +345,9 @@ export function settleFills(
 	}
 	for (const item of account.openOrders) {
 		const { order } = item;
-		const price = fillPrice(order);
+		const price = ofInstrument(order, instrument.id, first)
+			? fillPrice(order)
+			: null;
 		if (price === null) {
 			remaining.push(item);
 			continue;
@@ -375,6 +390,7 @@ export function settleFills(
 					cost: cost + fee,
 					record,
 					buyId: order.buyId ?? null,
+					...(order.instrument ? { instrument: order.instrument } : {}),
 				},
 			];
 			withChanged(changed, record);
@@ -523,145 +539,234 @@ export type DecideOutput = StepChanges & {
 	decision: DecisionLog;
 };
 
-/** 戦略の評価と注文の作成 */
+/** 1銘柄ぶんの判定の材料 */
+export type MarketInput<P> = Pick<
+	DecideInput<P>,
+	"instrument" | "price" | "candles" | "recent" | "dvol" | "state"
+>;
+
+export type DecideAllInput<P> = Omit<DecideInput<P>, keyof MarketInput<P>> & {
+	/** 対象の銘柄（同じ市場）。並び順が資金配分の優先順位で、先の銘柄の買いから資金を割り当てる */
+	markets: readonly MarketInput<P>[];
+};
+
+/** 銘柄ごとの判定の結果 */
+export type MarketDecision = {
+	instrument: string;
+	state: JsonValue;
+	nextEvalAt: number;
+	decision: DecisionLog;
+};
+
+export type DecideAllOutput = StepChanges & {
+	account: Account;
+	results: MarketDecision[];
+};
+
+/** 戦略の評価と注文の作成（1銘柄） */
 export function decide<P>(input: DecideInput<P>): DecideOutput {
-	const { strategy, params, now, fees, instrument } = input;
-	const { calendar } = marketOf(instrument);
+	const { instrument, price, candles, recent, dvol, state, ...rest } = input;
+	const out = decideAll({
+		...rest,
+		markets: [{ instrument, price, candles, recent, dvol, state }],
+	});
+	const r = out.results[0] as MarketDecision;
+	return {
+		account: out.account,
+		changed: out.changed,
+		trades: out.trades,
+		state: r.state,
+		nextEvalAt: r.nextEvalAt,
+		decision: r.decision,
+	};
+}
+
+/**
+ * 銘柄ごとの売買の判断と資金配分。銘柄ごとに同じ戦略で判定し、出す注文を銘柄の並び順に割り当てる。
+ * 買いの資金は、先に割り当てた銘柄の未約定の買いを除いた残りで確かめるので、資金が足りなければ先の銘柄が優先される
+ */
+export function decideAll<P>(input: DecideAllInput<P>): DecideAllOutput {
+	const { strategy, params, now, fees, markets } = input;
+	const first = markets[0]?.instrument.id ?? "";
 	const prefix = input.idPrefix ?? "o";
-	const { cash, position, lots } = input.account;
+	const { cash, lots } = input.account;
 	let { seq } = input.account;
 	let open = [...input.account.openOrders];
 	const changed: TradeOrder[] = [];
-	const openOrders = open.map((x) => ({ ...x.order }));
-	// リスク上限は戦略の条件とは別に、注文を出す手前で検査する。止めるのは新しい買いだけ
-	const blockBuy = dailyLossBlock(
-		input.account,
-		now,
-		strategy.dailyLossLimit?.(params) ?? null,
-		calendar,
-	);
+	const results: MarketDecision[] = [];
 
-	const out: StrategyOutput = strategy.evaluate({
-		instrument,
-		now,
-		price: input.price,
-		candles: input.candles,
-		recent: input.recent,
-		judgments: input.judgments,
-		events: input.events,
-		dvol: input.dvol,
-		position,
-		lots: publicLots(lots),
-		cash,
-		openOrders,
-		params,
-		state: input.state,
-	});
-
-	// 未約定の買いが約定したときに払う額（手数料込み）。同時に出した買いが全部約定しても現金が足りるようにする。
-	// 成行は判定時の現在値で見積もる
-	const buyNeed = (o: {
-		type: OrderType;
-		price?: number | null;
-		quantity: number;
-	}) => {
-		const p = o.type === "limit" ? (o.price as number) : input.price;
-		return (
-			notional(instrument, p, o.quantity, "ceil") +
-			feeAmount(instrument, p, o.quantity, feeRate(fees, o.type))
+	for (const m of markets) {
+		const { instrument } = m;
+		const { calendar } = marketOf(instrument);
+		const mine = <T extends { instrument?: string }>(x: T) =>
+			ofInstrument(x, instrument.id, first);
+		const myLots = lots.filter(mine);
+		const position = positionOfLots(myLots);
+		const openOrders = open
+			.filter((x) => mine(x.order))
+			.map((x) => ({ ...x.order }));
+		// リスク上限は戦略の条件とは別に、注文を出す手前で検査する。止めるのは新しい買いだけ
+		const blockBuy = dailyLossBlock(
+			input.account,
+			now,
+			strategy.dailyLossLimit?.(params) ?? null,
+			calendar,
 		);
-	};
 
-	const place = (
-		intent: Extract<OrderIntent, { kind: "place" }>,
-		reason: string,
-	): string | null => {
-		if (intent.type === "limit" && intent.price === undefined) {
-			return "指値の価格が無いため注文しない";
-		}
-		if (intent.side === "buy" && blockBuy) {
-			return blockBuy;
-		}
-		if (intent.side === "buy") {
-			const reserved = open
-				.filter((x) => x.order.side === "buy")
-				.reduce((a, x) => a + buyNeed(x.order), 0);
-			const need = buyNeed(intent);
-			// 成行は約定時に確かめる（1件だけなら今までどおり発注する）
-			if ((intent.type === "limit" || reserved > 0) && cash - reserved < need) {
-				return reserved > 0
-					? `資金 ${formatYen(cash)} 円から未約定の買い ${formatYen(reserved)} 円を除くと、手数料込みの注文額 ${formatYen(need)} 円に足りないため注文しない`
-					: `資金 ${formatYen(cash)} 円が手数料込みの注文額 ${formatYen(need)} 円に足りないため注文しない`;
-			}
-		}
-		if (intent.side === "sell") {
-			const lot = lots.find((l) => l.id === intent.lotId);
-			if (!lot) {
-				return "売るロットが無いため注文しない";
-			}
-			if (intent.quantity <= 0 || intent.quantity > lot.quantity) {
-				return `ロットの ${formatQuantity(instrument, lot.quantity)} ${instrument.quantityUnit} を超える数量は売れないため注文しない`;
-			}
-			if (open.some((x) => x.order.lotId === lot.id)) {
-				return "このロットの売りが約定待ちのため注文しない";
-			}
-		}
-		seq++;
-		const order: Order = {
-			id: `${prefix}${seq}`,
-			side: intent.side,
-			type: intent.type,
-			price: intent.type === "limit" ? (intent.price as number) : null,
-			quantity: intent.quantity,
-			placedAt: now,
-			expiresAt:
-				intent.expireAfterMs === undefined
-					? null
-					: addOpenTime(calendar, now, intent.expireAfterMs),
-			status: "open",
-			lotId: intent.side === "sell" ? (intent.lotId ?? null) : null,
-			buyId: intent.side === "buy" ? (intent.buyId ?? null) : null,
-		};
-		const record: TradeOrder = {
-			id: order.id,
-			side: order.side,
-			type: order.type,
-			price: order.price,
-			quantity: order.quantity,
-			placedAt: now,
-			status: "open",
-			filledAt: null,
-			fillPrice: null,
-			fee: null,
-			canceledAt: null,
-			cancelReason: null,
-			reason,
-			// 売りは売るロット（買いの注文）と対応づける
-			pairId: order.lotId ?? null,
-			pnl: null,
-			exitKind: intent.side === "sell" ? (intent.exitKind ?? null) : null,
-			buyName: intent.side === "buy" ? (intent.buyName ?? null) : null,
-		};
-		changed.push(record);
-		open.push({ order, record });
-		return null;
-	};
+		const out: StrategyOutput = strategy.evaluate({
+			instrument,
+			now,
+			price: m.price,
+			candles: m.candles,
+			recent: m.recent,
+			judgments: input.judgments,
+			events: input.events,
+			dvol: m.dvol,
+			position,
+			lots: publicLots(myLots),
+			cash,
+			openOrders,
+			params,
+			state: m.state,
+		});
 
-	const notes: string[] = out.note ? [out.note] : [];
-	for (const intent of out.intents) {
-		if (intent.kind === "place") {
-			const rejected = place(intent, out.note ?? "");
-			if (rejected) notes.push(rejected);
-		} else {
-			const item = open.find((x) => x.order.id === intent.orderId);
-			if (item) {
-				withChanged(
-					changed,
-					cancelRecord(item.record, now, intent.reason ?? "戦略が取消"),
+		// 未約定の買いが約定したときに払う額（手数料込み）。同時に出した買いが全部約定しても現金が足りるようにする。
+		// 成行は判定時の現在値で見積もる。ほかの銘柄の買いはその銘柄の価格と単位で見積もる
+		const priceOf = (id: string) =>
+			markets.find((x) => x.instrument.id === id) ?? m;
+		const buyNeed = (o: {
+			type: OrderType;
+			price?: number | null;
+			quantity: number;
+			instrument?: string;
+		}) => {
+			const at = priceOf(o.instrument ?? first);
+			const inst = at.instrument;
+			const p = o.type === "limit" ? (o.price as number) : at.price;
+			return (
+				notional(inst, p, o.quantity, "ceil") +
+				feeAmount(inst, p, o.quantity, feeRate(fees, o.type))
+			);
+		};
+
+		const place = (
+			intent: Extract<OrderIntent, { kind: "place" }>,
+			reason: string,
+		): string | null => {
+			if (intent.type === "limit" && intent.price === undefined) {
+				return "指値の価格が無いため注文しない";
+			}
+			if (intent.side === "buy" && blockBuy) {
+				return blockBuy;
+			}
+			if (intent.side === "buy") {
+				const reserved = open
+					.filter((x) => x.order.side === "buy")
+					.reduce((a, x) => a + buyNeed(x.order), 0);
+				const need = buyNeed({ ...intent, instrument: instrument.id });
+				// 成行は約定時に確かめる（1件だけなら今までどおり発注する）
+				if (
+					(intent.type === "limit" || reserved > 0) &&
+					cash - reserved < need
+				) {
+					return reserved > 0
+						? `資金 ${formatYen(cash)} 円から未約定の買い ${formatYen(reserved)} 円を除くと、手数料込みの注文額 ${formatYen(need)} 円に足りないため注文しない`
+						: `資金 ${formatYen(cash)} 円が手数料込みの注文額 ${formatYen(need)} 円に足りないため注文しない`;
+				}
+			}
+			if (intent.side === "sell") {
+				const lot = myLots.find((l) => l.id === intent.lotId);
+				if (!lot) {
+					return "売るロットが無いため注文しない";
+				}
+				if (intent.quantity <= 0 || intent.quantity > lot.quantity) {
+					return `ロットの ${formatQuantity(instrument, lot.quantity)} ${instrument.quantityUnit} を超える数量は売れないため注文しない`;
+				}
+				if (open.some((x) => x.order.lotId === lot.id)) {
+					return "このロットの売りが約定待ちのため注文しない";
+				}
+			}
+			seq++;
+			const order: Order = {
+				id: `${prefix}${seq}`,
+				side: intent.side,
+				type: intent.type,
+				price: intent.type === "limit" ? (intent.price as number) : null,
+				quantity: intent.quantity,
+				placedAt: now,
+				expiresAt:
+					intent.expireAfterMs === undefined
+						? null
+						: addOpenTime(calendar, now, intent.expireAfterMs),
+				status: "open",
+				lotId: intent.side === "sell" ? (intent.lotId ?? null) : null,
+				buyId: intent.side === "buy" ? (intent.buyId ?? null) : null,
+				...(markets.length > 1 ? { instrument: instrument.id } : {}),
+			};
+			const record: TradeOrder = {
+				id: order.id,
+				side: order.side,
+				type: order.type,
+				price: order.price,
+				quantity: order.quantity,
+				placedAt: now,
+				status: "open",
+				filledAt: null,
+				fillPrice: null,
+				fee: null,
+				canceledAt: null,
+				cancelReason: null,
+				reason,
+				// 売りは売るロット（買いの注文）と対応づける
+				pairId: order.lotId ?? null,
+				pnl: null,
+				exitKind: intent.side === "sell" ? (intent.exitKind ?? null) : null,
+				buyName: intent.side === "buy" ? (intent.buyName ?? null) : null,
+			};
+			changed.push(record);
+			open.push({ order, record });
+			return null;
+		};
+
+		const notes: string[] = out.note ? [out.note] : [];
+		for (const intent of out.intents) {
+			if (intent.kind === "place") {
+				const rejected = place(intent, out.note ?? "");
+				if (rejected) notes.push(rejected);
+			} else {
+				const item = open.find(
+					(x) => x.order.id === intent.orderId && mine(x.order),
 				);
-				open = open.filter((x) => x !== item);
+				if (item) {
+					withChanged(
+						changed,
+						cancelRecord(item.record, now, intent.reason ?? "戦略が取消"),
+					);
+					open = open.filter((x) => x !== item);
+				}
 			}
 		}
+
+		// 取引時間外は判定しない。次の判定は次の立会まで送る
+		const nextEvalAt = nextOpen(calendar, out.nextEvalAt);
+		results.push({
+			instrument: instrument.id,
+			state: out.state,
+			nextEvalAt,
+			decision: {
+				time: now,
+				...(markets.length > 1 ? { instrument: instrument.id } : {}),
+				price: m.price,
+				cash,
+				position,
+				lots: publicLots(myLots),
+				openOrderIds: openOrders.map((o) => o.id),
+				intents: out.intents,
+				nextEvalAt,
+				note: notes.length ? notes.join("。") : null,
+				state: out.state,
+			},
+		});
 	}
 	// 発注した直後に取り消した注文の記録を最新にする
 	open = open.map((x) => ({
@@ -669,26 +774,11 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 		record: changed.find((r) => r.id === x.record.id) ?? x.record,
 	}));
 
-	// 取引時間外は判定しない。次の判定は次の立会まで送る
-	const nextEvalAt = nextOpen(calendar, out.nextEvalAt);
 	return {
 		account: { ...input.account, seq, openOrders: open },
 		changed,
 		trades: [],
-		state: out.state,
-		nextEvalAt,
-		decision: {
-			time: now,
-			price: input.price,
-			cash,
-			position,
-			lots: publicLots(lots),
-			openOrderIds: openOrders.map((o) => o.id),
-			intents: out.intents,
-			nextEvalAt,
-			note: notes.length ? notes.join("。") : null,
-			state: out.state,
-		},
+		results,
 	};
 }
 
