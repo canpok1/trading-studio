@@ -49,6 +49,8 @@ export type Instrument = {
 	tradingUnit: number;
 	/** 1回の注文の最小の数量（数量の最小単位） */
 	minOrderQuantity: number;
+	/** 買値と売値の差の率（百万分率）。固定値で持つ（ADR 0037） */
+	spreadPpm: number;
 };
 
 export const JPY: Currency = { code: "JPY", unit: "円", decimals: 0 };
@@ -75,10 +77,46 @@ export const BTC_JPY: Instrument = {
 	quantityMinDigits: 3,
 	tradingUnit: 1,
 	minOrderQuantity: 100_000,
+	// 2026-10-24 の実測 0.02%
+	spreadPpm: 200,
+};
+
+// 数量の最小単位は注文の刻み（小数5桁）。最小 0.01 ETH（Coincheck の取引注文ルール）
+export const ETH_JPY: Instrument = {
+	id: "coincheck:eth_jpy",
+	marketId: COINCHECK.id,
+	symbol: "ETH/JPY",
+	currency: JPY,
+	priceDecimals: 0,
+	quantityDecimals: 5,
+	quantityUnit: "ETH",
+	quantityMinDigits: 2,
+	tradingUnit: 1,
+	minOrderQuantity: 1_000,
+	// 2026-10-24 の実測 0.09%
+	spreadPpm: 900,
+};
+
+// 価格は 0.001 円刻み。数量の最小単位は注文の刻み（小数2桁）。最小 1 XRP（Coincheck の取引注文ルール）
+export const XRP_JPY: Instrument = {
+	id: "coincheck:xrp_jpy",
+	marketId: COINCHECK.id,
+	symbol: "XRP/JPY",
+	currency: JPY,
+	priceDecimals: 3,
+	quantityDecimals: 2,
+	quantityUnit: "XRP",
+	quantityMinDigits: 0,
+	tradingUnit: 1,
+	minOrderQuantity: 100,
+	// 2026-10-24 の実測 0.12%
+	spreadPpm: 1_200,
 };
 
 export const MARKETS: readonly Market[] = [COINCHECK];
-export const INSTRUMENTS: readonly Instrument[] = [BTC_JPY];
+export const INSTRUMENTS: readonly Instrument[] = [BTC_JPY, ETH_JPY, XRP_JPY];
+/** 価格を収集する銘柄（ADR 0037） */
+export const COLLECTED_INSTRUMENTS: readonly Instrument[] = INSTRUMENTS;
 
 export function findMarket(id: string): Market | null {
 	return MARKETS.find((m) => m.id === id) ?? null;

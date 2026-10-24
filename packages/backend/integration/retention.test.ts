@@ -339,6 +339,28 @@ describe("古いデータの定期削除", () => {
 			);
 		});
 
+		test("足は収集している銘柄ごとに消す", async () => {
+			const s = setup();
+			for (const [instrument, time] of [
+				["coincheck:btc_jpy", CUT - 100 * DAY],
+				["coincheck:eth_jpy", CUT - 100 * DAY],
+				["coincheck:eth_jpy", CUT + DAY],
+			] as const) {
+				s.sql.run(
+					"insert into candles (instrument, timeframe, time, open, high, low, close, volume, source) values (?, '1m', ?, 1, 1, 1, 1, 0, 'collect')",
+					[instrument, time],
+				);
+			}
+			await s.runNow();
+			expect(
+				s.sql
+					.query<{ instrument: string; time: number }, []>(
+						"select instrument, time from candles order by instrument, time",
+					)
+					.all(),
+			).toEqual([{ instrument: "coincheck:eth_jpy", time: CUT + DAY }]);
+		});
+
 		test("データセットに入っている相場データは、最新でなくても残す", async () => {
 			const s = setup();
 			const { segment } = seed(s);

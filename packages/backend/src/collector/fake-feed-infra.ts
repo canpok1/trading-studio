@@ -1,6 +1,7 @@
 // テストと E2E で使う、取引所の代わりに約定を流す偽物
 
-import type { MarketTrade } from "@trading-studio/core";
+import type { Instrument, MarketTrade } from "@trading-studio/core";
+import { toPriceUnits } from "@trading-studio/core";
 import type { FeedHandlers, TradeFeed } from "./collector-domain";
 
 /** テストから接続・約定・切断を操作する */
@@ -58,8 +59,13 @@ export function manualFeed() {
  */
 export function demoFeed({
 	now = Date.now,
+	basePrice = 13_000_000,
+	swing = 50_000,
 }: {
 	now?: () => number;
+	/** 価格の中心と振れ幅（価格の最小単位） */
+	basePrice?: number;
+	swing?: number;
 } = {}): TradeFeed {
 	let id = 0;
 	const trade = (time: number): MarketTrade => {
@@ -67,7 +73,7 @@ export function demoFeed({
 		return {
 			id,
 			time,
-			price: 13_000_000 + Math.round(Math.sin(id / 30) * 50_000),
+			price: basePrice + Math.round(Math.sin(id / 30) * swing),
 			quantity: 1_000_000,
 		};
 	};
@@ -87,4 +93,18 @@ export function demoFeed({
 			return [];
 		},
 	};
+}
+
+/** E2E 用。銘柄ごとにそれらしい価格で流す */
+export function demoFeedOf(instrument: Instrument): TradeFeed {
+	const yen: Record<string, number> = {
+		"coincheck:btc_jpy": 13_000_000,
+		"coincheck:eth_jpy": 370_000,
+		"coincheck:xrp_jpy": 200,
+	};
+	const basePrice = toPriceUnits(instrument, yen[instrument.id] ?? 100);
+	return demoFeed({
+		basePrice,
+		swing: Math.round(basePrice / 260),
+	});
 }

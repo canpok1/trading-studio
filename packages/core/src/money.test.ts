@@ -129,6 +129,7 @@ describe("BTC 以外の単位", () => {
 		quantityMinDigits: 0,
 		tradingUnit: 1,
 		minOrderQuantity: 1,
+		spreadPpm: 0,
 	};
 	// 価格は0.1円刻み、数量は1株単位、売買単位は100株
 	const jpStock: Instrument = {
@@ -142,6 +143,7 @@ describe("BTC 以外の単位", () => {
 		quantityMinDigits: 0,
 		tradingUnit: 100,
 		minOrderQuantity: 100,
+		spreadPpm: 0,
 	};
 
 	test("金額は通貨の最小単位で出す", () => {

@@ -58,7 +58,8 @@ export function createRetentionService({
 	now = Date.now,
 }: {
 	repo: RetentionRepository;
-	marketData: Pick<MarketDataRepository, "deleteCandles">;
+	/** 銘柄ごとの足の読み書き */
+	marketData: readonly Pick<MarketDataRepository, "deleteCandles">[];
 	dvol: Pick<DvolRepository, "deleteBars">;
 	now?: () => number;
 }): RetentionEngine {
@@ -125,10 +126,12 @@ export function createRetentionService({
 						before,
 						repo.keptRanges(candleLeadMs(tf)),
 					)) {
-						result.candles += await drain(
-							(n) => marketData.deleteCandles(tf, r.from, r.to, n),
-							CANDLE_CHUNK,
-						);
+						for (const m of marketData) {
+							result.candles += await drain(
+								(n) => m.deleteCandles(tf, r.from, r.to, n),
+								CANDLE_CHUNK,
+							);
+						}
 					}
 				}
 				// DVOL は1時間足と同じ範囲を残す。価格が無い期間の DVOL は使えないため（ADR 0032）
