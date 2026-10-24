@@ -21,7 +21,7 @@ import { formatQuantity, formatYen } from "./format";
 import { adx, atr, bollinger, ema, rsi } from "./indicators";
 import type { Instrument } from "./instrument";
 import { BTC_JPY, marketOf, quantityScale } from "./instrument";
-import { limitBuyPriceBelow, notional } from "./money";
+import { limitBuyPriceBelow, notional, quantityForAmount } from "./money";
 import type {
 	Judge,
 	JudgmentConditionValue,
@@ -330,8 +330,10 @@ export type BuyRule = {
 	id: string;
 	/** 画面と判断の理由に出す名前。戦略の中で重ならない */
 	name: string;
-	/** 1回の注文量（satoshi）。1ロットの量 */
+	/** 1回の注文量（数量の最小単位）。1ロットの量。orderAmount があればそちらを使う */
 	orderSize: number;
+	/** 1回の注文額（金額の最小単位）。指定すれば、この額で買える量を売買単位で切り捨てて注文する。数量で指定するなら無し */
+	orderAmount?: number | null;
 	/** この買いで同時に持てるロットの数（この買いの未約定の買い注文を含む） */
 	maxPositions: number;
 	buy: ConditionGroup;
@@ -448,7 +450,9 @@ export const LIMITS = {
 	maxPositions: { min: 1, max: 10 },
 	frequency: { min: 1, max: 999 },
 	/** 注文量（satoshi）。0.001〜1 BTC */
-	orderSize: { min: 100_000, max: quantityScale(BTC_JPY) },
+	orderSize: { min: BTC_JPY.minOrderQuantity, max: quantityScale(BTC_JPY) },
+	/** 注文額（円） */
+	orderAmount: { min: 1, max: 100_000_000 },
 	/** 1日の損失上限（円） */
 	dailyLossLimit: { min: 1, max: 100_000_000 },
 	/** 損切り後に買わない本数。0 は止めない */
@@ -1375,6 +1379,12 @@ function validateBuyRule(
 			`${formatQuantity(BTC_JPY, size.min)}〜${formatQuantity(BTC_JPY, size.max)} BTC の範囲で入れる（最小単位 0.00000001）`,
 		);
 	}
+	if (p.orderAmount != null && !isIntIn(p.orderAmount, limits.orderAmount)) {
+		err(
+			"orderAmount",
+			`${formatYen(limits.orderAmount.min)}〜${formatYen(limits.orderAmount.max)} 円の整数で入れる`,
+		);
+	}
 	for (const g of CONDITION_GROUPS) {
 		p[g].conditions.forEach((c, i) => {
 			const at = `${g}.conditions.${i}`;
@@ -1647,6 +1657,7 @@ function validateBuyRule(
 		err("partialSell.percent", `${r.min}〜${r.max} の整数で入れる`);
 	} else if (
 		p.partialTakeProfit.conditions.length > 0 &&
+		p.orderAmount == null &&
 		isIntIn(p.orderSize, size)
 	) {
 		const sold = partialSellQuantity(p.orderSize, ps.percent);
@@ -1660,6 +1671,17 @@ function validateBuyRule(
 	if (typeof ps.breakevenStop !== "boolean") {
 		err("partialSell.breakevenStop", "選ぶ");
 	}
+}
+
+/** 買い1つの1回の注文量。金額で指定していれば、その価格で買える量 */
+export function buyQuantity(
+	instrument: Instrument,
+	b: Pick<BuyRule, "orderSize" | "orderAmount">,
+	price: number,
+): number {
+	return b.orderAmount == null
+		? b.orderSize
+		: quantityForAmount(instrument, price, b.orderAmount);
 }
 
 /** 一部利確で売る量（satoshi）。1 satoshi 未満は切り捨てる */
@@ -2057,7 +2079,6 @@ function buyIntents(
 	free: number,
 ): { intents: Extract<OrderIntent, { kind: "place" }>[]; note: string } {
 	const { lines, expireBars, expireTimeframe } = b.buyOrder;
-	const size = b.orderSize;
 	const intents: Extract<OrderIntent, { kind: "place" }>[] = [];
 	const texts: string[] = [];
 	let total = 0;
@@ -2068,6 +2089,11 @@ function buyIntents(
 			line.type === "market"
 				? price
 				: limitBuyPriceBelow(price, Math.round(line.belowPercent * 10_000));
+		const size = buyQuantity(instrument, b, at);
+		if (size < instrument.minOrderQuantity) {
+			short = `注文額 ${formatYen(b.orderAmount ?? 0)} 円で買える量が最小の注文量 ${formatQuantity(instrument, instrument.minOrderQuantity)} ${instrument.quantityUnit} に届かないため買わない`;
+			break;
+		}
 		const cost = notional(instrument, at, size, "ceil");
 		if (cash < total + cost) {
 			short =
@@ -2404,6 +2430,12 @@ function parseBuyRuleBody(
 		return null;
 	return {
 		orderSize: typeof v.orderSize === "number" ? v.orderSize : Number.NaN,
+		...(v.orderAmount === undefined || v.orderAmount === null
+			? {}
+			: {
+					orderAmount:
+						typeof v.orderAmount === "number" ? v.orderAmount : Number.NaN,
+				}),
 		maxPositions:
 			v.maxPositions === undefined
 				? DEFAULT_MAX_POSITIONS

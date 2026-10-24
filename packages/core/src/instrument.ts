@@ -40,6 +40,10 @@ export type Instrument = {
 	quantityUnit: string;
 	/** 画面で数量を小数何桁まで 0 で埋めるか */
 	quantityMinDigits: number;
+	/** 売買単位（数量の最小単位）。注文の数量はこの倍数にする */
+	tradingUnit: number;
+	/** 1回の注文の最小の数量（数量の最小単位） */
+	minOrderQuantity: number;
 };
 
 export const JPY: Currency = { code: "JPY", unit: "円", decimals: 0 };
@@ -62,6 +66,8 @@ export const BTC_JPY: Instrument = {
 	quantityDecimals: 8,
 	quantityUnit: "BTC",
 	quantityMinDigits: 3,
+	tradingUnit: 1,
+	minOrderQuantity: 100_000,
 };
 
 export const MARKETS: readonly Market[] = [COINCHECK];

@@ -7,6 +7,7 @@ import {
 	notional,
 	parseQuantity,
 	percentToPpm,
+	quantityForAmount,
 	quantityToString,
 	unrealizedPnl,
 } from "./money";
@@ -126,8 +127,10 @@ describe("BTC 以外の単位", () => {
 		quantityDecimals: 0,
 		quantityUnit: "株",
 		quantityMinDigits: 0,
+		tradingUnit: 1,
+		minOrderQuantity: 1,
 	};
-	// 価格は0.1円刻み、数量は1株単位
+	// 価格は0.1円刻み、数量は1株単位、売買単位は100株
 	const jpStock: Instrument = {
 		id: "tse:7203",
 		marketId: "tse",
@@ -137,6 +140,8 @@ describe("BTC 以外の単位", () => {
 		quantityDecimals: 0,
 		quantityUnit: "株",
 		quantityMinDigits: 0,
+		tradingUnit: 100,
+		minOrderQuantity: 100,
 	};
 
 	test("金額は通貨の最小単位で出す", () => {
@@ -154,6 +159,17 @@ describe("BTC 以外の単位", () => {
 		expect(feeAmount(usStock, 12_345, 10, 4_950)).toBe(612);
 		// (2,010.0 − 2,000.5) 円 × 100 株 = 950 円
 		expect(unrealizedPnl(jpStock, 100, 20_005, 20_100)).toBe(950);
+	});
+
+	test("金額で買える量を売買単位で切り捨てる", () => {
+		// $1,000 ÷ $123.45 = 8.1 株 → 8 株
+		expect(quantityForAmount(usStock, 12_345, 100_000)).toBe(8);
+		// 1,000,000 円 ÷ 2,000.5 円 = 499.8 株 → 400 株
+		expect(quantityForAmount(jpStock, 20_005, 1_000_000)).toBe(400);
+		// 100,000 円 ÷ 10,000,000 円 = 0.01 BTC
+		expect(quantityForAmount(BTC_JPY, 10_000_000, 100_000)).toBe(1_000_000);
+		// 1 BTC = 3 億円なら 1 satoshi は 3 円。1 円では買えない
+		expect(quantityForAmount(BTC_JPY, 300_000_000, 1)).toBe(0);
 	});
 
 	test("価格と数量を最小単位へ直す", () => {

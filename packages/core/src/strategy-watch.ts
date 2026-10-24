@@ -12,6 +12,7 @@ import type {
 } from "./condition-strategy";
 import {
 	adxOf,
+	buyQuantity,
 	buyRuleOf,
 	checkCondition,
 	emaOf,
@@ -617,7 +618,12 @@ function buyStatus(
 			);
 		if (
 			input.cash - reserved <
-			notional(input.instrument, at, b.orderSize, "ceil")
+			notional(
+				input.instrument,
+				at,
+				buyQuantity(input.instrument, b, at),
+				"ceil",
+			)
 		) {
 			return { kind: "noCash" };
 		}

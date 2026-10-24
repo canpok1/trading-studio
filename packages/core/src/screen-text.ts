@@ -101,7 +101,9 @@ export function conditionSetScreenText(p: ConditionSet): string[] {
 		const tag = p.buys.length >= 2 ? `【${b.name}】` : "";
 		lines.push(
 			`### ${tag}注文量とロット数`,
-			`- 1回の注文量: ${formatQuantity(BTC_JPY, b.orderSize)} BTC`,
+			b.orderAmount == null
+				? `- 1回の注文量: ${formatQuantity(BTC_JPY, b.orderSize)} BTC`
+				: `- 1回の注文額: ${formatYen(b.orderAmount)} 円（買える量を売買単位で切り捨てて注文）`,
 			`- 最大ロット数: ${b.maxPositions}`,
 		);
 		for (const key of CONDITION_GROUPS) {
