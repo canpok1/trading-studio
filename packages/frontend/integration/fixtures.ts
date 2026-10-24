@@ -140,6 +140,7 @@ export function newsScore(over: Partial<NewsScore> = {}): NewsScore {
 		status: "done",
 		scores: { sentiment: 30, risk: 10 },
 		duration: "short",
+		instruments: {},
 		comment: "採点の理由。",
 		scoredAt: 0,
 		rescoredAt: null,

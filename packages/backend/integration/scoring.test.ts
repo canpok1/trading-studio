@@ -724,6 +724,45 @@ describe("運用の採点を置き換える採点し直し", () => {
 		expect(t.service.rescoreLive(a)).toMatchObject({ requested: false });
 	});
 
+	test("銘柄の個別の点数も保存し、置き換えでは個別の点数ごと入れ替え、元の採点の個別の点数は版の採点に残す", async () => {
+		const t = setup();
+		const eth = (sentiment: number) => ({
+			symbol: "ETH/JPY",
+			sentiment,
+			risk: 0,
+			duration: "long",
+		});
+		t.replies.push({
+			sentiment: 10,
+			risk: 0,
+			duration: "short",
+			instruments: [eth(-50)],
+			comment: "v1",
+		});
+		const [a] = await scoredThenV2(t, 1);
+		const ethScore = (sentiment: number) => ({
+			"coincheck:eth_jpy": {
+				scores: { sentiment, risk: 0 },
+				duration: "long" as const,
+			},
+		});
+		expect(t.repo.getScore(a)?.instruments).toEqual(ethScore(-50));
+		t.service.rescoreLive(a);
+		t.replies.push({
+			sentiment: 20,
+			risk: 0,
+			duration: "short",
+			instruments: [],
+			comment: "v2",
+		});
+		await t.at(T0 + 10_000);
+		expect(t.repo.getScore(a)?.instruments).toEqual({});
+		expect(t.repo.scoredNews(0, T0 + 5000)[0]?.instruments).toBeUndefined();
+		expect(t.repo.scoredNews(0, T0 + 5000, 1)[0]?.instruments).toEqual(
+			ethScore(-50),
+		);
+	});
+
 	test("その版の採点が既にあれば、問い合わせずにすぐ置き換える", async () => {
 		const t = setup();
 		const [a] = await scoredThenV2(t, 1);

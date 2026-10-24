@@ -41,6 +41,7 @@ describe("プロンプト", () => {
 		).toEqual({
 			scores: { sentiment: 100, risk: 0 },
 			duration: "long",
+			instruments: {},
 			comment: "理由",
 		});
 		for (const bad of [
@@ -61,6 +62,53 @@ describe("プロンプト", () => {
 		]) {
 			expect(typeof parseScoreResponse(bad)).toBe("string");
 		}
+	});
+
+	test("個別に関係する銘柄の点数を銘柄の id で受ける。持続 none の銘柄は入れない", () => {
+		expect(
+			parseScoreResponse({
+				sentiment: 10,
+				risk: 5,
+				duration: "short",
+				instruments: [
+					{ symbol: "ETH/JPY", sentiment: -60, risk: 40, duration: "long" },
+					{ symbol: "XRP/JPY", sentiment: 30, risk: 0, duration: "none" },
+				],
+				comment: "c",
+			}),
+		).toMatchObject({
+			scores: { sentiment: 10, risk: 5 },
+			instruments: {
+				"coincheck:eth_jpy": {
+					scores: { sentiment: -60, risk: 40 },
+					duration: "long",
+				},
+			},
+		});
+		const base = { sentiment: 0, risk: 0, duration: "short", comment: "c" };
+		const item = { sentiment: 0, risk: 0, duration: "short" };
+		for (const instruments of [
+			"ETH/JPY",
+			[{ ...item, symbol: "DOGE/JPY" }],
+			[{ ...item, symbol: "ETH/JPY", sentiment: 101 }],
+			[
+				{ ...item, symbol: "ETH/JPY" },
+				{ ...item, symbol: "ETH/JPY", duration: "none" },
+			],
+		]) {
+			expect(typeof parseScoreResponse({ ...base, instruments })).toBe(
+				"string",
+			);
+		}
+	});
+
+	test("対象の銘柄をプロンプトに並べる", () => {
+		expect(
+			buildPrompt(
+				{ sourceName: "A", title: "t", summary: null, publishedAt: T0 },
+				"基準",
+			),
+		).toContain("対象の銘柄: BTC/JPY・ETH/JPY・XRP/JPY");
 	});
 
 	test("持続 none の記事は点数を 0 にそろえる", () => {

@@ -1,6 +1,7 @@
 import type {
 	AggregationRule,
 	Duration,
+	InstrumentScore,
 	ScoredNews,
 } from "@trading-studio/core";
 import {
@@ -28,6 +29,7 @@ type ScoreRow = {
 	sentiment: number | null;
 	duration: Duration | null;
 	comment: string | null;
+	instruments: string | null;
 	scored_at: number | null;
 	rescored_at: number | null;
 	criteria_version: number | null;
@@ -38,6 +40,41 @@ type ScoreRow = {
 	next_attempt_at: number | null;
 };
 
+type StoredScore = { sentiment: number; risk: number; duration: Duration };
+
+/** 銘柄の点数を列に書く形。個別に関係する銘柄が無ければ null */
+export function encodeInstruments(
+	v: Readonly<Record<string, InstrumentScore>>,
+): string | null {
+	const entries = Object.entries(v);
+	if (entries.length === 0) return null;
+	return JSON.stringify(
+		Object.fromEntries(
+			entries.map(([id, x]): [string, StoredScore] => [
+				id,
+				{ ...x.scores, duration: x.duration },
+			]),
+		),
+	);
+}
+
+/** 列の銘柄の点数を読む。無ければ空 */
+export function decodeInstruments(
+	text: string | null,
+): Record<string, InstrumentScore> {
+	if (!text) return {};
+	const v = JSON.parse(text) as Record<string, StoredScore>;
+	return Object.fromEntries(
+		Object.entries(v).map(([id, x]) => [
+			id,
+			{
+				scores: { sentiment: x.sentiment, risk: x.risk },
+				duration: x.duration,
+			},
+		]),
+	);
+}
+
 export const toNewsScore = (r: ScoreRow): NewsScore => ({
 	status: r.status,
 	scores:
@@ -45,6 +82,7 @@ export const toNewsScore = (r: ScoreRow): NewsScore => ({
 			? { sentiment: r.sentiment ?? 0, risk: r.risk ?? 0 }
 			: null,
 	duration: r.status === "done" ? (r.duration ?? "short") : null,
+	instruments: r.status === "done" ? decodeInstruments(r.instruments) : {},
 	comment: r.comment,
 	scoredAt: r.scored_at,
 	rescoredAt: r.rescored_at,
@@ -281,10 +319,10 @@ export class SqliteScoreRepository implements ScoreRepository {
 		},
 	) {
 		this.sql.run(
-			`insert into news_scores (news_id, status, sentiment, risk, duration, comment, scored_at, criteria_version, model, app_built_at, error, attempts, next_attempt_at)
-			 values (?, 'done', ?, ?, ?, ?, ?, ?, ?, ?, null, ?, null)
+			`insert into news_scores (news_id, status, sentiment, risk, duration, comment, instruments, scored_at, criteria_version, model, app_built_at, error, attempts, next_attempt_at)
+			 values (?, 'done', ?, ?, ?, ?, ?, ?, ?, ?, ?, null, ?, null)
 			 on conflict (news_id) do update set status = 'done', sentiment = excluded.sentiment, risk = excluded.risk, duration = excluded.duration,
-			   comment = excluded.comment, scored_at = excluded.scored_at,
+			   comment = excluded.comment, instruments = excluded.instruments, scored_at = excluded.scored_at,
 			   criteria_version = excluded.criteria_version, model = excluded.model,
 			   app_built_at = excluded.app_built_at, error = null,
 			   attempts = excluded.attempts, next_attempt_at = null`,
@@ -294,6 +332,7 @@ export class SqliteScoreRepository implements ScoreRepository {
 				r.scores.risk,
 				r.duration,
 				r.comment,
+				encodeInstruments(r.instruments ?? {}),
 				meta.scoredAt,
 				meta.criteriaVersion,
 				meta.model,
@@ -367,13 +406,14 @@ export class SqliteScoreRepository implements ScoreRepository {
 			sentiment: number;
 			risk: number;
 			duration: Duration;
+			instruments: string | null;
 		};
 		const u = usableAt(delayMs, from, to);
 		const rows =
 			version === null
 				? this.sql
 						.query<Row, number[]>(
-							`select n.id, n.published_at, n.fetched_at, ${u.expr} as usable_at, s.sentiment, s.risk, s.duration
+							`select n.id, n.published_at, n.fetched_at, ${u.expr} as usable_at, s.sentiment, s.risk, s.duration, s.instruments
 							 from news_scores s join news n on n.id = s.news_id
 							 where s.status = 'done' and ${u.where}
 							 order by usable_at, n.id`,
@@ -384,7 +424,8 @@ export class SqliteScoreRepository implements ScoreRepository {
 							`select n.id, n.published_at, n.fetched_at, ${u.expr} as usable_at,
 							   case when s.criteria_version = ? then s.sentiment else r.sentiment end as sentiment,
 							   case when s.criteria_version = ? then s.risk else r.risk end as risk,
-							   case when s.criteria_version = ? then s.duration else r.duration end as duration
+							   case when s.criteria_version = ? then s.duration else r.duration end as duration,
+							   case when s.criteria_version = ? then s.instruments else r.instruments end as instruments
 							 from news_scores s join news n on n.id = s.news_id
 							 left join news_rescores r on r.news_id = s.news_id and r.criteria_version = ? and r.status = 'done'
 							 where s.status = 'done' and ${u.where}
@@ -393,6 +434,7 @@ export class SqliteScoreRepository implements ScoreRepository {
 						)
 						.all(
 							...u.exprParams,
+							version,
 							version,
 							version,
 							version,
@@ -407,6 +449,9 @@ export class SqliteScoreRepository implements ScoreRepository {
 			usableAt: r.usable_at,
 			scores: { sentiment: r.sentiment, risk: r.risk },
 			duration: r.duration,
+			...(r.instruments
+				? { instruments: decodeInstruments(r.instruments) }
+				: {}),
 		}));
 	}
 
@@ -511,7 +556,7 @@ export class SqliteScoreRepository implements ScoreRepository {
 	) {
 		this.sql.transaction(() => {
 			this.sql.run(
-				`update news_rescores set status = 'done', sentiment = ?, risk = ?, duration = ?, comment = ?, scored_at = ?,
+				`update news_rescores set status = 'done', sentiment = ?, risk = ?, duration = ?, comment = ?, instruments = ?, scored_at = ?,
 				   model = ?, app_built_at = ?, error = null, attempts = ?, next_attempt_at = null
 				 where news_id = ? and criteria_version = ?`,
 				[
@@ -519,6 +564,7 @@ export class SqliteScoreRepository implements ScoreRepository {
 					r.scores.risk,
 					r.duration,
 					r.comment,
+					encodeInstruments(r.instruments ?? {}),
 					meta.scoredAt,
 					meta.model,
 					meta.appBuiltAt,
@@ -622,10 +668,11 @@ export class SqliteScoreRepository implements ScoreRepository {
 			if (s.criteria_version !== null) {
 				const at = s.rescored_at ?? s.scored_at ?? 0;
 				this.sql.run(
-					`insert into news_rescores (news_id, criteria_version, status, sentiment, risk, duration, comment, scored_at, model, app_built_at, attempts, requested_at)
-					 values (?, ?, 'done', ?, ?, ?, ?, ?, ?, ?, 0, ?)
+					`insert into news_rescores (news_id, criteria_version, status, sentiment, risk, duration, comment, instruments, scored_at, model, app_built_at, attempts, requested_at)
+					 values (?, ?, 'done', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
 					 on conflict (news_id, criteria_version) do update set status = 'done', sentiment = excluded.sentiment,
-					   risk = excluded.risk, duration = excluded.duration, comment = excluded.comment, scored_at = excluded.scored_at, model = excluded.model,
+					   risk = excluded.risk, duration = excluded.duration, comment = excluded.comment, instruments = excluded.instruments,
+					   scored_at = excluded.scored_at, model = excluded.model,
 					   app_built_at = excluded.app_built_at, error = null, next_attempt_at = null
 					 where news_rescores.status != 'done'`,
 					[
@@ -635,6 +682,7 @@ export class SqliteScoreRepository implements ScoreRepository {
 						s.risk,
 						s.duration,
 						s.comment,
+						s.instruments,
 						at,
 						s.model,
 						s.app_built_at,
@@ -643,13 +691,14 @@ export class SqliteScoreRepository implements ScoreRepository {
 				);
 			}
 			this.sql.run(
-				`update news_scores set sentiment = ?, risk = ?, duration = ?, comment = ?, criteria_version = ?, model = ?,
+				`update news_scores set sentiment = ?, risk = ?, duration = ?, comment = ?, instruments = ?, criteria_version = ?, model = ?,
 				   app_built_at = ?, rescored_at = ? where news_id = ?`,
 				[
 					r.sentiment,
 					r.risk,
 					r.duration,
 					r.comment,
+					r.instruments,
 					version,
 					r.model,
 					r.app_built_at,

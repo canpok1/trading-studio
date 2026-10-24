@@ -1,6 +1,6 @@
 // ニュース収集と採点の型。app.ts から参照されるため、Bun 固有の型を持ち込まない
 
-import type { Duration, Scores } from "@trading-studio/core";
+import type { Duration, InstrumentScore, Scores } from "@trading-studio/core";
 
 export const NEWS_LANGUAGES = ["ja", "en"] as const;
 export type NewsLanguage = (typeof NEWS_LANGUAGES)[number];
@@ -54,6 +54,8 @@ export type NewsScore = {
 	scores: Scores | null;
 	/** 影響の持続。採点済みでなければ null */
 	duration: Duration | null;
+	/** 個別に関係する銘柄の点数（銘柄の id → 点数）。上の点数は市場全体（ADR 0037）。無ければ空 */
+	instruments: Record<string, InstrumentScore>;
 	comment: string | null;
 	/** 判定に使い始める時刻。採点し直して置き換えても変えない */
 	scoredAt: number | null;
