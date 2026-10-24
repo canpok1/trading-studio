@@ -113,6 +113,43 @@ describe("一覧", () => {
 		).toMatch(/平常.*やや警戒.*警戒.*かなり警戒.*危機/);
 	});
 
+	test("個別に関係する銘柄の点数がある記事は、市場全体の点数と銘柄ごとの点数を行に分けて出す", async () => {
+		const news = [
+			scored(
+				1,
+				"記事 A",
+				newsScore({
+					scores: { sentiment: 10, risk: 5 },
+					instruments: {
+						"coincheck:xrp_jpy": {
+							scores: { sentiment: -40, risk: 30 },
+							duration: "medium",
+						},
+						"coincheck:eth_jpy": {
+							scores: { sentiment: 60, risk: 0 },
+							duration: "long",
+						},
+					},
+				}),
+			),
+			scored(2, "記事 B"),
+		];
+		const view = renderApp("/news", newsApi({ news: () => news }));
+		const [a, b] = (await view.findAllByTestId("news-card")) as HTMLElement[];
+		const rows = within(a as HTMLElement)
+			.getAllByTestId("score-row")
+			.map((r) => r.textContent);
+		expect(rows).toEqual([
+			"全体センチ 10リスク 5持続 短期",
+			"ETHセンチ 60リスク 0持続 長期",
+			"XRPセンチ -40リスク 30持続 中期",
+		]);
+		// 個別の点数が無い記事は今どおり銘柄名を付けない
+		const only = within(b as HTMLElement).getAllByTestId("score-row");
+		expect(only).toHaveLength(1);
+		expect(only[0]?.textContent).not.toContain("全体");
+	});
+
 	test("値動きを測るまでは記事に精度の測定中を出し、市場評価には精度を出さない", async () => {
 		const news = [scored(1, "記事 A")];
 		const view = renderApp("/news", newsApi({ news: () => news }));

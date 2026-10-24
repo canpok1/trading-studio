@@ -3,8 +3,12 @@ import type {
 	ArticleAccuracy,
 	NewsItem,
 } from "@trading-studio/backend";
-import type { AggregationRule } from "@trading-studio/core";
-import { HALF_LIVES_IN_WINDOW, JUDGES } from "@trading-studio/core";
+import type { AggregationRule, Duration, Scores } from "@trading-studio/core";
+import {
+	HALF_LIVES_IN_WINDOW,
+	INSTRUMENTS,
+	JUDGES,
+} from "@trading-studio/core";
 import { useId, useState } from "react";
 import { ChevronIcon } from "../../../shared/components/icons";
 import {
@@ -135,6 +139,11 @@ function NewsCard({
 	const detailId = useId();
 	const state = newsState(n, scorerStopped);
 	const duration = n.score?.duration ?? "short";
+	// 記事が個別に関係する銘柄の点数。市場全体の点数と別に、その銘柄の評価に使う
+	const own = INSTRUMENTS.flatMap((instrument) => {
+		const score = n.score?.instruments[instrument.id];
+		return score ? [{ instrument, score }] : [];
+	});
 
 	const send = async (
 		what: string,
@@ -197,17 +206,21 @@ function NewsCard({
 			</a>
 			{state.kind === "done" && n.score && (
 				<>
-					<div className="flex flex-wrap gap-1.5">
-						{JUDGES.map((j) => (
-							<ScoreChip
-								key={j}
-								judge={j}
-								score={n.score?.scores?.[j] ?? 0}
-								rule={rule}
-							/>
-						))}
-						<DurationChip duration={duration} />
-					</div>
+					<ScoreRow
+						label={own.length > 0 ? "全体" : null}
+						scores={n.score.scores}
+						duration={duration}
+						rule={rule}
+					/>
+					{own.map(({ instrument, score }) => (
+						<ScoreRow
+							key={instrument.id}
+							label={instrument.quantityUnit}
+							scores={score.scores}
+							duration={score.duration}
+							rule={rule}
+						/>
+					))}
 					{precision && horizon && (
 						<ArticlePrecision value={precision} horizon={horizon} />
 					)}
@@ -333,5 +346,35 @@ function NewsCard({
 				</p>
 			)}
 		</article>
+	);
+}
+
+/** 点数のチップの1行。label は個別の点数がある記事でだけ付け、どの銘柄の点数かを示す */
+function ScoreRow({
+	label,
+	scores,
+	duration,
+	rule,
+}: {
+	label: string | null;
+	scores: Scores | null;
+	duration: Duration;
+	rule: AggregationRule;
+}) {
+	return (
+		<div
+			data-testid="score-row"
+			className="flex flex-wrap items-center gap-1.5"
+		>
+			{label && (
+				<span className="w-8 shrink-0 text-xs font-bold text-text-2">
+					{label}
+				</span>
+			)}
+			{JUDGES.map((j) => (
+				<ScoreChip key={j} judge={j} score={scores?.[j] ?? 0} rule={rule} />
+			))}
+			<DurationChip duration={duration} />
+		</div>
 	);
 }
