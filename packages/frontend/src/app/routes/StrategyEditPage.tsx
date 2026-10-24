@@ -6,6 +6,7 @@ import type { ConditionSet } from "@trading-studio/core";
 import {
 	instrumentOf,
 	marketOf,
+	validateCandidates,
 	validateConditionSet,
 } from "@trading-studio/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -13,6 +14,7 @@ import { useNavigate, useParams } from "react-router";
 import {
 	BuyRulesEditor,
 	FrequencyCard,
+	InstrumentsCard,
 	RiskLimitCard,
 } from "../../shared/components/ConditionEditor";
 import { Modal } from "../../shared/components/Modal";
@@ -26,8 +28,11 @@ import { errorMessage, readJson, useAsync } from "../../shared/lib/useAsync";
 
 type Data = { strategy: StoredStrategy | null; latest: number | null };
 
-const sameParams = (a: ConditionSet, b: ConditionSet) =>
-	JSON.stringify(a) === JSON.stringify(b);
+type Editing = { params: ConditionSet; instruments: string[] };
+
+const same = (a: Editing, b: Editing) =>
+	JSON.stringify(a.params) === JSON.stringify(b.params) &&
+	JSON.stringify(a.instruments) === JSON.stringify(b.instruments);
 
 /** 戦略の条件の編集。自動取引がオフで、保有も未約定の注文も無いときだけ変えられる */
 export function StrategyEditPage() {
@@ -59,30 +64,32 @@ export function StrategyEditPage() {
 
 	// 編集中の条件は下書きに持ち、「保存」で戦略へ反映する
 	// 開いた戦略が変わったときだけ入れ直す。保存後の読み直しで、保存中に続けた編集を消さないため
-	const [draft, setDraft] = useState<{
-		id: number;
-		params: ConditionSet;
-	} | null>(null);
+	const [draft, setDraft] = useState<(Editing & { id: number }) | null>(null);
 	useEffect(() => {
 		if (current && draft?.id !== current.id) {
-			setDraft({ id: current.id, params: current.params });
+			setDraft({
+				id: current.id,
+				params: current.params,
+				instruments: current.instruments,
+			});
 		}
 	}, [current, draft?.id]);
 	const [saving, setSaving] = useState(false);
-	const params =
-		current && draft?.id === current.id
-			? draft.params
-			: (current?.params ?? null);
-	const errors = useMemo(
-		() =>
-			params && current
-				? validateConditionSet(
-						params,
-						marketOf(instrumentOf(current.instruments[0] as string)),
-					)
-				: [],
-		[params, current],
-	);
+	const editing: Editing | null =
+		current && draft?.id === current.id ? draft : current;
+	const params = editing?.params ?? null;
+	const instruments = editing?.instruments ?? [];
+	const errors = useMemo(() => {
+		if (!params || !current) return [];
+		const list = instruments.map(instrumentOf);
+		return [
+			...validateConditionSet(
+				params,
+				marketOf(list[0] ?? instrumentOf(current.instruments[0] as string)),
+			),
+			...validateCandidates(params, list),
+		];
+	}, [params, instruments, current]);
 
 	const back = {
 		to: `/strategies/${strategyId}`,
@@ -123,18 +130,22 @@ export function StrategyEditPage() {
 	}
 
 	const lock = run?.strategyLock ?? null;
-	const dirty = !sameParams(params, current.params);
+	const dirty = !same({ params, instruments }, current);
 	const hasErr = errors.length > 0;
-	const setParams = (p: ConditionSet) => {
+	const setEditing = (p: ConditionSet, ids: string[]) => {
 		setNotice(null);
-		setDraft({ id: current.id, params: p });
+		setDraft({ id: current.id, params: p, instruments: ids });
 	};
+	const setParams = (p: ConditionSet) => setEditing(p, instruments);
 	const save = async (resetAccount: boolean) => {
 		setAsking(false);
 		setSaving(true);
 		try {
 			await api.api.strategies[":id"].params
-				.$put({ param: { id: String(current.id) }, json: { params } })
+				.$put({
+					param: { id: String(current.id) },
+					json: { params, instruments },
+				})
 				.then((r) => readJson<{ strategy: StoredStrategy }>(r));
 		} catch (e) {
 			setNotice(`保存できなかった: ${errorMessage(e)}`);
@@ -168,7 +179,7 @@ export function StrategyEditPage() {
 
 	return (
 		<Page title={`「${current.name}」の編集`} back={back}>
-			{/* PC は左に操作・頻度・リスク上限、右に買い。スマホは 操作→頻度→買い→リスク上限→保存 の順 */}
+			{/* PC は左に操作・銘柄・頻度・リスク上限、右に買い。スマホは 操作→銘柄→頻度→買い→リスク上限→保存 の順 */}
 			<div className="flex flex-col gap-3.5 lg:grid lg:grid-cols-2 lg:items-start">
 				<div className="contents lg:flex lg:flex-col lg:gap-3.5">
 					<Card className="flex flex-col gap-3">
@@ -177,7 +188,7 @@ export function StrategyEditPage() {
 								size="sm"
 								onClick={() =>
 									navigate(`/backtest?strategy=${current.id}`, {
-										state: { params },
+										state: { params, instruments },
 									})
 								}
 							>
@@ -193,6 +204,13 @@ export function StrategyEditPage() {
 						)}
 					</Card>
 					<fieldset disabled={lock !== null} className="contents">
+						<InstrumentsCard
+							params={params}
+							instruments={instruments}
+							onChange={setEditing}
+							errors={errors}
+							latestPrice={state.data.latest}
+						/>
 						<FrequencyCard {...editor} />
 					</fieldset>
 					<fieldset
@@ -209,7 +227,10 @@ export function StrategyEditPage() {
 					<BuyRulesEditor
 						{...editor}
 						latestPrice={state.data.latest}
-						instrument={instrumentOf(current.instruments[0] as string)}
+						instrument={instrumentOf(
+							(instruments[0] ?? current.instruments[0]) as string,
+						)}
+						instruments={instruments}
 					/>
 				</fieldset>
 				<div className="order-last flex flex-col gap-2 lg:col-span-2">
@@ -231,7 +252,9 @@ export function StrategyEditPage() {
 							{hasErr ? "入力を直すと保存できる" : dirty ? "保存" : "変更なし"}
 						</Button>
 						{dirty && (
-							<Button onClick={() => setParams(current.params)}>
+							<Button
+								onClick={() => setEditing(current.params, current.instruments)}
+							>
 								元に戻す
 							</Button>
 						)}

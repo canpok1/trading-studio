@@ -17,17 +17,23 @@ import type {
 	Market,
 	OrderType,
 	PartialSell,
+	Ranking,
+	RankingIndicator,
 	Timeframe,
 	ValidationError,
 } from "@trading-studio/core";
 import {
+	BTC_JPY,
 	buyRuleName,
+	COLLECTED_INSTRUMENTS,
 	CONDITION_GROUP_LABELS,
 	CONDITION_GROUPS,
 	DEFAULT_BUY_BELOW_PERCENT,
 	DEFAULT_BUY_ORDER,
 	DEFAULT_CONDITION_TIMEFRAME,
+	DEFAULT_MAX_HOLDINGS,
 	DEFAULT_PARTIAL_SELL,
+	DVOL_INSTRUMENT,
 	EVENT_IMPORTANCE_LABELS,
 	EVENT_IMPORTANCES,
 	FREQUENCY_UNIT_LABELS,
@@ -46,9 +52,12 @@ import {
 	ORDER_TYPE_LABELS,
 	partialSellQuantity,
 	quantityScale,
+	RANKING_INDICATOR_LABELS,
+	RANKING_INDICATORS,
 	TIMEFRAME_LABELS,
 	TIMEFRAMES,
 	usableIn,
+	usesCondition,
 } from "@trading-studio/core";
 import type { ReactNode } from "react";
 import { useId, useState } from "react";
@@ -188,6 +197,28 @@ export function FrequencyCard({ params, onChange, errors }: Props) {
 	);
 }
 
+/** 金額で注文する買いにする。金額の初期値は今の数量の換算額（千円単位）。換算できなければ 10 万円 */
+function withAmount(
+	rule: BuyRule,
+	instrument: Instrument,
+	latestPrice: number | null,
+): BuyRule {
+	if (rule.orderAmount != null) return rule;
+	const est =
+		latestPrice && Number.isFinite(rule.orderSize)
+			? Math.round(
+					estimatedAmount(instrument, rule.orderSize, latestPrice) / 1000,
+				) * 1000
+			: 0;
+	return { ...rule, orderAmount: est > 0 ? est : 100_000 };
+}
+
+/** 数量で注文する買いにする。金額の項目は消す（数量で指定した戦略は項目を持たないため） */
+function withoutAmount(rule: BuyRule): BuyRule {
+	const { orderAmount: _, ...rest } = rule;
+	return rest;
+}
+
 /** 数量 × 価格を通貨の最小単位で（四捨五入）。入力途中の値でも例外にしないため notional は使わない */
 function estimatedAmount(
 	instrument: Instrument,
@@ -208,15 +239,20 @@ function OrderSizeFields({
 	errors,
 	latestPrice,
 	instrument,
+	amountOnly,
 }: {
 	rule: BuyRule;
 	onChange: (r: BuyRule) => void;
 	errors: ValidationError[];
 	latestPrice: number | null;
 	instrument: Instrument;
+	/** 候補に BTC/JPY 以外を含み、金額でしか指定できない */
+	amountOnly: boolean;
 }) {
 	const errs = errorsAt(errors, "orderSize");
+	const amountErrs = errorsAt(errors, "orderAmount");
 	const maxErrs = errorsAt(errors, "maxPositions");
+	const byAmount = rule.orderAmount != null;
 	const size = rule.orderSize;
 	const set = (orderSize: number) => onChange({ ...rule, orderSize });
 	// −/＋ は1回の注文の最小の数量ずつ動かす
@@ -244,42 +280,84 @@ function OrderSizeFields({
 					</p>
 				</Help>
 			</div>
-			<div className="flex items-center gap-2">
-				<Button
-					className="w-11 px-0"
-					aria-label={`${unitText} 減らす`}
-					onClick={() => step(-1)}
-				>
-					−
-				</Button>
-				<NumberInput
-					value={size}
-					onChange={set}
-					format={(n) => formatQuantity(instrument, n)}
-					parse={(s) => parseQuantityInput(instrument, s)}
-					invalid={errs.length > 0}
-					aria-label={`1回の注文量（${instrument.quantityUnit}）`}
-					className="h-11 flex-1 text-[15px]"
-				/>
-				<Button
-					className="w-11 px-0"
-					aria-label={`${unitText} 増やす`}
-					onClick={() => step(1)}
-				>
-					＋
-				</Button>
-			</div>
-			<span className="num text-xs text-text-2">
-				{instrument.quantityUnit} · 約{" "}
-				{latestPrice && Number.isFinite(size)
-					? formatAmount(
-							instrument.currency,
-							estimatedAmount(instrument, size, latestPrice),
-						)
-					: "—"}
-				{instrument.currency.unit} （取り込み済みデータの最新の終値で換算）
-			</span>
-			<ErrorText messages={errs} />
+			<Segmented
+				name={`order-by-${rule.id}`}
+				label="注文量の指定"
+				options={[
+					["quantity", "数量"],
+					["amount", "金額"],
+				]}
+				value={byAmount ? "amount" : "quantity"}
+				disabledValues={amountOnly ? ["quantity"] : []}
+				onChange={(v) =>
+					onChange(
+						v === "amount"
+							? withAmount(rule, instrument, latestPrice)
+							: withoutAmount(rule),
+					)
+				}
+			/>
+			{byAmount ? (
+				<div className="flex flex-col gap-1.5">
+					<span className="text-[13px] font-semibold" aria-hidden>
+						1回の買いの金額（{instrument.currency.unit}）
+					</span>
+					<NumberInput
+						value={rule.orderAmount as number}
+						onChange={(orderAmount) => onChange({ ...rule, orderAmount })}
+						format={(n) => formatAmount(instrument.currency, n)}
+						invalid={amountErrs.length > 0}
+						inputMode="numeric"
+						aria-label={`1回の買いの金額（${instrument.currency.unit}）`}
+						className="h-11 text-right text-[15px]"
+					/>
+					<span className="text-xs text-text-2">
+						この金額で買える量を売買単位で切り捨てて注文する。最小の注文量に届かなければ買わない
+						{amountOnly &&
+							"。候補が BTC 以外を含むので、銘柄ごとに価格が違っても使える金額で指定する"}
+					</span>
+					<ErrorText messages={amountErrs} />
+				</div>
+			) : (
+				<>
+					<div className="flex items-center gap-2">
+						<Button
+							className="w-11 px-0"
+							aria-label={`${unitText} 減らす`}
+							onClick={() => step(-1)}
+						>
+							−
+						</Button>
+						<NumberInput
+							value={size}
+							onChange={set}
+							format={(n) => formatQuantity(instrument, n)}
+							parse={(s) => parseQuantityInput(instrument, s)}
+							invalid={errs.length > 0}
+							aria-label={`1回の注文量（${instrument.quantityUnit}）`}
+							className="h-11 flex-1 text-[15px]"
+						/>
+						<Button
+							className="w-11 px-0"
+							aria-label={`${unitText} 増やす`}
+							onClick={() => step(1)}
+						>
+							＋
+						</Button>
+					</div>
+					<span className="num text-xs text-text-2">
+						{instrument.quantityUnit} · 約{" "}
+						{latestPrice && Number.isFinite(size)
+							? formatAmount(
+									instrument.currency,
+									estimatedAmount(instrument, size, latestPrice),
+								)
+							: "—"}
+						{instrument.currency.unit} （取り込み済みデータの最新の終値で換算）
+					</span>
+					<ErrorText messages={errs} />
+				</>
+			)}
 			<div className="flex flex-col gap-1 rounded-[10px] bg-bg px-3 py-2">
 				<div className="flex flex-wrap items-center gap-1.5 text-sm">
 					<span>最大ロット数</span>
@@ -1728,7 +1806,14 @@ export function BuyRulesEditor({
 	errors,
 	latestPrice,
 	instrument,
-}: Props & { latestPrice: number | null; instrument: Instrument }) {
+	instruments,
+}: Props & {
+	latestPrice: number | null;
+	instrument: Instrument;
+	/** 候補の銘柄の id。BTC/JPY 以外を含めば注文量は金額だけ */
+	instruments: readonly string[];
+}) {
+	const amountOnly = instruments.some((id) => id !== BTC_JPY.id);
 	const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
 	const multi = params.buys.length >= 2;
 	const setBuys = (buys: BuyRule[]) => onChange({ ...params, buys });
@@ -1843,6 +1928,7 @@ export function BuyRulesEditor({
 										errors={ruleErrors}
 										latestPrice={latestPrice}
 										instrument={instrument}
+										amountOnly={amountOnly}
 									/>
 								</Card>
 								<RuleGroups
@@ -1863,7 +1949,12 @@ export function BuyRulesEditor({
 					<Button
 						className="self-start"
 						onClick={() =>
-							setBuys([...params.buys, newBuyRule(params, instrument)])
+							setBuys([
+								...params.buys,
+								amountOnly
+									? withAmount(newBuyRule(params, instrument), instrument, null)
+									: newBuyRule(params, instrument),
+							])
 						}
 					>
 						＋ 買いを追加
@@ -1876,5 +1967,193 @@ export function BuyRulesEditor({
 				</div>
 			)}
 		</>
+	);
+}
+
+const DEFAULT_RANKING: Ranking = {
+	indicator: "return",
+	timeframe: "1h",
+	period: 24,
+	order: "desc",
+};
+
+/**
+ * 候補の銘柄・同時に持つ銘柄数・順位（ADR 0037）。候補を変えると、続けて要る項目を補う
+ * （BTC/JPY 以外を含めば買いを金額にし、2つ以上なら順位を入れる。1つに戻せば上限と順位を消す）
+ */
+export function InstrumentsCard({
+	params,
+	instruments,
+	onChange,
+	errors,
+	latestPrice,
+}: {
+	params: ConditionSet;
+	instruments: readonly string[];
+	onChange: (params: ConditionSet, instruments: string[]) => void;
+	errors: ValidationError[];
+	latestPrice: number | null;
+}) {
+	const dvol =
+		usesCondition(params, "dvol") || usesCondition(params, "dvolAverage");
+	const multi = instruments.length >= 2;
+	const toggle = (id: string) => {
+		// 並びは順位が無いときの優先順なので、今の並びを崩さず後ろに足す
+		const next = instruments.includes(id)
+			? instruments.filter((x) => x !== id)
+			: [...instruments, id];
+		let p = params;
+		if (next.some((i) => i !== BTC_JPY.id)) {
+			p = {
+				...p,
+				buys: p.buys.map((b) => withAmount(b, BTC_JPY, latestPrice)),
+			};
+		}
+		if (next.length >= 2) {
+			if (!p.ranking) p = { ...p, ranking: DEFAULT_RANKING };
+		} else {
+			const { maxHoldings: _m, ranking: _r, ...rest } = p;
+			p = rest;
+		}
+		onChange(p, next);
+	};
+	const r = params.ranking ?? null;
+	const setRanking = (next: Partial<Ranking>) =>
+		onChange({ ...params, ranking: { ...(r ?? DEFAULT_RANKING), ...next } }, [
+			...instruments,
+		]);
+	const indicatorSelect = (
+		<select
+			aria-label="順位の指標"
+			value={r?.indicator ?? ""}
+			onChange={(e) =>
+				e.target.value === ""
+					? onChange({ ...params, ranking: null }, [...instruments])
+					: setRanking({ indicator: e.target.value as RankingIndicator })
+			}
+			className={selectClass}
+		>
+			{RANKING_INDICATORS.map((x) => (
+				<option key={x} value={x}>
+					{RANKING_INDICATOR_LABELS[x]}
+				</option>
+			))}
+			<option value="">候補の並び順</option>
+		</select>
+	);
+	const maxErrs = errorsAt(errors, "maxHoldings");
+	const periodErrs = errorsAt(errors, "ranking");
+	return (
+		<Card className="flex flex-col gap-3">
+			<h2 className="text-[15px] font-bold">銘柄</h2>
+			<div className="flex flex-col gap-2">
+				<span className="text-[13px] font-semibold">候補</span>
+				<fieldset aria-label="候補の銘柄" className="flex flex-wrap gap-2">
+					{COLLECTED_INSTRUMENTS.map((i) => {
+						const on = instruments.includes(i.id);
+						// 最後の1つは外せない。DVOL の条件がある間は BTC/JPY 以外を足せない
+						const disabled =
+							(on && instruments.length === 1) ||
+							(!on && dvol && i.id !== DVOL_INSTRUMENT.id);
+						return (
+							<button
+								key={i.id}
+								type="button"
+								aria-pressed={on}
+								disabled={disabled}
+								onClick={() => toggle(i.id)}
+								className="h-11 min-w-16 rounded-full border border-line bg-surface px-4 text-sm font-semibold text-text-2 disabled:opacity-45 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-white dark:aria-pressed:text-accent-ink"
+							>
+								{i.quantityUnit}
+							</button>
+						);
+					})}
+				</fieldset>
+				{dvol && (
+					<span className="text-xs text-text-2">
+						DVOL の条件は {DVOL_INSTRUMENT.symbol} の指標なので、DVOL
+						の条件がある間は {DVOL_INSTRUMENT.quantityUnit} だけを選べる
+					</span>
+				)}
+				<span className="text-xs text-text-2">
+					価格を集めている銘柄から選ぶ。2つ以上選ぶと同時に持つ銘柄数と順位を決める
+				</span>
+				<ErrorText messages={errorsAt(errors, "instruments")} />
+			</div>
+			{multi && (
+				<>
+					<div className="flex flex-col gap-1 rounded-[10px] bg-bg px-3 py-2">
+						<div className="flex flex-wrap items-center gap-1.5 text-sm">
+							<span>同時に持つ銘柄数</span>
+							<NumberInput
+								value={params.maxHoldings ?? DEFAULT_MAX_HOLDINGS}
+								onChange={(maxHoldings) =>
+									onChange({ ...params, maxHoldings }, [...instruments])
+								}
+								invalid={maxErrs.length > 0}
+								inputMode="numeric"
+								aria-label="同時に持つ銘柄数"
+								className="w-16"
+							/>
+							<span className="text-xs text-text-2">
+								銘柄まで（{LIMITS.maxHoldings.min}〜{LIMITS.maxHoldings.max}）
+							</span>
+						</div>
+						<ErrorText messages={maxErrs} />
+					</div>
+					<div className="flex flex-col gap-2 rounded-[10px] bg-bg px-3 py-2">
+						<span className="text-sm font-semibold">
+							買いが重なったときの順位
+						</span>
+						{r ? (
+							<>
+								<div className="flex flex-wrap items-center gap-1.5 text-sm">
+									<TimeframeSelect
+										value={r.timeframe}
+										onChange={(timeframe) => setRanking({ timeframe })}
+										label="順位の足"
+									/>
+									<span>の</span>
+									{indicatorSelect}
+									<span className="flex items-center gap-1.5">
+										<NumberInput
+											value={r.period}
+											onChange={(period) => setRanking({ period })}
+											invalid={periodErrs.length > 0}
+											inputMode="numeric"
+											aria-label="順位の本数"
+											className="w-16"
+										/>
+										<span>本</span>
+									</span>
+								</div>
+								<Segmented
+									name="ranking-order"
+									label="順位の並び"
+									size="sm"
+									options={[
+										["desc", "高い順"],
+										["asc", "低い順"],
+									]}
+									value={r.order}
+									onChange={(order) => setRanking({ order })}
+								/>
+								<ErrorText messages={periodErrs} />
+								<span className="text-xs text-text-2">
+									買いの条件が成り立った銘柄のうち、この順で上から上限まで買う
+								</span>
+							</>
+						) : (
+							<>
+								<div className="text-sm">{indicatorSelect}</div>
+								<span className="text-xs text-text-2">
+									買いの条件が成り立った銘柄のうち、候補のボタンを選んだ順で上から上限まで買う
+								</span>
+							</>
+						)}
+					</div>
+				</>
+			)}
+		</Card>
 	);
 }

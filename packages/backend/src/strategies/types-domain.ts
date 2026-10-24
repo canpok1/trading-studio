@@ -11,7 +11,7 @@ export type StoredStrategy = {
 	name: string;
 	/** 市場（core の Market の id） */
 	market: string;
-	/** 対象の銘柄（core の Instrument の id）。並び順が資金配分の優先順位 */
+	/** 候補の銘柄（core の Instrument の id）。順位の決め方が無ければ、並び順が買いの優先順位 */
 	instruments: string[];
 	params: ConditionSet;
 	createdAt: number;
@@ -33,14 +33,23 @@ export type CreateStrategyInput = {
 	from:
 		| { template: TemplateId }
 		| { copyOf: number }
-		| { params: ConditionSet };
+		| {
+				params: ConditionSet;
+				/** 候補の銘柄の id。省くと BTC/JPY だけ */
+				instruments?: string[];
+		  };
 };
 
 export interface StrategyService {
 	list(): StoredStrategy[];
 	get(id: number): StoredStrategy | null;
 	create(input: CreateStrategyInput): StrategyResult;
-	updateParams(id: number, params: ConditionSet): StrategyResult;
+	/** instruments（候補の銘柄の id）を省くと今の候補のまま */
+	updateParams(
+		id: number,
+		params: ConditionSet,
+		instruments?: string[],
+	): StrategyResult;
 	rename(id: number, name: string): StrategyResult;
 	remove(id: number): boolean;
 }

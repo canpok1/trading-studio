@@ -29,6 +29,8 @@ import {
 	eventWindowHours,
 	HOUR_MS,
 	historyShortfalls,
+	INSTRUMENTS,
+	instrumentOf,
 	isCoarser,
 	LIMITS,
 	marketOf,
@@ -40,6 +42,7 @@ import {
 	TEMPLATE_IDS,
 	TIMEFRAME_LABELS,
 	TIMEFRAME_MS,
+	validateCandidates,
 	validateConditionSet,
 } from "@trading-studio/core";
 import type { ReactNode } from "react";
@@ -66,6 +69,7 @@ import { useBacktestJob } from "../../features/backtest/utils/backtest-job";
 import {
 	BuyRulesEditor,
 	FrequencyCard,
+	InstrumentsCard,
 	RiskLimitCard,
 } from "../../shared/components/ConditionEditor";
 import { Help } from "../../shared/components/Help";
@@ -106,8 +110,16 @@ const DAY = 86_400_000;
 const DEFAULT_CASH = 2_000_000;
 const STORAGE_KEY = "backtest-draft";
 const NAME_MAX = 40;
-/** 候補の銘柄。画面で候補を選べるまでは BTC/JPY だけで実行する */
-const CANDIDATES = [BTC_JPY.id];
+/** 候補の銘柄を持たない下書き・テンプレートの候補 */
+const DEFAULT_CANDIDATES = [BTC_JPY.id];
+const knownIds = new Set(INSTRUMENTS.map((i) => i.id));
+/** 下書きに残した候補。形が違うか知らない銘柄があれば無いものとする */
+const parseCandidates = (v: unknown): string[] | undefined =>
+	Array.isArray(v) &&
+	v.length > 0 &&
+	v.every((x) => typeof x === "string" && knownIds.has(x))
+		? (v as string[])
+		: undefined;
 export const BACKTEST_NAME_MAX = NAME_MAX;
 const BLANK_NAME = "新しいバックテスト";
 
@@ -119,6 +131,8 @@ type Template = {
 	/** ひな形の説明。テンプレートを選ぶモーダルに出す */
 	description?: string;
 	params: ConditionSet;
+	/** 候補の銘柄の id。省略は BTC/JPY だけ */
+	instruments?: string[];
 };
 
 /** 実行条件の下書き。試しに変えた条件は画面を離れてもブラウザに残す */
@@ -127,6 +141,8 @@ export type BacktestDraft = {
 	/** 適用したテンプレート。「戦略設定」の見出しの横に出す。結果から再実行したときは無い */
 	template: Template | null;
 	params: ConditionSet;
+	/** 候補の銘柄の id。省略は BTC/JPY だけ */
+	instruments?: string[];
 	/** バックテスト結果から再実行したときの、その結果の条件。これと同じ間は上限を下げる前の範囲で検査する（ADR 0033） */
 	savedParams?: ConditionSet | null;
 	/** AI アドバイスの改善版から来たとき、元の実行からの変更点。「戦略設定」の下に出す。閉じるかテンプレートを読み込むと消す */
@@ -152,8 +168,12 @@ export type BacktestDraft = {
 function loadDraft(strategies: StoredStrategy[]): BacktestDraft | null {
 	try {
 		const v = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as
-			| (Omit<BacktestDraft, "params" | "template" | "savedParams"> & {
+			| (Omit<
+					BacktestDraft,
+					"params" | "template" | "savedParams" | "instruments"
+			  > & {
 					params: unknown;
+					instruments?: unknown;
 					savedParams?: unknown;
 					template?: (Template & { params: unknown }) | null;
 					strategyId?: number | null;
@@ -162,10 +182,15 @@ function loadDraft(strategies: StoredStrategy[]): BacktestDraft | null {
 		const params = v && parseConditionSet(v.params);
 		if (!v || !params) return null;
 		const tParams = v.template && parseConditionSet(v.template.params);
+		const instruments = parseCandidates(v.instruments);
 		const legacy = strategies.find((s) => s.id === v.strategyId);
 		const template =
 			v.template && tParams
-				? { ...v.template, params: tParams }
+				? {
+						...v.template,
+						params: tParams,
+						instruments: parseCandidates(v.template.instruments),
+					}
 				: legacy
 					? strategyAsTemplate(legacy)
 					: null;
@@ -173,6 +198,7 @@ function loadDraft(strategies: StoredStrategy[]): BacktestDraft | null {
 			name: v.name ?? template?.label ?? BLANK_NAME,
 			template,
 			params,
+			...(instruments ? { instruments } : {}),
 			savedParams: v.savedParams ? parseConditionSet(v.savedParams) : null,
 			improvement: v.improvement ?? null,
 			fromDate: v.fromDate,
@@ -194,6 +220,7 @@ const strategyAsTemplate = (s: StoredStrategy): Template => ({
 	key: `s:${s.id}`,
 	label: s.name,
 	params: s.params,
+	instruments: s.instruments,
 });
 
 function templates(strategies: StoredStrategy[]): Template[] {
@@ -357,6 +384,10 @@ export function BacktestRunPage() {
 				name: passed?.name ?? template?.label ?? BLANK_NAME,
 				template,
 				params: passedParams,
+				instruments:
+					parseCandidates(passed?.instruments) ??
+					template?.instruments ??
+					DEFAULT_CANDIDATES,
 				savedParams: passed?.savedParams
 					? parseConditionSet(passed.savedParams)
 					: null,
@@ -392,6 +423,7 @@ export function BacktestRunPage() {
 				name: nameFor(first),
 				template: first,
 				params: first.params,
+				instruments: first.instruments ?? DEFAULT_CANDIDATES,
 				fromDate: null,
 				toDate: null,
 				initialCash: DEFAULT_CASH,
@@ -521,8 +553,12 @@ function RunForm({
 	const template =
 		draft.template &&
 		(choices.find((t) => t.key === draft.template?.key) ?? draft.template);
+	const candidates = draft.instruments ?? DEFAULT_CANDIDATES;
 	const edited =
-		template !== null && JSON.stringify(template.params) !== JSON.stringify(p);
+		template !== null &&
+		(JSON.stringify(template.params) !== JSON.stringify(p) ||
+			JSON.stringify(template.instruments ?? DEFAULT_CANDIDATES) !==
+				JSON.stringify(candidates));
 	const nameError = checkName(draft.name);
 	// 保存済みの戦略・結果の条件をそのまま実行するときは、上限を下げる前の範囲で検査する（ADR 0033）
 	const unchanged =
@@ -530,13 +566,15 @@ function RunForm({
 		(draft.savedParams != null &&
 			JSON.stringify(draft.savedParams) === JSON.stringify(p));
 	const errors = useMemo(
-		() =>
-			validateConditionSet(
+		() => [
+			...validateConditionSet(
 				p,
 				marketOf(instrument),
 				unchanged ? RUN_LIMITS : LIMITS,
 			),
-		[p, instrument, unchanged],
+			...validateCandidates(p, candidates.map(instrumentOf)),
+		],
+		[p, instrument, unchanged, candidates],
 	);
 
 	// 期間。未指定ならその足のデータの最後から1か月
@@ -730,7 +768,7 @@ function RunForm({
 					skipGaps,
 					criteriaVersion,
 					eventCriteriaVersion: eventHours ? eventCriteriaVersion : null,
-					instruments: CANDIDATES,
+					instruments: candidates,
 				},
 			});
 			const body = (await res.json()) as {
@@ -777,7 +815,7 @@ function RunForm({
 					criteriaVersion,
 					eventCriteriaVersion: eventHours ? eventCriteriaVersion : null,
 					segmentId: segment?.id ?? null,
-					instruments: CANDIDATES,
+					instruments: candidates,
 				},
 			});
 			const body = (await res.json()) as {
@@ -1246,6 +1284,13 @@ function RunForm({
 					)}
 				</div>
 				<div className="contents lg:flex lg:flex-col lg:gap-3.5">
+					<InstrumentsCard
+						params={p}
+						instruments={candidates}
+						onChange={(params, instruments) => update({ params, instruments })}
+						errors={errors}
+						latestPrice={latest}
+					/>
 					<FrequencyCard {...editor} />
 					<div className="order-1 flex flex-col gap-3.5 lg:order-none">
 						<RiskLimitCard {...editor} />
@@ -1256,6 +1301,7 @@ function RunForm({
 						{...editor}
 						latestPrice={latest}
 						instrument={instrument}
+						instruments={candidates}
 					/>
 				</div>
 				<div className="order-2 flex flex-col gap-3.5 lg:col-span-2 lg:order-none">
@@ -1417,6 +1463,7 @@ function RunForm({
 						update({
 							template: t,
 							params: t.params,
+							instruments: t.instruments ?? DEFAULT_CANDIDATES,
 							savedParams: null,
 							improvement: null,
 							...(rename ? { name: nameFor(t) } : {}),

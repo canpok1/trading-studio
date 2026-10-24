@@ -191,6 +191,7 @@ function rerunState(run: BacktestRun): Partial<BacktestDraft> {
 		name: run.name,
 		template: null,
 		params: run.params,
+		instruments: run.instruments.map((i) => i.id),
 		savedParams: run.params,
 		fromDate: toDateInputValue(run.from),
 		toDate: toDateInputValue(run.to - 1),

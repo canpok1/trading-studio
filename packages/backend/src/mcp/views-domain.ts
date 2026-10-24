@@ -83,6 +83,7 @@ export function strategyView(
 		name: s.name,
 		lock: strategyLock(s.id),
 		updatedAt: jst(s.updatedAt),
+		instruments: s.instruments,
 		screenText: conditionSetScreenText(
 			s.params,
 			instrumentOf(s.instruments[0] as string),

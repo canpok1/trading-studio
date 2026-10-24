@@ -2,12 +2,15 @@
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod";
+import { instrumentIdsSchema } from "../mcp/schemas-domain";
 import type { ToolDeps } from "../mcp/tool-app";
 import { fail, paramsSchema, readOnly, text } from "../mcp/tool-app";
 import { strategyView } from "../mcp/views-domain";
 import { conditionSetGuide } from "./guide-domain";
 import { parseParamsInput } from "./strategies-domain";
 import type { StrategyService } from "./types-domain";
+
+const instrumentsSchema = instrumentIdsSchema.optional();
 
 function strategyFailure(
 	e: Extract<ReturnType<StrategyService["create"]>, { ok: false }>["error"],
@@ -73,13 +76,22 @@ export function registerStrategyTools(
 		{
 			description:
 				"条件セットから新しい戦略を保存する。名前は 1〜40 文字で既存と重複できない",
-			inputSchema: { name: z.string(), params: paramsSchema },
+			inputSchema: {
+				name: z.string(),
+				params: paramsSchema,
+				instruments: instrumentsSchema.describe(
+					"候補の銘柄の id。省くと BTC/JPY だけ。2つ以上なら maxHoldings と ranking が効き、注文量は orderAmount（金額）で入れる。DVOL の条件があれば BTC/JPY だけ",
+				),
+			},
 			annotations: { destructiveHint: false, openWorldHint: false },
 		},
-		({ name, params }) => {
+		({ name, params, instruments }) => {
 			const p = parseParamsInput({ params });
 			if (!p) return fail("条件セットの形が違う。get_guide を参照");
-			const r = trading.createStrategy({ name, from: { params: p } });
+			const r = trading.createStrategy({
+				name,
+				from: instruments ? { params: p, instruments } : { params: p },
+			});
 			if (!r.ok) return strategyFailure(r.error);
 			return text(strategyView(r.strategy, lock));
 		},
@@ -90,14 +102,20 @@ export function registerStrategyTools(
 		{
 			description:
 				"戦略の条件を置き換える。lock がある戦略（自動取引がオンか、保有か未約定の注文がある）は変えられない。残したい元の条件があるなら create_strategy で別に作る",
-			inputSchema: { id: z.number().int(), params: paramsSchema },
+			inputSchema: {
+				id: z.number().int(),
+				params: paramsSchema,
+				instruments: instrumentsSchema.describe(
+					"候補の銘柄の id。省くと今の候補のまま。2つ以上なら maxHoldings と ranking が効き、注文量は orderAmount（金額）で入れる。DVOL の条件があれば BTC/JPY だけ",
+				),
+			},
 			annotations: {
 				destructiveHint: true,
 				idempotentHint: true,
 				openWorldHint: false,
 			},
 		},
-		({ id, params }) => {
+		({ id, params, instruments }) => {
 			if (trading.strategyLock(id)) {
 				return fail(
 					"自動取引がオンか、保有か未約定の注文がある戦略は変えられない。create_strategy で新しい戦略として作る",
@@ -105,7 +123,7 @@ export function registerStrategyTools(
 			}
 			const p = parseParamsInput({ params });
 			if (!p) return fail("条件セットの形が違う。get_guide を参照");
-			const r = strategies.updateParams(id, p);
+			const r = strategies.updateParams(id, p, instruments);
 			if (!r.ok) return strategyFailure(r.error);
 			return text(strategyView(r.strategy, lock));
 		},

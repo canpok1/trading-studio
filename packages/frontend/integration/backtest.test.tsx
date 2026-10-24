@@ -56,6 +56,7 @@ const judgment = (values: string[]): Condition =>
 type RunInput = {
 	name: string;
 	params: ConditionSet;
+	instruments: string[];
 	from: number;
 	to: number;
 	skipGaps: boolean;
@@ -184,6 +185,48 @@ describe("実行の画面", () => {
 		expect([input.from, input.to]).toEqual([
 			Date.UTC(2026, 4, 2, 15),
 			Date.UTC(2026, 4, 25, 15),
+		]);
+	});
+
+	test("候補が2つ以上の戦略を読み込むと、候補を出してその候補で実行する", async () => {
+		const runs = new Map<number, BacktestRun>();
+		const multi = params(undefined, {
+			buys: [
+				{
+					...(params().buys[0] as ConditionSet["buys"][number]),
+					orderAmount: 100_000,
+				},
+			],
+			maxHoldings: 2,
+		});
+		const api = acceptRuns(
+			withResults(
+				runPageApi({
+					strategies: [
+						storedStrategy({
+							id: 1,
+							name: "2銘柄",
+							params: multi,
+							instruments: ["coincheck:btc_jpy", "coincheck:eth_jpy"],
+						}),
+					],
+				}),
+				runs,
+			),
+			runs,
+		);
+		const view = await openRunPage(api, "2026-05-03", "2026-05-25");
+		const group = within(view.getByRole("group", { name: "候補の銘柄" }));
+		expect(
+			group.getByRole("button", { name: "ETH" }).getAttribute("aria-pressed"),
+		).toBe("true");
+		expect(view.queryByText("（変更あり）")).toBeNull();
+		fireEvent.click(runButton(view));
+		await view.findByText("2銘柄", { exact: true }, RUN_WAIT);
+		const input = sent(api, "POST", "/api/backtests")[0]?.body as RunInput;
+		expect(input.instruments).toEqual([
+			"coincheck:btc_jpy",
+			"coincheck:eth_jpy",
 		]);
 	});
 

@@ -14,7 +14,13 @@ export interface StrategyRepository {
 		params: ConditionSet,
 		at: number,
 	): StoredStrategy;
-	updateParams(id: number, params: ConditionSet, at: number): void;
+	/** instruments は候補の銘柄の id */
+	updateParams(
+		id: number,
+		params: ConditionSet,
+		instruments: readonly string[],
+		at: number,
+	): void;
 	rename(id: number, name: string, at: number): void;
 	/** 消せたら true */
 	remove(id: number): boolean;

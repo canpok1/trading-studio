@@ -150,6 +150,7 @@ function rerunState(run: DatasetRunDetail): Partial<BacktestDraft> {
 		name: run.name,
 		template: null,
 		params: run.params,
+		instruments: run.instruments,
 		initialCash: run.initialCash,
 		fees: run.fees,
 		criteriaVersion: run.criteriaVersion,

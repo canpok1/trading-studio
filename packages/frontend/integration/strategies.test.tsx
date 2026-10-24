@@ -57,9 +57,12 @@ function strategiesApi(): FakeApi {
 		.on(routes.api.strategies[":id"].params, "$put", (req, reply) => {
 			const s = store.get(Number(req.params.id));
 			if (!s) return reply(404, NOT_FOUND);
+			const body = req.body as Pick<StoredStrategy, "params"> &
+				Partial<Pick<StoredStrategy, "instruments">>;
 			const saved = {
 				...s,
-				params: (req.body as { params: StoredStrategy["params"] }).params,
+				params: body.params,
+				instruments: body.instruments ?? s.instruments,
 			};
 			store.set(s.id, saved);
 			return { strategy: saved };
@@ -527,6 +530,84 @@ describe("戦略の編集", () => {
 		changeValue(limit(), "0");
 		expect(limit().getAttribute("aria-invalid")).toBe("true");
 		expect(blocked(view)).toBe(true);
+	});
+});
+
+describe("候補の銘柄", () => {
+	const pressed = (view: View, name: string) =>
+		within(view.getByRole("group", { name: "候補の銘柄" }))
+			.getByRole("button", { name })
+			.getAttribute("aria-pressed");
+	const toggle = (view: View, name: string) =>
+		fireEvent.click(
+			within(view.getByRole("group", { name: "候補の銘柄" })).getByRole(
+				"button",
+				{ name },
+			),
+		);
+
+	test("BTC 以外を足すと注文量が金額になり、同時に持つ銘柄数と順位を決めて保存できる。BTC だけに戻すと数量も選べる", async () => {
+		let view = await open(strategiesApi());
+		await createFromTemplate(view, "3銘柄", /^トレンド追随/);
+		expect(pressed(view, "BTC")).toBe("true");
+		expect(pressed(view, "ETH")).toBe("false");
+		// 最後の1つは外せない
+		expect(
+			disabled(
+				within(view.getByRole("group", { name: "候補の銘柄" })).getByRole(
+					"button",
+					{ name: "BTC" },
+				),
+			),
+		).toBe(true);
+		expect(view.queryByLabelText("同時に持つ銘柄数")).toBeNull();
+
+		toggle(view, "ETH");
+		toggle(view, "XRP");
+		expect(checked(view.getByRole("radio", { name: "金額" }))).toBe(true);
+		expect(disabled(view.getByRole("radio", { name: "数量" }))).toBe(true);
+		changeValue(view.getByLabelText("1回の買いの金額（円）"), "50000");
+		changeValue(view.getByLabelText("同時に持つ銘柄数"), "2");
+		fireEvent.change(view.getByLabelText("順位の指標"), {
+			target: { value: "rsi" },
+		});
+		changeValue(view.getByLabelText("順位の本数"), "14");
+		fireEvent.click(view.getByRole("radio", { name: "低い順" }));
+		await save(view);
+
+		view = await reopen(view);
+		expect(pressed(view, "ETH")).toBe("true");
+		expect(pressed(view, "XRP")).toBe("true");
+		expect(value(view.getByLabelText("1回の買いの金額（円）"))).toBe("50,000");
+		expect(value(view.getByLabelText("同時に持つ銘柄数"))).toBe("2");
+		expect(value(view.getByLabelText("順位の指標"))).toBe("rsi");
+		expect(value(view.getByLabelText("順位の本数"))).toBe("14");
+		expect(checked(view.getByRole("radio", { name: "低い順" }))).toBe(true);
+
+		// 順位を持たず候補の並び順で買うこともできる
+		fireEvent.change(view.getByLabelText("順位の指標"), {
+			target: { value: "" },
+		});
+		expect(view.queryByLabelText("順位の本数")).toBeNull();
+		await save(view);
+		view = await reopen(view);
+		expect(value(view.getByLabelText("順位の指標"))).toBe("");
+
+		toggle(view, "ETH");
+		toggle(view, "XRP");
+		expect(view.queryByLabelText("同時に持つ銘柄数")).toBeNull();
+		fireEvent.click(view.getByRole("radio", { name: "数量" }));
+		expect(view.getByLabelText("1回の注文量（BTC）")).toBeTruthy();
+	});
+
+	test("DVOL の条件があると BTC 以外を足せず、理由が出る", async () => {
+		const view = await open(strategiesApi());
+		await createFromTemplate(view, "DVOL", /^トレンド追随/);
+		addCondition(view, "買い注文する条件", /^DVOL/);
+		const group = within(view.getByRole("group", { name: "候補の銘柄" }));
+		expect(disabled(group.getByRole("button", { name: "ETH" }))).toBe(true);
+		expect(disabled(group.getByRole("button", { name: "XRP" }))).toBe(true);
+		expect(view.getByText(/DVOL の条件は BTC\/JPY の指標なので/)).toBeTruthy();
 	});
 });
 
