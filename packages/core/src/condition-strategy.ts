@@ -332,7 +332,9 @@ export type BuyRule = {
 	name: string;
 	/** 1回の注文量（数量の最小単位）。1ロットの量。orderAmount があればそちらを使う */
 	orderSize: number;
-	/** 1回の注文額（金額の最小単位）。指定すれば、この額で買える量を売買単位で切り捨てて注文する。数量で指定するなら無し */
+	/** 1回の注文額（金額の最小単位）。指定すれば、この額で買える量を売買単位で切り捨てて注文する。数量で指定するなら無し。
+	 * 画面で入れられるようにするまで（株対応）は、保存した戦略からは読まない（parseConditionSet が落とす）
+	 */
 	orderAmount?: number | null;
 	/** この買いで同時に持てるロットの数（この買いの未約定の買い注文を含む） */
 	maxPositions: number;
@@ -2430,12 +2432,6 @@ function parseBuyRuleBody(
 		return null;
 	return {
 		orderSize: typeof v.orderSize === "number" ? v.orderSize : Number.NaN,
-		...(v.orderAmount === undefined || v.orderAmount === null
-			? {}
-			: {
-					orderAmount:
-						typeof v.orderAmount === "number" ? v.orderAmount : Number.NaN,
-				}),
 		maxPositions:
 			v.maxPositions === undefined
 				? DEFAULT_MAX_POSITIONS

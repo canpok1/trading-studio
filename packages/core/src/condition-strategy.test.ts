@@ -2940,13 +2940,16 @@ describe("金額での注文量", () => {
 		expect(out.note).toContain("最小の注文量 0.001 BTC に届かない");
 	});
 
-	test("注文額は範囲内の整数で入れる。無ければ数量で注文する", () => {
+	test("注文額は範囲内の整数で入れる。保存した戦略からはまだ読まない", () => {
 		expect(validateConditionSet(params({ orderAmount: 0 }))).toContainEqual(
 			expect.objectContaining({ path: "orderAmount" }),
 		);
 		expect(
 			validateConditionSet(params({ orderAmount: 100_000 })),
 		).not.toContainEqual(expect.objectContaining({ path: "orderAmount" }));
-		expect(parseConditionSet(params())).not.toHaveProperty("orderAmount");
+		// 画面で入れられるようになるまで、保存した戦略からは読まない
+		expect(
+			parseConditionSet(params({ orderAmount: 100_000 })),
+		).not.toHaveProperty("orderAmount");
 	});
 });
