@@ -1,5 +1,7 @@
 // 足の粒度と、足の開始時刻の求め方
 
+import type { TradingCalendar } from "./trading-calendar";
+
 export const TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"] as const;
 export type Timeframe = (typeof TIMEFRAMES)[number];
 
@@ -24,17 +26,33 @@ export const TIMEFRAME_LABELS: Record<Timeframe, string> = {
 	"1d": "日足",
 };
 
-/** 足の区切りの起点。日足・4時間足は JST 0:00 から数える（画面の表示と揃える） */
+/** 画面の時刻の表示に使う JST のずれ */
 export const JST_OFFSET_MS = 9 * HOUR;
 
 export function isTimeframe(value: unknown): value is Timeframe {
 	return (TIMEFRAMES as readonly unknown[]).includes(value);
 }
 
-/** 時刻を含む足の開始時刻 */
-export function candleStart(time: number, timeframe: Timeframe): number {
+/**
+ * 時刻を含む足の開始時刻。日足は市場の日の区切り、それより細かい足は立会の始まりから数える
+ * （取引時間外の時刻は日の区切りから数える）
+ */
+export function candleStart(
+	time: number,
+	timeframe: Timeframe,
+	calendar: TradingCalendar,
+): number {
+	const day = calendar.dayStart(time);
+	if (timeframe === "1d") return day;
+	const { open } = calendar.session(time);
+	const base = open <= time ? open : day;
 	const ms = TIMEFRAME_MS[timeframe];
-	return Math.floor((time + JST_OFFSET_MS) / ms) * ms - JST_OFFSET_MS;
+	return base + Math.floor((time - base) / ms) * ms;
+}
+
+/** 時刻を含む分の開始時刻。分の区切りはどの市場でも同じ */
+export function minuteStart(time: number): number {
+	return Math.floor(time / MINUTE) * MINUTE;
 }
 
 /** a が b より粗い（1本が長い）か */

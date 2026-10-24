@@ -1,6 +1,6 @@
 // 約定の列から1分足を組み立てる（価格収集で使う）
 
-import { candleStart, TIMEFRAME_MS } from "./timeframe";
+import { minuteStart, TIMEFRAME_MS } from "./timeframe";
 import type { Candle } from "./types";
 
 const MINUTE = TIMEFRAME_MS["1m"];
@@ -49,7 +49,7 @@ function newer(a: MarketTrade | null, b: MarketTrade): MarketTrade {
  * （ちょうど分の始まりならその分から）。途中から受けた分は約定が欠けている恐れがあるため
  */
 export function startMinuteCandles(coveredFrom: number): MinuteCandleState {
-	const start = candleStart(coveredFrom, "1m");
+	const start = minuteStart(coveredFrom);
 	const firstMinute = start === coveredFrom ? start : start + MINUTE;
 	return {
 		coveredFrom,
@@ -179,7 +179,7 @@ export function formingCandle(
 	state: MinuteCandleState,
 	now: number,
 ): Candle | null {
-	const minute = candleStart(now, "1m");
+	const minute = minuteStart(now);
 	if (minute < state.nextMinute) {
 		return null;
 	}

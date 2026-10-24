@@ -19,7 +19,9 @@ import {
 	expireOrders,
 	idealStepTimeframe,
 	JUDGES,
+	marketOf,
 	newAccount,
+	nextOpen,
 	publicLots,
 	RUN_LIMITS,
 	realizedPnlOn,
@@ -88,13 +90,17 @@ export function createTradingService({
 	now?: () => number;
 	fees?: FeeRates;
 }): TradingEngine {
+	const { calendar: marketCalendar } = marketOf(marketData.instrument);
 	/**
 	 * オンにしたときの最初の判定時刻。バックテストで判定に使う足の次の足の終わり（バックテストで足の終わりに判定するのと揃える）。
 	 * 秒単位の判定頻度でどの足でも割り切れなければ1分足
 	 */
 	const firstEvalAt = (s: StoredStrategy, t: number) => {
 		const tf = idealStepTimeframe(s.params) ?? "1m";
-		return candleStart(t, tf) + TIMEFRAME_MS[tf];
+		return nextOpen(
+			marketCalendar,
+			candleStart(t, tf, marketCalendar) + TIMEFRAME_MS[tf],
+		);
 	};
 
 	/** 注文の記録の変化を保存する */
@@ -119,8 +125,13 @@ export function createTradingService({
 		const timeframes = Object.keys(needs) as Timeframe[];
 		const recentMs = conditionStrategy.recentMs(s.params);
 		// 足の終わりちょうどに評価したときは、終わったばかりの足を今の足とする（バックテストで足の終わりに判定するのと揃える）
-		const starts = timeframes.map((tf) => candleStart(t - 1, tf));
-		const earliest = Math.min(candleStart(t - 1 - recentMs, "1m"), ...starts);
+		const starts = timeframes.map((tf) =>
+			candleStart(t - 1, tf, marketCalendar),
+		);
+		const earliest = Math.min(
+			candleStart(t - 1 - recentMs, "1m", marketCalendar),
+			...starts,
+		);
 		// 保存済みの1分足に、収集がまだ保存していない1分足（確定待ち・形成中）を重ねる
 		const byTime = new Map<number, Candle>();
 		for (const c of [
@@ -142,6 +153,7 @@ export function createTradingService({
 			const current = aggregateCandles(
 				minutes.filter((c) => c.time >= start),
 				tf,
+				marketCalendar,
 			)[0];
 			candles[tf] = current ? [...done, current] : done;
 		});
@@ -265,9 +277,11 @@ export function createTradingService({
 				row.enabled &&
 				(live.status.state !== "running" || live.latestTrade === null),
 			dailyLoss: {
-				loss: Math.max(0, -realizedPnlOn(a, t)),
+				loss: Math.max(0, -realizedPnlOn(a, t, marketCalendar)),
 				limit: s.params.dailyLossLimit,
-				blocked: dailyLossBlock(a, t, s.params.dailyLossLimit) !== null,
+				blocked:
+					dailyLossBlock(a, t, s.params.dailyLossLimit, marketCalendar) !==
+					null,
 			},
 			strategyLock: lockOf(row),
 			account: {
@@ -444,7 +458,12 @@ export function createTradingService({
 					openOrders: a.openOrders.map((x) => ({ ...x.order })),
 					params: s.params,
 					state: row.state,
-					buyBlocked: dailyLossBlock(a, t, s.params.dailyLossLimit),
+					buyBlocked: dailyLossBlock(
+						a,
+						t,
+						s.params.dailyLossLimit,
+						marketCalendar,
+					),
 				}),
 			};
 		},
@@ -603,7 +622,7 @@ export function createTradingService({
 			// ドローダウンは1時間足の終値で追う（1分足では長く運用したときに重いため）
 			const hour = TIMEFRAME_MS["1h"];
 			const prices = marketData
-				.loadCandles("1h", candleStart(row.resetAt, "1h"), t)
+				.loadCandles("1h", candleStart(row.resetAt, "1h", marketCalendar), t)
 				.map((c) => ({ time: c.time + hour, price: c.close }));
 			return tradingPerformance({
 				instrument: marketData.instrument,
@@ -619,8 +638,8 @@ export function createTradingService({
 				basePrice:
 					marketData.loadCandles(
 						"1m",
-						candleStart(row.resetAt, "1m"),
-						Math.min(t, candleStart(row.resetAt, "1m") + hour),
+						candleStart(row.resetAt, "1m", marketCalendar),
+						Math.min(t, candleStart(row.resetAt, "1m", marketCalendar) + hour),
 					)[0]?.open ?? null,
 			});
 		},

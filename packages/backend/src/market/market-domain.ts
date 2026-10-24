@@ -1,7 +1,12 @@
 // 最新価格とホームのチャートの足
 
 import type { Timeframe } from "@trading-studio/core";
-import { candleStart, isTimeframe, TIMEFRAME_MS } from "@trading-studio/core";
+import {
+	candleStart,
+	isTimeframe,
+	marketOf,
+	TIMEFRAME_MS,
+} from "@trading-studio/core";
 
 import type { LiveMarketSource, MarketRepository } from "./repository-domain";
 import type { ChartRangeId, MarketService } from "./types-domain";
@@ -73,7 +78,11 @@ export function createMarketService({
 			const from =
 				range === "all"
 					? Number.MIN_SAFE_INTEGER
-					: candleStart(t - CHART_RANGE_MS[range], timeframe);
+					: candleStart(
+							t - CHART_RANGE_MS[range],
+							timeframe,
+							marketOf(repo.instrument).calendar,
+						);
 			const count = repo.countCandles(timeframe, from, to);
 			if (count > MAX_CHART_BARS) {
 				return { ok: false, kind: "too_many", count, max: MAX_CHART_BARS };

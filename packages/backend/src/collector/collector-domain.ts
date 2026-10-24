@@ -7,10 +7,10 @@ import type {
 } from "@trading-studio/core";
 import {
 	addTrade,
-	candleStart,
 	closeMinutes,
 	compareMarketTrades,
 	formingCandle,
+	minuteStart,
 	startMinuteCandles,
 	TIMEFRAME_MS,
 } from "@trading-studio/core";
@@ -258,7 +258,7 @@ export function createCollector({
 			if (state) {
 				for (
 					let m = state.nextMinute;
-					m < candleStart(t, "1m");
+					m < minuteStart(t);
 					m += TIMEFRAME_MS["1m"]
 				) {
 					const c = formingCandle(state, m);

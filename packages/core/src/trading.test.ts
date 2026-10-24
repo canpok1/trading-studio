@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { defaultFillModel, runBacktest } from "./backtest";
 import { conditionStrategy } from "./condition-strategy";
-import { BTC_JPY } from "./instrument";
+import { BTC_JPY, COINCHECK } from "./instrument";
 import type { Strategy } from "./strategy";
 import { strategyTemplate } from "./templates";
 import { TIMEFRAME_MS } from "./timeframe";
@@ -10,7 +10,6 @@ import {
 	decide,
 	expireOrders,
 	inferExitKind,
-	jstDayStart,
 	newAccount,
 	normalizeAccount,
 	publicLots,
@@ -194,6 +193,32 @@ describe("注文の作成と約定", () => {
 		});
 	});
 
+	test("取引時間外は約定しない", () => {
+		// 毎日 JST 9:00〜15:00 だけ開く市場
+		const DAY = 24 * H;
+		const sessionOf = (t: number) => {
+			const day = COINCHECK.calendar.dayStart(t);
+			const open = day + 9 * H;
+			return t < day + 15 * H
+				? { open, close: day + 15 * H }
+				: { open: open + DAY, close: day + 15 * H + DAY };
+		};
+		const calendar = {
+			dayStart: COINCHECK.calendar.dayStart,
+			session: sessionOf,
+		};
+		const market = fixed([
+			{ kind: "place", side: "buy", type: "market", quantity: 1_000 },
+		]);
+		const placed = decideWith(market, newAccount(1_000_000));
+		const settle = (t: number) =>
+			settleFills(placed.account, () => 10_000_000, t, FEES, BTC_JPY, calendar);
+		// 0 時（UTC）は JST 9 時、10 時（UTC）は JST 19 時
+		expect(settle(10 * H).filled).toBe(false);
+		expect(settle(10 * H).account.openOrders).toHaveLength(1);
+		expect(settle(H).filled).toBe(true);
+	});
+
 	test("成行の買いは約定時に手数料込みの額が足りなければ取り消す", () => {
 		const market = fixed([
 			{ kind: "place", side: "buy", type: "market", quantity: 1_000_000 },
@@ -274,7 +299,7 @@ describe("注文の作成と約定", () => {
 			dailyLossLimit: () => 1_000,
 		} satisfies Strategy<null>;
 		// 10時（UTC）は JST 19時。その日の 0:00 JST は前日 15:00 UTC
-		const day = jstDayStart(10 * H);
+		const day = COINCHECK.calendar.dayStart(10 * H);
 		expect(day).toBe(-9 * H);
 		const account = {
 			...newAccount(1_000_000),
@@ -336,7 +361,7 @@ describe("注文の作成と約定", () => {
 			BTC_JPY,
 		);
 		expect(sold.account.today).toEqual({
-			dayStart: jstDayStart(12 * H),
+			dayStart: COINCHECK.calendar.dayStart(12 * H),
 			pnl: 90_000 - 90 - 100_100,
 		});
 	});

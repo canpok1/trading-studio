@@ -42,11 +42,13 @@ import {
 } from "./event-calendar";
 import { formatYen } from "./format";
 import { bollinger } from "./indicators";
+import { marketOf } from "./instrument";
 import { limitBuyPriceBelow, notional } from "./money";
 import { JUDGMENT_VALUE_LABELS, NO_JUDGMENT } from "./news-judgment";
 import type { StrategyInput } from "./strategy";
 import type { Timeframe } from "./timeframe";
 import { candleStart, TIMEFRAME_MS } from "./timeframe";
+import type { TradingCalendar } from "./trading-calendar";
 import type { Candle } from "./types";
 
 /** 発動価格を探す範囲。今の価格からこの割合の上下まで */
@@ -177,6 +179,7 @@ const signed = (v: number) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}%
 function withForming(
 	candles: readonly Candle[],
 	tf: Timeframe,
+	calendar: TradingCalendar,
 	now: number,
 	price: number,
 ): readonly Candle[] {
@@ -185,7 +188,7 @@ function withForming(
 	return [
 		...candles,
 		{
-			time: candleStart(now, tf),
+			time: candleStart(now, tf, calendar),
 			open: price,
 			high: price,
 			low: price,
@@ -624,12 +627,13 @@ function buyStatus(
 
 export function watchConditionSet(input: WatchInput): StrategyWatch {
 	const { now, price, candles, lots, openOrders, params: p, state } = input;
+	const { calendar } = marketOf(input.instrument);
 	const series = new Map<Timeframe, Series>();
 	const ctx: Ctx = {
 		series: (tf) => {
 			let v = series.get(tf);
 			if (!v) {
-				v = seriesOf(withForming(candles[tf] ?? [], tf, now, price));
+				v = seriesOf(withForming(candles[tf] ?? [], tf, calendar, now, price));
 				series.set(tf, v);
 			}
 			return v;
@@ -643,7 +647,7 @@ export function watchConditionSet(input: WatchInput): StrategyWatch {
 	};
 	const peaks = usesPeaks(p) ? lotPeaks(lots, input.recent, state) : null;
 	const entryAtrs = usesAtr(p)
-		? lotEntryAtrs(p, lots, ctx.series, state)
+		? lotEntryAtrs(p, lots, ctx.series, state, calendar)
 		: null;
 	const hits = prevBuyHits(state, p);
 	const stopLossAt = p.stopLossCooldownBars > 0 ? prevStopLossAt(state) : null;

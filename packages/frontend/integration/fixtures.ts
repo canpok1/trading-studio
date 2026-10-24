@@ -27,6 +27,7 @@ import type {
 } from "@trading-studio/core";
 import {
 	BTC_JPY,
+	COINCHECK,
 	candleStart,
 	DEFAULT_AGGREGATION_RULE,
 	DEFAULT_FEE_RATES,
@@ -371,7 +372,7 @@ export function chartBars(
 	count = 120,
 	base = 10_000_000,
 ): Bars {
-	const last = candleStart(now, timeframe);
+	const last = candleStart(now, timeframe, COINCHECK.calendar);
 	return Array.from({ length: count }, (_, i) => {
 		const close = base + Math.round(Math.sin(i / 5) * 100_000) + i * 1_000;
 		return {

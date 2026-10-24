@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { aggregateCandles, findGaps, gapsWithin } from "./candles";
+import { COINCHECK } from "./instrument";
 import { TIMEFRAME_MS } from "./timeframe";
 import type { Candle } from "./types";
 
@@ -31,6 +32,7 @@ describe("aggregateCandles", () => {
 				c(DAY + 5 * M, 14, 14, 13, 13),
 			],
 			"5m",
+			COINCHECK.calendar,
 		);
 		expect(out).toEqual([
 			{ time: DAY, open: 10, high: 15, low: 9, close: 14, volume: 20 },
@@ -42,6 +44,7 @@ describe("aggregateCandles", () => {
 		const out = aggregateCandles(
 			[c(DAY - M, 1, 1, 1, 1), c(DAY, 2, 2, 2, 2)],
 			"1d",
+			COINCHECK.calendar,
 		);
 		expect(out.map((x) => x.time)).toEqual([DAY - TIMEFRAME_MS["1d"], DAY]);
 	});

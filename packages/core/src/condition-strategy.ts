@@ -20,7 +20,7 @@ import {
 import { formatQuantity, formatYen } from "./format";
 import { adx, atr, bollinger, ema, rsi } from "./indicators";
 import type { Instrument } from "./instrument";
-import { BTC_JPY, quantityScale } from "./instrument";
+import { BTC_JPY, marketOf, quantityScale } from "./instrument";
 import { limitBuyPriceBelow, notional } from "./money";
 import type {
 	Judge,
@@ -51,6 +51,7 @@ import {
 	TIMEFRAME_MS,
 	TIMEFRAMES,
 } from "./timeframe";
+import type { TradingCalendar } from "./trading-calendar";
 import type { Candle, JsonValue, OrderIntent, OrderType } from "./types";
 
 export const FREQUENCY_UNITS = ["s", "m", "h"] as const;
@@ -1741,6 +1742,7 @@ export function lotEntryAtrs(
 	lots: StrategyInput<ConditionSet>["lots"],
 	series: Ctx["series"],
 	state: JsonValue,
+	calendar: TradingCalendar,
 ): Record<string, Record<string, LotAtr>> {
 	const saved =
 		isObj(state) && isObj(state.entryAtrs)
@@ -1767,7 +1769,7 @@ export function lotEntryAtrs(
 					continue;
 				}
 				const { candles } = series(c.timeframe);
-				const start = candleStart(lot.openedAt, c.timeframe);
+				const start = candleStart(lot.openedAt, c.timeframe, calendar);
 				const end = candles.findIndex((x) => x.time >= start);
 				const before = end < 0 ? candles : candles.slice(0, end);
 				const atEntry = atr(before, c.period).at(-1);
@@ -1863,7 +1865,13 @@ export function evaluateConditionSet(
 	let stopLossAt = cooldown ? prevStopLossAt(state) : null;
 	const peaks = usesPeaks(p) ? lotPeaks(lots, input.recent, state) : null;
 	const entryAtrs = usesAtr(p)
-		? lotEntryAtrs(p, lots, ctx.series, state)
+		? lotEntryAtrs(
+				p,
+				lots,
+				ctx.series,
+				state,
+				marketOf(input.instrument).calendar,
+			)
 		: null;
 
 	// 売り: ロットごとに、ロットを買った買いの条件で判定する。同じ判定で利確と損切りの両方が成立したら損切りを優先する（損失を小さく見積もらないため）

@@ -21,4 +21,5 @@ export * from "./strategy-watch";
 export * from "./templates";
 export * from "./timeframe";
 export * from "./trading";
+export * from "./trading-calendar";
 export * from "./types";
