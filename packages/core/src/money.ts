@@ -60,6 +60,25 @@ export function notional(
 	return divide(BigInt(price) * BigInt(quantity) * multiplier, divisor, mode);
 }
 
+/** 金額で買える数量。価格 × 数量（切り上げ）が金額を超えない最大の数量を、売買単位で切り捨てる */
+export function quantityForAmount(
+	instrument: Instrument,
+	price: number,
+	amount: number,
+): number {
+	assertSafeInteger("price", price);
+	assertSafeInteger("amount", amount);
+	if (price <= 0 || amount <= 0) return 0;
+	const { multiplier, divisor } = notionalScale(instrument);
+	const max = divide(
+		BigInt(amount) * divisor,
+		BigInt(price) * multiplier,
+		"floor",
+	);
+	const unit = instrument.tradingUnit;
+	return Math.floor(max / unit) * unit;
+}
+
 /** 手数料。価格 × 数量 × 率 を金額の最小単位未満切り上げ */
 export function feeAmount(
 	instrument: Instrument,

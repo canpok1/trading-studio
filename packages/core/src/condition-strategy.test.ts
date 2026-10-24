@@ -2907,3 +2907,49 @@ describe("DVOL", () => {
 		);
 	});
 });
+
+describe("金額での注文量", () => {
+	// RSI は 100 以下なので必ず成り立つ
+	const always: Condition = {
+		type: "rsi",
+		timeframe: "1h",
+		period: 2,
+		threshold: 100,
+		direction: "below",
+	};
+	const P = 10_000_000;
+	test("金額で買える量を注文する", () => {
+		// 既定の買いは現在値の 0.1% 下の指値。100,000 円 ÷ 9,990,000 円 = 0.01001001 BTC
+		const out = evaluateConditionSet(
+			input(candles([P, P, P]), { ...buyWith(always), orderAmount: 100_000 }),
+		);
+		expect(out.intents).toHaveLength(1);
+		expect(out.intents[0]).toMatchObject({
+			side: "buy",
+			price: 9_990_000,
+			quantity: 1_001_001,
+		});
+	});
+
+	test("買える量が最小の注文量に届かなければ買わない", () => {
+		// 1,000 円 ÷ 10,000,000 円 = 0.0001 BTC < 0.001 BTC
+		const out = evaluateConditionSet(
+			input(candles([P, P, P]), { ...buyWith(always), orderAmount: 1_000 }),
+		);
+		expect(out.intents).toEqual([]);
+		expect(out.note).toContain("最小の注文量 0.001 BTC に届かない");
+	});
+
+	test("注文額は範囲内の整数で入れる。保存した戦略からはまだ読まない", () => {
+		expect(validateConditionSet(params({ orderAmount: 0 }))).toContainEqual(
+			expect.objectContaining({ path: "orderAmount" }),
+		);
+		expect(
+			validateConditionSet(params({ orderAmount: 100_000 })),
+		).not.toContainEqual(expect.objectContaining({ path: "orderAmount" }));
+		// 画面で入れられるようになるまで、保存した戦略からは読まない
+		expect(
+			parseConditionSet(params({ orderAmount: 100_000 })),
+		).not.toHaveProperty("orderAmount");
+	});
+});

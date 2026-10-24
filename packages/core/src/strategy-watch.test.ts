@@ -746,3 +746,13 @@ describe("予定の前後の見張り", () => {
 		);
 	});
 });
+
+describe("金額での注文量", () => {
+	test("金額で買える量が最小の注文量に届かなければ、判定と同じく買わない", () => {
+		const w = watchConditionSet(input(params([rule({ orderAmount: 1 })])));
+		expect(w.buys[0]?.status).toEqual({
+			kind: "blocked",
+			reason: "注文額で買える量が最小の注文量 0.001 BTC に届かない",
+		});
+	});
+});

@@ -12,6 +12,7 @@ import type {
 } from "./condition-strategy";
 import {
 	adxOf,
+	buyQuantity,
 	buyRuleOf,
 	checkCondition,
 	emaOf,
@@ -40,7 +41,7 @@ import {
 	jstDateTime,
 	nextEvent,
 } from "./event-calendar";
-import { formatYen } from "./format";
+import { formatQuantity, formatYen } from "./format";
 import { bollinger } from "./indicators";
 import { marketOf } from "./instrument";
 import { limitBuyPriceBelow, notional } from "./money";
@@ -615,10 +616,16 @@ function buyStatus(
 					),
 				0,
 			);
-		if (
-			input.cash - reserved <
-			notional(input.instrument, at, b.orderSize, "ceil")
-		) {
+		const quantity = buyQuantity(input.instrument, b, at);
+		const inst = input.instrument;
+		// 判定（buyIntents）と同じく、金額で買える量が最小の注文量に届かなければ買わない
+		if (quantity < inst.minOrderQuantity) {
+			return {
+				kind: "blocked",
+				reason: `注文額で買える量が最小の注文量 ${formatQuantity(inst, inst.minOrderQuantity)} ${inst.quantityUnit} に届かない`,
+			};
+		}
+		if (input.cash - reserved < notional(inst, at, quantity, "ceil")) {
 			return { kind: "noCash" };
 		}
 	}
