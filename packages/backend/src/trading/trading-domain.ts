@@ -672,12 +672,14 @@ export function createTradingService({
 					const head = markets.find(
 						(m) => m.instrument === status.instrument.id,
 					);
-					const nextMoves = head && {
-						price: head.price,
-						moves: head.moves,
-						multiBuy,
-						...(status.instruments.length > 1 ? { markets } : {}),
-					};
+					const nextMoves = head
+						? {
+								price: head.price,
+								moves: head.moves,
+								multiBuy,
+								...(status.instruments.length > 1 ? { markets } : {}),
+							}
+						: null;
 					return {
 						status,
 						performance: this.performance(status.id),
