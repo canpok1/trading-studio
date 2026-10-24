@@ -77,4 +77,20 @@ export type Strategy<P> = {
 	 * 戦略の条件とは別に、売買の1ステップの中で注文を出す手前で検査する
 	 */
 	dailyLossLimit?(params: P): number | null;
+	/** 候補の銘柄の検証（ADR 0037）。無ければどの組でもよい */
+	validateCandidates?(
+		params: P,
+		instruments: readonly Instrument[],
+	): ValidationError[];
+	/** 同時に持つ銘柄数の上限（ADR 0037）。無ければ上限なし */
+	maxHoldings?(params: P): number;
+	/**
+	 * 買いが同時に成り立った銘柄の順位付け（ADR 0037）。高い score ほど先に買う。
+	 * 決め方が無ければ・足が足りなければ null で、null の銘柄は score を持つ銘柄の後に候補の並び順で続く
+	 */
+	rankScore?(
+		params: P,
+		instrument: Instrument,
+		candles: StrategyInput<P>["candles"],
+	): { score: number; text: string } | null;
 };

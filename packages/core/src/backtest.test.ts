@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { BacktestConfig } from "./backtest";
-import { BacktestAborted, BacktestError, runBacktest } from "./backtest";
+import {
+	BacktestAborted,
+	BacktestError,
+	defaultFillModel,
+	runBacktest,
+} from "./backtest";
 import type { ConditionSet } from "./condition-strategy";
 import {
 	conditionStrategy,
@@ -9,7 +14,7 @@ import {
 	MARKET_BUY_ORDER,
 	singleBuy,
 } from "./condition-strategy";
-import { BTC_JPY } from "./instrument";
+import { BTC_JPY, ETH_JPY, XRP_JPY } from "./instrument";
 import { DEFAULT_AGGREGATION_RULE } from "./news-judgment";
 import type { Strategy } from "./strategy";
 import { strategyTemplate } from "./templates";
@@ -122,7 +127,7 @@ describe("約定", () => {
 		[10_500_000, 10_600_000, 10_400_000, 10_500_000], // 始値で約定
 	]);
 
-	test("指値は値幅が届いた足で指値の価格、成行は次の足の始値で約定する", () => {
+	test("指値は値幅が届いた足で指値の価格、成行は次の足の始値から売買の差の半分だけ不利な価格で約定する", () => {
 		const r = runBacktest(config(candles, { buyPrice: 9_900_000 }));
 		const [buy, sell] = r.orders;
 		expect(buy).toMatchObject({
@@ -137,12 +142,13 @@ describe("約定", () => {
 			status: "filled",
 			placedAt: 3 * H,
 			filledAt: 3 * H,
-			fillPrice: 10_500_000,
-			fee: 210, // 105,000 × 0.2%
+			// BTC/JPY の売買の差 0.02% の半分
+			fillPrice: 10_500_000 - 1_050,
+			fee: 210, // 104,989 × 0.2%
 			pairId: "o1",
-			pnl: 105_000 - 210 - 99_000 - 99,
+			pnl: 104_989 - 210 - 99_000 - 99,
 		});
-		expect(r.summary.finalEquity).toBe(1_000_000 + 105_000 - 210 - 99_000 - 99);
+		expect(r.summary.finalEquity).toBe(1_000_000 + 104_989 - 210 - 99_000 - 99);
 		expect(r.summary.trades).toBe(1);
 		expect(r.summary.wins).toBe(1);
 		expect(r.summary.winRate).toBe(100);
@@ -153,6 +159,34 @@ describe("約定", () => {
 		const r = runBacktest(config(candles, { buyPrice: 9_900_000 }));
 		expect(r.decisions.map((d) => d.time)).toEqual([H, 2 * H, 3 * H, 4 * H]);
 	});
+});
+
+test("成行は銘柄の売買の差の半分だけ不利にずらし、価格の最小単位へ切り上げてずらす", () => {
+	const bar = { time: 0, open: 201_998, high: 0, low: 0, close: 0, volume: 0 };
+	const order = (side: "buy" | "sell") => ({
+		id: "o",
+		side,
+		type: "market" as const,
+		price: null,
+		quantity: 100,
+		placedAt: 0,
+		expiresAt: null,
+		status: "open" as const,
+	});
+	// XRP 201.998 円の 0.06% は 0.121… 円 → 0.122 円
+	expect(defaultFillModel(order("buy"), bar, XRP_JPY)).toBe(202_120);
+	expect(defaultFillModel(order("sell"), bar, XRP_JPY)).toBe(201_876);
+	// ETH 371,427 円の 0.045% は 167.1… 円 → 168 円
+	const eth = { ...bar, open: 371_427 };
+	expect(defaultFillModel(order("buy"), eth, ETH_JPY)).toBe(371_595);
+	// 指値はずらさない
+	expect(
+		defaultFillModel(
+			{ ...order("buy"), type: "limit", price: 371_000 },
+			{ ...eth, low: 370_000 },
+			ETH_JPY,
+		),
+	).toBe(371_000);
 });
 
 describe("成行の買い", () => {
@@ -169,11 +203,11 @@ describe("成行の買い", () => {
 		expect(ok.orders[0]).toMatchObject({
 			type: "market",
 			status: "filled",
-			fillPrice: 10_100_000,
-			fee: 202, // 101,000 × 0.2%
+			fillPrice: 10_100_000 + 1_010,
+			fee: 203, // 101,010 × 0.2%
 		});
 
-		// 始値が跳ねて 0.01 BTC = 1,000,000 円 + 手数料 2,000 円 が資金 1,000,000 円を超える
+		// 始値が跳ねて 0.01 BTC = 1,000,100 円（売買の差の半分を含む） + 手数料 2,001 円 が資金 1,000,000 円を超える
 		const short = runBacktest(
 			config(
 				bars([
@@ -187,7 +221,7 @@ describe("成行の買い", () => {
 			status: "canceled",
 			canceledAt: H,
 			cancelReason:
-				"資金 1,000,000 円が手数料込みの約定額 1,002,000 円に足りないため取消",
+				"資金 1,000,000 円が手数料込みの約定額 1,002,101 円に足りないため取消",
 		});
 		expect(short.summary.finalEquity).toBe(1_000_000);
 	});
@@ -465,7 +499,7 @@ describe("判定頻度が条件の足より短い", () => {
 			side: "sell",
 			placedAt: 2 * H + 3 * M15,
 			filledAt: 2 * H + 3 * M15,
-			fillPrice: P,
+			fillPrice: P - P / 10_000,
 		});
 		expect(r.decisions).toHaveLength(q.length);
 	});
@@ -745,9 +779,9 @@ describe("複数ポジション", () => {
 			r.orders.filter((o) => o.side === "buy").map((o) => o.fillPrice),
 		).toEqual([10_049_500, 9_999_000, 9_948_500]);
 		expect(r.trades.map((t) => [t.buyOrderId, t.pnl])).toEqual([
-			["o1", 2_505],
-			["o2", 3_010],
-			["o3", 3_515],
+			["o1", 2_494],
+			["o2", 2_999],
+			["o3", 3_504],
 		]);
 		expect(r.summary.trades).toBe(3);
 		expect(r.summary.openPositionQuantity).toBe(0);
@@ -807,5 +841,97 @@ describe("DVOL", () => {
 		expect(
 			r.orders.filter((o) => o.side === "buy").map((o) => o.placedAt),
 		).toEqual([3 * H]);
+	});
+});
+
+describe("複数の銘柄", () => {
+	// 価格が同じ ETH・XRP の代わり（テスト用。単位は BTC/JPY と同じ）
+	const ETH = { ...BTC_JPY, id: "coincheck:eth_jpy", symbol: "ETH/JPY" };
+	const XRP = { ...BTC_JPY, id: "coincheck:xrp_jpy", symbol: "XRP/JPY" };
+	const flat = (n: number, start = 0) =>
+		bars(
+			Array.from(
+				{ length: n },
+				(): Bar => [10_000_000, 10_000_000, 10_000_000, 10_000_000],
+			),
+			start,
+		);
+	/** 持っていなければ毎回成行で買う。順位は銘柄ごとの決まった値 */
+	const buyer = (scores: Record<string, number>): Strategy<Script> => ({
+		...scripted,
+		evaluate: ({ now, position, state }) => ({
+			intents:
+				position.quantity > 0
+					? []
+					: [{ kind: "place", side: "buy", type: "market", quantity: Q }],
+			nextEvalAt: now + H,
+			state,
+		}),
+		maxHoldings: () => 1,
+		rankScore: (_p, i) =>
+			i.id in scores
+				? { score: scores[i.id] as number, text: String(scores[i.id]) }
+				: null,
+	});
+	const run = (scores: Record<string, number>, xrpBars = flat(3)) =>
+		runBacktest({
+			...config(flat(3), { buyPrice: 0 }),
+			strategy: buyer(scores),
+			otherMarkets: [
+				{ instrument: ETH, candles: { "1h": flat(3) }, stepCandles: flat(3) },
+				{ instrument: XRP, candles: { "1h": xrpBars }, stepCandles: xrpBars },
+			],
+		});
+
+	test("順位の上の銘柄を上限まで買い、注文・取引・判断に銘柄を書く（先頭の銘柄には書かない）", () => {
+		const r = run({ [BTC_JPY.id]: 1, [ETH.id]: 3, [XRP.id]: 2 });
+		expect(r.orders.map((o) => [o.instrument, o.status])).toEqual([
+			[ETH.id, "filled"],
+		]);
+		// 判断は足ごとに候補の並び順
+		expect(r.decisions.slice(0, 3).map((d) => d.instrument)).toEqual([
+			undefined,
+			ETH.id,
+			XRP.id,
+		]);
+		expect(Object.keys(r.otherCandles ?? {})).toEqual([ETH.id, XRP.id]);
+		expect(r.summary.openPositionQuantity).toBe(0);
+	});
+
+	test("時価は銘柄ごとの終値で測り、ただ持っていた場合は銘柄の等分", () => {
+		// XRP だけ 2 本目から 2 倍になる
+		const up = bars([
+			[10_000_000, 10_000_000, 10_000_000, 10_000_000],
+			[20_000_000, 20_000_000, 20_000_000, 20_000_000],
+			[20_000_000, 20_000_000, 20_000_000, 20_000_000],
+		]);
+		const r = run({ [XRP.id]: 1 }, up);
+		expect(r.orders[0]).toMatchObject({ instrument: XRP.id, status: "filled" });
+		// 1本目の終わりに買い、2本目の始値（2,000 万円、差 0.01%）で約定する。期間の最後の時価で評価する
+		// 手数料は 200,020 円の 0.2% を切り上げて 401 円
+		expect(r.summary.finalEquity).toBe(1_000_000 - 200_020 - 401 + 200_000);
+		expect(r.summary.buyHoldPercent).toBeCloseTo(100 / 3);
+	});
+
+	test("候補の銘柄の検証を通らなければ実行しない", () => {
+		const strategy: Strategy<Script> = {
+			...buyer({}),
+			validateCandidates: (_p, list) =>
+				list.length > 1 ? [{ path: "instruments", message: "だめ" }] : [],
+		};
+		expect(() =>
+			runBacktest({
+				...config(flat(3), { buyPrice: 0 }),
+				strategy,
+				otherMarkets: [
+					{ instrument: ETH, candles: { "1h": flat(3) }, stepCandles: flat(3) },
+				],
+			}),
+		).toThrow("だめ");
+	});
+
+	test("ほかの銘柄の足が欠けた時刻も、ある銘柄で判定する", () => {
+		const r = run({ [XRP.id]: 1 }, flat(1, 2 * H));
+		expect(r.decisions.filter((d) => d.instrument === XRP.id)).toHaveLength(1);
 	});
 });

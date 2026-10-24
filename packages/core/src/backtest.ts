@@ -17,23 +17,31 @@ import {
 	TIMEFRAME_LABELS,
 	TIMEFRAME_MS,
 } from "./timeframe";
-import type {
-	DecisionLog,
-	FeeRates,
-	StepOutput,
-	Trade,
-	TradeOrder,
+import type { DecisionLog, FeeRates, Trade, TradeOrder } from "./trading";
+import {
+	cancelAll,
+	decideAll,
+	expireOrders,
+	newAccount,
+	settleFills,
 } from "./trading";
-import { cancelAll, newAccount, tradingStep } from "./trading";
 import type { Candle, JsonValue, Order } from "./types";
 
 /** 約定のルール。約定するなら約定価格、しなければ null を返す。差し替えられるようにする */
-export type FillModel = (order: Order, bar: Candle) => number | null;
+export type FillModel = (
+	order: Order,
+	bar: Candle,
+	instrument: Instrument,
+) => number | null;
 
-/** 成行は次の足の始値、指値は足の値幅が指値に届いたら指値で約定する */
-export const defaultFillModel: FillModel = (order, bar) => {
+/**
+ * 成行は次の足の始値から、買値と売値の差の半分だけ不利にずらした価格（ADR 0037。足は売買の中間の値とみなす）、
+ * 指値は足の値幅が指値に届いたら指値で約定する
+ */
+export const defaultFillModel: FillModel = (order, bar, instrument) => {
 	if (order.type === "market") {
-		return bar.open;
+		const half = Math.ceil((bar.open * instrument.spreadPpm) / 2_000_000);
+		return order.side === "buy" ? bar.open + half : bar.open - half;
 	}
 	const price = order.price as number;
 	if (order.side === "buy") {
@@ -42,12 +50,24 @@ export const defaultFillModel: FillModel = (order, bar) => {
 	return bar.high >= price ? price : null;
 };
 
+/** 候補の銘柄1つぶんの足 */
+export type BacktestMarket = {
+	instrument: Instrument;
+	/** 戦略が頼む粒度ごとの足（古い順）。期間より前の足も含めてよい（指標の計算に使う） */
+	candles: Readonly<Partial<Record<Timeframe, readonly Candle[]>>>;
+	/** 判定と約定に使う足（古い順、期間内）。粒度は stepTimeframe */
+	stepCandles: readonly Candle[];
+};
+
 export type BacktestConfig<P> = {
+	/** 候補の先頭の銘柄 */
 	instrument: Instrument;
 	strategy: Strategy<P>;
 	params: P;
 	/** 戦略が頼む粒度ごとの足（古い順）。期間より前の足も含めてよい（指標の計算に使う） */
 	candles: Readonly<Partial<Record<Timeframe, readonly Candle[]>>>;
+	/** 候補の2つ目以降の銘柄（ADR 0037）。先頭の銘柄と同じ市場・同じ判定に使う足の粒度 */
+	otherMarkets?: readonly BacktestMarket[];
 	/** 取り込まれているデータのうち最も細かい粒度。戦略が頼む粒度より粗ければ実行しない */
 	dataTimeframe: Timeframe;
 	/** 判定と約定に使う足（古い順、期間内）と粒度。戦略が頼む粒度の途中の足をこの足から組み立てるため、それより細かいか同じにする */
@@ -112,7 +132,7 @@ export type BacktestSummary = {
 	buyHoldPercent?: number;
 	/** 平均保有期間（ミリ秒）。取引が無ければ null */
 	averageHoldingMs: number | null;
-	/** 期間の最後に持っていた数量（satoshi） */
+	/** 期間の最後に持っていた、候補の先頭の銘柄の数量（数量の最小単位） */
 	openPositionQuantity: number;
 };
 
@@ -121,8 +141,10 @@ export type BacktestResult = {
 	orders: BacktestOrder[];
 	trades: Trade[];
 	decisions: DecisionLog[];
-	/** 期間内の日足（判定に使った足から作る。チャートの元の足が無いときに使う） */
+	/** 期間内の日足（判定に使った足から作る。チャートの元の足が無いときに使う）。候補の先頭の銘柄 */
 	candles: Candle[];
+	/** 候補の2つ目以降の銘柄の期間内の日足。銘柄の id ごと */
+	otherCandles?: Record<string, Candle[]>;
 };
 
 /** データが条件で使う足より粗ければエラーにする（日足では1時間足の条件を検証できないため） */
@@ -141,7 +163,6 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 	const {
 		strategy,
 		params,
-		candles: all,
 		from,
 		to,
 		initialCash,
@@ -156,7 +177,6 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 	);
 	checkDataResolution(config.dataTimeframe, timeframes[0] ?? null);
 	const { calendar } = marketOf(config.instrument);
-	const steps = config.stepCandles;
 	const stepTimeframe = config.stepTimeframe;
 	if (timeframes.some((t) => isCoarser(stepTimeframe, t))) {
 		throw new BacktestError("判定に使う足が条件で使う足より粗い");
@@ -208,112 +228,201 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 		);
 	};
 
-	const startIndex = steps.findIndex((c) => c.time >= from);
-	const endIndex = steps.findLastIndex((c) => c.time < to);
-	if (startIndex < 0 || endIndex < startIndex) {
+	const primary = config.instrument.id;
+	const invalid = strategy.validateCandidates?.(params, [
+		config.instrument,
+		...(config.otherMarkets ?? []).map((m) => m.instrument),
+	]);
+	if (invalid?.length) {
+		throw new BacktestError(invalid.map((e) => e.message).join("。"));
+	}
+	const markets = [
+		{
+			instrument: config.instrument,
+			candles: config.candles,
+			stepCandles: config.stepCandles,
+		},
+		...(config.otherMarkets ?? []),
+	].map((m) => {
+		const steps = m.stepCandles;
+		const startIndex = steps.findIndex((c) => c.time >= from);
+		const endIndex = steps.findLastIndex((c) => c.time < to);
+		return {
+			instrument: m.instrument,
+			steps,
+			startIndex,
+			endIndex,
+			/** 次に見る判定に使う足の位置と、最後に見た足の位置（まだ無ければ -1） */
+			next: startIndex,
+			current: -1,
+			// 粒度ごとの、判定時点で確定している足の数（その粒度の足の先頭から）と、細かい足から組み立てる途中の足
+			series: timeframes.map((timeframe) => ({
+				timeframe,
+				all: m.candles[timeframe] ?? [],
+				history: Math.max(1, needs[timeframe] ?? 1),
+				completed: 0,
+				forming: null as Candle | null,
+			})),
+			state: null as JsonValue,
+			nextEvalAt: Number.NEGATIVE_INFINITY,
+		};
+	});
+	type Market = (typeof markets)[number];
+	const head = markets[0] as Market;
+	if (head.startIndex < 0 || head.endIndex < head.startIndex) {
 		throw new BacktestError("期間に足が無い");
 	}
-	const total = endIndex - startIndex + 1;
-	// 粒度ごとの、判定時点で確定している足の数（その粒度の足の先頭から）と、細かい足から組み立てる途中の足
-	const series = timeframes.map((timeframe) => ({
-		timeframe,
-		all: all[timeframe] ?? [],
-		history: Math.max(1, needs[timeframe] ?? 1),
-		completed: 0,
-		forming: null as Candle | null,
-	}));
+	const inRangeOf = (m: Market) =>
+		m.startIndex < 0 || m.endIndex < m.startIndex
+			? []
+			: m.steps.slice(m.startIndex, m.endIndex + 1);
+	// 判定の時刻は、どれかの銘柄に判定に使う足がある時刻（銘柄ごとの欠損では止めない）
+	const times = [
+		...new Set(markets.flatMap((m) => inRangeOf(m).map((c) => c.time))),
+	].sort((a, b) => a - b);
+	const total = times.length;
 
 	let account = newAccount(initialCash);
-	let state: JsonValue = null;
-	let nextEvalAt = Number.NEGATIVE_INFINITY;
 	// 注文の記録。id で最新の内容に置き換える（Map は最初に入れた順を保つので発注順になる）
 	const orders = new Map<string, TradeOrder>();
 	const trades: Trade[] = [];
 	const decisions: DecisionLog[] = [];
+	const equityOf = () =>
+		account.cash +
+		markets.reduce((a, m) => {
+			const bar = m.steps[m.current];
+			if (!bar) return a;
+			const quantity = account.lots
+				.filter((l) => (l.instrument ?? primary) === m.instrument.id)
+				.reduce((q, l) => q + l.quantity, 0);
+			return a + notional(m.instrument, bar.close, quantity, "floor");
+		}, 0);
 
 	let peak = initialCash;
-	let peakAt = steps[startIndex]?.time ?? from;
+	let peakAt = times[0] ?? from;
 	let maxDd = 0;
 	let ddFrom: number | null = null;
 	let ddTo: number | null = null;
 
-	for (let i = startIndex; i <= endIndex; i++) {
+	for (let k = 0; k < times.length; k++) {
 		if (shouldAbort?.()) {
 			throw new BacktestAborted("中止した");
 		}
-		const bar = steps[i] as Candle;
-		const closeAt = bar.time + stepMs;
-
-		for (const x of series) {
-			const barStart = candleStart(bar.time, x.timeframe, calendar);
-			const prev = x.forming;
-			x.forming =
-				prev?.time === barStart
-					? {
-							time: barStart,
-							open: prev.open,
-							high: Math.max(prev.high, bar.high),
-							low: Math.min(prev.low, bar.low),
-							close: bar.close,
-							volume: prev.volume + bar.volume,
-						}
-					: { ...bar, time: barStart };
-		}
+		const time = times[k] as number;
+		const closeAt = time + stepMs;
+		const filled = new Set<Market>();
 
 		// 足の中の約定 → 足の終わりに期限切れの取消 → 判定
-		const out: StepOutput = tradingStep({
-			instrument: config.instrument,
-			strategy,
-			params,
-			now: closeAt,
-			price: bar.close,
+		for (const m of markets) {
+			const bar = m.steps[m.next];
+			if (!bar || m.next > m.endIndex || bar.time !== time) continue;
+			m.current = m.next++;
+			for (const x of m.series) {
+				const barStart = candleStart(bar.time, x.timeframe, calendar);
+				const prev = x.forming;
+				x.forming =
+					prev?.time === barStart
+						? {
+								time: barStart,
+								open: prev.open,
+								high: Math.max(prev.high, bar.high),
+								low: Math.min(prev.low, bar.low),
+								close: bar.close,
+								volume: prev.volume + bar.volume,
+							}
+						: { ...bar, time: barStart };
+			}
+			const settled = settleFills(
+				account,
+				(order) => fillModel(order, bar, m.instrument),
+				bar.time,
+				fees,
+				m.instrument,
+				calendar,
+				primary,
+			);
+			account = settled.account;
+			for (const r of settled.changed) orders.set(r.id, r);
+			trades.push(...settled.trades);
+			if (settled.filled) filled.add(m);
+		}
+		const expired = expireOrders(
 			account,
-			state,
-			fees,
-			events: config.events,
-			nextEvalAt,
-			fill: { price: (order) => fillModel(order, bar), time: bar.time },
-			inputs: () => {
-				const candles: Partial<Record<Timeframe, readonly Candle[]>> = {};
-				for (const x of series) {
-					const current = x.forming as Candle;
-					while (
-						x.completed < x.all.length &&
-						(x.all[x.completed] as Candle).time < current.time
-					) {
-						x.completed++;
+			closeAt,
+			markets.map((m) => m.instrument) as [Instrument, ...Instrument[]],
+		);
+		account = expired.account;
+		for (const r of expired.changed) orders.set(r.id, r);
+
+		const due = markets.filter(
+			(m) => m.current >= 0 && (filled.has(m) || closeAt >= m.nextEvalAt),
+		);
+		if (due.length > 0) {
+			const judgments = judgmentsAt(closeAt);
+			const dvol = dvolAt(closeAt);
+			const out = decideAll({
+				strategy,
+				params,
+				now: closeAt,
+				judgments,
+				events: config.events,
+				account,
+				fees,
+				primary,
+				quotes: markets
+					.filter((m) => m.current >= 0)
+					.map((m) => ({
+						instrument: m.instrument,
+						price: (m.steps[m.current] as Candle).close,
+					})),
+				markets: due.map((m) => {
+					const bar = m.steps[m.current] as Candle;
+					const candles: Partial<Record<Timeframe, readonly Candle[]>> = {};
+					for (const x of m.series) {
+						const current = x.forming as Candle;
+						while (
+							x.completed < x.all.length &&
+							(x.all[x.completed] as Candle).time < current.time
+						) {
+							x.completed++;
+						}
+						// 確定した足に、途中の足（今の足）を足して渡す。判定に使う足と同じ粒度なら今の足そのもの
+						candles[x.timeframe] = [
+							...x.all.slice(
+								Math.max(0, x.completed - (x.history - 1)),
+								x.completed,
+							),
+							current,
+						];
 					}
-					// 確定した足に、途中の足（今の足）を足して渡す。判定に使う足と同じ粒度なら今の足そのもの
-					candles[x.timeframe] = [
-						...x.all.slice(
-							Math.max(0, x.completed - (x.history - 1)),
-							x.completed,
-						),
-						current,
-					];
-				}
-				return {
-					candles,
-					recent: {
-						timeframeMs: stepMs,
-						candles: steps.slice(Math.max(0, i + 1 - recentBars), i + 1),
-					},
-					judgments: judgmentsAt(closeAt),
-					dvol: dvolAt(closeAt),
-				};
-			},
-		});
-		account = out.account;
-		state = out.state;
-		nextEvalAt = out.nextEvalAt;
-		for (const r of out.changed) orders.set(r.id, r);
-		trades.push(...out.trades);
-		if (out.decision) decisions.push(out.decision);
-		const { cash, position } = account;
+					return {
+						instrument: m.instrument,
+						price: bar.close,
+						candles,
+						recent: {
+							timeframeMs: stepMs,
+							candles: m.steps.slice(
+								Math.max(0, m.current + 1 - recentBars),
+								m.current + 1,
+							),
+						},
+						dvol,
+						state: m.state,
+					};
+				}),
+			});
+			account = out.account;
+			for (const r of out.changed) orders.set(r.id, r);
+			out.results.forEach((r, i) => {
+				const m = due[i] as Market;
+				m.state = r.state;
+				m.nextEvalAt = r.nextEvalAt;
+				decisions.push(r.decision);
+			});
+		}
 
 		// 足ごとの時価評価でドローダウンを測る
-		const equity =
-			cash + notional(config.instrument, bar.close, position.quantity, "floor");
+		const equity = equityOf();
 		if (equity > peak) {
 			peak = equity;
 			peakAt = closeAt;
@@ -325,30 +434,31 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 			ddTo = closeAt;
 		}
 
-		const done = i - startIndex + 1;
+		const done = k + 1;
 		if (onProgress && (done % 1000 === 0 || done === total)) {
 			onProgress(done, total);
 		}
 	}
 
-	const last = steps[endIndex] as Candle;
+	const lastTime = times.at(-1) as number;
 	for (const r of cancelAll(
 		account,
-		last.time + stepMs,
+		lastTime + stepMs,
 		"期間の終わりまで約定しなかった",
 	).changed) {
 		orders.set(r.id, r);
 	}
-	const { cash, position } = account;
-
-	const finalEquity =
-		cash + notional(config.instrument, last.close, position.quantity, "floor");
-	const first = steps[startIndex] as Candle;
-	const inRange = steps.slice(startIndex, endIndex + 1);
+	const finalEquity = equityOf();
+	// ただ持っていた場合は、期間に足のある銘柄に等分したものとする
+	const holds = markets
+		.map(inRangeOf)
+		.filter((c) => c.length > 0)
+		.map((c) => ((c.at(-1) as Candle).close / (c[0] as Candle).open - 1) * 100);
 	const wins = trades.filter((t) => t.pnl > 0);
 	const losses = trades.filter((t) => t.pnl <= 0);
 	const grossProfit = wins.reduce((a, t) => a + t.pnl, 0);
 	const grossLoss = -losses.reduce((a, t) => a + t.pnl, 0);
+	const others = markets.slice(1);
 
 	return {
 		summary: {
@@ -368,12 +478,24 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 				? trades.reduce((a, t) => a + (t.exitTime - t.entryTime), 0) /
 					trades.length
 				: null,
-			openPositionQuantity: position.quantity,
-			buyHoldPercent: (last.close / first.open - 1) * 100,
+			openPositionQuantity: account.lots
+				.filter((l) => (l.instrument ?? primary) === primary)
+				.reduce((q, l) => q + l.quantity, 0),
+			buyHoldPercent: holds.reduce((a, x) => a + x, 0) / holds.length,
 		},
 		orders: [...orders.values()],
 		trades,
 		decisions,
-		candles: aggregateCandles(inRange, "1d", calendar),
+		candles: aggregateCandles(inRangeOf(head), "1d", calendar),
+		...(others.length > 0
+			? {
+					otherCandles: Object.fromEntries(
+						others.map((m) => [
+							m.instrument.id,
+							aggregateCandles(inRangeOf(m), "1d", calendar),
+						]),
+					),
+				}
+			: {}),
 	};
 }

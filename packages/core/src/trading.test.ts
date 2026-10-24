@@ -79,7 +79,10 @@ describe("バックテストとの一致", () => {
 				state,
 				fees: FEES,
 				nextEvalAt,
-				fill: { price: (o) => defaultFillModel(o, bar), time: bar.time },
+				fill: {
+					price: (o) => defaultFillModel(o, bar, BTC_JPY),
+					time: bar.time,
+				},
 				inputs: () => ({
 					candles: {
 						"1h": candles.slice(Math.max(0, i - history + 1), i + 1),
@@ -386,12 +389,18 @@ describe("注文の作成と約定", () => {
 });
 
 describe("複数銘柄の資金配分", () => {
-	// 同じ市場の2つ目の銘柄（テスト用）
+	// 同じ市場の2つ目・3つ目の銘柄（テスト用）
 	const ETH_JPY: Instrument = {
 		...BTC_JPY,
 		id: "coincheck:eth_jpy",
 		symbol: "ETH/JPY",
 		quantityUnit: "ETH",
+	};
+	const XRP_JPY: Instrument = {
+		...BTC_JPY,
+		id: "coincheck:xrp_jpy",
+		symbol: "XRP/JPY",
+		quantityUnit: "XRP",
 	};
 	const market = (instrument: Instrument) => ({
 		instrument,
@@ -401,17 +410,34 @@ describe("複数銘柄の資金配分", () => {
 		dvol: [],
 		state: null,
 	});
-	const run = (instruments: Instrument[], account: Account) =>
+	const buy: ReturnType<Strategy<null>["evaluate"]>["intents"] = [
+		{
+			kind: "place",
+			side: "buy",
+			type: "limit",
+			price: 10_000_000,
+			quantity: 1_000_000,
+		},
+	];
+	/** 銘柄ごとの順位の値（高いほど上）と、同時に持つ銘柄数の上限を持つ戦略 */
+	const ranked = (
+		scores: Record<string, number>,
+		maxHoldings: number,
+	): Strategy<null> => ({
+		...fixed(buy),
+		maxHoldings: () => maxHoldings,
+		rankScore: (_p, i) =>
+			i.id in scores
+				? { score: scores[i.id] as number, text: `値 ${scores[i.id]}` }
+				: null,
+	});
+	const run = (
+		instruments: Instrument[],
+		account: Account,
+		strategy: Strategy<null> = fixed(buy),
+	) =>
 		decideAll({
-			strategy: fixed([
-				{
-					kind: "place",
-					side: "buy",
-					type: "limit",
-					price: 10_000_000,
-					quantity: 1_000_000,
-				},
-			]),
+			strategy,
 			events: { events: [], covered: [] },
 			params: null,
 			now: 10 * H,
@@ -419,7 +445,10 @@ describe("複数銘柄の資金配分", () => {
 			account,
 			fees: FEES,
 			markets: instruments.map(market),
+			primary: BTC_JPY.id,
 		});
+	const ordered = (out: ReturnType<typeof run>) =>
+		out.account.openOrders.map((x) => x.order.instrument ?? BTC_JPY.id);
 
 	test("同時に買いが成り立ち資金が1件ぶんなら、並び順で先の銘柄だけ買う", () => {
 		// 1件は手数料込み 100,100 円
@@ -428,11 +457,10 @@ describe("複数銘柄の資金配分", () => {
 			[ETH_JPY, BTC_JPY],
 		]) {
 			const out = run(order, newAccount(150_000));
-			expect(out.account.openOrders.map((x) => x.order.instrument)).toEqual([
-				order[0]?.id,
-			]);
+			expect(ordered(out)).toEqual([(order[0] as Instrument).id]);
+			// 先頭の銘柄の注文と判断には銘柄を書かない
 			expect(out.results.map((r) => r.decision.instrument)).toEqual(
-				order.map((i) => i.id),
+				order.map((i) => (i === BTC_JPY ? undefined : i.id)),
 			);
 			expect(out.results[1]?.decision.note).toContain(
 				"未約定の買い 100,100 円を除くと",
@@ -440,6 +468,128 @@ describe("複数銘柄の資金配分", () => {
 			// 同じ入力なら同じ結果
 			expect(run(order, newAccount(150_000))).toEqual(out);
 		}
+	});
+
+	test("順位の上の銘柄から、同時に持つ銘柄数の上限まで買う", () => {
+		const out = run(
+			[BTC_JPY, ETH_JPY, XRP_JPY],
+			newAccount(10_000_000),
+			ranked({ [BTC_JPY.id]: 1, [ETH_JPY.id]: 3, [XRP_JPY.id]: 2 }, 2),
+		);
+		expect(ordered(out)).toEqual([ETH_JPY.id, XRP_JPY.id]);
+		// 判断は候補の並び順で返し、順位と見送った理由を書く
+		expect(out.results.map((r) => r.decision.note)).toEqual([
+			"理由。順位 3位（値 1）。同時に持つ銘柄数の上限 2 に達しているため買わない",
+			"理由。順位 1位（値 3）",
+			"理由。順位 2位（値 2）",
+		]);
+		// 記録にも銘柄を書く
+		expect(out.changed.map((r) => r.instrument)).toEqual([
+			ETH_JPY.id,
+			XRP_JPY.id,
+		]);
+	});
+
+	test("順位の値が無い銘柄は、値のある銘柄の後に並び順で続く", () => {
+		const out = run(
+			[BTC_JPY, ETH_JPY, XRP_JPY],
+			newAccount(10_000_000),
+			ranked({ [XRP_JPY.id]: 1 }, 2),
+		);
+		expect(ordered(out)).toEqual([XRP_JPY.id, BTC_JPY.id]);
+	});
+
+	test("持っている銘柄の買い増しは上限に数えず、上限は持っている銘柄の数で数える", () => {
+		// ETH を持ち、BTC の買いが約定待ち
+		const base = run([BTC_JPY], newAccount(10_000_000));
+		const filled = settleFills(
+			run([ETH_JPY], newAccount(10_000_000)).account,
+			() => 10_000_000,
+			11 * H,
+			FEES,
+			ETH_JPY,
+			undefined,
+			BTC_JPY.id,
+		);
+		const account: Account = {
+			...filled.account,
+			openOrders: base.account.openOrders.map((x) => ({
+				...x,
+				order: { ...x.order, id: "b" },
+			})),
+		};
+		const out = run(
+			[BTC_JPY, ETH_JPY, XRP_JPY],
+			account,
+			ranked({ [XRP_JPY.id]: 3, [ETH_JPY.id]: 2, [BTC_JPY.id]: 1 }, 2),
+		);
+		expect(out.changed.map((r) => r.instrument ?? BTC_JPY.id)).toEqual([
+			ETH_JPY.id,
+			BTC_JPY.id,
+		]);
+		expect(out.results[2]?.decision.note).toContain(
+			"同時に持つ銘柄数の上限 2 に達しているため買わない",
+		);
+	});
+
+	test("判定しない銘柄の未約定の買いは、その銘柄の現在値と単位で見積もる", () => {
+		// XRP の単位（価格 0.001 円・数量 0.01）で 200 円 × 1,000 XRP = 200,000 円の指値
+		const XRP: Instrument = {
+			...XRP_JPY,
+			priceDecimals: 3,
+			quantityDecimals: 2,
+		};
+		const account: Account = {
+			...newAccount(250_000),
+			openOrders: [
+				{
+					order: {
+						id: "x",
+						side: "buy",
+						type: "limit",
+						price: 200_000,
+						quantity: 100_000,
+						placedAt: 0,
+						expiresAt: null,
+						status: "open",
+						instrument: XRP.id,
+					},
+					record: {} as never,
+				},
+			],
+		};
+		const out = decideAll({
+			strategy: fixed(buy),
+			events: { events: [], covered: [] },
+			params: null,
+			now: 10 * H,
+			judgments: {},
+			account,
+			fees: FEES,
+			markets: [market(BTC_JPY)],
+			quotes: [{ instrument: XRP, price: 200_000 }],
+		});
+		expect(out.results[0]?.decision.note).toContain(
+			"未約定の買い 200,200 円を除くと",
+		);
+	});
+
+	test("同じ判定で買いを取り消した銘柄は、上限から外す", () => {
+		const placed = run([ETH_JPY], newAccount(10_000_000));
+		const id = placed.account.openOrders[0]?.order.id as string;
+		const cancelEth: Strategy<null> = {
+			...ranked({ [ETH_JPY.id]: 2, [XRP_JPY.id]: 1 }, 1),
+			evaluate: ({ now, state, instrument }) => ({
+				intents:
+					instrument.id === ETH_JPY.id
+						? [{ kind: "cancel", orderId: id }]
+						: buy,
+				nextEvalAt: now + H,
+				state,
+			}),
+		};
+		const out = run([ETH_JPY, XRP_JPY], placed.account, cancelEth);
+		expect(ordered(out)).toEqual([XRP_JPY.id]);
 	});
 
 	test("約定は銘柄ごとに反映し、ロットはその銘柄の判定にだけ渡す", () => {
@@ -450,10 +600,12 @@ describe("複数銘柄の資金配分", () => {
 			11 * H,
 			FEES,
 			ETH_JPY,
+			undefined,
+			BTC_JPY.id,
 		);
 		expect(filled.account.lots.map((l) => l.instrument)).toEqual([ETH_JPY.id]);
 		expect(filled.account.openOrders.map((x) => x.order.instrument)).toEqual([
-			BTC_JPY.id,
+			undefined,
 		]);
 		const next = decideAll({
 			strategy: fixed([]),

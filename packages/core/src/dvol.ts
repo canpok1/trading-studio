@@ -1,6 +1,10 @@
 // DVOL（Deribit の BTC オプションから計算した30日の予想ボラ、年率 %）の1時間足を条件で読む
 
 import { HOUR_MS, jstDateTime } from "./event-calendar";
+import { BTC_JPY } from "./instrument";
+
+/** DVOL が指す銘柄。DVOL の条件はこの銘柄の判定にだけ使う（ADR 0037） */
+export const DVOL_INSTRUMENT = BTC_JPY;
 
 /** DVOL の1時間足。close は年率 % の ×100 の整数（55.23 → 5523） */
 export type DvolPoint = { time: number; close: number };

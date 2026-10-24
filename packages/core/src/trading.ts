@@ -55,6 +55,8 @@ export type TradeOrder = {
 	exitKind?: ExitKind | null;
 	/** 買いを出した買いの名前。売りと、買いが1つの戦略の買いは null */
 	buyName?: string | null;
+	/** 銘柄の id。口座の先頭の銘柄の注文には無い（DecideAllInput の primary） */
+	instrument?: string;
 };
 
 /**
@@ -150,6 +152,8 @@ export type Trade = {
 	quantity: number;
 	/** 手数料込みの損益。一部利確の売りの損益を含む */
 	pnl: number;
+	/** 銘柄の id。口座の先頭の銘柄の取引には無い */
+	instrument?: string;
 };
 
 /** 未約定の注文。戦略へ渡す注文（期限つき）と記録の組 */
@@ -441,6 +445,7 @@ export function settleFills(
 					exitTime: time,
 					quantity: lot.record.quantity,
 					pnl: pnl + (lot.realizedPnl ?? 0),
+					...(lot.instrument ? { instrument: lot.instrument } : {}),
 				});
 			}
 			const day = calendar.dayStart(time);
@@ -560,8 +565,15 @@ export type MarketInput<P> = Pick<
 >;
 
 export type DecideAllInput<P> = Omit<DecideInput<P>, keyof MarketInput<P>> & {
-	/** 対象の銘柄（同じ市場）。並び順が資金配分の優先順位で、先の銘柄の買いから資金を割り当てる */
+	/** 判定する銘柄（同じ市場）。順位が同じ（順位付けが無い）なら、並び順で先の銘柄の買いから資金を割り当てる */
 	markets: readonly MarketInput<P>[];
+	/**
+	 * 口座の先頭の銘柄。銘柄を持たない注文・ロットをこの銘柄として読み、この銘柄の注文と判断には銘柄を書かない
+	 * （1銘柄だけの口座の記録を今までと同じ形に保つため）。既定は markets の先頭
+	 */
+	primary?: string;
+	/** 判定しない銘柄も含む、口座の全銘柄の現在値。未約定の買いの額をその銘柄の価格と単位で見積もるのに使う。markets の銘柄は markets の値を使う */
+	quotes?: readonly Pick<MarketInput<P>, "instrument" | "price">[];
 };
 
 /** 銘柄ごとの判定の結果 */
@@ -596,39 +608,37 @@ export function decide<P>(input: DecideInput<P>): DecideOutput {
 }
 
 /**
- * 銘柄ごとの売買の判断と資金配分。銘柄ごとに同じ戦略で判定し、出す注文を銘柄の並び順に割り当てる。
- * 買いの資金は、先に割り当てた銘柄の未約定の買いを除いた残りで確かめるので、資金が足りなければ先の銘柄が優先される
+ * 銘柄ごとの売買の判断と資金配分（ADR 0037）。銘柄ごとに同じ戦略で判定し、出す注文を順位の上の銘柄から割り当てる。
+ * 買いの資金は、先に割り当てた銘柄の未約定の買いを除いた残りで確かめるので、資金が足りなければ上の銘柄が優先される。
+ * 新しい銘柄の買いは、持っている銘柄（買いが約定待ちの銘柄を含む）の数が上限に達していれば出さない。持っている銘柄の買い増しは出す
  */
 export function decideAll<P>(input: DecideAllInput<P>): DecideAllOutput {
 	const { strategy, params, now, fees, markets } = input;
-	const first = markets[0]?.instrument.id ?? "";
+	const first = input.primary ?? markets[0]?.instrument.id ?? "";
 	const prefix = input.idPrefix ?? "o";
 	const { cash, lots } = input.account;
 	let { seq } = input.account;
 	let open = [...input.account.openOrders];
 	const changed: TradeOrder[] = [];
 	const results: MarketDecision[] = [];
+	const maxHoldings =
+		strategy.maxHoldings?.(params) ?? Number.POSITIVE_INFINITY;
+	const held = new Set<string>([
+		...lots.map((l) => l.instrument ?? first),
+		...open
+			.filter((x) => x.order.side === "buy")
+			.map((x) => x.order.instrument ?? first),
+	]);
 
-	for (const m of markets) {
+	// 先に全銘柄を判定し、順位を付けてから注文を割り当てる
+	const evaluated = markets.map((m, index) => {
 		const { instrument } = m;
-		const market = marketOf(instrument);
-		const { calendar } = market;
-		const money = (x: number) => formatMoney(market.currency, x);
 		const mine = <T extends { instrument?: string }>(x: T) =>
 			ofInstrument(x, instrument.id, first);
 		const myLots = lots.filter(mine);
-		const position = positionOfLots(myLots);
 		const openOrders = open
 			.filter((x) => mine(x.order))
 			.map((x) => ({ ...x.order }));
-		// リスク上限は戦略の条件とは別に、注文を出す手前で検査する。止めるのは新しい買いだけ
-		const blockBuy = dailyLossBlock(
-			input.account,
-			now,
-			strategy.dailyLossLimit?.(params) ?? null,
-			market,
-		);
-
 		const out: StrategyOutput = strategy.evaluate({
 			instrument,
 			now,
@@ -638,18 +648,48 @@ export function decideAll<P>(input: DecideAllInput<P>): DecideAllOutput {
 			judgments: input.judgments,
 			events: input.events,
 			dvol: m.dvol,
-			position,
+			position: positionOfLots(myLots),
 			lots: publicLots(myLots),
 			cash,
 			openOrders,
 			params,
 			state: m.state,
 		});
+		const rank =
+			markets.length > 1
+				? (strategy.rankScore?.(params, instrument, m.candles) ?? null)
+				: null;
+		return { m, index, mine, myLots, openOrders, out, rank };
+	});
+	const order = [...evaluated].sort(
+		(a, b) =>
+			(b.rank?.score ?? Number.NEGATIVE_INFINITY) -
+				(a.rank?.score ?? Number.NEGATIVE_INFINITY) || a.index - b.index,
+	);
+	const ranked = order.filter((e) => e.rank !== null);
+
+	for (const e of order) {
+		const { m, mine, myLots, openOrders, out } = e;
+		const { instrument } = m;
+		const market = marketOf(instrument);
+		const { calendar } = market;
+		const money = (x: number) => formatMoney(market.currency, x);
+		const position = positionOfLots(myLots);
+		const tag = instrument.id !== first ? { instrument: instrument.id } : {};
+		// リスク上限は戦略の条件とは別に、注文を出す手前で検査する。止めるのは新しい買いだけ
+		const blockBuy = dailyLossBlock(
+			input.account,
+			now,
+			strategy.dailyLossLimit?.(params) ?? null,
+			market,
+		);
 
 		// 未約定の買いが約定したときに払う額（手数料込み）。同時に出した買いが全部約定しても現金が足りるようにする。
 		// 成行は判定時の現在値で見積もる。ほかの銘柄の買いはその銘柄の価格と単位で見積もる
 		const priceOf = (id: string) =>
-			markets.find((x) => x.instrument.id === id) ?? m;
+			markets.find((x) => x.instrument.id === id) ??
+			input.quotes?.find((x) => x.instrument.id === id) ??
+			m;
 		const buyNeed = (o: {
 			type: OrderType;
 			price?: number | null;
@@ -674,6 +714,13 @@ export function decideAll<P>(input: DecideAllInput<P>): DecideAllOutput {
 			}
 			if (intent.side === "buy" && blockBuy) {
 				return blockBuy;
+			}
+			if (
+				intent.side === "buy" &&
+				!held.has(instrument.id) &&
+				held.size >= maxHoldings
+			) {
+				return `同時に持つ銘柄数の上限 ${maxHoldings} に達しているため買わない`;
 			}
 			if (intent.side === "buy") {
 				const reserved = open
@@ -717,7 +764,7 @@ export function decideAll<P>(input: DecideAllInput<P>): DecideAllOutput {
 				status: "open",
 				lotId: intent.side === "sell" ? (intent.lotId ?? null) : null,
 				buyId: intent.side === "buy" ? (intent.buyId ?? null) : null,
-				...(markets.length > 1 ? { instrument: instrument.id } : {}),
+				...tag,
 			};
 			const record: TradeOrder = {
 				id: order.id,
@@ -738,13 +785,18 @@ export function decideAll<P>(input: DecideAllInput<P>): DecideAllOutput {
 				pnl: null,
 				exitKind: intent.side === "sell" ? (intent.exitKind ?? null) : null,
 				buyName: intent.side === "buy" ? (intent.buyName ?? null) : null,
+				...tag,
 			};
 			changed.push(record);
 			open.push({ order, record });
+			if (intent.side === "buy") held.add(instrument.id);
 			return null;
 		};
 
 		const notes: string[] = out.note ? [out.note] : [];
+		if (e.rank) {
+			notes.push(`順位 ${ranked.indexOf(e) + 1}位（${e.rank.text}）`);
+		}
 		for (const intent of out.intents) {
 			if (intent.kind === "place") {
 				const rejected = place(intent, out.note ?? "");
@@ -759,19 +811,25 @@ export function decideAll<P>(input: DecideAllInput<P>): DecideAllOutput {
 						cancelRecord(item.record, now, intent.reason ?? "戦略が取消"),
 					);
 					open = open.filter((x) => x !== item);
+					// 買いを取り消して持つものが無くなった銘柄は、同じ判定のうちに上限から外す
+					if (
+						!myLots.length &&
+						!open.some((x) => x.order.side === "buy" && mine(x.order))
+					)
+						held.delete(instrument.id);
 				}
 			}
 		}
 
 		// 取引時間外は判定しない。次の判定は次の立会まで送る
 		const nextEvalAt = nextOpen(calendar, out.nextEvalAt);
-		results.push({
+		results[e.index] = {
 			instrument: instrument.id,
 			state: out.state,
 			nextEvalAt,
 			decision: {
 				time: now,
-				...(markets.length > 1 ? { instrument: instrument.id } : {}),
+				...tag,
 				price: m.price,
 				cash,
 				position,
@@ -782,7 +840,7 @@ export function decideAll<P>(input: DecideAllInput<P>): DecideAllOutput {
 				note: notes.length ? notes.join("。") : null,
 				state: out.state,
 			},
-		});
+		};
 	}
 	// 発注した直後に取り消した注文の記録を最新にする
 	open = open.map((x) => ({
