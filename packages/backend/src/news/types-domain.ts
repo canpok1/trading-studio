@@ -235,7 +235,7 @@ export interface ScoringService {
 	criteria(): {
 		versions: CriteriaVersion[];
 		activeVersion: number | null;
-		/** 固定のひな形。{news} と {criteria} を差し込む */
+		/** 固定のひな形。{news}・{criteria}・{instruments} を差し込む */
 		template: string;
 	};
 	addCriteria(

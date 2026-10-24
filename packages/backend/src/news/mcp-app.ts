@@ -21,7 +21,7 @@ export function registerNewsTools(
 		"get_scoring_setup",
 		{
 			description:
-				"ニュースの AI 採点の仕組み: プロンプトの固定のひな形（{news} と {criteria} を差し込む）、採点の基準（編集できる部分）の全版と使用中の版、モデル、点数から市場評価を出す評価ルール（コード上の名前は aggregationRule）、採点の状態",
+				"ニュースの AI 採点の仕組み: プロンプトの固定のひな形（{news}・{criteria}・{instruments}（対象の銘柄）を差し込む）、採点の基準（編集できる部分）の全版と使用中の版、モデル、点数から市場評価を出す評価ルール（コード上の名前は aggregationRule）、採点の状態",
 			annotations: readOnly,
 		},
 		() => {

@@ -5,6 +5,7 @@ import type {
 	ScoredNews,
 } from "@trading-studio/core";
 import {
+	BTC_JPY,
 	DEFAULT_AGGREGATION_RULE,
 	parseAggregationRule,
 	validateAggregationRule,
@@ -39,6 +40,9 @@ type ScoreRow = {
 	attempts: number;
 	next_attempt_at: number | null;
 };
+
+/** news_scores（別名 s）の BTC/JPY に対する持続。個別の持続があればそれ、無ければ市場全体（ADR 0037） */
+export const BTC_DURATION_SQL = `coalesce(json_extract(s.instruments, '$."${BTC_JPY.id}".duration'), s.duration)`;
 
 type StoredScore = { sentiment: number; risk: number; duration: Duration };
 

@@ -17,7 +17,12 @@ function setup() {
 		title: string,
 		hour: number,
 		scores: { sentiment: number; risk: number } | null,
-		opts: { summary?: string; comment?: string; duration?: Duration } = {},
+		opts: {
+			summary?: string;
+			comment?: string;
+			duration?: Duration;
+			btcDuration?: Duration;
+		} = {},
 	) => {
 		t.newsRepo.saveFetched(
 			source,
@@ -40,6 +45,14 @@ function setup() {
 				{
 					scores,
 					duration: opts.duration ?? "short",
+					instruments: opts.btcDuration
+						? {
+								"coincheck:btc_jpy": {
+									scores,
+									duration: opts.btcDuration,
+								},
+							}
+						: {},
 					comment: opts.comment ?? "",
 				},
 				{
@@ -161,4 +174,29 @@ test("市場評価に使用中は、その時刻の重みが 0% より大きい�
 		"long-in",
 	]);
 	expect((await t.search("active=abc")).status).toBe(400);
+});
+
+test("評価に使用中は BTC/JPY に対する重みで測り、BTC/JPY の個別の持続があればそれを使う", async () => {
+	const t = setup();
+	t.add(
+		"市場は関係なし・BTC は短期",
+		99,
+		{ sentiment: 10, risk: 0 },
+		{
+			duration: "none",
+			btcDuration: "short",
+		},
+	);
+	t.add(
+		"市場は短期・BTC は関係なし",
+		99,
+		{ sentiment: 10, risk: 0 },
+		{
+			duration: "short",
+			btcDuration: "none",
+		},
+	);
+	expect(await t.titles(`active=${100 * H}`)).toEqual([
+		"市場は関係なし・BTC は短期",
+	]);
 });
