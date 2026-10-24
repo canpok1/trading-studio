@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { TradeOrder } from "@trading-studio/core";
-import { BTC_JPY, EMPTY_POSITION } from "@trading-studio/core";
+import { BTC_JPY, EMPTY_POSITION, ETH_JPY } from "@trading-studio/core";
 import { tradingPerformance } from "./performance-domain";
 
 const H = 3_600_000;
@@ -48,17 +48,21 @@ describe("tradingPerformance", () => {
 			}),
 		];
 		const r = tradingPerformance({
-			instrument: BTC_JPY,
 			initialCash: 1_000_000,
 			resetAt: 0,
 			now: 6 * H,
 			cash: 1_010_000,
-			position: EMPTY_POSITION,
-			price: 1.1 * P,
 			fills,
-			// 1本目の保有中に 20% 下がった
-			prices: [{ time: 2 * H, price: 0.8 * P }],
-			basePrice: P,
+			markets: [
+				{
+					instrument: BTC_JPY,
+					position: EMPTY_POSITION,
+					price: 1.1 * P,
+					// 1本目の保有中に 20% 下がった
+					prices: [{ time: 2 * H, price: 0.8 * P }],
+					basePrice: P,
+				},
+			],
 		});
 		expect(r).toMatchObject({
 			equity: 1_010_000,
@@ -80,16 +84,20 @@ describe("tradingPerformance", () => {
 
 	test("保有があって価格が分からなければ資産と損益は null", () => {
 		const r = tradingPerformance({
-			instrument: BTC_JPY,
 			initialCash: 1_000_000,
 			resetAt: 0,
 			now: H,
 			cash: 900_000,
-			position: { quantity: 1_000_000, entryPrice: P, openedAt: 0 },
-			price: null,
 			fills: [order({})],
-			prices: [],
-			basePrice: P,
+			markets: [
+				{
+					instrument: BTC_JPY,
+					position: { quantity: 1_000_000, entryPrice: P, openedAt: 0 },
+					price: null,
+					prices: [],
+					basePrice: P,
+				},
+			],
 		});
 		expect(r).toMatchObject({
 			equity: null,
@@ -132,16 +140,20 @@ describe("tradingPerformance", () => {
 			}),
 		];
 		const r = tradingPerformance({
-			instrument: BTC_JPY,
 			initialCash: 1_000_000,
 			resetAt: 0,
 			now: 7 * H,
 			cash: 1_000_000,
-			position: EMPTY_POSITION,
-			price: P,
 			fills,
-			prices: [],
-			basePrice: null,
+			markets: [
+				{
+					instrument: BTC_JPY,
+					position: EMPTY_POSITION,
+					price: P,
+					prices: [],
+					basePrice: null,
+				},
+			],
 		});
 		expect(r).toMatchObject({
 			realizedPnl: 2_500,
@@ -150,5 +162,66 @@ describe("tradingPerformance", () => {
 			losses: 0,
 			averageHoldingMs: 3 * H,
 		});
+	});
+
+	test("銘柄が2つ以上なら、資産と最大DDは全銘柄の合計で測り、往復の成績を銘柄ごとにも出す", () => {
+		const E = 500_000; // ETH の価格（円）
+		const fills = [
+			// 銘柄を持たない約定は先頭の銘柄（BTC）
+			order({ id: "p1", filledAt: H, pairId: "p3" }),
+			order({
+				id: "p2",
+				instrument: ETH_JPY.id,
+				quantity: 20_000, // 0.2 ETH = 100,000円
+				fillPrice: E,
+				filledAt: H,
+			}),
+			order({
+				id: "p3",
+				side: "sell",
+				filledAt: 3 * H,
+				fillPrice: 1.1 * P,
+				pairId: "p1",
+				pnl: 10_000,
+			}),
+		];
+		const r = tradingPerformance({
+			initialCash: 1_000_000,
+			resetAt: 0,
+			now: 4 * H,
+			cash: 910_000,
+			fills,
+			markets: [
+				{
+					instrument: BTC_JPY,
+					position: EMPTY_POSITION,
+					price: 1.1 * P,
+					prices: [],
+					basePrice: P,
+				},
+				{
+					instrument: ETH_JPY,
+					position: { quantity: 20_000, entryPrice: E, openedAt: H },
+					price: E,
+					// BTC の保有中に ETH が半値になった（100,000円 → 50,000円）
+					prices: [{ time: 2 * H, price: 0.5 * E }],
+					basePrice: 0.8 * E,
+				},
+			],
+		});
+		expect(r).toMatchObject({
+			equity: 1_010_000,
+			pnl: 10_000,
+			trades: 1,
+			// 2時間後の資産は 現金 800,000 + BTC 100,000 + ETH 50,000
+			maxDrawdownPercent: 5,
+			maxDrawdownTo: 2 * H,
+			byInstrument: {
+				[BTC_JPY.id]: { realizedPnl: 10_000, trades: 1, wins: 1 },
+				[ETH_JPY.id]: { realizedPnl: 0, trades: 0, winRate: null },
+			},
+		});
+		// ガチホは銘柄ごとの率（BTC +10%・ETH +25%）を等分する
+		expect(r.buyHoldPercent).toBeCloseTo(17.5);
 	});
 });
