@@ -9,6 +9,8 @@ import type {
 } from "@trading-studio/backend";
 import type { Instrument, Timeframe } from "@trading-studio/core";
 import {
+	BTC_JPY,
+	COLLECTED_INSTRUMENTS,
 	LIVE_AVAILABLE,
 	TIMEFRAME_LABELS,
 	TIMEFRAME_MS,
@@ -21,6 +23,7 @@ import type {
 	ChartMarker,
 } from "../../../shared/components/chart/chart-data";
 import { alignJudgments } from "../../../shared/components/chart/judgment-data";
+import type { InstrumentChoice } from "../../../shared/components/chart/PriceChart";
 import { PriceChart } from "../../../shared/components/chart/PriceChart";
 import { orderTime } from "../../../shared/components/OrderViews";
 import {
@@ -71,6 +74,9 @@ import {
 	UnrealizedTotalTile,
 } from "./SummaryTiles";
 import { TradeOrderSheet } from "./TradeViews";
+
+const NO_PRICES: readonly number[] = [];
+const NO_TRIGGERS: ReturnType<typeof chartTriggers> = [];
 
 /** 最新価格を問い合わせる間隔 */
 const LATEST_MS = 5_000;
@@ -132,37 +138,33 @@ export function StrategyDashboard({
 	useEffect(() => {
 		if (fixedDefault !== null) setChosen({ strategyId, id: fixedDefault });
 	}, [strategyId, fixedDefault]);
+	// 戦略の候補外の銘柄はチャートだけで描く。たまに見る用途なので保存せず、戦略や見る銘柄を切り替えたら戻す
+	const [outside, setOutside] = useState<{
+		strategyId: number | null;
+		id: string;
+	} | null>(null);
+	const candidates = run?.instruments.map((i) => i.id) ?? [BTC_JPY.id];
+	const chartOutside =
+		outside?.strategyId === strategyId && !candidates.includes(outside.id)
+			? outside.id
+			: null;
 	const chooseInstrument = useCallback(
-		(id: string) => setChosen({ strategyId, id }),
+		(id: string) => {
+			setOutside(null);
+			setChosen({ strategyId, id });
+		},
 		[strategyId],
 	);
+	// 候補の銘柄を選ぶのは見る銘柄の切り替えと同じにし、チャートとページで別の銘柄を見せない
+	const chooseChartInstrument = (id: string) => {
+		if (!candidates.includes(id)) setOutside({ strategyId, id });
+		else if (run) chooseInstrument(id);
+		else setOutside(null);
+	};
 
-	// 最新価格。どの銘柄の価格かを持ち、切り替え直後に前の銘柄の価格を出さない
-	const [loadedLatest, setLatest] = useState<{
-		instrument: string | null;
-		latest: LatestMarket;
-	} | null>(null);
-	const latest =
-		loadedLatest?.instrument === instrumentId ? loadedLatest.latest : null;
-	const [latestError, setLatestError] = useState<string | null>(null);
-	const latestSeq = useRef(0);
-	const loadLatest = useCallback(async () => {
-		const my = ++latestSeq.current;
-		try {
-			const r = await api.api.market.latest
-				.$get({ query: instrumentQuery(instrumentId) })
-				.then((res) => readJson<LatestMarket>(res));
-			if (my !== latestSeq.current) return;
-			setLatest({ instrument: instrumentId, latest: r });
-			setLatestError(null);
-		} catch (e) {
-			if (my === latestSeq.current) setLatestError(errorMessage(e));
-		}
-	}, [api, instrumentId]);
-	useEffect(() => {
-		if (visible) loadLatest();
-	}, [visible, loadLatest]);
-	useInterval(loadLatest, LATEST_MS, visible);
+	const page = useLatest(instrumentId, visible, true);
+	const chart = useLatest(chartOutside, visible, chartOutside !== null);
+	const latest = page.latest;
 
 	// 戦略と、全期間の足の数（選べる粒度の判定に使う）
 	const loadSetup = useCallback(async () => {
@@ -218,11 +220,17 @@ export function StrategyDashboard({
 			run={run}
 			instrumentId={instrumentId}
 			onInstrument={chooseInstrument}
+			chartOutside={chartOutside}
+			onChartInstrument={chooseChartInstrument}
+			chartLatest={chartOutside ? chart.latest : latest}
 			layout={layout}
 			head={head}
 			latest={latest}
-			latestError={latestError}
-			onRetryLatest={loadLatest}
+			latestError={page.error ?? (chartOutside ? chart.error : null)}
+			onRetryLatest={() => {
+				page.reload();
+				if (chartOutside) chart.reload();
+			}}
 			strategies={setup.state.data.strategies}
 			counts={setup.state.data.counts}
 			visible={visible}
@@ -230,6 +238,40 @@ export function StrategyDashboard({
 			{children}
 		</DashboardBody>
 	);
+}
+
+/** 最新価格。どの銘柄の価格かを持ち、切り替え直後に前の銘柄の価格を出さない。id が null なら既定の銘柄 */
+function useLatest(id: string | null, visible: boolean, enabled: boolean) {
+	const api = useApi();
+	const [loaded, setLoaded] = useState<{
+		instrument: string | null;
+		latest: LatestMarket;
+	} | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const seq = useRef(0);
+	const reload = useCallback(async () => {
+		const my = ++seq.current;
+		try {
+			const r = await api.api.market.latest
+				.$get({ query: instrumentQuery(id) })
+				.then((res) => readJson<LatestMarket>(res));
+			if (my !== seq.current) return;
+			setLoaded({ instrument: id, latest: r });
+			setError(null);
+		} catch (e) {
+			if (my === seq.current) setError(errorMessage(e));
+		}
+	}, [api, id]);
+	const on = visible && enabled;
+	useEffect(() => {
+		if (on) reload();
+	}, [on, reload]);
+	useInterval(reload, LATEST_MS, on);
+	return {
+		latest: loaded?.instrument === id ? loaded.latest : null,
+		error: enabled ? error : null,
+		reload,
+	};
 }
 
 function DashboardFrame({ children }: { children: ReactNode }) {
@@ -244,6 +286,9 @@ function DashboardBody({
 	run,
 	instrumentId,
 	onInstrument,
+	chartOutside,
+	onChartInstrument,
+	chartLatest,
 	layout,
 	head,
 	children,
@@ -264,6 +309,11 @@ function DashboardBody({
 	/** 見る銘柄の id。null なら既定の銘柄 */
 	instrumentId: string | null;
 	onInstrument: (id: string) => void;
+	/** チャートだけで描いている戦略の候補外の銘柄。null なら見る銘柄を描く */
+	chartOutside: string | null;
+	onChartInstrument: (id: string) => void;
+	/** チャートに描く銘柄の最新価格 */
+	chartLatest: LatestMarket | null;
 	layout: "strategy" | "home";
 	head?: (toast: (message: string) => void) => ReactNode;
 	children?: ReactNode;
@@ -346,23 +396,23 @@ function DashboardBody({
 	} | null>(null);
 	const [barsError, setBarsError] = useState<string | null>(null);
 	// 判定は足と一緒に取り直す。読めなくても価格のチャートは出す
-	const [loadedCurrent, setCurrent] = useState<{
-		instrument: string | null;
-		current: CurrentJudgment;
-	} | null>(null);
-	const current =
-		loadedCurrent?.instrument === instrumentId ? loadedCurrent.current : null;
+	const chartId = chartOutside ?? instrumentId;
+	const [currents, setCurrents] = useState<
+		Partial<Record<string, CurrentJudgment>>
+	>({});
+	const current = currents[instrumentId ?? ""] ?? null;
+	const chartCurrent = currents[chartId ?? ""] ?? null;
 	// どの足の条件で取った判定かを持ち、切り替え直後に別の粒度の判定を当てはめない
 	const [series, setSeries] = useState<{
 		key: string;
 		series: JudgmentSeries;
 	} | null>(null);
 	const [bg, setBg] = useChartBg();
-	const barsKey = `${instrumentId}:${timeframe}:${range}:${history}`;
+	const barsKey = `${chartId}:${timeframe}:${range}:${history}`;
 	const barsSeq = useRef(0);
 	const loadBars = useCallback(async () => {
 		const my = ++barsSeq.current;
-		const instrument = instrumentQuery(instrumentId);
+		const instrument = instrumentQuery(chartId);
 		const barsQuery: {
 			timeframe: Timeframe;
 			range: typeof range;
@@ -379,15 +429,18 @@ function DashboardBody({
 				setBars({ key: barsKey, instrument: r.instrument, bars: r.bars });
 				setBarsError(null);
 			}
-			// 判定は読めなくても価格のチャートは出すので、失敗は表示を前のまま残すだけにする
-			api.api.judgments.current
-				.$get({ query: instrument })
-				.then((res) => readJson<CurrentJudgment>(res))
-				.then((c) => {
-					if (my === barsSeq.current)
-						setCurrent({ instrument: instrumentId, current: c });
-				})
-				.catch(() => {});
+			// 判定は読めなくても価格のチャートは出すので、失敗は表示を前のまま残すだけにする。
+			// 候補外の銘柄を描いている間も、要点の市場評価は見る銘柄のものを出す
+			for (const id of new Set([chartId, instrumentId])) {
+				api.api.judgments.current
+					.$get({ query: instrumentQuery(id) })
+					.then((res) => readJson<CurrentJudgment>(res))
+					.then((c) => {
+						if (my === barsSeq.current)
+							setCurrents((m) => ({ ...m, [id ?? ""]: c }));
+					})
+					.catch(() => {});
+			}
 			const first = r.bars[0];
 			const last = r.bars.at(-1);
 			if (first && last) {
@@ -414,7 +467,7 @@ function DashboardBody({
 		} catch (e) {
 			if (my === barsSeq.current) setBarsError(errorMessage(e));
 		}
-	}, [api, timeframe, range, history, barsKey, instrumentId]);
+	}, [api, timeframe, range, history, barsKey, chartId, instrumentId]);
 	useEffect(() => {
 		if (visible) loadBars();
 	}, [visible, loadBars]);
@@ -423,7 +476,7 @@ function DashboardBody({
 	// 粒度を切り替えた直後は前の条件の足が残っている。届くまでは最新の価格も EMA も重ねない
 	const fresh = bars?.key === barsKey;
 	// 銘柄を切り替えた直後の前の銘柄の足は、価格の桁が違い線や印と合わないので出さない
-	const sameInstrument = bars?.key.startsWith(`${instrumentId}:`) ?? false;
+	const sameInstrument = bars?.key.startsWith(`${chartId}:`) ?? false;
 	const shownBars = useMemo(() => {
 		if (!bars || !sameInstrument) return [];
 		if (!fresh) return bars.bars;
@@ -431,10 +484,10 @@ function DashboardBody({
 			bars.bars,
 			bars.instrument,
 			timeframe,
-			latest?.price ?? null,
-			latest?.priceTime ?? null,
+			chartLatest?.price ?? null,
+			chartLatest?.priceTime ?? null,
 		);
-	}, [bars, sameInstrument, fresh, timeframe, latest]);
+	}, [bars, sameInstrument, fresh, timeframe, chartLatest]);
 
 	const barJudgments = useMemo(
 		() =>
@@ -449,14 +502,46 @@ function DashboardBody({
 
 	const markers = useMemo(
 		() =>
-			hasAccount
+			hasAccount && !chartOutside
 				? toMarkers(orders ?? [], shownBars, latest?.price ?? null)
 				: [],
-		[hasAccount, orders, shownBars, latest],
+		[hasAccount, chartOutside, orders, shownBars, latest],
 	);
 
 	const noData =
-		latest !== null && latest.price === null && bars?.bars.length === 0;
+		chartLatest !== null &&
+		chartLatest.price === null &&
+		bars?.bars.length === 0;
+
+	const instrumentChoice: InstrumentChoice = {
+		options: COLLECTED_INSTRUMENTS.map((i) => ({
+			id: i.id,
+			label: i.quantityUnit,
+		})),
+		value: chartId ?? BTC_JPY.id,
+		onChange: onChartInstrument,
+		hint: run
+			? `戦略の銘柄は ${run.instruments.map((i) => i.quantityUnit).join("・")}。それ以外の銘柄は注文の印・買値・発動価格を描かない`
+			: undefined,
+	};
+	const outsideLabel = COLLECTED_INSTRUMENTS.find(
+		(i) => i.id === chartOutside,
+	)?.quantityUnit;
+	const notice = run && chartOutside && (
+		<div
+			role="status"
+			className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-surface-2 px-3 py-2 text-xs"
+		>
+			<span className="flex-1">{outsideLabel} は戦略の候補外のため印なし</span>
+			<button
+				type="button"
+				onClick={() => onChartInstrument(instrumentId ?? run.instrument.id)}
+				className="font-semibold text-accent"
+			>
+				戦略の銘柄に戻す
+			</button>
+		</div>
+	);
 
 	const picker = run && multi && instrumentId && (
 		<InstrumentPicker run={run} value={instrumentId} onChange={onInstrument} />
@@ -549,7 +634,7 @@ function DashboardBody({
 				<PriceChart
 					instrument={
 						(sameInstrument ? bars?.instrument : null) ??
-						viewed?.instrument ??
+						(chartOutside ? null : viewed?.instrument) ??
 						null
 					}
 					bars={shownBars}
@@ -557,9 +642,11 @@ function DashboardBody({
 					hideIndicators={!fresh}
 					initialSpanMs={initialSpanMs(timeframe)}
 					viewKey={bars?.key ?? ""}
-					currentPrice={latest?.price ?? null}
-					entryPrices={entryPrices}
-					triggers={hasAccount ? triggers : undefined}
+					currentPrice={chartLatest?.price ?? null}
+					entryPrices={chartOutside ? NO_PRICES : entryPrices}
+					triggers={
+						hasAccount ? (chartOutside ? NO_TRIGGERS : triggers) : undefined
+					}
 					judgments={barJudgments}
 					markers={markers}
 					selectedId={selectedOrder}
@@ -571,12 +658,14 @@ function DashboardBody({
 					headerExtra={
 						home && (
 							<div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
-								<MarketEvalInline current={current} />
+								<MarketEvalInline current={chartCurrent} />
 								{picker && <div className="w-full">{picker}</div>}
 							</div>
 						)
 					}
-					latestNote={<Change24h latest={latest} />}
+					latestNote={<Change24h latest={chartLatest} />}
+					instrumentChoice={instrumentChoice}
+					notice={notice}
 					toolbarLabel={TIMEFRAME_LABELS[timeframe]}
 					toolbar={
 						<select
