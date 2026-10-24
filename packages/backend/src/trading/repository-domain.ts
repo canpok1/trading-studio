@@ -38,7 +38,7 @@ export interface TradingRepository {
 		},
 		orders: readonly TradeOrder[],
 		origin: {
-			/** 注文した銘柄の id */
+			/** 銘柄を持たない注文の銘柄の id（口座の先頭の銘柄） */
 			instrument: string;
 			decisionId: number | null;
 			strategyId: number | null;

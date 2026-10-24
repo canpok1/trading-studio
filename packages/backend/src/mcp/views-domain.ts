@@ -50,6 +50,7 @@ import type { Segment } from "../segments/types-domain";
 import type { StoredStrategy } from "../strategies/types-domain";
 import type {
 	AutoTradingStatus,
+	HoldingView,
 	StoredOrder,
 	StrategyLock,
 	StrategySummary,
@@ -328,41 +329,74 @@ export function tradingRunView(r: AutoTradingStatus) {
 		ranSinceReset: r.ranSinceReset,
 		waitingForMarket: r.waitingForMarket,
 		dailyLoss: r.dailyLoss,
+		// 候補の銘柄（ADR 0037）。1つならその銘柄だけを売買する
+		instruments: r.instruments.map((i) => i.id),
 	};
 }
 
-/** デモの口座・含み損益・成績。リアルは画面と同じく出さない */
+/** 全銘柄の保有の含み損益の和。保有があって価格が分からない銘柄があれば null。保有が無ければ null */
+function holdingsUnrealized(r: AutoTradingStatus): number | null {
+	const held = r.account.holdings.filter((h) => h.position.quantity > 0);
+	if (held.length === 0) return null;
+	let sum = 0;
+	for (const h of held) {
+		const instrument = r.instruments.find((i) => i.id === h.instrument);
+		const pnl = instrument
+			? unrealizedPnl(
+					instrument,
+					h.position.quantity,
+					h.position.entryPrice,
+					h.price,
+				)
+			: null;
+		if (pnl === null) return null;
+		sum += pnl;
+	}
+	return sum;
+}
+
+/** 1銘柄の保有とロットごとの含み損益 */
+function holdingView(r: AutoTradingStatus, h: HoldingView) {
+	const instrument =
+		r.instruments.find((i) => i.id === h.instrument) ?? r.instrument;
+	return {
+		instrument: h.instrument,
+		price: h.price,
+		position: positionView(h.position),
+		lots: h.lots.map((l) => ({
+			...l,
+			openedAt: jst(l.openedAt),
+			unrealizedPnl: unrealizedPnl(
+				instrument,
+				l.quantity,
+				l.entryPrice,
+				h.price,
+			),
+		})),
+	};
+}
+
+/** デモの口座・含み損益・成績。リアルは画面と同じく出さない。候補が2つ以上なら銘柄ごとの保有も出す（position・lots は候補の先頭） */
 export function paperView(
 	r: AutoTradingStatus,
-	price: number | null,
 	performance: TradingPerformance | null,
 ) {
 	const a = r.account;
+	const [head] = a.holdings;
 	return {
 		account: {
 			initialCash: a.initialCash,
 			cash: a.cash,
 			equity: a.equity,
 			position: positionView(a.position),
-			lots: a.lots.map((l) => ({
-				...l,
-				openedAt: jst(l.openedAt),
-				unrealizedPnl: unrealizedPnl(
-					r.instrument,
-					l.quantity,
-					l.entryPrice,
-					price,
-				),
-			})),
+			lots: head ? holdingView(r, head).lots : [],
 			openOrderCount: a.openOrderCount,
 			resetAt: jst(a.resetAt),
+			...(r.instruments.length > 1
+				? { holdings: a.holdings.map((h) => holdingView(r, h)) }
+				: {}),
 		},
-		unrealizedPnl: unrealizedPnl(
-			r.instrument,
-			a.position.quantity,
-			a.position.entryPrice,
-			price,
-		),
+		unrealizedPnl: holdingsUnrealized(r),
 		performance: performance && tradingPerformanceView(performance),
 	};
 }
@@ -370,6 +404,7 @@ export function paperView(
 export function tradingOrderView(o: StoredOrder) {
 	return {
 		id: o.id,
+		instrument: o.instrument,
 		side: o.side,
 		type: o.type,
 		price: o.price,
@@ -448,19 +483,23 @@ const moveView = (price: number) => (m: WatchMove) => {
 
 /** ホームのカード1枚ぶん。比べる値（通算損益・含み損益・確定損益・勝率・PF・最大DD・取引回数）と次の動き */
 export function strategySummaryView(s: StrategySummary) {
-	const { position, lots } = s.status.account;
 	const n = s.nextMoves;
 	return {
 		...tradingRunView(s.status),
 		performance: s.performance && tradingPerformanceView(s.performance),
-		unrealizedPnl: unrealizedPnl(
-			s.status.instrument,
-			position.quantity,
-			position.entryPrice,
-			n?.price ?? s.performance?.price ?? null,
-		),
-		lots: lots.length,
-		nextMoves: n?.moves.map(moveView(n.price)) ?? null,
+		unrealizedPnl: holdingsUnrealized(s.status),
+		lots: s.status.account.holdings.reduce((a, h) => a + h.lots.length, 0),
+		// 候補が2つ以上なら、銘柄ごとの次の動きを銘柄を付けて並べる（候補の並び順）
+		nextMoves: n
+			? n.markets
+				? n.markets.flatMap((m) =>
+						m.moves.map((x) => ({
+							instrument: m.instrument,
+							...moveView(m.price)(x),
+						})),
+					)
+				: n.moves.map(moveView(n.price))
+			: null,
 	};
 }
 

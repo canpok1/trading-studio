@@ -2,8 +2,11 @@
 // 状態（口座・未約定の注文・戦略の state・次の判定時刻）はすべて DB に置き、再起動しても続きから動く
 
 import type {
+	Account,
 	Candle,
 	FeeRates,
+	Instrument,
+	JsonValue,
 	MarketTrade,
 	Timeframe,
 	TradeOrder,
@@ -15,13 +18,14 @@ import {
 	candleStart,
 	conditionStrategy,
 	dailyLossBlock,
-	decide,
+	decideAll,
 	expireOrders,
 	idealStepTimeframe,
 	JUDGES,
 	marketOf,
 	newAccount,
 	nextOpen,
+	positionOfLots,
 	publicLots,
 	RUN_LIMITS,
 	realizedPnlOn,
@@ -29,6 +33,7 @@ import {
 	TIMEFRAME_MS,
 	TRADING_LIMITS,
 	tradeFillPrice,
+	validateCandidates,
 	validateConditionSet,
 	watchConditionSet,
 } from "@trading-studio/core";
@@ -59,9 +64,21 @@ class StrategyGone extends Error {}
 /** デモの注文の id の頭につける文字 */
 const PAPER_ID_PREFIX = "p";
 
+/** 銘柄ごとの戦略の state と次の判定時刻。reevaluate はその銘柄の注文が約定したので次の見回りで評価し直す */
+type MarketState = {
+	state: JsonValue;
+	nextEvalAt: number;
+	reevaluate: boolean;
+};
+
+type MarketRepo = Pick<
+	MarketDataRepository,
+	"instrument" | "candlesBefore" | "loadCandles" | "lastCandle"
+>;
+
 export type TradingEngine = TradingService & {
-	/** 受信した約定（収集が動いている間に届いたものだけ）。仮想注文の約定を決める */
-	onTrades(trades: readonly MarketTrade[]): void;
+	/** 受信した銘柄の約定（収集が動いている間に届いたものだけ）。仮想注文の約定を決める */
+	onTrades(instrument: string, trades: readonly MarketTrade[]): void;
 	/** 定期的に呼ぶ（main では1秒ごと）。期限切れの指値の取消と、判定時刻が来た戦略の評価を行う */
 	tick(): void;
 };
@@ -82,16 +99,25 @@ export function createTradingService({
 	judgments: Pick<JudgmentService, "current">;
 	calendar: Pick<CalendarService, "calendar">;
 	dvol: Pick<DvolRepository, "bars" | "fetchState">;
-	marketData: Pick<
-		MarketDataRepository,
-		"instrument" | "candlesBefore" | "loadCandles" | "lastCandle"
-	>;
-	market: () => LiveMarket;
+	/**
+	 * 価格を集めている銘柄ごとの足（同じ市場）。先頭は口座の先頭の銘柄で、銘柄を持たない注文・ロットをこの銘柄として読む
+	 * （1銘柄だけの口座の記録を今までと同じ形に保つため。core の decideAll の primary）
+	 */
+	marketData: readonly [MarketRepo, ...MarketRepo[]];
+	/** 銘柄の id ごとの収集中の価格 */
+	market: (instrument: string) => LiveMarket;
 	now?: () => number;
 	/** 省けば口座の先（取引所）の既定の率 */
 	fees?: FeeRates;
 }): TradingEngine {
-	const tradedMarket = marketOf(marketData.instrument);
+	const primary = marketData[0].instrument;
+	const allInstruments = marketData.map((r) => r.instrument) as [
+		Instrument,
+		...Instrument[],
+	];
+	const repoOf = (id: string) =>
+		marketData.find((r) => r.instrument.id === id) ?? null;
+	const tradedMarket = marketOf(primary);
 	const fees = feesOverride ?? brokerOf(tradedMarket).fees;
 	const marketCalendar = tradedMarket.calendar;
 	/**
@@ -113,7 +139,7 @@ export function createTradingService({
 		origin: { decisionId: number | null; strategy: StoredStrategy | null },
 	) => {
 		repo.saveOrders(run, changed, {
-			instrument: marketData.instrument.id,
+			instrument: primary.id,
 			decisionId: origin.decisionId,
 			strategyId: origin.strategy?.id ?? null,
 			strategyName: origin.strategy?.name ?? "",
@@ -123,7 +149,12 @@ export function createTradingService({
 	/**
 	 * 戦略が頼む粒度ごとの足と、直近の細かい足（1分足）。確定した足に、途中の足（保存済みの1分足と形成中の1分足から作る）を足す
 	 */
-	const candlesAt = (s: StoredStrategy, t: number, live: LiveMarket) => {
+	const candlesAt = (
+		s: StoredStrategy,
+		t: number,
+		live: LiveMarket,
+		marketData: MarketRepo,
+	) => {
 		const needs = conditionStrategy.candleNeeds(s.params);
 		const timeframes = Object.keys(needs) as Timeframe[];
 		const recentMs = conditionStrategy.recentMs(s.params);
@@ -173,8 +204,8 @@ export function createTradingService({
 	};
 
 	/** 今の評価ルールでの判定器ごとの判定。採点の記録が始まる前は空（データなし） */
-	const judgmentValues = (): Record<string, string> => {
-		const current = judgments.current();
+	const judgmentValues = (instrument: string): Record<string, string> => {
+		const current = judgments.current(undefined, undefined, instrument);
 		const values: Record<string, string> = {};
 		if (
 			current.firstScoredAt !== null &&
@@ -193,12 +224,67 @@ export function createTradingService({
 			]),
 		);
 
+	/** 候補の銘柄。収集していない銘柄は除く */
+	const instrumentsOf = (s: StoredStrategy): Instrument[] =>
+		s.instruments.flatMap((id) => {
+			const r = repoOf(id);
+			return r ? [r.instrument] : [];
+		});
+
+	/** 口座の先頭の銘柄だけを売買する戦略は、state と次の判定時刻を今までどおり口座の行にそのまま置く。ほかは銘柄ごとに置く */
+	const isSingle = (s: StoredStrategy) =>
+		s.instruments.length === 1 && s.instruments[0] === primary.id;
+
+	/** 銘柄ごとの state と次の判定時刻。まだ判定していない銘柄は口座の行の次の判定時刻から始める */
+	const marketStates = (
+		s: StoredStrategy,
+		row: TradingRunRow,
+	): Record<string, MarketState> => {
+		const start = row.nextEvalAt ?? Number.POSITIVE_INFINITY;
+		if (isSingle(s)) {
+			return {
+				[primary.id]: {
+					state: row.state,
+					nextEvalAt: start,
+					reevaluate: row.reevaluate,
+				},
+			};
+		}
+		const saved = (
+			row.state && typeof row.state === "object" && !Array.isArray(row.state)
+				? (row.state.markets ?? {})
+				: {}
+		) as Record<string, MarketState>;
+		return Object.fromEntries(
+			s.instruments.map((id) => [
+				id,
+				saved[id] ?? { state: null, nextEvalAt: start, reevaluate: false },
+			]),
+		);
+	};
+
+	/** 銘柄ごとの state を口座の行に戻す */
+	const withMarketStates = (
+		s: StoredStrategy,
+		row: TradingRunRow,
+		states: Record<string, MarketState>,
+	): TradingRunRow => {
+		const list = Object.values(states);
+		const earliest = Math.min(...list.map((m) => m.nextEvalAt));
+		const nextEvalAt = Number.isFinite(earliest) ? earliest : null;
+		const reevaluate = list.some((m) => m.reevaluate);
+		const state = isSingle(s)
+			? (states[primary.id] as MarketState).state
+			: ({ markets: states } as unknown as JsonValue);
+		return { ...row, state, nextEvalAt, reevaluate };
+	};
+
+	const ready = (live: LiveMarket) =>
+		live.status.state === "running" && live.latestTrade !== null;
+
 	const evaluate = (row: TradingRunRow, t: number) => {
 		if (!row.enabled || row.nextEvalAt === null) return;
 		if (t < row.nextEvalAt && !row.reevaluate) return;
-		const live = market();
-		// 収集が止まっている間は判定しない（古い価格で注文しないため）。復帰したら過ぎた判定を1回だけ行う
-		if (live.status.state !== "running" || !live.latestTrade) return;
 		const s = row.strategyId === null ? null : strategies.get(row.strategyId);
 		if (!s) {
 			// 動かしている戦略が消えたら続けられないので止める。未約定の注文は残す
@@ -211,44 +297,97 @@ export function createTradingService({
 			});
 			return;
 		}
-		// 戦略が使わない判定も、注文の詳細で「そのときの判定」として見せるため記録する
-		const values = judgmentValues();
-		const expired = expireOrders(row.account, t, [marketData.instrument]);
+		const instruments = instrumentsOf(s);
+		const lives = new Map(instruments.map((i) => [i.id, market(i.id)]));
+		const states = marketStates(s, row);
+		// 収集が止まっている銘柄は判定しない（古い価格で注文しないため）。復帰したら過ぎた判定を1回だけ行う
+		const due = instruments.filter((i) => {
+			const m = states[i.id] as MarketState;
+			return (
+				ready(lives.get(i.id) as LiveMarket) &&
+				(m.reevaluate || t >= m.nextEvalAt)
+			);
+		});
+		if (due.length === 0) return;
+		const expired = expireOrders(row.account, t, allInstruments);
 		saveChanges(row, expired.changed, { decisionId: null, strategy: null });
-		const out = decide({
-			instrument: marketData.instrument,
+		// 戦略が使わない判定も、注文の詳細で「そのときの判定」として見せるため記録する
+		const values = new Map(due.map((i) => [i.id, judgmentValues(i.id)]));
+		const priceOf = (i: Instrument) =>
+			((lives.get(i.id) as LiveMarket).latestTrade as MarketTrade).price;
+		const out = decideAll({
 			strategy: conditionStrategy,
 			params: s.params,
 			now: t,
-			price: (live.latestTrade as MarketTrade).price,
-			...candlesAt(s, t, live),
-			judgments: judgmentInput(values, t),
 			events: calendar.calendar(),
-			dvol: strategyDvol(dvol, s.params, t, t),
 			account: expired.account,
-			state: row.state,
 			fees,
 			idPrefix: PAPER_ID_PREFIX,
+			primary: primary.id,
+			quotes: instruments
+				.filter((i) => ready(lives.get(i.id) as LiveMarket))
+				.map((i) => ({ instrument: i, price: priceOf(i) })),
+			markets: due.map((i) => {
+				const live = lives.get(i.id) as LiveMarket;
+				return {
+					instrument: i,
+					price: priceOf(i),
+					...candlesAt(s, t, live, repoOf(i.id) as MarketRepo),
+					judgments: judgmentInput(values.get(i.id) ?? {}, t),
+					dvol: strategyDvol(dvol, s.params, t, t),
+					state: (states[i.id] as MarketState).state,
+				};
+			}),
 		});
-		const decisionId = repo.addDecision(
-			row,
-			{ id: s.id, name: s.name },
-			out.decision,
-			values,
+		const decisionIds = new Map(
+			out.results.map((r) => [
+				r.instrument,
+				repo.addDecision(
+					row,
+					{ id: s.id, name: s.name },
+					r.decision,
+					values.get(r.instrument) ?? {},
+				),
+			]),
 		);
-		saveChanges(row, out.changed, { decisionId, strategy: s });
-		repo.saveRun({
-			...row,
-			account: out.account,
-			state: out.state,
-			nextEvalAt: out.nextEvalAt,
-			reevaluate: false,
-		});
+		for (const [id, decisionId] of decisionIds) {
+			saveChanges(
+				row,
+				out.changed.filter((o) => (o.instrument ?? primary.id) === id),
+				{ decisionId, strategy: s },
+			);
+		}
+		for (const r of out.results) {
+			states[r.instrument] = {
+				state: r.state,
+				nextEvalAt: r.nextEvalAt,
+				reevaluate: false,
+			};
+		}
+		repo.saveRun(withMarketStates(s, { ...row, account: out.account }, states));
 	};
 
 	/** 資産の評価に使う今の価格。収集が止まっていれば保存済みの最後の1分足の終値 */
-	const currentPrice = (live: LiveMarket): number | null =>
-		live.latestTrade?.price ?? marketData.lastCandle("1m")?.close ?? null;
+	const currentPrice = (id: string): number | null =>
+		market(id).latestTrade?.price ??
+		repoOf(id)?.lastCandle("1m")?.close ??
+		null;
+
+	/** 口座のうち、その銘柄のロット */
+	const lotsOf = (a: Account, id: string) =>
+		a.lots.filter((l) => (l.instrument ?? primary.id) === id);
+
+	/** 候補の銘柄ごとの保有。候補の外の銘柄の保有は戦略を変えられないので無い */
+	const holdingsOf = (instruments: readonly Instrument[], a: Account) =>
+		instruments.map((i) => {
+			const lots = lotsOf(a, i.id);
+			return {
+				instrument: i,
+				lots,
+				position: positionOfLots(lots),
+				price: currentPrice(i.id),
+			};
+		});
 
 	/** 戦略の条件の変更を止めている理由。保有はオフにしても口座に残り、オンにし直すと同じ戦略で売るため、保有がある間も止める */
 	const lockOf = (row: TradingRunRow): StrategyLock | null =>
@@ -262,13 +401,16 @@ export function createTradingService({
 		s: StoredStrategy,
 		row: TradingRunRow,
 		t: number,
-		live: LiveMarket,
 	): AutoTradingStatus => {
 		const a = row.account;
+		const instruments = instrumentsOf(s);
+		const holdings = holdingsOf(instruments, a);
+		const head = holdings[0];
 		return {
 			id: s.id,
 			accountId: row.id,
-			instrument: marketData.instrument,
+			instrument: head?.instrument ?? primary,
+			instruments,
 			name: s.name,
 			enabled: row.enabled,
 			mode: row.mode,
@@ -277,8 +419,7 @@ export function createTradingService({
 			ranSinceReset:
 				row.enabled || (row.startedAt !== null && row.startedAt >= row.resetAt),
 			waitingForMarket:
-				row.enabled &&
-				(live.status.state !== "running" || live.latestTrade === null),
+				row.enabled && instruments.some((i) => !ready(market(i.id))),
 			dailyLoss: {
 				loss: Math.max(0, -realizedPnlOn(a, t, marketCalendar)),
 				limit: s.params.dailyLossLimit,
@@ -289,16 +430,24 @@ export function createTradingService({
 			account: {
 				initialCash: row.initialCash,
 				cash: a.cash,
-				position: a.position,
-				lots: publicLots(a.lots),
+				position: head?.position ?? a.position,
+				lots: publicLots(head?.lots ?? a.lots),
 				openOrderCount: a.openOrders.length,
 				resetAt: row.resetAt,
 				equity: equityOf(
-					marketData.instrument,
 					a.cash,
-					a.position,
-					currentPrice(live),
+					holdings.map((h) => ({
+						instrument: h.instrument,
+						quantity: h.position.quantity,
+						price: h.price,
+					})),
 				),
+				holdings: holdings.map((h) => ({
+					instrument: h.instrument.id,
+					position: h.position,
+					lots: publicLots(h.lots),
+					price: h.price,
+				})),
 			},
 		};
 	};
@@ -325,7 +474,7 @@ export function createTradingService({
 	const okRun = (strategyId: number): TradingResult => {
 		const found = accountOf(strategyId);
 		return found
-			? { ok: true, status: statusOf(found.s, found.row, now(), market()) }
+			? { ok: true, status: statusOf(found.s, found.row, now()) }
 			: notFound();
 	};
 
@@ -347,8 +496,9 @@ export function createTradingService({
 	};
 
 	return {
-		onTrades(trades) {
-			if (trades.length === 0) return;
+		onTrades(instrumentId, trades) {
+			const instrument = repoOf(instrumentId)?.instrument;
+			if (!instrument || trades.length === 0) return;
 			const sorted = [...trades].sort((a, b) => a.time - b.time || a.id - b.id);
 			// 1つの運用の失敗で、ほかの運用の約定を巻き戻さない
 			for (const id of runIds()) {
@@ -362,9 +512,7 @@ export function createTradingService({
 						for (const trade of sorted) {
 							if (account.openOrders.length === 0) break;
 							// 期限を過ぎてから届いた約定では約定させない
-							const expired = expireOrders(account, trade.time, [
-								marketData.instrument,
-							]);
+							const expired = expireOrders(account, trade.time, allInstruments);
 							saveChanges(row, expired.changed, {
 								decisionId: null,
 								strategy: null,
@@ -374,7 +522,9 @@ export function createTradingService({
 								(o) => tradeFillPrice(o, trade),
 								trade.time,
 								fees,
-								marketData.instrument,
+								instrument,
+								marketCalendar,
+								primary.id,
 							);
 							saveChanges(row, out.changed, {
 								decisionId: null,
@@ -383,12 +533,19 @@ export function createTradingService({
 							account = out.account;
 							filled ||= out.filled;
 						}
-						// 自分の注文が約定したら、次の見回りで評価し直す（バックテストで約定した足の終わりに判定するのと揃える）
-						repo.saveRun({
-							...row,
-							account,
-							reevaluate: row.reevaluate || (filled && row.enabled),
-						});
+						// 自分の注文が約定したら、次の見回りでその銘柄を評価し直す（バックテストで約定した足の終わりに判定するのと揃える）
+						const s =
+							filled && row.enabled && row.strategyId !== null
+								? strategies.get(row.strategyId)
+								: null;
+						if (!s) {
+							repo.saveRun({ ...row, account });
+							return;
+						}
+						const states = marketStates(s, row);
+						const m = states[instrument.id];
+						if (m) states[instrument.id] = { ...m, reevaluate: true };
+						repo.saveRun(withMarketStates(s, { ...row, account }, states));
 					});
 				} catch (e) {
 					console.error("trading: settle failed", id, e);
@@ -404,9 +561,7 @@ export function createTradingService({
 					repo.transaction(() => {
 						const row = repo.run(id);
 						if (!row) return;
-						const expired = expireOrders(row.account, t, [
-							marketData.instrument,
-						]);
+						const expired = expireOrders(row.account, t, allInstruments);
 						if (expired.changed.length === 0) {
 							evaluate(row, t);
 							return;
@@ -427,51 +582,68 @@ export function createTradingService({
 
 		runs() {
 			const t = now();
-			const live = market();
 			const rows = new Map(repo.runs().map((r) => [r.strategyId, r]));
 			return strategies.list().flatMap((s) => {
 				const row = rows.get(s.id);
-				return row ? [statusOf(s, row, t, live)] : [];
+				return row ? [statusOf(s, row, t)] : [];
 			});
 		},
 
 		run(strategyId) {
 			const found = accountOf(strategyId);
-			return found ? statusOf(found.s, found.row, now(), market()) : null;
+			return found ? statusOf(found.s, found.row, now()) : null;
 		},
 
-		watch(strategyId) {
+		watch(strategyId, instrumentId) {
 			const found = accountOf(strategyId);
 			if (!found) return null;
 			const { s, row } = found;
-			const live = market();
-			const price = currentPrice(live);
-			const { instrument } = marketData;
+			const instruments = instrumentsOf(s);
+			const instrument = instrumentId
+				? instruments.find((i) => i.id === instrumentId)
+				: instruments[0];
+			if (!instrument) return null;
+			const live = market(instrument.id);
+			const price = currentPrice(instrument.id);
 			if (price === null) return { instrument, watch: null };
 			const t = now();
 			// 期限切れの指値は次の判定の前に取り消されるので、取り消した後の口座で試算する
-			const a = expireOrders(row.account, t, [marketData.instrument]).account;
+			const a = expireOrders(row.account, t, allInstruments).account;
+			const mine = (x: { instrument?: string }) =>
+				(x.instrument ?? primary.id) === instrument.id;
+			// 持っていない銘柄の新しい買いは、持っている銘柄の数が上限なら出さない（core の decideAll と同じ）
+			const held = new Set([
+				...a.lots.map((l) => l.instrument ?? primary.id),
+				...a.openOrders
+					.filter((x) => x.order.side === "buy")
+					.map((x) => x.order.instrument ?? primary.id),
+			]);
+			const maxHoldings = conditionStrategy.maxHoldings?.(s.params) ?? null;
+			const full =
+				!held.has(instrument.id) &&
+				maxHoldings !== null &&
+				held.size >= maxHoldings
+					? `同時に持つ銘柄数の上限 ${maxHoldings} に達しているため買わない`
+					: null;
 			return {
 				instrument,
 				watch: watchConditionSet({
 					instrument,
 					now: t,
 					price,
-					...candlesAt(s, t, live),
-					judgments: judgmentInput(judgmentValues(), t),
+					...candlesAt(s, t, live, repoOf(instrument.id) as MarketRepo),
+					judgments: judgmentInput(judgmentValues(instrument.id), t),
 					events: calendar.calendar(),
 					dvol: strategyDvol(dvol, s.params, t, t),
-					lots: publicLots(a.lots),
+					lots: publicLots(lotsOf(a, instrument.id)),
 					cash: a.cash,
-					openOrders: a.openOrders.map((x) => ({ ...x.order })),
+					openOrders: a.openOrders
+						.filter((x) => mine(x.order))
+						.map((x) => ({ ...x.order })),
 					params: s.params,
-					state: row.state,
-					buyBlocked: dailyLossBlock(
-						a,
-						t,
-						s.params.dailyLossLimit,
-						tradedMarket,
-					),
+					state: (marketStates(s, row)[instrument.id] as MarketState).state,
+					buyBlocked:
+						dailyLossBlock(a, t, s.params.dailyLossLimit, tradedMarket) ?? full,
 				}),
 			};
 		},
@@ -483,13 +655,27 @@ export function createTradingService({
 						r.mode === "paper" && (r.enabled || r.strategyLock === "holding"),
 				)
 				.map((status) => {
-					const w = this.watch(status.id)?.watch ?? null;
 					const multiBuy =
 						(strategies.get(status.id)?.params.buys.length ?? 0) >= 2;
+					const markets = status.instruments.flatMap((i) => {
+						const w = this.watch(status.id, i.id)?.watch;
+						return w
+							? [{ instrument: i.id, price: w.price, moves: w.moves }]
+							: [];
+					});
+					const head = markets[0];
+					const nextMoves =
+						status.instruments.length > 1
+							? head
+								? { price: head.price, moves: head.moves, multiBuy, markets }
+								: null
+							: head
+								? { price: head.price, moves: head.moves, multiBuy }
+								: null;
 					return {
 						status,
 						performance: this.performance(status.id),
-						nextMoves: w && { price: w.price, moves: w.moves, multiBuy },
+						nextMoves,
 					};
 				});
 		},
@@ -546,17 +732,18 @@ export function createTradingService({
 					`同時に動かせる戦略は ${TRADING_LIMITS.running} つまで。ほかの戦略を停止してから開始する`,
 				);
 			}
-			// 自動取引が相場データを持つのは1銘柄だけ
-			if (
-				s.instruments.length !== 1 ||
-				s.instruments[0] !== marketData.instrument.id
-			) {
+			// 自動取引が相場データを持つのは、価格を集めている銘柄だけ
+			const instruments = instrumentsOf(s);
+			if (instruments.length !== s.instruments.length) {
 				return fail(
 					"unsupported_instrument",
-					`自動取引できるのは ${marketData.instrument.symbol} の1銘柄だけ`,
+					`自動取引できるのは価格を集めている銘柄（${allInstruments.map((i) => i.symbol).join("・")}）だけ`,
 				);
 			}
-			const errors = validateConditionSet(s.params, tradedMarket, RUN_LIMITS);
+			const errors = [
+				...validateConditionSet(s.params, tradedMarket, RUN_LIMITS),
+				...validateCandidates(s.params, instruments),
+			];
 			if (errors.length > 0) {
 				return {
 					ok: false,
@@ -639,30 +826,39 @@ export function createTradingService({
 		performance(strategyId) {
 			const found = accountOf(strategyId);
 			if (!found) return null;
-			const { row } = found;
+			const { s, row } = found;
 			const t = now();
 			// ドローダウンは1時間足の終値で追う（1分足では長く運用したときに重いため）
 			const hour = TIMEFRAME_MS["1h"];
-			const prices = marketData
-				.loadCandles("1h", candleStart(row.resetAt, "1h", marketCalendar), t)
-				.map((c) => ({ time: c.time + hour, price: c.close }));
+			const from = candleStart(row.resetAt, "1h", marketCalendar);
+			const minute = candleStart(row.resetAt, "1m", marketCalendar);
+			const holdings = holdingsOf(instrumentsOf(s), row.account);
+			const markets = holdings.map((h) => {
+				const data = repoOf(h.instrument.id) as MarketRepo;
+				return {
+					instrument: h.instrument,
+					position: h.position,
+					price: h.price,
+					prices: data
+						.loadCandles("1h", from, t)
+						.map((c) => ({ time: c.time + hour, price: c.close })),
+					// ガチホの起点は、リセットした時刻を含む1分足（まだ無ければ1時間以内で最初の1分足）の始値
+					basePrice:
+						data.loadCandles("1m", minute, Math.min(t, minute + hour))[0]
+							?.open ?? null,
+				};
+			});
+			if (markets.length === 0) return null;
 			return tradingPerformance({
-				instrument: marketData.instrument,
 				initialCash: row.initialCash,
 				resetAt: row.resetAt,
 				now: t,
 				cash: row.account.cash,
-				position: row.account.position,
-				price: currentPrice(market()),
+				markets: markets as [
+					(typeof markets)[number],
+					...(typeof markets)[number][],
+				],
 				fills: repo.filledSince(row.id, row.resetAt),
-				prices,
-				// ガチホの起点は、リセットした時刻を含む1分足（まだ無ければ1時間以内で最初の1分足）の始値
-				basePrice:
-					marketData.loadCandles(
-						"1m",
-						candleStart(row.resetAt, "1m", marketCalendar),
-						Math.min(t, candleStart(row.resetAt, "1m", marketCalendar) + hour),
-					)[0]?.open ?? null,
 			});
 		},
 

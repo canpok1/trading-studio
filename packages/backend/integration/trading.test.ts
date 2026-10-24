@@ -5,8 +5,10 @@ import type {
 	SingleBuyConditionSet,
 } from "@trading-studio/core";
 import {
+	BTC_JPY,
 	DEFAULT_DAILY_LOSS_LIMIT,
 	DEFAULT_PARTIAL_SELL,
+	ETH_JPY,
 	MARKET_BUY_ORDER,
 	singleBuy,
 } from "@trading-studio/core";
@@ -61,7 +63,7 @@ const always = (over: Partial<SingleBuyConditionSet> = {}): ConditionSet =>
 		...over,
 	});
 
-function setup(params: ConditionSet = always()) {
+function setup(params: ConditionSet = always(), instruments?: string[]) {
 	const t = createTestApp();
 	t.clock.now = T0 + 30_000;
 	t.marketDataRepo.upsertCollected(
@@ -82,7 +84,10 @@ function setup(params: ConditionSet = always()) {
 		quantity: 1,
 	});
 	t.live.current = { ...t.live.current, latestTrade: trade(P) };
-	const s = t.trading.createStrategy({ name: "常に買う", from: { params } });
+	const s = t.trading.createStrategy({
+		name: "常に買う",
+		from: { params, ...(instruments ? { instruments } : {}) },
+	});
 	if (!s.ok) throw new Error(JSON.stringify(s.error));
 	/** この戦略の操作は /start のように書ける */
 	const call = async (method: string, path: string, body?: unknown) => {
@@ -118,7 +123,7 @@ function setup(params: ConditionSet = always()) {
 	const fill = (price: number) => {
 		const tr = trade(price);
 		t.live.current = { ...t.live.current, latestTrade: tr };
-		t.trading.onTrades([tr]);
+		t.trading.onTrades(BTC_JPY.id, [tr]);
 	};
 	const orders = () =>
 		t.trading.orders({}).sort((a, b) => a.placedAt - b.placedAt);
@@ -227,10 +232,10 @@ describe("自動取引のオンオフ", () => {
 		expect((await t.call("POST", "/strategies/99/start")).status).toBe(404);
 	});
 
-	test("相場データの無い銘柄を対象にした戦略はオンにできない", async () => {
+	test("価格を集めていない銘柄を候補にした戦略はオンにできない", async () => {
 		const t = setup();
 		t.db.$client.run(
-			`update strategies set instruments = '["coincheck:btc_jpy","coincheck:eth_jpy"]'`,
+			`update strategies set instruments = '["coincheck:btc_jpy","coincheck:doge_jpy"]'`,
 		);
 		const r = await t.call("POST", "/start");
 		expect(r.status).toBe(400);
@@ -421,7 +426,7 @@ describe("止まっていた間と再起動", () => {
 			},
 			calendar: t.calendar,
 			dvol: t.dvolRepo,
-			marketData: t.marketDataRepo,
+			marketData: [t.marketDataRepo],
 			market: () => t.live.current,
 			fees: TEST_FEE_RATES,
 			now: () => t.clock.now,
@@ -433,7 +438,7 @@ describe("止まっていた間と再起動", () => {
 			price: 9_000_000,
 			quantity: 1,
 		};
-		restarted.onTrades([tr]);
+		restarted.onTrades(BTC_JPY.id, [tr]);
 		expect(restarted.orders({})[0]).toMatchObject({
 			id: "p1",
 			status: "filled",
@@ -931,5 +936,136 @@ describe("見張り", () => {
 		]);
 		expect(t.orders().length).toBe(before);
 		expect((await t.call("GET", "/strategies/9/watch")).status).toBe(404);
+	});
+});
+
+describe("候補が2つ以上の戦略（ADR 0037）", () => {
+	const E = 500_000; // ETH の価格（円）
+
+	/** BTC と ETH を候補にし、どちらも1回 100,000円ずつ買う */
+	function multi(maxHoldings: number, instruments = [BTC_JPY.id, ETH_JPY.id]) {
+		const t = setup(
+			{ ...always({ orderAmount: 100_000 }), maxHoldings },
+			instruments,
+		);
+		t.repoOf(ETH_JPY.id).upsertCollected(
+			Array.from({ length: 5 }, (_, i) => ({
+				time: T0 - (5 - i) * M,
+				open: E,
+				high: E,
+				low: E,
+				close: E,
+				volume: 0,
+			})),
+		);
+		const eth = t.liveOf(ETH_JPY.id);
+		/** ETH の約定が届く */
+		const fillEth = (price: number) => {
+			const tr: MarketTrade = {
+				id: 1_000 + t.orders().length,
+				time: t.clock.now,
+				price,
+				quantity: 1,
+			};
+			eth.current = { ...eth.current, latestTrade: tr };
+			t.trading.onTrades(ETH_JPY.id, [tr]);
+		};
+		fillEth(E);
+		/** 同じ判定で出した注文は発注時刻が同じなので、id（発注順）で並べる */
+		const orders = () => t.orders().sort((a, b) => a.id.localeCompare(b.id));
+		return { ...t, fillEth, orders };
+	}
+
+	test("銘柄ごとに判定して買い、注文に銘柄を付け、約定はその銘柄の約定で決める", async () => {
+		const t = multi(2);
+		expect((await t.call("POST", "/start")).status).toBe(200);
+		t.at(T0 + M);
+		const placed = t.orders();
+		expect(
+			placed.map((o) => [o.instrument, o.side, o.quantity, o.status]),
+		).toEqual([
+			[BTC_JPY.id, "buy", 1_000_000, "open"],
+			[ETH_JPY.id, "buy", 20_000, "open"],
+		]);
+		// 判断は銘柄ごとに記録する
+		expect(new Set(placed.map((o) => o.decisionId)).size).toBe(2);
+
+		// ETH の約定では BTC の注文は約定しない
+		t.fillEth(E);
+		expect(t.orders().map((o) => o.status)).toEqual(["open", "filled"]);
+		t.fill(P);
+		expect(t.orders().map((o) => o.status)).toEqual(["filled", "filled"]);
+
+		const st = t.status();
+		expect(st.instruments.map((i) => i.id)).toEqual([BTC_JPY.id, ETH_JPY.id]);
+		expect(st.instrument.id).toBe(BTC_JPY.id);
+		expect(st.account.position.quantity).toBe(1_000_000);
+		expect(
+			st.account.holdings.map((h) => [h.instrument, h.position.quantity]),
+		).toEqual([
+			[BTC_JPY.id, 1_000_000],
+			[ETH_JPY.id, 20_000],
+		]);
+		// 資産は全銘柄の保有を今の価格で評価する
+		expect(st.account.equity).toBe(st.account.cash + 200_000);
+
+		const eth = await t.call(
+			"GET",
+			`/orders?strategy=${t.strategy.id}&instrument=${ETH_JPY.id}`,
+		);
+		expect((eth.body.orders as StoredOrder[]).map((o) => o.instrument)).toEqual(
+			[ETH_JPY.id],
+		);
+		const watch = await t.call("GET", `/watch?instrument=${ETH_JPY.id}`);
+		expect(watch.status).toBe(200);
+		expect((watch.body.instrument as { id: string }).id).toBe(ETH_JPY.id);
+		expect(
+			(await t.call("GET", "/watch?instrument=coincheck:xrp_jpy")).status,
+		).toBe(404);
+
+		const perf = (await t.call("GET", "/performance")).body.performance as Json;
+		expect(Object.keys(perf.byInstrument as Json)).toEqual([
+			BTC_JPY.id,
+			ETH_JPY.id,
+		]);
+		const summary = t.trading.summaries()[0] as StrategySummary;
+		expect(summary.nextMoves?.markets?.map((m) => m.instrument)).toEqual([
+			BTC_JPY.id,
+			ETH_JPY.id,
+		]);
+	});
+
+	test("持つ銘柄の数が上限なら、持っていない銘柄は買わない", async () => {
+		const t = multi(1);
+		await t.call("POST", "/start");
+		t.at(T0 + M);
+		expect(t.orders().map((o) => o.instrument)).toEqual([BTC_JPY.id]);
+		const w = t.trading.watch(t.strategy.id, ETH_JPY.id)?.watch;
+		expect(w?.buys[0]?.status).toEqual({
+			kind: "blocked",
+			reason: "同時に持つ銘柄数の上限 1 に達しているため買わない",
+		});
+	});
+
+	test("ETH だけの戦略も動かせ、判定時刻は銘柄ごとに持って再起動後も続ける", async () => {
+		const t = multi(1, [ETH_JPY.id]);
+		await t.call("POST", "/start");
+		t.at(T0 + M);
+		expect(t.orders().map((o) => [o.instrument, o.quantity])).toEqual([
+			[ETH_JPY.id, 20_000],
+		]);
+		expect(t.status().nextEvalAt).toBe(T0 + 2 * M);
+		const restarted = createTradingService({
+			repo: new SqliteTradingRepository(t.db),
+			strategies: t.strategies,
+			judgments: t.judgments,
+			calendar: t.calendar,
+			dvol: t.dvolRepo,
+			marketData: [t.marketDataRepo, t.repoOf(ETH_JPY.id)],
+			market: (id) => t.liveOf(id).current,
+			fees: TEST_FEE_RATES,
+			now: () => t.clock.now,
+		});
+		expect(restarted.run(t.strategy.id)).toEqual(t.status());
 	});
 });

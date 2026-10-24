@@ -80,8 +80,8 @@ export function createTestApp(
 		new SqliteStrategyRepository(db),
 		() => 2_000,
 	);
-	// 収集は動かさず、テストから live を差し替える
-	const live: { current: LiveMarket } = {
+	// 収集は動かさず、テストから live（BTC/JPY）と liveOf(銘柄) を差し替える
+	const idle = (): { current: LiveMarket } => ({
 		current: {
 			latestTrade: null,
 			forming: null,
@@ -94,7 +94,15 @@ export function createTestApp(
 				lastReceivedAt: null,
 			},
 		},
-	};
+	});
+	const live = idle();
+	const lives = new Map(
+		collectedRepos.map((r) => [
+			r.instrument.id,
+			r === marketDataRepo ? live : idle(),
+		]),
+	);
+	const liveOf = (id: string) => lives.get(id) as { current: LiveMarket };
 	const collector: Pick<Collector, "live"> = { live: () => live.current };
 	const clock = { now: 4_000 };
 	const market = createMarketService({
@@ -209,8 +217,11 @@ export function createTestApp(
 		judgments,
 		calendar,
 		dvol: dvolRepo,
-		marketData: marketDataRepo,
-		market: () => live.current,
+		marketData: collectedRepos as [
+			SqliteMarketDataRepository,
+			...SqliteMarketDataRepository[],
+		],
+		market: (id) => liveOf(id).current,
 		now: () => clock.now,
 		fees: TEST_FEE_RATES,
 	});
@@ -291,6 +302,7 @@ export function createTestApp(
 		adviceRepo,
 		adviceAi,
 		live,
+		liveOf,
 		clock,
 		news,
 		newsRepo,

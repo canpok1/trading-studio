@@ -114,11 +114,7 @@ const collectedRepos = COLLECTED.map((instrument) => {
 });
 const collectors = COLLECTED.map((instrument, i) =>
 	createCollector({
-		// 自動取引は BTC/JPY だけを扱う（#280 まで）
-		onTrades:
-			instrument.id === DEFAULT_INSTRUMENT.id
-				? (trades) => trading?.onTrades(trades)
-				: undefined,
+		onTrades: (trades) => trading?.onTrades(instrument.id, trades),
 		// E2E では取引所へつながず、偽物の約定を流す
 		feed:
 			process.env.MARKET_FEED === "demo"
@@ -127,9 +123,11 @@ const collectors = COLLECTED.map((instrument, i) =>
 		repo: collectedRepos[i] as SqliteMarketDataRepository,
 	}),
 );
-const collector = collectors[
-	COLLECTED.findIndex((i) => i.id === DEFAULT_INSTRUMENT.id)
-] as (typeof collectors)[number];
+const collectorOf = (id: string) =>
+	collectors[
+		COLLECTED.findIndex((i) => i.id === id)
+	] as (typeof collectors)[number];
+const collector = collectorOf(DEFAULT_INSTRUMENT.id);
 const collectorTimer = setInterval(() => {
 	for (const c of collectors) c.tick();
 }, 1_000);
@@ -193,8 +191,12 @@ const tradingEngine = createTradingService({
 	judgments,
 	calendar,
 	dvol: dvolRepo,
-	marketData: marketDataRepo,
-	market: () => collector.live(),
+	// 先頭の BTC/JPY を口座の先頭の銘柄にする（BTC/JPY だけの口座の記録を今までと同じ形に保つ）
+	marketData: [
+		marketDataRepo,
+		...collectedRepos.filter((r) => r !== marketDataRepo),
+	],
+	market: (id) => collectorOf(id).live(),
 });
 trading = tradingEngine;
 const tradingTimer = setInterval(() => tradingEngine.tick(), 1_000);

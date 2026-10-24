@@ -25,8 +25,11 @@ export const timeframeSchema = z.enum(
 
 export const durationSchema = z.enum(DURATIONS);
 
-/** 候補の銘柄の id の並び。価格を集めている銘柄だけ */
-export const instrumentIdsSchema = z.array(z.enum(COLLECTED_IDS));
+/** 銘柄の id。価格を集めている銘柄だけ */
+export const instrumentIdSchema = z.enum(COLLECTED_IDS);
+
+/** 候補の銘柄の id の並び */
+export const instrumentIdsSchema = z.array(instrumentIdSchema);
 
 /** DVOL の平均の日数。戦略の条件 DVOL（平均との比）と同じ範囲 */
 export const dvolAverageDaysSchema = z
