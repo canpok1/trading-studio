@@ -57,7 +57,12 @@ export function createAdviceService({
 			? backtests.chart(runId, run.timeframe, Number.POSITIVE_INFINITY)
 			: null;
 		const chart = r?.ok ? r.chart : null;
-		const orders = backtestRepo.orders(runId);
+		// 足は候補の先頭の銘柄のものなので、注文もその銘柄だけ渡す（銘柄ごとに価格の単位が違う）
+		const orders = backtestRepo
+			.orders(runId)
+			?.filter(
+				(o) => (o.instrument ?? run?.instrument.id) === run?.instrument.id,
+			);
 		if (!run || !chart || !orders) return null;
 		const usesJudgments =
 			conditionStrategy.requiredJudges(run.params).length > 0;

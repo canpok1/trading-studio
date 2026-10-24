@@ -514,19 +514,16 @@ export function runBacktest<P>(config: BacktestConfig<P>): BacktestResult {
 		const own = trades.filter((t) => instrumentOf(t) === id);
 		const lots = account.lots.filter((l) => instrumentOf(l) === id);
 		const bar = m.steps[m.current];
-		const unrealized = lots.reduce(
-			(a, l) =>
-				a +
-				(bar ? notional(m.instrument, bar.close, l.quantity, "floor") : 0) -
-				l.cost +
-				(l.realizedPnl ?? 0),
-			0,
-		);
+		const quantity = lots.reduce((q, l) => q + l.quantity, 0);
+		// 全体の時価と同じく、数量の合計を1回だけ切り捨てて評価する（ロットごとに切り捨てると和がずれる）
+		const unrealized =
+			(bar ? notional(m.instrument, bar.close, quantity, "floor") : 0) -
+			lots.reduce((a, l) => a + l.cost - (l.realizedPnl ?? 0), 0);
 		return {
 			pnl: own.reduce((a, t) => a + t.pnl, 0) + unrealized,
 			...tradeStats(own),
 			buyHoldPercent: buyHoldOf(m),
-			openPositionQuantity: lots.reduce((q, l) => q + l.quantity, 0),
+			openPositionQuantity: quantity,
 		};
 	};
 

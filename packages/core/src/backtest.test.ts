@@ -927,6 +927,54 @@ describe("複数の銘柄", () => {
 		);
 	});
 
+	test("銘柄ごとの損益の和は、ロットが2つ以上残っても全体の損益に一致する", () => {
+		const strategy: Strategy<Script> = {
+			...buyer({ [XRP.id]: 1 }),
+			evaluate: ({ now, position, state }) => ({
+				intents:
+					position.quantity > 0
+						? []
+						: [
+								{
+									kind: "place",
+									side: "buy",
+									type: "market",
+									quantity: 15_000_000,
+								},
+								{
+									kind: "place",
+									side: "buy",
+									type: "market",
+									quantity: 15_000_000,
+								},
+							],
+				nextEvalAt: now + H,
+				state,
+			}),
+			maxHoldings: () => 1,
+		};
+		// 1ロットの時価に円未満の端数が出る価格と数量
+		const odd = bars([
+			[10_007, 10_007, 10_007, 10_007],
+			[10_013, 10_013, 10_013, 10_013],
+			[10_019, 10_019, 10_019, 10_019],
+		]);
+		const r = runBacktest({
+			...config(flat(3), { buyPrice: 0 }),
+			strategy,
+			otherMarkets: [
+				{ instrument: XRP, candles: { "1h": odd }, stepCandles: odd },
+			],
+		});
+		expect(
+			r.orders.filter((o) => o.instrument === XRP.id && o.status === "filled"),
+		).toHaveLength(2);
+		const by = r.summary.byInstrument ?? {};
+		expect(Object.values(by).reduce((a, x) => a + x.pnl, 0)).toBe(
+			r.summary.pnl,
+		);
+	});
+
 	test("候補が1つなら銘柄ごとの成績は持たない", () => {
 		const r = runBacktest({
 			...config(flat(3), { buyPrice: 0 }),

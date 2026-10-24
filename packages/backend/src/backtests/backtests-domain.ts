@@ -16,7 +16,6 @@ import {
 	chooseStepTimeframe,
 	conditionStrategy,
 	eventWindowHours,
-	findInstrument,
 	HOUR_MS,
 	isCoarser,
 	isTimeframe,
