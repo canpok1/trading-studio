@@ -172,7 +172,7 @@ export type Account = {
 	openOrders: OpenOrder[];
 	/** 注文の通し番号。注文の id に使う */
 	seq: number;
-	/** その日（JST）に確定した損益（手数料込み）。dayStart はその日の 0:00（JST） */
+	/** その日（市場の日の区切り）に確定した損益（手数料込み）。dayStart はその日の始まり */
 	today: { dayStart: number; pnl: number };
 };
 
@@ -319,13 +319,13 @@ export function settleFills(
 	time: number,
 	fees: FeeRates,
 	instrument: Instrument,
+	calendar: TradingCalendar = marketOf(instrument).calendar,
 ): StepChanges & { account: Account; filled: boolean } {
 	let { cash, lots, today } = account;
 	const changed: TradeOrder[] = [];
 	const trades: Trade[] = [];
 	const remaining: OpenOrder[] = [];
 	let filled = false;
-	const { calendar } = marketOf(instrument);
 	// 取引時間外は約定しない
 	if (!isOpen(calendar, time)) {
 		return { account, changed, trades, filled };

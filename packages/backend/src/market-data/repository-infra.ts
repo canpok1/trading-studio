@@ -476,7 +476,7 @@ export class SqliteMarketDataRepository implements MarketDataRepository {
 	 * 期間内に取り込んだ・収集した（自動で作っていない）足がある粒度（細かい順）。
 	 * 期間内のデータのある範囲の一部にしか無い粒度は除く（例: 数年分の1時間足に、収集した直近の1分足だけが重なる場合の1分足）。
 	 * 除かないと、細かい足で判定するバックテストが、その粒度の足がある一部の期間だけで進んでしまう。
-	 * 端は1日までずれてよい（日足は JST 0:00 始まりのため、同じ日のデータでも開始時刻が揃わない）
+	 * 端は1日までずれてよい（日足は市場の日の区切りで始まるため、同じ日のデータでも開始時刻が揃わない）
 	 */
 	importedTimeframes(from: number, to: number): Timeframe[] {
 		const rows = this.sql
