@@ -5,6 +5,7 @@ import type {
 	AggregationRule,
 	BacktestOrder,
 	DecisionLog,
+	InstrumentSummary,
 	Judge,
 	ScoredNews,
 	Trade,
@@ -17,6 +18,7 @@ import {
 	formatCandleCsvRow,
 	formatJstRfc3339,
 	HALF_LIVES_IN_WINDOW,
+	INSTRUMENTS,
 	JUDGES,
 	judgeAt,
 	judgmentRecordStart,
@@ -98,6 +100,11 @@ function toCsv<T>(table: Table<T>, rows: readonly T[]): string {
 }
 
 const json = (v: unknown) => JSON.stringify(v);
+
+// 価格・数量は銘柄ごとの最小単位の整数。単位は README の「銘柄と単位」に載せる
+const PRICE = "銘柄の価格の単位";
+const QUANTITY = "銘柄の数量の単位";
+const INSTRUMENT_DESC = "銘柄の id（README の「銘柄と単位」）";
 
 // ---- AI 判定の精度向上用 ----
 
@@ -320,9 +327,12 @@ const strategiesTable: Table<StrategyExportRow> = {
 	columns: [
 		col("strategy_id", "戦略の ID", (r) => r.id),
 		col("name", "戦略の名前", (r) => r.name),
+		col("instruments", "対象の銘柄の id（空白区切り。並び順が優先順）", (r) =>
+			(JSON.parse(r.instruments) as string[]).join(" "),
+		),
 		col(
 			"params",
-			"条件のセット（JSON）。金額は円、数量は satoshi",
+			`条件のセット（JSON）。金額は円、価格・数量は${PRICE}・${QUANTITY}`,
 			(r) => r.params,
 		),
 		...time<StrategyExportRow>("created_at", "作った時刻", (r) => r.created_at),
@@ -338,16 +348,16 @@ const strategiesTable: Table<StrategyExportRow> = {
 function decisionColumns<T>(get: (r: T) => DecisionLog): Column<T>[] {
 	return [
 		...time<T>("time", "判断した時刻", (r) => get(r).time),
-		col("price", "判断したときの現在値（円）", (r) => get(r).price),
+		col("price", `判断したときの現在値（${PRICE}）`, (r) => get(r).price),
 		col("cash", "判断したときの現金（円）", (r) => get(r).cash),
 		col(
 			"position_quantity",
-			"判断したときの保有数量（satoshi）。0 なら保有なし",
+			`判断したときのこの銘柄の保有数量（${QUANTITY}）。0 なら保有なし`,
 			(r) => get(r).position.quantity,
 		),
 		col(
 			"position_entry_price",
-			"保有の平均約定価格（円、手数料を含めない。ロットの数量で重み付け）",
+			`保有の平均約定価格（${PRICE}、手数料を含めない。ロットの数量で重み付け）`,
 			(r) => get(r).position.entryPrice,
 		),
 		...time<T>(
@@ -357,7 +367,7 @@ function decisionColumns<T>(get: (r: T) => DecisionLog): Column<T>[] {
 		),
 		col(
 			"lots",
-			"判断したときのロット（買いの注文の ID:買値（円）:数量（satoshi）を空白区切り。買った戦略の買いの id を持つロットは :買いの id を続ける）。ロットを持つ前の記録は空",
+			`判断したときのこの銘柄のロット（買いの注文の ID:買値（${PRICE}）:数量（${QUANTITY}）を空白区切り。買った戦略の買いの id を持つロットは :買いの id を続ける）。ロットを持つ前の記録は空`,
 			(r) =>
 				(get(r).lots ?? [])
 					.map(
@@ -373,7 +383,7 @@ function decisionColumns<T>(get: (r: T) => DecisionLog): Column<T>[] {
 		),
 		col(
 			"intents",
-			"この判断で出した発注・取消（JSON）。price は円、quantity は satoshi",
+			`この判断で出した発注・取消（JSON）。price は${PRICE}、quantity は${QUANTITY}`,
 			(r) => json(get(r).intents),
 		),
 		...time<T>("next_eval_at", "次に判断する時刻", (r) => get(r).nextEvalAt),
@@ -381,6 +391,12 @@ function decisionColumns<T>(get: (r: T) => DecisionLog): Column<T>[] {
 		col("state", "戦略の状態（JSON）", (r) => json(get(r).state)),
 	];
 }
+
+/** 銘柄を持たない記録は口座の先頭の銘柄のもの */
+const firstOf = (instruments: string | null) =>
+	instruments === null
+		? null
+		: ((JSON.parse(instruments) as string[])[0] ?? null);
 
 type PaperDecision = DecisionExportRow & {
 	log: DecisionLog;
@@ -405,6 +421,11 @@ const paperDecisionsTable: Table<PaperDecision> = {
 		col("mode", "paper: デモ / live: リアル", (r) => r.mode),
 		col("strategy_id", "戦略の ID", (r) => r.strategy_id),
 		col("strategy_name", "判断したときの戦略名", (r) => r.strategy_name),
+		col(
+			"instrument",
+			`判定した${INSTRUMENT_DESC}。記録に銘柄が無ければ今の戦略の先頭の銘柄で、戦略を削除していれば空`,
+			(r) => r.log.instrument ?? firstOf(r.strategy_instruments),
+		),
 		...decisionColumns<PaperDecision>((r) => r.log),
 		...JUDGES.map((j) =>
 			col<PaperDecision>(
@@ -422,8 +443,8 @@ function orderColumns<T>(get: (r: T) => BacktestOrder): Column<T>[] {
 		col("order_id", "注文の ID", (r) => get(r).id),
 		col("side", "buy: 買い / sell: 売り", (r) => get(r).side),
 		col("type", "limit: 指値 / market: 成行", (r) => get(r).type),
-		col("price", "指値の価格（円）。成行は空", (r) => get(r).price),
-		col("quantity", "数量（satoshi）", (r) => get(r).quantity),
+		col("price", `指値の価格（${PRICE}）。成行は空`, (r) => get(r).price),
+		col("quantity", `数量（${QUANTITY}）`, (r) => get(r).quantity),
 		...time<T>("placed_at", "発注した時刻", (r) => get(r).placedAt),
 		col(
 			"status",
@@ -431,7 +452,7 @@ function orderColumns<T>(get: (r: T) => BacktestOrder): Column<T>[] {
 			(r) => get(r).status,
 		),
 		...time<T>("filled_at", "約定した時刻", (r) => get(r).filledAt),
-		col("fill_price", "約定価格（円）", (r) => get(r).fillPrice),
+		col("fill_price", `約定価格（${PRICE}）`, (r) => get(r).fillPrice),
 		col("fee", "手数料（円）", (r) => get(r).fee),
 		...time<T>("canceled_at", "取り消した時刻", (r) => get(r).canceledAt),
 		col("cancel_reason", "取り消した理由", (r) => get(r).cancelReason),
@@ -488,6 +509,7 @@ const paperOrdersTable: Table<OrderExportRow> = {
 			(r) => r.run_name,
 		),
 		col("mode", "paper: デモ / live: リアル", (r) => r.mode),
+		col("instrument", INSTRUMENT_DESC, (r) => r.instrument),
 		...orderColumns<OrderExportRow>(toTradeOrder),
 		col(
 			"decision_id",
@@ -505,6 +527,11 @@ const backtestRunsTable: Table<BacktestRun> = {
 	columns: [
 		col("run_id", "実行の ID", (r) => r.id),
 		col("name", "バックテスト名", (r) => r.name),
+		col(
+			"instruments",
+			"候補の銘柄の id（空白区切り。並び順は順位が無いときの優先順）。先頭の銘柄で市場評価・相場データを見る",
+			(r) => r.instruments.map((i) => i.id).join(" "),
+		),
 		...time<BacktestRun>("started_at", "実行した時刻", (r) => r.startedAt),
 		col(
 			"timeframe",
@@ -546,7 +573,7 @@ const backtestRunsTable: Table<BacktestRun> = {
 		),
 		col(
 			"params",
-			"実行したときの条件のセット（JSON）。金額は円、数量は satoshi",
+			`実行したときの条件のセット（JSON）。金額は円、価格・数量は${PRICE}・${QUANTITY}`,
 			(r) => json(r.params),
 		),
 		col(
@@ -610,28 +637,103 @@ const backtestRunsTable: Table<BacktestRun> = {
 		),
 		col(
 			"open_position_quantity",
-			"期間の最後に持っていた数量（satoshi）",
+			`期間の最後に持っていた、候補の先頭の銘柄の数量（${QUANTITY}）。銘柄ごとは backtest_instruments.csv`,
 			(r) => r.summary?.openPositionQuantity,
 		),
 	],
 };
 
-type RunOrder = { runId: number; order: BacktestOrder };
+type RunInstrument = {
+	runId: number;
+	instrument: string;
+	summary: InstrumentSummary;
+};
+const backtestInstrumentsTable: Table<RunInstrument> = {
+	file: "backtest_instruments.csv",
+	desc: "選んだバックテストの銘柄ごとの成績。候補の銘柄ごとに1行（候補の並び順）。資金は銘柄で共有するので、元手に対する率と最大ドローダウンは backtest_runs.csv の全体だけにある",
+	columns: [
+		col("run_id", "実行の ID（backtest_runs.csv の run_id）", (r) => r.runId),
+		col("instrument", INSTRUMENT_DESC, (r) => r.instrument),
+		col(
+			"pnl",
+			"損益（円）。確定した往復の損益と、期間の最後に持っていたロットの評価損益（最後の足の終値で評価）の和。全銘柄の和が全体の損益",
+			(r) => r.summary.pnl,
+		),
+		col("trades", "往復の回数（未決済は含めない）", (r) => r.summary.trades),
+		col("wins", "勝ちの往復の数", (r) => r.summary.wins),
+		col("losses", "負けの往復の数", (r) => r.summary.losses),
+		col("win_rate", "勝率（%）。取引が無ければ空", (r) => r.summary.winRate),
+		col(
+			"profit_factor",
+			"損益比率（総利益 ÷ 総損失）。損失が 0 なら空",
+			(r) => r.summary.profitFactor,
+		),
+		col(
+			"average_holding_ms",
+			"平均保有期間（ミリ秒）。取引が無ければ空",
+			(r) => r.summary.averageHoldingMs,
+		),
+		col(
+			"buy_hold_percent",
+			"期間の最初の足の始値から最後の足の終値まで、この銘柄だけを持っていた場合の損益率（%）。期間に足が無いか、記録する前の実行は空",
+			(r) => r.summary.buyHoldPercent,
+		),
+		col(
+			"open_position_quantity",
+			`期間の最後に持っていた数量（${QUANTITY}）`,
+			(r) => r.summary.openPositionQuantity,
+		),
+	],
+};
+
+/** 銘柄ごとの成績。候補が1つの実行は全体の成績がその銘柄の成績 */
+function instrumentSummaries(run: BacktestRun): RunInstrument[] {
+	const s = run.summary;
+	if (!s) return [];
+	if (s.byInstrument) {
+		return Object.entries(s.byInstrument).map(([instrument, summary]) => ({
+			runId: run.id,
+			instrument,
+			summary,
+		}));
+	}
+	return [
+		{
+			runId: run.id,
+			instrument: run.instrument.id,
+			summary: {
+				pnl: s.pnl,
+				trades: s.trades,
+				wins: s.wins,
+				losses: s.losses,
+				winRate: s.winRate,
+				profitFactor: s.profitFactor,
+				averageHoldingMs: s.averageHoldingMs,
+				buyHoldPercent: s.buyHoldPercent ?? null,
+				openPositionQuantity: s.openPositionQuantity,
+			},
+		},
+	];
+}
+
+type RunOrder = { runId: number; first: string; order: BacktestOrder };
 const backtestOrdersTable: Table<RunOrder> = {
 	file: "backtest_orders.csv",
 	desc: "選んだバックテストの注文",
 	columns: [
 		col("run_id", "実行の ID（backtest_runs.csv の run_id）", (r) => r.runId),
+		col("instrument", INSTRUMENT_DESC, (r) => r.order.instrument ?? r.first),
 		...orderColumns<RunOrder>((r) => r.order),
 	],
 };
 
-type RunTrade = { runId: number; trade: Trade };
+type RunTrade = { runId: number; first: string; trade: Trade };
 const backtestTradesTable: Table<RunTrade> = {
 	file: "backtest_trades.csv",
 	desc: "選んだバックテストの往復の取引（買いと、それを決済した売りの組）",
 	columns: [
 		col("run_id", "実行の ID（backtest_runs.csv の run_id）", (r) => r.runId),
+		col("instrument", INSTRUMENT_DESC, (r) => r.trade.instrument ?? r.first),
 		col("buy_order_id", "買いの注文の ID", (r) => r.trade.buyOrderId),
 		col("sell_order_id", "売りの注文の ID", (r) => r.trade.sellOrderId),
 		...time<RunTrade>(
@@ -644,17 +746,22 @@ const backtestTradesTable: Table<RunTrade> = {
 			"売りが約定した時刻",
 			(r) => r.trade.exitTime,
 		),
-		col("quantity", "数量（satoshi）", (r) => r.trade.quantity),
+		col("quantity", `数量（${QUANTITY}）`, (r) => r.trade.quantity),
 		col("pnl", "損益（円、手数料込み）", (r) => r.trade.pnl),
 	],
 };
 
-type RunDecision = { runId: number; log: DecisionLog };
+type RunDecision = { runId: number; first: string; log: DecisionLog };
 const backtestDecisionsTable: Table<RunDecision> = {
 	file: "backtest_decisions.csv",
 	desc: "選んだバックテストの判断ログ。評価のたびに1行。そのときの市場評価は、実行の評価ルール（backtest_runs.csv の aggregation_rule）で news.csv から計算できる",
 	columns: [
 		col("run_id", "実行の ID（backtest_runs.csv の run_id）", (r) => r.runId),
+		col(
+			"instrument",
+			`判定した${INSTRUMENT_DESC}`,
+			(r) => r.log.instrument ?? r.first,
+		),
 		...decisionColumns<RunDecision>((r) => r.log),
 	],
 };
@@ -672,6 +779,9 @@ const dvolTable: Table<DvolBar> = {
 };
 
 const CANDLE_FILE = "candles_1m.csv";
+
+const unitOf = (decimals: number, unit: string) =>
+	`${decimals === 0 ? "1" : `0.${"0".repeat(decimals - 1)}1`} ${unit}`;
 
 /** README に載せる表と行数 */
 type Listed = { table: Table<never>; rows: number };
@@ -696,7 +806,7 @@ function readme({
 	const out: string[] = [
 		"# trading-studio 分析用データ",
 		"",
-		"BTC/JPY の自動売買アプリ trading-studio の記録。市場評価の精度と戦略の成績の分析に使う。",
+		"仮想通貨の自動売買アプリ trading-studio の記録。市場評価の精度と戦略の成績の分析に使う。市場評価・DVOL・1分足は BTC/JPY のもの。",
 		"",
 		`- 期間: ${formatJstRfc3339(from)} 〜 ${formatJstRfc3339(to)}（終わりの時刻は含まない）`,
 		`- 書き出した時刻: ${formatJstRfc3339(now)}`,
@@ -705,9 +815,20 @@ function readme({
 		"",
 		'- 文字コードは UTF-8、改行は LF。1行目は列名。値に `,` `"` 改行を含むときは `"` で囲む',
 		"- 時刻の列は、UTC のエポックミリ秒（列名そのまま）と JST の文字列（列名に `_jst` を付けた列、例 `2026-09-26T12:00:00.000+09:00`）の2列で出す",
-		"- 金額は円の整数、数量は satoshi の整数（1 BTC = 100,000,000 satoshi）。ただし candles_1m.csv の出来高だけは BTC の小数",
+		"- 金額は円の整数。価格と数量は銘柄ごとの最小単位の整数（下の「銘柄と単位」）。ただし candles_1m.csv は取り込み形式どおり（価格は円、出来高は BTC の小数）",
 		"- 空の値は「無い」「当てはまらない」を表す",
 		"- API キーなどの設定値は入れていない",
+		"",
+		"## 銘柄と単位",
+		"",
+		"価格・数量の列の値 × 単位が、通貨・数量での値。",
+		"",
+		"| 銘柄の id | 銘柄 | 価格の単位 | 数量の単位 |",
+		"|---|---|---|---|",
+		...INSTRUMENTS.map(
+			(i) =>
+				`| ${i.id} | ${i.symbol} | ${unitOf(i.priceDecimals, i.currency.unit)} | ${unitOf(i.quantityDecimals, i.quantityUnit)} |`,
+		),
 		"",
 		"## 期間で絞る基準",
 		"",
@@ -869,15 +990,18 @@ export function createAnalysisExportService({
 			);
 			add(paperOrdersTable, repo.orders(from, to));
 			add(backtestRunsTable, runs);
+			add(backtestInstrumentsTable, runs.flatMap(instrumentSummaries));
 			const orders: RunOrder[] = [];
 			const trades: RunTrade[] = [];
 			const decisions: RunDecision[] = [];
 			for (const run of runs) {
 				const c = backtestRepo.contents(run.id);
 				if (!c) continue;
-				for (const order of c.orders) orders.push({ runId: run.id, order });
-				for (const trade of c.trades) trades.push({ runId: run.id, trade });
-				for (const log of c.decisions) decisions.push({ runId: run.id, log });
+				// 候補の先頭の銘柄のものは銘柄を持たない
+				const at = { runId: run.id, first: run.instrument.id };
+				for (const order of c.orders) orders.push({ ...at, order });
+				for (const trade of c.trades) trades.push({ ...at, trade });
+				for (const log of c.decisions) decisions.push({ ...at, log });
 			}
 			add(backtestOrdersTable, orders);
 			add(backtestTradesTable, trades);
